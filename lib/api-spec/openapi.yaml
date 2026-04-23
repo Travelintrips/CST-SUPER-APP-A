@@ -3,20 +3,32 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: BizPortal Multi-Division API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: User management
+  - name: ecommerce
+    description: E-commerce division
+  - name: trading
+    description: Trading division
+  - name: logistics
+    description: Logistics division
+  - name: pos
+    description: Point of Sale division
+  - name: dashboard
+    description: Dashboard summary
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +36,322 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /users/me:
+    get:
+      operationId: getCurrentUser
+      tags: [users]
+      summary: Get current user profile and role
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get aggregated summary for all divisions
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /ecommerce/products:
+    get:
+      operationId: listProducts
+      tags: [ecommerce]
+      summary: List all products
+      responses:
+        "200":
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [ecommerce]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductBody"
+      responses:
+        "201":
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /ecommerce/products/{id}:
+    get:
+      operationId: getProduct
+      tags: [ecommerce]
+      summary: Get a product by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    put:
+      operationId: updateProduct
+      tags: [ecommerce]
+      summary: Update a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductBody"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    delete:
+      operationId: deleteProduct
+      tags: [ecommerce]
+      summary: Delete a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /ecommerce/orders:
+    get:
+      operationId: listOrders
+      tags: [ecommerce]
+      summary: List all orders
+      responses:
+        "200":
+          description: Orders list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [ecommerce]
+      summary: Create an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderBody"
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /trading/stocks:
+    get:
+      operationId: listStocks
+      tags: [trading]
+      summary: List all stock items
+      responses:
+        "200":
+          description: Stock list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockItem"
+    post:
+      operationId: createStockItem
+      tags: [trading]
+      summary: Create stock item / purchase from supplier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStockItemBody"
+      responses:
+        "201":
+          description: Created stock item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockItem"
+
+  /trading/suppliers:
+    get:
+      operationId: listSuppliers
+      tags: [trading]
+      summary: List all suppliers
+      responses:
+        "200":
+          description: Suppliers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Supplier"
+    post:
+      operationId: createSupplier
+      tags: [trading]
+      summary: Add a supplier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierBody"
+      responses:
+        "201":
+          description: Created supplier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+
+  /logistics/shipments:
+    get:
+      operationId: listShipments
+      tags: [logistics]
+      summary: List all shipments
+      responses:
+        "200":
+          description: Shipments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Shipment"
+    post:
+      operationId: createShipment
+      tags: [logistics]
+      summary: Create a shipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShipmentBody"
+      responses:
+        "201":
+          description: Created shipment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+
+  /logistics/shipments/{id}:
+    put:
+      operationId: updateShipmentStatus
+      tags: [logistics]
+      summary: Update shipment status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateShipmentStatusBody"
+      responses:
+        "200":
+          description: Updated shipment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+
+  /pos/transactions:
+    get:
+      operationId: listTransactions
+      tags: [pos]
+      summary: List all POS transactions
+      responses:
+        "200":
+          description: Transactions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transaction"
+    post:
+      operationId: createTransaction
+      tags: [pos]
+      summary: Record a POS transaction (sale)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransactionBody"
+      responses:
+        "201":
+          description: Created transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /pos/summary:
+    get:
+      operationId: getPosSummary
+      tags: [pos]
+      summary: Get POS daily/monthly summary
+      responses:
+        "200":
+          description: POS summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PosSummary"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +359,293 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, ecommerce, trading, logistics, pos]
+        division:
+          type: string
+      required: [id, email, name, role]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        totalRevenue:
+          type: number
+        totalShipments:
+          type: integer
+        totalStockValue:
+          type: number
+        todayTransactions:
+          type: integer
+        lowStockCount:
+          type: integer
+      required: [totalOrders, totalRevenue, totalShipments, totalStockValue, todayTransactions, lowStockCount]
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
+        price:
+          type: number
+        stock:
+          type: integer
+        category:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, sku, price, stock, category, createdAt]
+
+    CreateProductBody:
+      type: object
+      properties:
+        name:
+          type: string
+        sku:
+          type: string
+        price:
+          type: number
+        stock:
+          type: integer
+        category:
+          type: string
+        description:
+          type: string
+      required: [name, sku, price, stock, category]
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, shipped, delivered, cancelled]
+        totalAmount:
+          type: number
+        items:
+          type: string
+        createdAt:
+          type: string
+      required: [id, customerName, customerEmail, status, totalAmount, createdAt]
+
+    CreateOrderBody:
+      type: object
+      properties:
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+        items:
+          type: string
+        totalAmount:
+          type: number
+      required: [customerName, customerEmail, items, totalAmount]
+
+    StockItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        productName:
+          type: string
+        sku:
+          type: string
+        quantity:
+          type: integer
+        unit:
+          type: string
+        costPrice:
+          type: number
+        supplierId:
+          type: integer
+        supplierName:
+          type: string
+        hsCode:
+          type: string
+        createdAt:
+          type: string
+      required: [id, productName, sku, quantity, unit, costPrice, createdAt]
+
+    CreateStockItemBody:
+      type: object
+      properties:
+        productName:
+          type: string
+        sku:
+          type: string
+        quantity:
+          type: integer
+        unit:
+          type: string
+        costPrice:
+          type: number
+        supplierId:
+          type: integer
+        hsCode:
+          type: string
+      required: [productName, sku, quantity, unit, costPrice]
+
+    Supplier:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        country:
+          type: string
+        contactEmail:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, country, contactEmail, createdAt]
+
+    CreateSupplierBody:
+      type: object
+      properties:
+        name:
+          type: string
+        country:
+          type: string
+        contactEmail:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+      required: [name, country, contactEmail]
+
+    Shipment:
+      type: object
+      properties:
+        id:
+          type: integer
+        orderId:
+          type: integer
+        trackingNumber:
+          type: string
+        carrier:
+          type: string
+        status:
+          type: string
+          enum: [pending, picked_up, in_transit, out_for_delivery, delivered, failed]
+        origin:
+          type: string
+        destination:
+          type: string
+        estimatedDelivery:
+          type: string
+        createdAt:
+          type: string
+      required: [id, trackingNumber, carrier, status, origin, destination, createdAt]
+
+    CreateShipmentBody:
+      type: object
+      properties:
+        orderId:
+          type: integer
+        carrier:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        estimatedDelivery:
+          type: string
+      required: [carrier, origin, destination]
+
+    UpdateShipmentStatusBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, picked_up, in_transit, out_for_delivery, delivered, failed]
+      required: [status]
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        productName:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        totalPrice:
+          type: number
+        paymentMethod:
+          type: string
+          enum: [cash, debit, credit, qris, transfer]
+        cashierId:
+          type: string
+        createdAt:
+          type: string
+      required: [id, productName, quantity, unitPrice, totalPrice, paymentMethod, createdAt]
+
+    CreateTransactionBody:
+      type: object
+      properties:
+        productName:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        totalPrice:
+          type: number
+        paymentMethod:
+          type: string
+          enum: [cash, debit, credit, qris, transfer]
+      required: [productName, quantity, unitPrice, totalPrice, paymentMethod]
+
+    PosSummary:
+      type: object
+      properties:
+        todayTotal:
+          type: number
+        todayCount:
+          type: integer
+        monthTotal:
+          type: number
+        monthCount:
+          type: integer
+        topProduct:
+          type: string
+      required: [todayTotal, todayCount, monthTotal, monthCount]
