@@ -11,21 +11,13 @@ import {
   useGetAccountingSettings, useUpdateAccountingSettings, useListAccounts, useListJournals, useListTaxes,
   getGetAccountingSettingsQueryKey,
 } from "@workspace/api-client-react";
+import type { UpdateAccountingSettingsBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Settings as SettingsIcon } from "lucide-react";
 
-type State = {
-  arAccountId: number | null; apAccountId: number | null;
-  salesIncomeAccountId: number | null; purchaseExpenseAccountId: number | null;
-  defaultBankAccountId: number | null; defaultCashAccountId: number | null;
-  ppnOutputAccountId: number | null; ppnInputAccountId: number | null;
-  inventoryAccountId: number | null; cogsAccountId: number | null;
-  salesJournalId: number | null; purchaseJournalId: number | null;
-  bankJournalId: number | null; cashJournalId: number | null;
-  defaultSalesTaxId: number | null; defaultPurchaseTaxId: number | null;
-};
+type SettingsForm = Required<UpdateAccountingSettingsBody>;
 
-const EMPTY: State = {
+const EMPTY: SettingsForm = {
   arAccountId: null, apAccountId: null, salesIncomeAccountId: null, purchaseExpenseAccountId: null,
   defaultBankAccountId: null, defaultCashAccountId: null,
   ppnOutputAccountId: null, ppnInputAccountId: null,
@@ -44,7 +36,7 @@ export default function AccountingSettingsPage() {
   const { data: taxes } = useListTaxes();
   const updateMut = useUpdateAccountingSettings();
 
-  const [form, setForm] = useState<State>(EMPTY);
+  const [form, setForm] = useState<SettingsForm>(EMPTY);
 
   useEffect(() => {
     if (settings) {
@@ -54,15 +46,15 @@ export default function AccountingSettingsPage() {
         salesIncomeAccountId: settings.salesIncomeAccountId ?? null,
         purchaseExpenseAccountId: settings.purchaseExpenseAccountId ?? null,
         defaultBankAccountId: settings.defaultBankAccountId ?? null,
-        defaultCashAccountId: (settings as any).defaultCashAccountId ?? null,
+        defaultCashAccountId: settings.defaultCashAccountId ?? null,
         ppnOutputAccountId: settings.ppnOutputAccountId ?? null,
         ppnInputAccountId: settings.ppnInputAccountId ?? null,
-        inventoryAccountId: (settings as any).inventoryAccountId ?? null,
-        cogsAccountId: (settings as any).cogsAccountId ?? null,
+        inventoryAccountId: settings.inventoryAccountId ?? null,
+        cogsAccountId: settings.cogsAccountId ?? null,
         salesJournalId: settings.salesJournalId ?? null,
         purchaseJournalId: settings.purchaseJournalId ?? null,
         bankJournalId: settings.bankJournalId ?? null,
-        cashJournalId: (settings as any).cashJournalId ?? null,
+        cashJournalId: settings.cashJournalId ?? null,
         defaultSalesTaxId: settings.defaultSalesTaxId ?? null,
         defaultPurchaseTaxId: settings.defaultPurchaseTaxId ?? null,
       });
@@ -71,15 +63,16 @@ export default function AccountingSettingsPage() {
 
   const submit = async () => {
     try {
-      await updateMut.mutateAsync({ data: form as any });
+      await updateMut.mutateAsync({ data: form });
       toast({ title: "Pengaturan disimpan" });
       qc.invalidateQueries({ queryKey: getGetAccountingSettingsQueryKey() });
-    } catch (e: any) {
-      toast({ title: "Gagal", description: e?.message ?? String(e), variant: "destructive" });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast({ title: "Gagal", description: msg, variant: "destructive" });
     }
   };
 
-  const accSelect = (key: keyof State, label: string, filterType?: string[]) => {
+  const accSelect = (key: keyof SettingsForm, label: string, filterType?: string[]) => {
     const list = (accounts ?? []).filter((a) => a.isActive && (!filterType || filterType.includes(a.type)));
     return (
       <div>
@@ -95,7 +88,7 @@ export default function AccountingSettingsPage() {
     );
   };
 
-  const jSelect = (key: keyof State, label: string, type: string) => (
+  const jSelect = (key: keyof SettingsForm, label: string, type: string) => (
     <div>
       <Label>{label}</Label>
       <Select value={form[key] ? String(form[key]) : "none"} onValueChange={(v) => setForm({ ...form, [key]: v === "none" ? null : parseInt(v) })}>
@@ -108,7 +101,7 @@ export default function AccountingSettingsPage() {
     </div>
   );
 
-  const tSelect = (key: keyof State, label: string, kind: string) => (
+  const tSelect = (key: keyof SettingsForm, label: string, kind: string) => (
     <div>
       <Label>{label}</Label>
       <Select value={form[key] ? String(form[key]) : "none"} onValueChange={(v) => setForm({ ...form, [key]: v === "none" ? null : parseInt(v) })}>
@@ -128,11 +121,11 @@ export default function AccountingSettingsPage() {
       <div className="space-y-6 p-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><SettingsIcon className="h-6 w-6" />Pengaturan Akunting</h1>
-          <p className="text-sm text-muted-foreground">Mapping akun & jurnal default untuk auto-posting semua modul</p>
+          <p className="text-sm text-muted-foreground">Mapping akun &amp; jurnal default untuk auto-posting semua modul</p>
         </div>
 
         <Card>
-          <CardHeader><CardTitle>Akun Default — Sales & Purchase</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Akun Default — Sales &amp; Purchase</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
             {accSelect("arAccountId", "Piutang Usaha (AR)", ["asset"])}
             {accSelect("apAccountId", "Hutang Usaha (AP)", ["liability"])}
@@ -144,7 +137,7 @@ export default function AccountingSettingsPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Akun Default — Kas, Bank & Persediaan</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Akun Default — Kas, Bank &amp; Persediaan</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
             {accSelect("defaultBankAccountId", "Bank Default", ["asset"])}
             {accSelect("defaultCashAccountId", "Kas Default (POS tunai/QRIS)", ["asset"])}
