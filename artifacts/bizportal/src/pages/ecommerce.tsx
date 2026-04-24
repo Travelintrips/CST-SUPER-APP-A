@@ -14,6 +14,7 @@ import {
   type Order,
 } from "@workspace/api-client-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -744,63 +745,62 @@ function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogPro
     window.print();
   };
 
-  return (
-    <>
+  const printContent = (
+    <div id="order-invoice-print-root" style={{ display: 'none' }}>
       <style>{`
         @media print {
           body > *:not(#order-invoice-print-root) { display: none !important; }
-          #order-invoice-print-root { display: block !important; position: fixed; inset: 0; background: white; z-index: 99999; padding: 40px; }
-          #order-invoice-print-root .no-print { display: none !important; }
-        }
-        @media screen {
-          #order-invoice-print-root { display: none; }
+          #order-invoice-print-root { display: block !important; position: fixed; inset: 0; background: white; z-index: 99999; padding: 40px; box-sizing: border-box; }
         }
       `}</style>
-
-      <div id="order-invoice-print-root" aria-hidden="true">
-        <div style={{ maxWidth: 600, margin: '0 auto', fontFamily: 'sans-serif', color: '#000' }}>
-          <div style={{ borderBottom: '2px solid #000', paddingBottom: 16, marginBottom: 24 }}>
-            <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>INVOICE</h1>
-            <p style={{ margin: '4px 0 0', fontSize: 14, color: '#555' }}>BizPortal</p>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-            <div>
-              <p style={{ fontWeight: 600, margin: '0 0 4px' }}>Tagihan Kepada:</p>
-              <p style={{ margin: 0 }}>{order.customerName}</p>
-              <p style={{ margin: 0, color: '#555' }}>{order.customerEmail}</p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontWeight: 600, margin: '0 0 4px' }}>{orderId}</p>
-              <p style={{ margin: 0, color: '#555' }}>{date}</p>
-            </div>
-          </div>
-          {order.items && (
-            <div style={{ marginBottom: 24 }}>
-              <p style={{ fontWeight: 600, margin: '0 0 8px' }}>Item:</p>
-              <p style={{ margin: 0, color: '#333', whiteSpace: 'pre-wrap' }}>{order.items}</p>
-            </div>
-          )}
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
-            <tbody>
-              <tr>
-                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd' }}>Subtotal</td>
-                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd', textAlign: 'right' }}>{formatIDR(subtotal)}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd' }}>PPN {taxPct}%</td>
-                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd', textAlign: 'right' }}>{formatIDR(tax)}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '12px 0', borderTop: '2px solid #000', fontWeight: 700, fontSize: 16 }}>Grand Total</td>
-                <td style={{ padding: '12px 0', borderTop: '2px solid #000', textAlign: 'right', fontWeight: 700, fontSize: 16 }}>{formatIDR(grand)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p style={{ marginTop: 32, fontSize: 12, color: '#888', textAlign: 'center' }}>
-            Terima kasih atas pembelian Anda.
-          </p>
+      <div style={{ maxWidth: 600, margin: '0 auto', fontFamily: 'sans-serif', color: '#000' }}>
+        <div style={{ borderBottom: '2px solid #000', paddingBottom: 16, marginBottom: 24 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>INVOICE</h1>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#555' }}>BizPortal</p>
         </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div>
+            <p style={{ fontWeight: 600, margin: '0 0 4px' }}>Tagihan Kepada:</p>
+            <p style={{ margin: 0 }}>{order.customerName}</p>
+            <p style={{ margin: 0, color: '#555' }}>{order.customerEmail}</p>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontWeight: 600, margin: '0 0 4px' }}>{orderId}</p>
+            <p style={{ margin: 0, color: '#555' }}>{date}</p>
+          </div>
+        </div>
+        {order.items && (
+          <div style={{ marginBottom: 24 }}>
+            <p style={{ fontWeight: 600, margin: '0 0 8px' }}>Item:</p>
+            <p style={{ margin: 0, color: '#333', whiteSpace: 'pre-wrap' }}>{order.items}</p>
+          </div>
+        )}
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
+          <tbody>
+            <tr>
+              <td style={{ padding: '8px 0', borderTop: '1px solid #ddd' }}>Subtotal</td>
+              <td style={{ padding: '8px 0', borderTop: '1px solid #ddd', textAlign: 'right' }}>{formatIDR(subtotal)}</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '8px 0', borderTop: '1px solid #ddd' }}>PPN {taxPct}%</td>
+              <td style={{ padding: '8px 0', borderTop: '1px solid #ddd', textAlign: 'right' }}>{formatIDR(tax)}</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '12px 0', borderTop: '2px solid #000', fontWeight: 700, fontSize: 16 }}>Grand Total</td>
+              <td style={{ padding: '12px 0', borderTop: '2px solid #000', textAlign: 'right', fontWeight: 700, fontSize: 16 }}>{formatIDR(grand)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style={{ marginTop: 32, fontSize: 12, color: '#888', textAlign: 'center' }}>
+          Terima kasih atas pembelian Anda.
+        </p>
       </div>
+    </div>
+  );
+
+  return (
+    <>
+      {createPortal(printContent, document.body)}
 
       <Dialog open onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="max-w-lg" data-testid="dialog-invoice">
