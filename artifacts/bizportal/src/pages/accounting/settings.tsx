@@ -17,16 +17,21 @@ import { Settings as SettingsIcon } from "lucide-react";
 type State = {
   arAccountId: number | null; apAccountId: number | null;
   salesIncomeAccountId: number | null; purchaseExpenseAccountId: number | null;
-  defaultBankAccountId: number | null;
+  defaultBankAccountId: number | null; defaultCashAccountId: number | null;
   ppnOutputAccountId: number | null; ppnInputAccountId: number | null;
-  salesJournalId: number | null; purchaseJournalId: number | null; bankJournalId: number | null;
+  inventoryAccountId: number | null; cogsAccountId: number | null;
+  salesJournalId: number | null; purchaseJournalId: number | null;
+  bankJournalId: number | null; cashJournalId: number | null;
   defaultSalesTaxId: number | null; defaultPurchaseTaxId: number | null;
 };
 
 const EMPTY: State = {
   arAccountId: null, apAccountId: null, salesIncomeAccountId: null, purchaseExpenseAccountId: null,
-  defaultBankAccountId: null, ppnOutputAccountId: null, ppnInputAccountId: null,
-  salesJournalId: null, purchaseJournalId: null, bankJournalId: null,
+  defaultBankAccountId: null, defaultCashAccountId: null,
+  ppnOutputAccountId: null, ppnInputAccountId: null,
+  inventoryAccountId: null, cogsAccountId: null,
+  salesJournalId: null, purchaseJournalId: null,
+  bankJournalId: null, cashJournalId: null,
   defaultSalesTaxId: null, defaultPurchaseTaxId: null,
 };
 
@@ -44,19 +49,29 @@ export default function AccountingSettingsPage() {
   useEffect(() => {
     if (settings) {
       setForm({
-        arAccountId: settings.arAccountId ?? null, apAccountId: settings.apAccountId ?? null,
-        salesIncomeAccountId: settings.salesIncomeAccountId ?? null, purchaseExpenseAccountId: settings.purchaseExpenseAccountId ?? null,
+        arAccountId: settings.arAccountId ?? null,
+        apAccountId: settings.apAccountId ?? null,
+        salesIncomeAccountId: settings.salesIncomeAccountId ?? null,
+        purchaseExpenseAccountId: settings.purchaseExpenseAccountId ?? null,
         defaultBankAccountId: settings.defaultBankAccountId ?? null,
-        ppnOutputAccountId: settings.ppnOutputAccountId ?? null, ppnInputAccountId: settings.ppnInputAccountId ?? null,
-        salesJournalId: settings.salesJournalId ?? null, purchaseJournalId: settings.purchaseJournalId ?? null, bankJournalId: settings.bankJournalId ?? null,
-        defaultSalesTaxId: settings.defaultSalesTaxId ?? null, defaultPurchaseTaxId: settings.defaultPurchaseTaxId ?? null,
+        defaultCashAccountId: (settings as any).defaultCashAccountId ?? null,
+        ppnOutputAccountId: settings.ppnOutputAccountId ?? null,
+        ppnInputAccountId: settings.ppnInputAccountId ?? null,
+        inventoryAccountId: (settings as any).inventoryAccountId ?? null,
+        cogsAccountId: (settings as any).cogsAccountId ?? null,
+        salesJournalId: settings.salesJournalId ?? null,
+        purchaseJournalId: settings.purchaseJournalId ?? null,
+        bankJournalId: settings.bankJournalId ?? null,
+        cashJournalId: (settings as any).cashJournalId ?? null,
+        defaultSalesTaxId: settings.defaultSalesTaxId ?? null,
+        defaultPurchaseTaxId: settings.defaultPurchaseTaxId ?? null,
       });
     }
   }, [settings]);
 
   const submit = async () => {
     try {
-      await updateMut.mutateAsync({ data: form });
+      await updateMut.mutateAsync({ data: form as any });
       toast({ title: "Pengaturan disimpan" });
       qc.invalidateQueries({ queryKey: getGetAccountingSettingsQueryKey() });
     } catch (e: any) {
@@ -113,28 +128,38 @@ export default function AccountingSettingsPage() {
       <div className="space-y-6 p-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><SettingsIcon className="h-6 w-6" />Pengaturan Akunting</h1>
-          <p className="text-sm text-muted-foreground">Mapping akun & jurnal default untuk auto-posting</p>
+          <p className="text-sm text-muted-foreground">Mapping akun & jurnal default untuk auto-posting semua modul</p>
         </div>
 
         <Card>
-          <CardHeader><CardTitle>Akun Default</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Akun Default — Sales & Purchase</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
             {accSelect("arAccountId", "Piutang Usaha (AR)", ["asset"])}
             {accSelect("apAccountId", "Hutang Usaha (AP)", ["liability"])}
             {accSelect("salesIncomeAccountId", "Pendapatan Penjualan", ["revenue"])}
             {accSelect("purchaseExpenseAccountId", "Beban Pembelian / HPP", ["expense"])}
-            {accSelect("defaultBankAccountId", "Bank Default", ["asset"])}
             {accSelect("ppnOutputAccountId", "PPN Keluaran", ["liability"])}
             {accSelect("ppnInputAccountId", "PPN Masukan", ["asset"])}
           </CardContent>
         </Card>
 
         <Card>
+          <CardHeader><CardTitle>Akun Default — Kas, Bank & Persediaan</CardTitle></CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4">
+            {accSelect("defaultBankAccountId", "Bank Default", ["asset"])}
+            {accSelect("defaultCashAccountId", "Kas Default (POS tunai/QRIS)", ["asset"])}
+            {accSelect("inventoryAccountId", "Persediaan Barang (Trading)", ["asset"])}
+            {accSelect("cogsAccountId", "HPP / COGS", ["expense"])}
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardHeader><CardTitle>Jurnal Default</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-3 gap-4">
+          <CardContent className="grid grid-cols-2 gap-4">
             {jSelect("salesJournalId", "Jurnal Penjualan", "sales")}
             {jSelect("purchaseJournalId", "Jurnal Pembelian", "purchase")}
             {jSelect("bankJournalId", "Jurnal Bank", "bank")}
+            {jSelect("cashJournalId", "Jurnal Kas (POS tunai/QRIS)", "cash")}
           </CardContent>
         </Card>
 

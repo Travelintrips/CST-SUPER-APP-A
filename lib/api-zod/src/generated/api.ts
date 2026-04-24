@@ -1534,13 +1534,17 @@ export const GetAccountingSettingsResponse = zod.object({
   salesIncomeAccountId: zod.number().nullish(),
   purchaseExpenseAccountId: zod.number().nullish(),
   defaultBankAccountId: zod.number().nullish(),
+  defaultCashAccountId: zod.number().nullish(),
   ppnOutputAccountId: zod.number().nullish(),
   ppnInputAccountId: zod.number().nullish(),
   salesJournalId: zod.number().nullish(),
   purchaseJournalId: zod.number().nullish(),
   bankJournalId: zod.number().nullish(),
+  cashJournalId: zod.number().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  inventoryAccountId: zod.number().nullish(),
+  cogsAccountId: zod.number().nullish(),
   updatedAt: zod.string(),
 });
 
@@ -1553,13 +1557,17 @@ export const UpdateAccountingSettingsBody = zod.object({
   salesIncomeAccountId: zod.number().nullish(),
   purchaseExpenseAccountId: zod.number().nullish(),
   defaultBankAccountId: zod.number().nullish(),
+  defaultCashAccountId: zod.number().nullish(),
   ppnOutputAccountId: zod.number().nullish(),
   ppnInputAccountId: zod.number().nullish(),
   salesJournalId: zod.number().nullish(),
   purchaseJournalId: zod.number().nullish(),
   bankJournalId: zod.number().nullish(),
+  cashJournalId: zod.number().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  inventoryAccountId: zod.number().nullish(),
+  cogsAccountId: zod.number().nullish(),
 });
 
 export const UpdateAccountingSettingsResponse = zod.object({
@@ -1569,13 +1577,17 @@ export const UpdateAccountingSettingsResponse = zod.object({
   salesIncomeAccountId: zod.number().nullish(),
   purchaseExpenseAccountId: zod.number().nullish(),
   defaultBankAccountId: zod.number().nullish(),
+  defaultCashAccountId: zod.number().nullish(),
   ppnOutputAccountId: zod.number().nullish(),
   ppnInputAccountId: zod.number().nullish(),
   salesJournalId: zod.number().nullish(),
   purchaseJournalId: zod.number().nullish(),
   bankJournalId: zod.number().nullish(),
+  cashJournalId: zod.number().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  inventoryAccountId: zod.number().nullish(),
+  cogsAccountId: zod.number().nullish(),
   updatedAt: zod.string(),
 });
 

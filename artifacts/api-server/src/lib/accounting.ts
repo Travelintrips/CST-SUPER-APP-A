@@ -25,7 +25,10 @@ export interface PostingInput {
     | "sales_invoice"
     | "purchase_bill"
     | "sales_payment"
-    | "purchase_payment";
+    | "purchase_payment"
+    | "pos_sale"
+    | "ecommerce_order"
+    | "stock_received";
   sourceId?: number | null;
   createdById?: string | null;
   lines: PostingLine[];
@@ -94,7 +97,7 @@ export async function postEntry(
       totalCredit: String(totalCredit),
       createdById: input.createdById ?? null,
     })
-    .onConflictDoNothing({ target: [accountingEntriesTable.source, accountingEntriesTable.sourceId] })
+    .onConflictDoNothing()
     .returning();
   let entry = inserted[0];
   if (!entry && source !== "manual" && sourceId !== null) {
@@ -260,6 +263,129 @@ export async function postPurchaseBill(args: {
     );
   } catch (err) {
     logger.error({ err, purchaseDocId: args.purchaseDocId }, "Auto-post purchase bill failed");
+  }
+}
+
+/** Auto-post when a POS transaction is created (immediate cash/bank sale). */
+export async function postPosTransaction(args: {
+  transactionId: number;
+  productName: string;
+  totalPrice: number;
+  paymentMethod: string;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings();
+    if (!settings.salesIncomeAccountId) {
+      logger.warn({ transactionId: args.transactionId }, "Skipping POS post: salesIncomeAccountId missing");
+      return;
+    }
+    const isCash = args.paymentMethod === "cash" || args.paymentMethod === "qris";
+    const debitAccountId = isCash
+      ? (settings.defaultCashAccountId ?? settings.defaultBankAccountId)
+      : settings.defaultBankAccountId;
+    if (!debitAccountId) {
+      logger.warn({ transactionId: args.transactionId }, "Skipping POS post: no cash/bank account configured");
+      return;
+    }
+    const journalId = isCash
+      ? (settings.cashJournalId ?? settings.bankJournalId)
+      : settings.bankJournalId;
+    if (!journalId) {
+      logger.warn({ transactionId: args.transactionId }, "Skipping POS post: no journal configured");
+      return;
+    }
+    const amt = round2(args.totalPrice);
+    await postEntry(
+      {
+        journalId,
+        date: new Date(),
+        ref: `POS-${args.transactionId}`,
+        description: `Penjualan POS: ${args.productName}`,
+        source: "pos_sale",
+        sourceId: args.transactionId,
+        createdById: args.createdById ?? null,
+        lines: [
+          { accountId: debitAccountId, debit: amt, credit: 0, description: `Penerimaan POS #${args.transactionId}` },
+          { accountId: settings.salesIncomeAccountId, debit: 0, credit: amt, description: `Pendapatan POS: ${args.productName}` },
+        ],
+      },
+      isCash ? "CSH" : "BNK",
+    );
+  } catch (err) {
+    logger.error({ err, transactionId: args.transactionId }, "Auto-post POS transaction failed");
+  }
+}
+
+/** Auto-post when an e-commerce order reaches "delivered" status. */
+export async function postEcommerceOrder(args: {
+  orderId: number;
+  customerName: string;
+  totalAmount: number;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings();
+    if (!settings.arAccountId || !settings.salesIncomeAccountId || !settings.salesJournalId) {
+      logger.warn({ orderId: args.orderId }, "Skipping ecommerce order post: accounting settings incomplete");
+      return;
+    }
+    const amt = round2(args.totalAmount);
+    await postEntry(
+      {
+        journalId: settings.salesJournalId,
+        date: new Date(),
+        ref: `ECO-${args.orderId}`,
+        description: `Order e-commerce #${args.orderId} - ${args.customerName}`,
+        source: "ecommerce_order",
+        sourceId: args.orderId,
+        createdById: args.createdById ?? null,
+        lines: [
+          { accountId: settings.arAccountId, debit: amt, credit: 0, description: `Piutang order #${args.orderId} - ${args.customerName}` },
+          { accountId: settings.salesIncomeAccountId, debit: 0, credit: amt, description: `Pendapatan e-commerce #${args.orderId}` },
+        ],
+      },
+      "SAL",
+    );
+  } catch (err) {
+    logger.error({ err, orderId: args.orderId }, "Auto-post ecommerce order failed");
+  }
+}
+
+/** Auto-post when new stock is received in Trading (DR Persediaan / CR Hutang Usaha). */
+export async function postStockReceived(args: {
+  stockId: number;
+  productName: string;
+  quantity: number;
+  costPrice: number;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings();
+    if (!settings.inventoryAccountId || !settings.apAccountId || !settings.purchaseJournalId) {
+      logger.warn({ stockId: args.stockId }, "Skipping stock received post: accounting settings incomplete");
+      return;
+    }
+    const total = round2(args.quantity * args.costPrice);
+    if (total <= 0) return;
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: `STK-${args.stockId}`,
+        description: `Penerimaan stok: ${args.productName} (${args.quantity} unit)`,
+        source: "stock_received",
+        sourceId: args.stockId,
+        createdById: args.createdById ?? null,
+        lines: [
+          { accountId: settings.inventoryAccountId, debit: total, credit: 0, description: `Persediaan: ${args.productName}` },
+          { accountId: settings.apAccountId, debit: 0, credit: total, description: `Hutang usaha stok #${args.stockId}` },
+        ],
+      },
+      "PUR",
+    );
+  } catch (err) {
+    logger.error({ err, stockId: args.stockId }, "Auto-post stock received failed");
   }
 }
 

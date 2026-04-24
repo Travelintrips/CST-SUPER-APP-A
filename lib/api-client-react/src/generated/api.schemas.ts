@@ -913,13 +913,17 @@ export interface AccountingSettings {
   salesIncomeAccountId?: number | null;
   purchaseExpenseAccountId?: number | null;
   defaultBankAccountId?: number | null;
+  defaultCashAccountId?: number | null;
   ppnOutputAccountId?: number | null;
   ppnInputAccountId?: number | null;
   salesJournalId?: number | null;
   purchaseJournalId?: number | null;
   bankJournalId?: number | null;
+  cashJournalId?: number | null;
   defaultSalesTaxId?: number | null;
   defaultPurchaseTaxId?: number | null;
+  inventoryAccountId?: number | null;
+  cogsAccountId?: number | null;
   updatedAt: string;
 }
 
@@ -929,13 +933,17 @@ export interface UpdateAccountingSettingsBody {
   salesIncomeAccountId?: number | null;
   purchaseExpenseAccountId?: number | null;
   defaultBankAccountId?: number | null;
+  defaultCashAccountId?: number | null;
   ppnOutputAccountId?: number | null;
   ppnInputAccountId?: number | null;
   salesJournalId?: number | null;
   purchaseJournalId?: number | null;
   bankJournalId?: number | null;
+  cashJournalId?: number | null;
   defaultSalesTaxId?: number | null;
   defaultPurchaseTaxId?: number | null;
+  inventoryAccountId?: number | null;
+  cogsAccountId?: number | null;
 }
 
 export interface TrialBalanceRow {

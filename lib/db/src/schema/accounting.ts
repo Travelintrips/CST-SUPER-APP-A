@@ -44,6 +44,9 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "purchase_bill",
   "sales_payment",
   "purchase_payment",
+  "pos_sale",
+  "ecommerce_order",
+  "stock_received",
 ]);
 
 export const chartOfAccountsTable = pgTable("chart_of_accounts", {
@@ -161,12 +164,28 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
     () => accountingJournalsTable.id,
     { onDelete: "set null" },
   ),
+  cashJournalId: integer("cash_journal_id").references(
+    () => accountingJournalsTable.id,
+    { onDelete: "set null" },
+  ),
   defaultSalesTaxId: integer("default_sales_tax_id").references(
     () => accountingTaxesTable.id,
     { onDelete: "set null" },
   ),
   defaultPurchaseTaxId: integer("default_purchase_tax_id").references(
     () => accountingTaxesTable.id,
+    { onDelete: "set null" },
+  ),
+  defaultCashAccountId: integer("default_cash_account_id").references(
+    () => chartOfAccountsTable.id,
+    { onDelete: "set null" },
+  ),
+  inventoryAccountId: integer("inventory_account_id").references(
+    () => chartOfAccountsTable.id,
+    { onDelete: "set null" },
+  ),
+  cogsAccountId: integer("cogs_account_id").references(
+    () => chartOfAccountsTable.id,
     { onDelete: "set null" },
   ),
   meta: jsonb("meta"),

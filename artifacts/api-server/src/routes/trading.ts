@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, stocksTable, suppliersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { postStockReceived } from "../lib/accounting.js";
 
 const router = Router();
 
@@ -24,6 +25,12 @@ router.post("/stocks", async (req, res) => {
   const [stock] = await db.insert(stocksTable).values({
     productName, sku, quantity, unit, costPrice: String(costPrice), supplierId, hsCode
   }).returning();
+  void postStockReceived({
+    stockId: stock.id,
+    productName: stock.productName,
+    quantity: stock.quantity,
+    costPrice: Number(stock.costPrice),
+  });
   return res.status(201).json({ ...stock, costPrice: Number(stock.costPrice), createdAt: stock.createdAt.toISOString() });
 });
 

@@ -276,13 +276,17 @@ router.patch("/settings", async (req, res) => {
     "salesIncomeAccountId",
     "purchaseExpenseAccountId",
     "defaultBankAccountId",
+    "defaultCashAccountId",
     "ppnOutputAccountId",
     "ppnInputAccountId",
     "salesJournalId",
     "purchaseJournalId",
     "bankJournalId",
+    "cashJournalId",
     "defaultSalesTaxId",
     "defaultPurchaseTaxId",
+    "inventoryAccountId",
+    "cogsAccountId",
   ]) {
     if (req.body?.[k] !== undefined) patch[k] = req.body[k] === null ? null : Number(req.body[k]);
   }

@@ -3,6 +3,7 @@ import { db, transactionsTable } from "@workspace/db";
 import { sql, eq } from "drizzle-orm";
 import { getAuth } from "@clerk/express";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { postPosTransaction } from "../lib/accounting.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -42,6 +43,13 @@ router.post("/transactions", async (req, res) => {
     paymentMethod, cashierId: userId || undefined,
     documentUrl: normalizedDoc,
   }).returning();
+  void postPosTransaction({
+    transactionId: transaction.id,
+    productName: transaction.productName,
+    totalPrice: Number(transaction.totalPrice),
+    paymentMethod: transaction.paymentMethod,
+    createdById: userId ?? null,
+  });
   return res.status(201).json(serializeTransaction(transaction));
 });
 

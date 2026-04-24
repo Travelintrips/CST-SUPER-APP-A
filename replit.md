@@ -80,11 +80,21 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
   - Bill purchase doc → DR Purchase + DR PPN Input / CR AP
   - Sales payment paid → DR Bank / CR AR
   - Purchase payment paid → DR AP / CR Bank
-  Each posting is idempotent via status guard on the source document.
+  - POS transaction (any method) → DR Cash/Bank / CR Sales Income (journal CSH for cash/qris, BNK for card/transfer)
+  - E-commerce order delivered → DR AR / CR Sales Income (journal SAL)
+  - Trading stock received → DR Inventory / CR AP (journal PUR, amount = qty × costPrice)
+  Each posting is idempotent via pre-insert duplicate guard on (source, source_id).
+  `onConflictDoNothing()` used without target (partial index on the column pair
+  is incompatible with Postgres `ON CONFLICT` target syntax).
 - Frontend pages: `pages/accounting/{accounts,journals,taxes,entries,
   entry-detail,settings}.tsx` and `pages/accounting/reports/{trial-balance,
   general-ledger,profit-loss,balance-sheet}.tsx`. Sidebar group "Akunting" in
   `AppShell.tsx`.
+- Settings page (`accounting/settings.tsx`) has 16 mapping fields split across 4
+  cards: AR/AP/income/expense/PPN (Sales & Purchase), Bank/Cash/Inventory/COGS
+  (POS & Trading), Sales/Purchase/Bank/Cash journals, Sales/Purchase default taxes.
+- accountingSettings DB columns added for Phase 2: `cashJournalId`,
+  `defaultCashAccountId`, `inventoryAccountId`, `cogsAccountId`.
 - Sales/purchase PUT endpoints recompute `taxAmount`/`grandTotal` server-side
   whenever lines change OR `taxRateId` changes (server-authoritative).
 - Doc-number generators use `MAX(seq)+1` over `doc_number LIKE 'PREFIX/YYYY/%'`

@@ -76,6 +76,8 @@ export async function seedAccountingDefaults(): Promise<void> {
   const salesJ = journalByCode.get("SAL")!;
   const purJ = journalByCode.get("PUR")!;
   const bankJ = journalByCode.get("BNK")!;
+  const cashJ = journalByCode.get("CSH")!;
+  const inventory = need("1-1040");
 
   // Taxes — by name (no unique constraint, so check first)
   const existingTaxes = await db.select().from(accountingTaxesTable);
@@ -102,13 +104,17 @@ export async function seedAccountingDefaults(): Promise<void> {
     salesIncomeAccountId: salesIncome.id,
     purchaseExpenseAccountId: cogs.id,
     defaultBankAccountId: bank.id,
+    defaultCashAccountId: cash.id,
     ppnOutputAccountId: ppnOut.id,
     ppnInputAccountId: ppnIn.id,
     salesJournalId: salesJ.id,
     purchaseJournalId: purJ.id,
     bankJournalId: bankJ.id,
+    cashJournalId: cashJ.id,
     defaultSalesTaxId: saleTax.id,
     defaultPurchaseTaxId: purchaseTax.id,
+    inventoryAccountId: inventory.id,
+    cogsAccountId: cogs.id,
   };
   const [existingSettings] = await db.select().from(accountingSettingsTable).limit(1);
   if (!existingSettings) {

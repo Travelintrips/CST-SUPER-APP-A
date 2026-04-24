@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, productsTable, ordersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { postEcommerceOrder } from "../lib/accounting.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -89,11 +90,20 @@ router.post("/orders", async (req, res) => {
 // PUT /api/ecommerce/orders/:id
 router.put("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
+  const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+  if (!existing) return res.status(404).json({ message: "Order not found" });
   const { customerName, customerEmail, items, totalAmount, status } = req.body;
   const [order] = await db.update(ordersTable).set({
     customerName, customerEmail, items, totalAmount: String(totalAmount), status,
   }).where(eq(ordersTable.id, id)).returning();
   if (!order) return res.status(404).json({ message: "Order not found" });
+  if (status === "delivered" && existing.status !== "delivered") {
+    void postEcommerceOrder({
+      orderId: order.id,
+      customerName: order.customerName,
+      totalAmount: Number(order.totalAmount),
+    });
+  }
   return res.json({ ...order, totalAmount: Number(order.totalAmount), createdAt: order.createdAt.toISOString() });
 });
 
