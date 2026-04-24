@@ -23,6 +23,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   useGetPurchaseDocument,
@@ -34,12 +41,16 @@ import {
   useListProducts,
   useListTaxes,
   useGetAccountingSettings,
+  useListAccountingPayments,
+  useCreateAccountingPayment,
+  useListJournals,
   getGetPurchaseDocumentQueryKey,
   getListPurchaseDocumentsQueryKey,
+  getListAccountingPaymentsQueryKey,
 } from "@workspace/api-client-react";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -78,6 +89,71 @@ export default function PurchaseDocumentEditorPage() {
   const updateMut = useUpdatePurchaseDocument();
   const actionMut = usePurchaseDocumentAction();
   const deleteMut = useDeletePurchaseDocument();
+  const createPaymentMut = useCreateAccountingPayment();
+  const { data: journals = [] } = useListJournals();
+  const bankCashJournals = journals.filter((j) => j.type === "bank" || j.type === "cash");
+
+  const paymentQueryParams = { sourceType: "purchase_order", sourceDocId: id ?? 0 };
+  const { data: linkedPayments = [], isLoading: paymentsLoading } = useListAccountingPayments(
+    paymentQueryParams,
+    {
+      query: {
+        enabled: !!paramsOrder && id !== null,
+        queryKey: getListAccountingPaymentsQueryKey(paymentQueryParams),
+      },
+    },
+  );
+
+  const today = new Date().toISOString().slice(0, 10);
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [payForm, setPayForm] = useState({ journalId: "", date: today, ref: "", memo: "", amount: "" });
+
+  const openPayDialog = () => {
+    if (!doc || !id) return;
+    const balanceDue = Math.max(0, Number(doc.grandTotal ?? 0) - Number(doc.amountPaid ?? 0));
+    setPayForm({
+      journalId: bankCashJournals.length > 0 ? String(bankCashJournals[0]!.id) : "",
+      date: today,
+      ref: doc.docNumber ?? "",
+      memo: `Pembayaran bill ${doc.docNumber ?? ""}`,
+      amount: String(balanceDue > 0 ? balanceDue : (doc.grandTotal ?? 0)),
+    });
+    setPayDialogOpen(true);
+  };
+
+  const submitPayment = async () => {
+    if (!doc || !id || !payForm.journalId || !payForm.date || !payForm.amount) {
+      toast({ title: "Jurnal, tanggal & jumlah wajib diisi", variant: "destructive" });
+      return;
+    }
+    const amt = Number(payForm.amount);
+    if (Number.isNaN(amt) || amt <= 0) {
+      toast({ title: "Jumlah harus angka positif", variant: "destructive" });
+      return;
+    }
+    try {
+      await createPaymentMut.mutateAsync({
+        data: {
+          paymentType: "outbound",
+          amount: amt,
+          journalId: Number(payForm.journalId),
+          partnerName: doc.supplierName,
+          date: payForm.date,
+          ref: payForm.ref || undefined,
+          memo: payForm.memo || undefined,
+          sourceType: "purchase_order",
+          sourceDocId: id,
+        },
+      });
+      toast({ title: "Pembayaran dicatat", description: `Pembayaran untuk ${doc.docNumber} berhasil.` });
+      qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey({ sourceType: "purchase_order", sourceDocId: id }) });
+      qc.invalidateQueries({ queryKey: getGetPurchaseDocumentQueryKey(id) });
+      setPayDialogOpen(false);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
+      toast({ title: "Gagal mencatat pembayaran", description: msg, variant: "destructive" });
+    }
+  };
 
   const [supplierId, setSupplierId] = useState<number | null>(null);
   const [supplierName, setSupplierName] = useState("");
@@ -443,7 +519,108 @@ export default function PurchaseDocumentEditorPage() {
             </div>
           </CardContent>
         </Card>
+
+        {isOrderView && id && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-4 w-4" /> Pembayaran
+              </CardTitle>
+              {doc?.kind === "order" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={openPayDialog}
+                  data-testid="button-record-payment"
+                >
+                  <CreditCard className="mr-2 h-4 w-4" /> Catat Pembayaran
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {paymentsLoading ? (
+                <p className="text-sm text-muted-foreground">Memuat...</p>
+              ) : linkedPayments.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Belum ada pembayaran tercatat.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Mitra</TableHead>
+                      <TableHead>Jurnal</TableHead>
+                      <TableHead className="text-right">Jumlah</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {linkedPayments.map((p) => (
+                      <TableRow key={p.id} data-testid={`row-payment-${p.id}`}>
+                        <TableCell>{p.date.slice(0, 10)}</TableCell>
+                        <TableCell>{p.partnerName ?? "-"}</TableCell>
+                        <TableCell>{journals.find((j) => j.id === p.journalId)?.name ?? "-"}</TableCell>
+                        <TableCell className="text-right font-mono">{idr(Number(p.amount))}</TableCell>
+                        <TableCell>
+                          {p.entryId && (
+                            <Link href={`/accounting/entries/${p.entryId}`}>
+                              <Button variant="ghost" size="sm" data-testid={`link-entry-${p.id}`}>
+                                <FileText className="h-3 w-3" />
+                              </Button>
+                            </Link>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Catat Pembayaran — {doc?.docNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-1.5">
+              <Label>Jurnal</Label>
+              <Select value={payForm.journalId} onValueChange={(v) => setPayForm((f) => ({ ...f, journalId: v }))}>
+                <SelectTrigger data-testid="select-pay-journal"><SelectValue placeholder="Pilih jurnal" /></SelectTrigger>
+                <SelectContent>
+                  {bankCashJournals.map((j) => (
+                    <SelectItem key={j.id} value={String(j.id)}>{j.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Tanggal</Label>
+              <Input type="date" value={payForm.date} onChange={(e) => setPayForm((f) => ({ ...f, date: e.target.value }))} data-testid="input-pay-date" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Jumlah</Label>
+              <Input type="number" min="0" value={payForm.amount} onChange={(e) => setPayForm((f) => ({ ...f, amount: e.target.value }))} data-testid="input-pay-amount" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Referensi</Label>
+              <Input value={payForm.ref} onChange={(e) => setPayForm((f) => ({ ...f, ref: e.target.value }))} data-testid="input-pay-ref" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Memo</Label>
+              <Input value={payForm.memo} onChange={(e) => setPayForm((f) => ({ ...f, memo: e.target.value }))} data-testid="input-pay-memo" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>Batal</Button>
+            <Button onClick={submitPayment} disabled={createPaymentMut.isPending} data-testid="button-submit-payment">
+              Simpan Pembayaran
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
