@@ -28,7 +28,8 @@ export interface PostingInput {
     | "purchase_payment"
     | "pos_sale"
     | "ecommerce_order"
-    | "stock_received";
+    | "stock_received"
+    | "manual_payment";
   sourceId?: number | null;
   createdById?: string | null;
   lines: PostingLine[];

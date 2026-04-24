@@ -864,6 +864,10 @@ export const AccountingEntrySource = {
   purchase_bill: "purchase_bill",
   sales_payment: "sales_payment",
   purchase_payment: "purchase_payment",
+  pos_sale: "pos_sale",
+  ecommerce_order: "ecommerce_order",
+  stock_received: "stock_received",
+  manual_payment: "manual_payment",
 } as const;
 
 export interface AccountingEntry {
@@ -908,6 +912,50 @@ export interface CreateEntryBody {
   ref?: string | null;
   description?: string | null;
   lines: CreateEntryLineBody[];
+}
+
+export type AccountingPaymentPaymentType =
+  (typeof AccountingPaymentPaymentType)[keyof typeof AccountingPaymentPaymentType];
+
+export const AccountingPaymentPaymentType = {
+  inbound: "inbound",
+  outbound: "outbound",
+} as const;
+
+export interface AccountingPayment {
+  id: number;
+  paymentType: AccountingPaymentPaymentType;
+  amount: number;
+  journalId: number;
+  partnerName?: string | null;
+  date: string;
+  ref?: string | null;
+  memo?: string | null;
+  entryId?: number | null;
+  createdById?: string | null;
+  createdAt: string;
+}
+
+export type AccountingPaymentDetail = AccountingPayment & {
+  entry?: AccountingEntryDetail | null;
+};
+
+export type CreateAccountingPaymentBodyPaymentType =
+  (typeof CreateAccountingPaymentBodyPaymentType)[keyof typeof CreateAccountingPaymentBodyPaymentType];
+
+export const CreateAccountingPaymentBodyPaymentType = {
+  inbound: "inbound",
+  outbound: "outbound",
+} as const;
+
+export interface CreateAccountingPaymentBody {
+  paymentType: CreateAccountingPaymentBodyPaymentType;
+  amount: number;
+  journalId: number;
+  partnerName?: string;
+  date: string;
+  ref?: string;
+  memo?: string;
 }
 
 export interface AccountingSettings {
@@ -1090,6 +1138,20 @@ export type ListAccountingEntriesParams = {
   to?: string;
   journalId?: number;
 };
+
+export type ListAccountingPaymentsParams = {
+  paymentType?: ListAccountingPaymentsPaymentType;
+  from?: string;
+  to?: string;
+};
+
+export type ListAccountingPaymentsPaymentType =
+  (typeof ListAccountingPaymentsPaymentType)[keyof typeof ListAccountingPaymentsPaymentType];
+
+export const ListAccountingPaymentsPaymentType = {
+  inbound: "inbound",
+  outbound: "outbound",
+} as const;
 
 export type GetTrialBalanceParams = {
   from?: string;

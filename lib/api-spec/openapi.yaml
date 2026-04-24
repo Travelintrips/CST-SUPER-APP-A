@@ -1343,6 +1343,62 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AccountingEntryDetail" }
 
+  /accounting/payments:
+    get:
+      operationId: listAccountingPayments
+      tags: [accounting]
+      summary: List manual payment records
+      parameters:
+        - in: query
+          name: paymentType
+          schema: { type: string, enum: [inbound, outbound] }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: List of payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountingPayment" }
+    post:
+      operationId: createAccountingPayment
+      tags: [accounting]
+      summary: Record a manual payment and auto-post the journal entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAccountingPaymentBody" }
+      responses:
+        "201":
+          description: Created payment with linked entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingPaymentDetail" }
+
+  /accounting/payments/{id}:
+    get:
+      operationId: getAccountingPayment
+      tags: [accounting]
+      summary: Get payment detail with linked journal entry
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Payment detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingPaymentDetail" }
+
   /accounting/settings:
     get:
       operationId: getAccountingSettings
@@ -2452,7 +2508,7 @@ components:
           enum: [draft, posted]
         source:
           type: string
-          enum: [manual, sales_invoice, purchase_bill, sales_payment, purchase_payment]
+          enum: [manual, sales_invoice, purchase_bill, sales_payment, purchase_payment, pos_sale, ecommerce_order, stock_received, manual_payment]
         sourceId: { type: integer, nullable: true }
         totalDebit: { type: number }
         totalCredit: { type: number }
@@ -2501,6 +2557,48 @@ components:
           type: array
           items: { $ref: "#/components/schemas/CreateEntryLineBody" }
       required: [journalId, date, lines]
+
+    AccountingPayment:
+      type: object
+      properties:
+        id: { type: integer }
+        paymentType:
+          type: string
+          enum: [inbound, outbound]
+        amount: { type: number }
+        journalId: { type: integer }
+        partnerName: { type: string, nullable: true }
+        date: { type: string }
+        ref: { type: string, nullable: true }
+        memo: { type: string, nullable: true }
+        entryId: { type: integer, nullable: true }
+        createdById: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, paymentType, amount, journalId, date, createdAt]
+
+    AccountingPaymentDetail:
+      allOf:
+        - $ref: "#/components/schemas/AccountingPayment"
+        - type: object
+          properties:
+            entry:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/AccountingEntryDetail"
+
+    CreateAccountingPaymentBody:
+      type: object
+      properties:
+        paymentType:
+          type: string
+          enum: [inbound, outbound]
+        amount: { type: number }
+        journalId: { type: integer }
+        partnerName: { type: string }
+        date: { type: string }
+        ref: { type: string }
+        memo: { type: string }
+      required: [paymentType, amount, journalId, date]
 
     AccountingSettings:
       type: object

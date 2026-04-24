@@ -1457,6 +1457,10 @@ export const ListAccountingEntriesResponseItem = zod.object({
     "purchase_bill",
     "sales_payment",
     "purchase_payment",
+    "pos_sale",
+    "ecommerce_order",
+    "stock_received",
+    "manual_payment",
   ]),
   sourceId: zod.number().nullish(),
   totalDebit: zod.number(),
@@ -1508,6 +1512,10 @@ export const GetAccountingEntryResponse = zod
       "purchase_bill",
       "sales_payment",
       "purchase_payment",
+      "pos_sale",
+      "ecommerce_order",
+      "stock_received",
+      "manual_payment",
     ]),
     sourceId: zod.number().nullish(),
     totalDebit: zod.number(),
@@ -1527,6 +1535,112 @@ export const GetAccountingEntryResponse = zod
           credit: zod.number(),
         }),
       ),
+    }),
+  );
+
+/**
+ * @summary List manual payment records
+ */
+export const ListAccountingPaymentsQueryParams = zod.object({
+  paymentType: zod.enum(["inbound", "outbound"]).optional(),
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const ListAccountingPaymentsResponseItem = zod.object({
+  id: zod.number(),
+  paymentType: zod.enum(["inbound", "outbound"]),
+  amount: zod.number(),
+  journalId: zod.number(),
+  partnerName: zod.string().nullish(),
+  date: zod.string(),
+  ref: zod.string().nullish(),
+  memo: zod.string().nullish(),
+  entryId: zod.number().nullish(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListAccountingPaymentsResponse = zod.array(
+  ListAccountingPaymentsResponseItem,
+);
+
+/**
+ * @summary Record a manual payment and auto-post the journal entry
+ */
+export const CreateAccountingPaymentBody = zod.object({
+  paymentType: zod.enum(["inbound", "outbound"]),
+  amount: zod.number(),
+  journalId: zod.number(),
+  partnerName: zod.string().optional(),
+  date: zod.string(),
+  ref: zod.string().optional(),
+  memo: zod.string().optional(),
+});
+
+/**
+ * @summary Get payment detail with linked journal entry
+ */
+export const GetAccountingPaymentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetAccountingPaymentResponse = zod
+  .object({
+    id: zod.number(),
+    paymentType: zod.enum(["inbound", "outbound"]),
+    amount: zod.number(),
+    journalId: zod.number(),
+    partnerName: zod.string().nullish(),
+    date: zod.string(),
+    ref: zod.string().nullish(),
+    memo: zod.string().nullish(),
+    entryId: zod.number().nullish(),
+    createdById: zod.string().nullish(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      entry: zod
+        .object({
+          id: zod.number(),
+          entryNumber: zod.string(),
+          journalId: zod.number(),
+          date: zod.string(),
+          ref: zod.string().nullish(),
+          description: zod.string().nullish(),
+          status: zod.enum(["draft", "posted"]),
+          source: zod.enum([
+            "manual",
+            "sales_invoice",
+            "purchase_bill",
+            "sales_payment",
+            "purchase_payment",
+            "pos_sale",
+            "ecommerce_order",
+            "stock_received",
+            "manual_payment",
+          ]),
+          sourceId: zod.number().nullish(),
+          totalDebit: zod.number(),
+          totalCredit: zod.number(),
+          createdById: zod.string().nullish(),
+          createdAt: zod.string(),
+        })
+        .and(
+          zod.object({
+            lines: zod.array(
+              zod.object({
+                id: zod.number(),
+                entryId: zod.number(),
+                accountId: zod.number(),
+                description: zod.string().nullish(),
+                debit: zod.number(),
+                credit: zod.number(),
+              }),
+            ),
+          }),
+        )
+        .nullish(),
     }),
   );
 

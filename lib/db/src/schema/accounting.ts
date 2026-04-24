@@ -47,6 +47,12 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "pos_sale",
   "ecommerce_order",
   "stock_received",
+  "manual_payment",
+]);
+
+export const accountingPaymentTypeEnum = pgEnum("accounting_payment_type", [
+  "inbound",
+  "outbound",
 ]);
 
 export const chartOfAccountsTable = pgTable("chart_of_accounts", {
@@ -192,6 +198,24 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const accountingPaymentsTable = pgTable("accounting_payments", {
+  id: serial("id").primaryKey(),
+  paymentType: accountingPaymentTypeEnum("payment_type").notNull(),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  journalId: integer("journal_id")
+    .notNull()
+    .references(() => accountingJournalsTable.id, { onDelete: "restrict" }),
+  partnerName: text("partner_name"),
+  date: date("date").notNull(),
+  ref: text("ref"),
+  memo: text("memo"),
+  entryId: integer("entry_id").references(() => accountingEntriesTable.id, {
+    onDelete: "set null",
+  }),
+  createdById: text("created_by_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertAccountSchema = createInsertSchema(chartOfAccountsTable).omit({
   id: true,
   createdAt: true,
@@ -222,6 +246,7 @@ export type AccountingTax = typeof accountingTaxesTable.$inferSelect;
 export type AccountingEntry = typeof accountingEntriesTable.$inferSelect;
 export type AccountingEntryLine = typeof accountingEntryLinesTable.$inferSelect;
 export type AccountingSettings = typeof accountingSettingsTable.$inferSelect;
+export type AccountingPayment = typeof accountingPaymentsTable.$inferSelect;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type InsertJournal = z.infer<typeof insertJournalSchema>;
 export type InsertTax = z.infer<typeof insertTaxSchema>;

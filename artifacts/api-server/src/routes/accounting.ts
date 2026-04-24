@@ -7,6 +7,7 @@ import {
   accountingEntriesTable,
   accountingEntryLinesTable,
   accountingSettingsTable,
+  accountingPaymentsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -256,6 +257,136 @@ router.post("/entries", async (req, res) => {
       .from(accountingEntryLinesTable)
       .where(eq(accountingEntryLinesTable.entryId, entry.id));
     return res.status(201).json({ ...serializeEntry(entry), lines: fullLines.map(serializeEntryLine) });
+  } catch (err) {
+    return res.status(400).json({ message: String((err as Error)?.message ?? err) });
+  }
+});
+
+// ============ Payments & Receipts ============
+function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
+  return {
+    ...p,
+    amount: Number(p.amount),
+    createdAt: p.createdAt.toISOString(),
+  };
+}
+
+router.get("/payments", async (req, res) => {
+  const range = parseDateRange(req);
+  if (range.error) return res.status(400).json({ message: range.error });
+  const conds: SQL<unknown>[] = [];
+  if (range.from) conds.push(gte(accountingPaymentsTable.date, range.from.toISOString().split("T")[0]!));
+  if (range.to) conds.push(lte(accountingPaymentsTable.date, range.to.toISOString().split("T")[0]!));
+  const typeFilter = typeof req.query["paymentType"] === "string" ? req.query["paymentType"] : null;
+  if (typeFilter === "inbound" || typeFilter === "outbound") {
+    conds.push(eq(accountingPaymentsTable.paymentType, typeFilter));
+  }
+  const rows = await db
+    .select()
+    .from(accountingPaymentsTable)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(accountingPaymentsTable.date), desc(accountingPaymentsTable.id))
+    .limit(500);
+  return res.json(rows.map(serializePayment));
+});
+
+router.get("/payments/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const [payment] = await db.select().from(accountingPaymentsTable).where(eq(accountingPaymentsTable.id, id));
+  if (!payment) return res.status(404).json({ message: "Not found" });
+  let entry = null;
+  if (payment.entryId) {
+    const [e] = await db.select().from(accountingEntriesTable).where(eq(accountingEntriesTable.id, payment.entryId));
+    if (e) {
+      const lines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, e.id));
+      entry = { ...serializeEntry(e), lines: lines.map(serializeEntryLine) };
+    }
+  }
+  return res.json({ ...serializePayment(payment), entry });
+});
+
+router.post("/payments", async (req, res) => {
+  const { paymentType, amount, journalId, partnerName, date: dateStr, ref, memo } = req.body ?? {};
+  if (!paymentType || !amount || !journalId || !dateStr)
+    return res.status(400).json({ message: "paymentType, amount, journalId, date required" });
+  if (paymentType !== "inbound" && paymentType !== "outbound")
+    return res.status(400).json({ message: "paymentType must be 'inbound' or 'outbound'" });
+  const amt = Number(amount);
+  if (Number.isNaN(amt) || amt <= 0)
+    return res.status(400).json({ message: "amount must be a positive number" });
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ message: "Invalid date" });
+
+  const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.id, Number(journalId)));
+  if (!journal) return res.status(404).json({ message: "Journal not found" });
+  if (journal.type !== "bank" && journal.type !== "cash")
+    return res.status(400).json({ message: "Journal must be of type bank or cash" });
+
+  const settings = await ensureAccountingSettings();
+
+  // Determine bank/cash account: prefer journal's default accounts, fall back to settings
+  const bankCashAccountId =
+    journal.defaultDebitAccountId ??
+    (journal.type === "cash" ? settings.defaultCashAccountId : settings.defaultBankAccountId) ??
+    settings.defaultBankAccountId;
+
+  if (!bankCashAccountId)
+    return res.status(400).json({ message: "No bank/cash account configured. Set a default in accounting settings or journal defaults." });
+
+  let lines: PostingLine[];
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const partner = partnerName ? String(partnerName) : "Mitra";
+
+  if (paymentType === "inbound") {
+    if (!settings.arAccountId)
+      return res.status(400).json({ message: "AR account not configured in accounting settings." });
+    lines = [
+      { accountId: bankCashAccountId, debit: round2(amt), credit: 0, description: `Penerimaan dari ${partner}${ref ? ` (${ref})` : ""}` },
+      { accountId: settings.arAccountId, debit: 0, credit: round2(amt), description: `Pelunasan piutang ${partner}${ref ? ` - ${ref}` : ""}` },
+    ];
+  } else {
+    if (!settings.apAccountId)
+      return res.status(400).json({ message: "AP account not configured in accounting settings." });
+    lines = [
+      { accountId: settings.apAccountId, debit: round2(amt), credit: 0, description: `Pelunasan hutang ${partner}${ref ? ` - ${ref}` : ""}` },
+      { accountId: bankCashAccountId, debit: 0, credit: round2(amt), description: `Pembayaran ke ${partner}${ref ? ` (${ref})` : ""}` },
+    ];
+  }
+
+  try {
+    const entry = await postEntry(
+      {
+        journalId: journal.id,
+        date,
+        ref: ref ?? null,
+        description: memo ?? `Pembayaran ${paymentType === "inbound" ? "masuk" : "keluar"} - ${partner}`,
+        source: "manual_payment",
+        lines,
+      },
+      journal.code,
+    );
+
+    const [payment] = await db
+      .insert(accountingPaymentsTable)
+      .values({
+        paymentType,
+        amount: String(round2(amt)),
+        journalId: journal.id,
+        partnerName: partnerName ?? null,
+        date: date.toISOString().split("T")[0]!,
+        ref: ref ?? null,
+        memo: memo ?? null,
+        entryId: entry.id,
+        createdById: null,
+      })
+      .returning();
+
+    const entryLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, entry.id));
+    return res.status(201).json({
+      ...serializePayment(payment!),
+      entry: { ...serializeEntry(entry), lines: entryLines.map(serializeEntryLine) },
+    });
   } catch (err) {
     return res.status(400).json({ message: String((err as Error)?.message ?? err) });
   }

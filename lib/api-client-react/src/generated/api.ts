@@ -21,11 +21,14 @@ import type {
   AccountingEntry,
   AccountingEntryDetail,
   AccountingJournal,
+  AccountingPayment,
+  AccountingPaymentDetail,
   AccountingSettings,
   AccountingTax,
   AgingReport,
   BalanceSheetReport,
   CreateAccountBody,
+  CreateAccountingPaymentBody,
   CreateCustomerBody,
   CreateEntryBody,
   CreateJournalBody,
@@ -49,6 +52,7 @@ import type {
   GetTrialBalanceParams,
   HealthStatus,
   ListAccountingEntriesParams,
+  ListAccountingPaymentsParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
   MessageResponse,
@@ -5857,6 +5861,284 @@ export function useGetAccountingEntry<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAccountingEntryQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List manual payment records
+ */
+export const getListAccountingPaymentsUrl = (
+  params?: ListAccountingPaymentsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/accounting/payments?${stringifiedParams}`
+    : `/api/accounting/payments`;
+};
+
+export const listAccountingPayments = async (
+  params?: ListAccountingPaymentsParams,
+  options?: RequestInit,
+): Promise<AccountingPayment[]> => {
+  return customFetch<AccountingPayment[]>(
+    getListAccountingPaymentsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListAccountingPaymentsQueryKey = (
+  params?: ListAccountingPaymentsParams,
+) => {
+  return [`/api/accounting/payments`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAccountingPaymentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAccountingPayments>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAccountingPaymentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAccountingPayments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAccountingPaymentsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAccountingPayments>>
+  > = ({ signal }) =>
+    listAccountingPayments(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAccountingPayments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAccountingPaymentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAccountingPayments>>
+>;
+export type ListAccountingPaymentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List manual payment records
+ */
+
+export function useListAccountingPayments<
+  TData = Awaited<ReturnType<typeof listAccountingPayments>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAccountingPaymentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAccountingPayments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAccountingPaymentsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Record a manual payment and auto-post the journal entry
+ */
+export const getCreateAccountingPaymentUrl = () => {
+  return `/api/accounting/payments`;
+};
+
+export const createAccountingPayment = async (
+  createAccountingPaymentBody: CreateAccountingPaymentBody,
+  options?: RequestInit,
+): Promise<AccountingPaymentDetail> => {
+  return customFetch<AccountingPaymentDetail>(getCreateAccountingPaymentUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createAccountingPaymentBody),
+  });
+};
+
+export const getCreateAccountingPaymentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAccountingPayment>>,
+    TError,
+    { data: BodyType<CreateAccountingPaymentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAccountingPayment>>,
+  TError,
+  { data: BodyType<CreateAccountingPaymentBody> },
+  TContext
+> => {
+  const mutationKey = ["createAccountingPayment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAccountingPayment>>,
+    { data: BodyType<CreateAccountingPaymentBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAccountingPayment(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAccountingPaymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAccountingPayment>>
+>;
+export type CreateAccountingPaymentMutationBody =
+  BodyType<CreateAccountingPaymentBody>;
+export type CreateAccountingPaymentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Record a manual payment and auto-post the journal entry
+ */
+export const useCreateAccountingPayment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAccountingPayment>>,
+    TError,
+    { data: BodyType<CreateAccountingPaymentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAccountingPayment>>,
+  TError,
+  { data: BodyType<CreateAccountingPaymentBody> },
+  TContext
+> => {
+  return useMutation(getCreateAccountingPaymentMutationOptions(options));
+};
+
+/**
+ * @summary Get payment detail with linked journal entry
+ */
+export const getGetAccountingPaymentUrl = (id: number) => {
+  return `/api/accounting/payments/${id}`;
+};
+
+export const getAccountingPayment = async (
+  id: number,
+  options?: RequestInit,
+): Promise<AccountingPaymentDetail> => {
+  return customFetch<AccountingPaymentDetail>(getGetAccountingPaymentUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAccountingPaymentQueryKey = (id: number) => {
+  return [`/api/accounting/payments/${id}`] as const;
+};
+
+export const getGetAccountingPaymentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAccountingPayment>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAccountingPayment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAccountingPaymentQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAccountingPayment>>
+  > = ({ signal }) => getAccountingPayment(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountingPayment>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAccountingPaymentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAccountingPayment>>
+>;
+export type GetAccountingPaymentQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get payment detail with linked journal entry
+ */
+
+export function useGetAccountingPayment<
+  TData = Awaited<ReturnType<typeof getAccountingPayment>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAccountingPayment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAccountingPaymentQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
