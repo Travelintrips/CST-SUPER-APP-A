@@ -173,6 +173,8 @@ export const ListOrdersResponseItem = zod.object({
     "cancelled",
   ]),
   totalAmount: zod.number(),
+  taxAmount: zod.number(),
+  grandTotal: zod.number(),
   items: zod.string().optional(),
   createdAt: zod.string(),
 });
@@ -186,6 +188,7 @@ export const CreateOrderBody = zod.object({
   customerEmail: zod.string(),
   items: zod.string(),
   totalAmount: zod.number(),
+  taxAmount: zod.number().optional(),
 });
 
 /**
@@ -200,6 +203,7 @@ export const UpdateOrderBody = zod.object({
   customerEmail: zod.string(),
   items: zod.string(),
   totalAmount: zod.number(),
+  taxAmount: zod.number().optional(),
   status: zod.enum([
     "pending",
     "processing",
@@ -221,6 +225,8 @@ export const UpdateOrderResponse = zod.object({
     "cancelled",
   ]),
   totalAmount: zod.number(),
+  taxAmount: zod.number(),
+  grandTotal: zod.number(),
   items: zod.string().optional(),
   createdAt: zod.string(),
 });

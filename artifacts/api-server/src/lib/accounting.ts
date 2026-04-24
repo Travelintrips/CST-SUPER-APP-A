@@ -322,6 +322,8 @@ export async function postEcommerceOrder(args: {
   orderId: number;
   customerName: string;
   totalAmount: number;
+  taxAmount?: number;
+  grandTotal?: number;
   createdById?: string | null;
 }): Promise<void> {
   try {
@@ -330,7 +332,24 @@ export async function postEcommerceOrder(args: {
       logger.warn({ orderId: args.orderId }, "Skipping ecommerce order post: accounting settings incomplete");
       return;
     }
-    const amt = round2(args.totalAmount);
+    const subtotal = round2(args.totalAmount);
+    const taxAmt = round2(args.taxAmount ?? 0);
+    const grandTotal = round2(args.grandTotal ?? subtotal + taxAmt);
+
+    if (taxAmt > 0 && !settings.ppnOutputAccountId) {
+      logger.warn({ orderId: args.orderId, taxAmt }, "Skipping ecommerce order post: taxAmount > 0 but ppnOutputAccountId not configured");
+      return;
+    }
+
+    const lines: PostingLine[] = [
+      { accountId: settings.arAccountId, debit: grandTotal, credit: 0, description: `Piutang order #${args.orderId} - ${args.customerName}` },
+      { accountId: settings.salesIncomeAccountId, debit: 0, credit: subtotal, description: `Pendapatan e-commerce #${args.orderId}` },
+    ];
+
+    if (taxAmt > 0) {
+      lines.push({ accountId: settings.ppnOutputAccountId!, debit: 0, credit: taxAmt, description: `PPN Keluaran order #${args.orderId}` });
+    }
+
     await postEntry(
       {
         journalId: settings.salesJournalId,
@@ -340,10 +359,7 @@ export async function postEcommerceOrder(args: {
         source: "ecommerce_order",
         sourceId: args.orderId,
         createdById: args.createdById ?? null,
-        lines: [
-          { accountId: settings.arAccountId, debit: amt, credit: 0, description: `Piutang order #${args.orderId} - ${args.customerName}` },
-          { accountId: settings.salesIncomeAccountId, debit: 0, credit: amt, description: `Pendapatan e-commerce #${args.orderId}` },
-        ],
+        lines,
       },
       "SAL",
     );

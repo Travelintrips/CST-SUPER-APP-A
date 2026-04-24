@@ -10,6 +10,8 @@ export const ordersTable = pgTable("orders", {
   customerEmail: text("customer_email").notNull(),
   status: orderStatusEnum("status").default("pending").notNull(),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
+  taxAmount: numeric("tax_amount", { precision: 12, scale: 2 }).default("0").notNull(),
+  grandTotal: numeric("grand_total", { precision: 12, scale: 2 }).notNull(),
   items: text("items").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

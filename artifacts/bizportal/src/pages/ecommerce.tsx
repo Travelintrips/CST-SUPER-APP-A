@@ -211,6 +211,7 @@ export default function EcommercePage() {
         customerEmail: formData.get("customerEmail") as string,
         items: formData.get("items") as string,
         totalAmount: Number(formData.get("totalAmount")),
+        taxAmount: Number(formData.get("taxAmount") ?? 0),
       }
     }, {
       onSuccess: () => {
@@ -233,6 +234,7 @@ export default function EcommercePage() {
         customerEmail: formData.get("customerEmail") as string,
         items: formData.get("items") as string,
         totalAmount: Number(formData.get("totalAmount")),
+        taxAmount: Number(formData.get("taxAmount") ?? 0),
         status: editOrderStatus,
       }
     }, {
@@ -453,7 +455,10 @@ export default function EcommercePage() {
                       <div className="grid gap-2"><Label htmlFor="customerName">Nama Pelanggan</Label><Input id="customerName" name="customerName" required data-testid="input-order-customer-name" /></div>
                       <div className="grid gap-2"><Label htmlFor="customerEmail">Email Pelanggan</Label><Input id="customerEmail" name="customerEmail" type="email" required data-testid="input-order-customer-email" /></div>
                       <div className="grid gap-2"><Label htmlFor="items">Ringkasan Item</Label><Input id="items" name="items" placeholder="cth. 2x T-Shirt, 1x Sepatu" required data-testid="input-order-items" /></div>
-                      <div className="grid gap-2"><Label htmlFor="totalAmount">Total (IDR)</Label><Input id="totalAmount" name="totalAmount" type="number" min="0" required data-testid="input-order-total" /></div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2"><Label htmlFor="totalAmount">Subtotal (IDR)</Label><Input id="totalAmount" name="totalAmount" type="number" min="0" required data-testid="input-order-total" /></div>
+                        <div className="grid gap-2"><Label htmlFor="taxAmount">PPN (IDR)</Label><Input id="taxAmount" name="taxAmount" type="number" min="0" defaultValue={0} data-testid="input-order-tax" /></div>
+                      </div>
                     </div>
                     <DialogFooter>
                       <Button type="submit" disabled={createOrder.isPending} data-testid="button-submit-order">
@@ -474,7 +479,7 @@ export default function EcommercePage() {
                       <TableHead>Pelanggan</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Tanggal</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Grand Total</TableHead>
                       <TableHead className="text-right w-[120px]">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -513,7 +518,12 @@ export default function EcommercePage() {
                             <Badge variant="outline" className={`capitalize ${getOrderStatusColor(order.status)}`}>{order.status}</Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                          <TableCell className="text-right font-medium">{formatIDR(order.totalAmount)}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            <div>{formatIDR(order.grandTotal)}</div>
+                            {order.taxAmount > 0 && (
+                              <div className="text-xs text-muted-foreground">PPN: {formatIDR(order.taxAmount)}</div>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                               <Button size="icon" variant="ghost" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-${order.id}`} aria-label="Edit order">
@@ -559,7 +569,12 @@ export default function EcommercePage() {
                     </div>
                     <div className="flex justify-between items-end pt-1 border-t border-border">
                       <p className="text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</p>
-                      <p className="text-sm font-bold">{formatIDR(order.totalAmount)}</p>
+                      <div className="text-right">
+                        <p className="text-sm font-bold">{formatIDR(order.grandTotal)}</p>
+                        {order.taxAmount > 0 && (
+                          <p className="text-xs text-muted-foreground">PPN: {formatIDR(order.taxAmount)}</p>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-mobile-${order.id}`}>
@@ -628,9 +643,11 @@ export default function EcommercePage() {
                 <div className="grid gap-2"><Label htmlFor="edit-customer-email">Email Pelanggan</Label><Input id="edit-customer-email" name="customerEmail" type="email" defaultValue={editingOrder.customerEmail} required data-testid="input-edit-order-customer-email" /></div>
                 <div className="grid gap-2"><Label htmlFor="edit-items">Ringkasan Item</Label><Input id="edit-items" name="items" defaultValue={editingOrder.items ?? ""} required data-testid="input-edit-order-items" /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2"><Label htmlFor="edit-total">Total (IDR)</Label><Input id="edit-total" name="totalAmount" type="number" min="0" defaultValue={editingOrder.totalAmount} required data-testid="input-edit-order-total" /></div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-status">Status</Label>
+                  <div className="grid gap-2"><Label htmlFor="edit-total">Subtotal (IDR)</Label><Input id="edit-total" name="totalAmount" type="number" min="0" defaultValue={editingOrder.totalAmount} required data-testid="input-edit-order-total" /></div>
+                  <div className="grid gap-2"><Label htmlFor="edit-tax">PPN (IDR)</Label><Input id="edit-tax" name="taxAmount" type="number" min="0" defaultValue={editingOrder.taxAmount ?? 0} data-testid="input-edit-order-tax" /></div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-status">Status</Label>
                     <Select value={editOrderStatus} onValueChange={(v) => setEditOrderStatus(v as OrderStatus)}>
                       <SelectTrigger id="edit-status" data-testid="select-edit-order-status"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -640,7 +657,6 @@ export default function EcommercePage() {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditingOrder(null)}>Batal</Button>

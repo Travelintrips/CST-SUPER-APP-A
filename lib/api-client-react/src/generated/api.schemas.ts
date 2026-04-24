@@ -79,6 +79,8 @@ export interface Order {
   customerEmail: string;
   status: OrderStatus;
   totalAmount: number;
+  taxAmount: number;
+  grandTotal: number;
   items?: string;
   createdAt: string;
 }
@@ -88,6 +90,7 @@ export interface CreateOrderBody {
   customerEmail: string;
   items: string;
   totalAmount: number;
+  taxAmount?: number;
 }
 
 export type UpdateUserBodyRole =
@@ -123,6 +126,7 @@ export interface UpdateOrderBody {
   customerEmail: string;
   items: string;
   totalAmount: number;
+  taxAmount?: number;
   status: UpdateOrderBodyStatus;
 }
 

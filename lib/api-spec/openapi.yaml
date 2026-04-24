@@ -1553,11 +1553,15 @@ components:
           enum: [pending, processing, shipped, delivered, cancelled]
         totalAmount:
           type: number
+        taxAmount:
+          type: number
+        grandTotal:
+          type: number
         items:
           type: string
         createdAt:
           type: string
-      required: [id, customerName, customerEmail, status, totalAmount, createdAt]
+      required: [id, customerName, customerEmail, status, totalAmount, taxAmount, grandTotal, createdAt]
 
     CreateOrderBody:
       type: object
@@ -1569,6 +1573,8 @@ components:
         items:
           type: string
         totalAmount:
+          type: number
+        taxAmount:
           type: number
       required: [customerName, customerEmail, items, totalAmount]
 
@@ -1595,6 +1601,8 @@ components:
         items:
           type: string
         totalAmount:
+          type: number
+        taxAmount:
           type: number
         status:
           type: string
