@@ -25,6 +25,10 @@ import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
 import VendorsPage from "@/pages/purchase/vendors";
 import PurchaseBillsPage from "@/pages/purchase/bills";
+import ReportsSalesPage from "@/pages/reports/sales";
+import ReportsPurchasePage from "@/pages/reports/purchase";
+import ReportsArAgingPage from "@/pages/reports/ar-aging";
+import ReportsApAgingPage from "@/pages/reports/ap-aging";
 
 const queryClient = new QueryClient();
 
@@ -214,6 +218,19 @@ function Router() {
       </Route>
       <Route path="/purchase/bills">
         <ProtectedRoute component={PurchaseBillsPage} />
+      </Route>
+
+      <Route path="/reports/sales">
+        <ProtectedRoute component={ReportsSalesPage} />
+      </Route>
+      <Route path="/reports/purchase">
+        <ProtectedRoute component={ReportsPurchasePage} />
+      </Route>
+      <Route path="/reports/ar-aging">
+        <ProtectedRoute component={ReportsArAgingPage} />
+      </Route>
+      <Route path="/reports/ap-aging">
+        <ProtectedRoute component={ReportsApAgingPage} />
       </Route>
 
       <Route component={NotFound} />

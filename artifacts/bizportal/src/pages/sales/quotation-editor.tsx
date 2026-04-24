@@ -35,7 +35,8 @@ import {
   getListSalesDocumentsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard } from "lucide-react";
+import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -66,6 +67,27 @@ export default function SalesDocumentEditorPage() {
       queryKey: getGetSalesDocumentQueryKey(id ?? 0),
     },
   });
+
+  const paylabsMut = useCreateSalesPaymentLink();
+  const downloadPdf = () => {
+    if (id) window.open(`/api/sales/documents/${id}/pdf`, "_blank");
+  };
+  const payViaPaylabs = async () => {
+    if (!id) return;
+    try {
+      const res = await paylabsMut.mutateAsync({ id });
+      if (res.payment.paymentUrl) {
+        window.open(res.payment.paymentUrl, "_blank");
+        toast({ title: "Link pembayaran dibuat", description: "Membuka tab baru..." });
+      } else if (!res.configured) {
+        toast({ title: "Mode simulasi", description: res.message ?? "Paylabs belum dikonfigurasi." });
+      } else {
+        toast({ title: "Pembayaran dibuat", description: `ID: ${res.payment.id}` });
+      }
+    } catch (e: any) {
+      toast({ title: "Gagal membuat link pembayaran", description: String(e?.message ?? e), variant: "destructive" });
+    }
+  };
   const { data: customers } = useListCustomers();
   const { data: products } = useListProducts();
   const createMut = useCreateSalesDocument();
@@ -276,6 +298,16 @@ export default function SalesDocumentEditorPage() {
             )}
             {!isNew && doc?.status === "draft" && (
               <Button variant="ghost" onClick={remove} data-testid="button-delete"><Trash2 className="mr-2 h-4 w-4 text-destructive" /></Button>
+            )}
+            {!isNew && doc && (
+              <Button variant="outline" onClick={downloadPdf} data-testid="button-download-pdf">
+                <Printer className="mr-2 h-4 w-4" /> Cetak PDF
+              </Button>
+            )}
+            {!isNew && doc?.kind === "order" && doc?.status === "confirmed" && doc?.invoiceStatus === "to_invoice" && (
+              <Button variant="default" onClick={payViaPaylabs} disabled={paylabsMut.isPending} data-testid="button-pay-paylabs">
+                <CreditCard className="mr-2 h-4 w-4" /> Bayar via Paylabs
+              </Button>
             )}
           </div>
         </div>

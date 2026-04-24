@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { eq, sql, desc, and, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { streamInvoicePdf } from "../lib/pdfInvoice.js";
 
 const router = Router();
 
@@ -315,6 +316,49 @@ router.post("/documents/:id/action", async (req, res) => {
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
   const detail = await loadDocWithLines(id);
   return res.json(detail);
+});
+
+router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
+  const detail = await loadDocWithLines(id);
+  if (!detail) { res.status(404).json({ message: "Document not found" }); return; }
+  let customer: typeof customersTable.$inferSelect | null = null;
+  if (detail.customerId) {
+    const rows = await db.select().from(customersTable).where(eq(customersTable.id, detail.customerId)).limit(1);
+    customer = rows[0] ?? null;
+  }
+  const titleMap: Record<string, string> = {
+    quote: "QUOTATION",
+    order: "SALES ORDER",
+  };
+  streamInvoicePdf(res, {
+    title: titleMap[detail.kind] ?? "DOKUMEN PENJUALAN",
+    docNumber: detail.docNumber,
+    status: detail.status,
+    kind: detail.kind,
+    partyLabel: "Pelanggan",
+    partyName: detail.customerName,
+    partyEmail: customer?.email ?? null,
+    partyPhone: customer?.phone ?? null,
+    partyAddress: customer?.address ?? null,
+    partyTaxId: customer?.taxId ?? null,
+    validUntil: detail.validUntil,
+    expectedDate: detail.expectedDate,
+    confirmedAt: detail.confirmedAt,
+    createdAt: detail.createdAt,
+    notes: detail.notes,
+    lines: detail.lines.map((l: any) => ({
+      name: l.name,
+      description: l.description,
+      quantity: Number(l.quantity),
+      unitPrice: Number(l.unitPrice),
+      subtotal: Number(l.subtotal),
+    })),
+    totalAmount: Number(detail.totalAmount),
+    invoiceStatus: detail.invoiceStatus,
+    deliveryStatus: detail.deliveryStatus,
+  });
 });
 
 export default router;

@@ -8,6 +8,8 @@ import logisticsRouter from "./logistics";
 import posRouter from "./pos";
 import salesRouter from "./sales";
 import purchaseRouter from "./purchase";
+import reportsRouter from "./reports";
+import paymentsRouter from "./payments";
 import storageRouter from "./storage";
 
 const router: IRouter = Router();
@@ -21,6 +23,8 @@ router.use("/logistics", logisticsRouter);
 router.use("/pos", posRouter);
 router.use("/sales", salesRouter);
 router.use("/purchase", purchaseRouter);
+router.use("/reports", reportsRouter);
+router.use("/payments", paymentsRouter);
 router.use(storageRouter);
 
 export default router;

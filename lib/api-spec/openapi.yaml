@@ -26,6 +26,10 @@ tags:
     description: Sales — quotations, orders, customers, invoices
   - name: purchase
     description: Purchase — RFQ, purchase orders, vendors, bills
+  - name: reports
+    description: Business reports — sales, purchase, AR/AP aging
+  - name: payments
+    description: Payments — Paylabs payment links and webhooks
 
 paths:
   /healthz:
@@ -966,6 +970,153 @@ paths:
               schema:
                 $ref: "#/components/schemas/PurchaseDocumentDetail"
 
+  /reports/sales:
+    get:
+      operationId: getSalesReport
+      tags: [reports]
+      summary: Sales report (revenue by month, top customers, top products)
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Sales report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesReport"
+
+  /reports/purchase:
+    get:
+      operationId: getPurchaseReport
+      tags: [reports]
+      summary: Purchase report (spend by month, top vendors, top products)
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Purchase report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseReport"
+
+  /reports/ar-aging:
+    get:
+      operationId: getArAging
+      tags: [reports]
+      summary: Accounts receivable aging report
+      responses:
+        "200":
+          description: AR aging
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgingReport"
+
+  /reports/ap-aging:
+    get:
+      operationId: getApAging
+      tags: [reports]
+      summary: Accounts payable aging report
+      responses:
+        "200":
+          description: AP aging
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgingReport"
+
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      summary: List recent payments
+      responses:
+        "200":
+          description: Payments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+
+  /payments/by-doc/{kind}/{id}:
+    get:
+      operationId: listPaymentsByDoc
+      tags: [payments]
+      summary: List payments for a document
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema: { type: string, enum: [sales, purchase] }
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+
+  /payments/sales/{id}/create-link:
+    post:
+      operationId: createSalesPaymentLink
+      tags: [payments]
+      summary: Create Paylabs payment link for a sales order
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "201":
+          description: Payment link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLinkResponse"
+        "202":
+          description: Simulation mode (Paylabs not configured)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentLinkResponse"
+
+  /payments/{id}/simulate-paid:
+    post:
+      operationId: simulatePaymentPaid
+      tags: [payments]
+      summary: Mark payment as paid (testing only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Updated payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
 components:
   schemas:
     HealthStatus:
@@ -1674,3 +1825,144 @@ components:
           type: string
           enum: [send, confirm, cancel, draft, mark_received, mark_billed]
       required: [action]
+
+    SalesReportMonth:
+      type: object
+      properties:
+        period: { type: string }
+        revenue: { type: number }
+        count: { type: integer }
+      required: [period, revenue, count]
+
+    SalesReportCustomer:
+      type: object
+      properties:
+        name: { type: string }
+        revenue: { type: number }
+        count: { type: integer }
+      required: [name, revenue, count]
+
+    SalesReportProduct:
+      type: object
+      properties:
+        name: { type: string }
+        revenue: { type: number }
+        qty: { type: number }
+      required: [name, revenue, qty]
+
+    SalesReport:
+      type: object
+      properties:
+        totalRevenue: { type: number }
+        totalOrders: { type: integer }
+        avgOrderValue: { type: number }
+        byMonth:
+          type: array
+          items: { $ref: "#/components/schemas/SalesReportMonth" }
+        byCustomer:
+          type: array
+          items: { $ref: "#/components/schemas/SalesReportCustomer" }
+        byProduct:
+          type: array
+          items: { $ref: "#/components/schemas/SalesReportProduct" }
+      required: [totalRevenue, totalOrders, avgOrderValue, byMonth, byCustomer, byProduct]
+
+    PurchaseReportMonth:
+      type: object
+      properties:
+        period: { type: string }
+        spend: { type: number }
+        count: { type: integer }
+      required: [period, spend, count]
+
+    PurchaseReportVendor:
+      type: object
+      properties:
+        name: { type: string }
+        spend: { type: number }
+        count: { type: integer }
+      required: [name, spend, count]
+
+    PurchaseReportProduct:
+      type: object
+      properties:
+        name: { type: string }
+        spend: { type: number }
+        qty: { type: number }
+      required: [name, spend, qty]
+
+    PurchaseReport:
+      type: object
+      properties:
+        totalSpend: { type: number }
+        totalOrders: { type: integer }
+        avgOrderValue: { type: number }
+        byMonth:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseReportMonth" }
+        byVendor:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseReportVendor" }
+        byProduct:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseReportProduct" }
+      required: [totalSpend, totalOrders, avgOrderValue, byMonth, byVendor, byProduct]
+
+    AgingBuckets:
+      type: object
+      properties:
+        "0-30": { type: number }
+        "31-60": { type: number }
+        "61-90": { type: number }
+        "90+": { type: number }
+      required: ["0-30", "31-60", "61-90", "90+"]
+
+    AgingItem:
+      type: object
+      properties:
+        id: { type: integer }
+        docNumber: { type: string }
+        customerName: { type: string, nullable: true }
+        supplierName: { type: string, nullable: true }
+        amount: { type: number }
+        daysOld: { type: integer }
+        bucket: { type: string }
+        confirmedAt: { type: string, format: date-time }
+      required: [id, docNumber, amount, daysOld, bucket, confirmedAt]
+
+    AgingReport:
+      type: object
+      properties:
+        total: { type: number }
+        buckets: { $ref: "#/components/schemas/AgingBuckets" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AgingItem" }
+      required: [total, buckets, items]
+
+    Payment:
+      type: object
+      properties:
+        id: { type: integer }
+        refKind: { type: string, enum: [sales, purchase] }
+        refId: { type: integer }
+        refDocNumber: { type: string }
+        amount: { type: number }
+        status: { type: string, enum: [pending, paid, expired, cancelled, failed] }
+        provider: { type: string }
+        providerOrderId: { type: string, nullable: true }
+        providerMerchantTradeNo: { type: string }
+        paymentUrl: { type: string, nullable: true }
+        expiredAt: { type: string, nullable: true }
+        paidAt: { type: string, nullable: true }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required: [id, refKind, refId, refDocNumber, amount, status, provider, providerMerchantTradeNo, createdAt, updatedAt]
+
+    PaymentLinkResponse:
+      type: object
+      properties:
+        configured: { type: boolean }
+        message: { type: string, nullable: true }
+        payment: { $ref: "#/components/schemas/Payment" }
+      required: [configured, payment]

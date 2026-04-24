@@ -36,7 +36,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -268,6 +268,11 @@ export default function PurchaseDocumentEditorPage() {
             )}
             {!isNew && doc?.status === "draft" && (
               <Button variant="ghost" onClick={remove} data-testid="button-delete"><Trash2 className="mr-2 h-4 w-4 text-destructive" /></Button>
+            )}
+            {!isNew && doc && id && (
+              <Button variant="outline" onClick={() => window.open(`/api/purchase/documents/${id}/pdf`, "_blank")} data-testid="button-download-pdf">
+                <Printer className="mr-2 h-4 w-4" /> Cetak PDF
+              </Button>
             )}
           </div>
         </div>

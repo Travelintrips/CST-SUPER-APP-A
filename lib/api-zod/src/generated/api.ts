@@ -1032,3 +1032,203 @@ export const PurchaseDocumentActionResponse = zod
       ),
     }),
   );
+
+/**
+ * @summary Sales report (revenue by month, top customers, top products)
+ */
+export const GetSalesReportQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const GetSalesReportResponse = zod.object({
+  totalRevenue: zod.number(),
+  totalOrders: zod.number(),
+  avgOrderValue: zod.number(),
+  byMonth: zod.array(
+    zod.object({
+      period: zod.string(),
+      revenue: zod.number(),
+      count: zod.number(),
+    }),
+  ),
+  byCustomer: zod.array(
+    zod.object({
+      name: zod.string(),
+      revenue: zod.number(),
+      count: zod.number(),
+    }),
+  ),
+  byProduct: zod.array(
+    zod.object({
+      name: zod.string(),
+      revenue: zod.number(),
+      qty: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Purchase report (spend by month, top vendors, top products)
+ */
+export const GetPurchaseReportQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+});
+
+export const GetPurchaseReportResponse = zod.object({
+  totalSpend: zod.number(),
+  totalOrders: zod.number(),
+  avgOrderValue: zod.number(),
+  byMonth: zod.array(
+    zod.object({
+      period: zod.string(),
+      spend: zod.number(),
+      count: zod.number(),
+    }),
+  ),
+  byVendor: zod.array(
+    zod.object({
+      name: zod.string(),
+      spend: zod.number(),
+      count: zod.number(),
+    }),
+  ),
+  byProduct: zod.array(
+    zod.object({
+      name: zod.string(),
+      spend: zod.number(),
+      qty: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Accounts receivable aging report
+ */
+export const GetArAgingResponse = zod.object({
+  total: zod.number(),
+  buckets: zod.object({
+    "0-30": zod.number(),
+    "31-60": zod.number(),
+    "61-90": zod.number(),
+    "90+": zod.number(),
+  }),
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      docNumber: zod.string(),
+      customerName: zod.string().nullish(),
+      supplierName: zod.string().nullish(),
+      amount: zod.number(),
+      daysOld: zod.number(),
+      bucket: zod.string(),
+      confirmedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Accounts payable aging report
+ */
+export const GetApAgingResponse = zod.object({
+  total: zod.number(),
+  buckets: zod.object({
+    "0-30": zod.number(),
+    "31-60": zod.number(),
+    "61-90": zod.number(),
+    "90+": zod.number(),
+  }),
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      docNumber: zod.string(),
+      customerName: zod.string().nullish(),
+      supplierName: zod.string().nullish(),
+      amount: zod.number(),
+      daysOld: zod.number(),
+      bucket: zod.string(),
+      confirmedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary List recent payments
+ */
+export const ListPaymentsResponseItem = zod.object({
+  id: zod.number(),
+  refKind: zod.enum(["sales", "purchase"]),
+  refId: zod.number(),
+  refDocNumber: zod.string(),
+  amount: zod.number(),
+  status: zod.enum(["pending", "paid", "expired", "cancelled", "failed"]),
+  provider: zod.string(),
+  providerOrderId: zod.string().nullish(),
+  providerMerchantTradeNo: zod.string(),
+  paymentUrl: zod.string().nullish(),
+  expiredAt: zod.string().nullish(),
+  paidAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListPaymentsResponse = zod.array(ListPaymentsResponseItem);
+
+/**
+ * @summary List payments for a document
+ */
+export const ListPaymentsByDocParams = zod.object({
+  kind: zod.enum(["sales", "purchase"]),
+  id: zod.coerce.number(),
+});
+
+export const ListPaymentsByDocResponseItem = zod.object({
+  id: zod.number(),
+  refKind: zod.enum(["sales", "purchase"]),
+  refId: zod.number(),
+  refDocNumber: zod.string(),
+  amount: zod.number(),
+  status: zod.enum(["pending", "paid", "expired", "cancelled", "failed"]),
+  provider: zod.string(),
+  providerOrderId: zod.string().nullish(),
+  providerMerchantTradeNo: zod.string(),
+  paymentUrl: zod.string().nullish(),
+  expiredAt: zod.string().nullish(),
+  paidAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListPaymentsByDocResponse = zod.array(
+  ListPaymentsByDocResponseItem,
+);
+
+/**
+ * @summary Create Paylabs payment link for a sales order
+ */
+export const CreateSalesPaymentLinkParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Mark payment as paid (testing only)
+ */
+export const SimulatePaymentPaidParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SimulatePaymentPaidResponse = zod.object({
+  id: zod.number(),
+  refKind: zod.enum(["sales", "purchase"]),
+  refId: zod.number(),
+  refDocNumber: zod.string(),
+  amount: zod.number(),
+  status: zod.enum(["pending", "paid", "expired", "cancelled", "failed"]),
+  provider: zod.string(),
+  providerOrderId: zod.string().nullish(),
+  providerMerchantTradeNo: zod.string(),
+  paymentUrl: zod.string().nullish(),
+  expiredAt: zod.string().nullish(),
+  paidAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});

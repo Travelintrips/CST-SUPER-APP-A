@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { streamInvoicePdf } from "../lib/pdfInvoice.js";
 import {
   db,
   suppliersTable,
@@ -272,6 +273,47 @@ router.post("/documents/:id/action", async (req, res) => {
   await db.update(purchaseDocumentsTable).set(patch).where(eq(purchaseDocumentsTable.id, id));
   const detail = await loadDocWithLines(id);
   return res.json(detail);
+});
+
+router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
+  const detail = await loadDocWithLines(id);
+  if (!detail) { res.status(404).json({ message: "Document not found" }); return; }
+  let supplier: typeof suppliersTable.$inferSelect | null = null;
+  if (detail.supplierId) {
+    const rows = await db.select().from(suppliersTable).where(eq(suppliersTable.id, detail.supplierId)).limit(1);
+    supplier = rows[0] ?? null;
+  }
+  const titleMap: Record<string, string> = {
+    rfq: "REQUEST FOR QUOTATION",
+    order: "PURCHASE ORDER",
+  };
+  streamInvoicePdf(res, {
+    title: titleMap[detail.kind] ?? "DOKUMEN PEMBELIAN",
+    docNumber: detail.docNumber,
+    status: detail.status,
+    kind: detail.kind,
+    partyLabel: "Vendor",
+    partyName: detail.supplierName,
+    partyEmail: supplier?.contactEmail ?? null,
+    partyAddress: supplier?.country ?? null,
+    validUntil: null,
+    expectedDate: detail.expectedDate,
+    confirmedAt: detail.confirmedAt,
+    createdAt: detail.createdAt,
+    notes: detail.notes,
+    lines: detail.lines.map((l: any) => ({
+      name: l.name,
+      description: l.description,
+      quantity: Number(l.quantity),
+      unitPrice: Number(l.unitCost ?? l.unitPrice ?? 0),
+      subtotal: Number(l.subtotal),
+    })),
+    totalAmount: Number(detail.totalAmount),
+    receiveStatus: detail.receiveStatus,
+    billStatus: detail.billStatus,
+  });
 });
 
 export default router;

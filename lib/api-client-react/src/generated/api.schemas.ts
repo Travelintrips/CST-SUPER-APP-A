@@ -546,6 +546,125 @@ export interface PurchaseDocumentActionBody {
   action: PurchaseDocumentActionBodyAction;
 }
 
+export interface SalesReportMonth {
+  period: string;
+  revenue: number;
+  count: number;
+}
+
+export interface SalesReportCustomer {
+  name: string;
+  revenue: number;
+  count: number;
+}
+
+export interface SalesReportProduct {
+  name: string;
+  revenue: number;
+  qty: number;
+}
+
+export interface SalesReport {
+  totalRevenue: number;
+  totalOrders: number;
+  avgOrderValue: number;
+  byMonth: SalesReportMonth[];
+  byCustomer: SalesReportCustomer[];
+  byProduct: SalesReportProduct[];
+}
+
+export interface PurchaseReportMonth {
+  period: string;
+  spend: number;
+  count: number;
+}
+
+export interface PurchaseReportVendor {
+  name: string;
+  spend: number;
+  count: number;
+}
+
+export interface PurchaseReportProduct {
+  name: string;
+  spend: number;
+  qty: number;
+}
+
+export interface PurchaseReport {
+  totalSpend: number;
+  totalOrders: number;
+  avgOrderValue: number;
+  byMonth: PurchaseReportMonth[];
+  byVendor: PurchaseReportVendor[];
+  byProduct: PurchaseReportProduct[];
+}
+
+export interface AgingBuckets {
+  "0-30": number;
+  "31-60": number;
+  "61-90": number;
+  "90+": number;
+}
+
+export interface AgingItem {
+  id: number;
+  docNumber: string;
+  customerName?: string | null;
+  supplierName?: string | null;
+  amount: number;
+  daysOld: number;
+  bucket: string;
+  confirmedAt: string;
+}
+
+export interface AgingReport {
+  total: number;
+  buckets: AgingBuckets;
+  items: AgingItem[];
+}
+
+export type PaymentRefKind =
+  (typeof PaymentRefKind)[keyof typeof PaymentRefKind];
+
+export const PaymentRefKind = {
+  sales: "sales",
+  purchase: "purchase",
+} as const;
+
+export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus];
+
+export const PaymentStatus = {
+  pending: "pending",
+  paid: "paid",
+  expired: "expired",
+  cancelled: "cancelled",
+  failed: "failed",
+} as const;
+
+export interface Payment {
+  id: number;
+  refKind: PaymentRefKind;
+  refId: number;
+  refDocNumber: string;
+  amount: number;
+  status: PaymentStatus;
+  provider: string;
+  providerOrderId?: string | null;
+  providerMerchantTradeNo: string;
+  paymentUrl?: string | null;
+  expiredAt?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentLinkResponse {
+  configured: boolean;
+  message?: string | null;
+  payment: Payment;
+}
+
 export type ListSalesDocumentsParams = {
   kind?: ListSalesDocumentsKind;
   invoiceStatus?: ListSalesDocumentsInvoiceStatus;
@@ -589,3 +708,13 @@ export const ListPurchaseDocumentsBillStatus = {
   to_bill: "to_bill",
   billed: "billed",
 } as const;
+
+export type GetSalesReportParams = {
+  from?: string;
+  to?: string;
+};
+
+export type GetPurchaseReportParams = {
+  from?: string;
+  to?: string;
+};
