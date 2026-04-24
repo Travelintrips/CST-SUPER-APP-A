@@ -248,6 +248,9 @@ export default function SalesDocumentEditorPage() {
         name: product.name,
         unitPrice: Number(product.price),
       });
+      if (product.defaultSalesTaxId) {
+        setTaxRateId(product.defaultSalesTaxId);
+      }
     }
   };
 

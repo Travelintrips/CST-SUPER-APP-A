@@ -1616,6 +1616,12 @@ components:
         imageUrl:
           type: string
           nullable: true
+        defaultSalesTaxId:
+          type: integer
+          nullable: true
+        defaultPurchaseTaxId:
+          type: integer
+          nullable: true
         createdAt:
           type: string
       required: [id, name, sku, price, stock, category, createdAt]
@@ -1637,6 +1643,12 @@ components:
           type: string
         imageUrl:
           type: string
+          nullable: true
+        defaultSalesTaxId:
+          type: integer
+          nullable: true
+        defaultPurchaseTaxId:
+          type: integer
           nullable: true
       required: [name, sku, price, stock, category]
 

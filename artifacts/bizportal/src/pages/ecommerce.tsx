@@ -113,6 +113,12 @@ export default function EcommercePage() {
   const { data: allTaxes = [] as AccountingTax[] } = useListTaxes();
   const { data: accountingSettings } = useGetAccountingSettings();
   const saleTaxes = allTaxes.filter((t) => t.kind === "sale" && t.isActive);
+  const purchaseTaxes = allTaxes.filter((t) => t.kind === "purchase" && t.isActive);
+
+  const [createProdSalesTaxId, setCreateProdSalesTaxId] = useState<number | null>(null);
+  const [createProdPurchaseTaxId, setCreateProdPurchaseTaxId] = useState<number | null>(null);
+  const [editProdSalesTaxId, setEditProdSalesTaxId] = useState<number | null>(null);
+  const [editProdPurchaseTaxId, setEditProdPurchaseTaxId] = useState<number | null>(null);
 
   const defaultSalesTaxIdRef = useRef<number | null | undefined>(undefined);
   defaultSalesTaxIdRef.current = accountingSettings?.defaultSalesTaxId;
@@ -164,12 +170,16 @@ export default function EcommercePage() {
         stock: Number(formData.get("stock")),
         category: formData.get("category") as string,
         imageUrl: createImageUrl,
+        defaultSalesTaxId: createProdSalesTaxId,
+        defaultPurchaseTaxId: createProdPurchaseTaxId,
       }
     }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         setIsProductDialogOpen(false);
         setCreateImageUrl(null);
+        setCreateProdSalesTaxId(null);
+        setCreateProdPurchaseTaxId(null);
         toast({ title: "Produk berhasil dibuat" });
       },
       onError: () => toast({ title: "Gagal membuat produk", variant: "destructive" }),
@@ -189,6 +199,8 @@ export default function EcommercePage() {
         stock: Number(formData.get("stock")),
         category: formData.get("category") as string,
         imageUrl: editImageUrl,
+        defaultSalesTaxId: editProdSalesTaxId,
+        defaultPurchaseTaxId: editProdPurchaseTaxId,
       }
     }, {
       onSuccess: () => {
@@ -206,6 +218,8 @@ export default function EcommercePage() {
 
   useEffect(() => {
     setEditImageUrl(editingProduct?.imageUrl ?? null);
+    setEditProdSalesTaxId(editingProduct?.defaultSalesTaxId ?? null);
+    setEditProdPurchaseTaxId(editingProduct?.defaultPurchaseTaxId ?? null);
   }, [editingProduct]);
 
   const handleConfirmDeleteProduct = () => {
@@ -366,6 +380,26 @@ export default function EcommercePage() {
                         resolveImage={resolveImage}
                         idPrefix="create"
                       />
+                      <div className="grid gap-2">
+                        <Label>Tarif Pajak Penjualan Default</Label>
+                        <Select value={createProdSalesTaxId ? String(createProdSalesTaxId) : "none"} onValueChange={(v) => setCreateProdSalesTaxId(v === "none" ? null : parseInt(v))} data-testid="select-create-product-sales-tax">
+                          <SelectTrigger><SelectValue placeholder="Tidak ada pajak default" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Tidak ada pajak default</SelectItem>
+                            {saleTaxes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Tarif Pajak Pembelian Default</Label>
+                        <Select value={createProdPurchaseTaxId ? String(createProdPurchaseTaxId) : "none"} onValueChange={(v) => setCreateProdPurchaseTaxId(v === "none" ? null : parseInt(v))} data-testid="select-create-product-purchase-tax">
+                          <SelectTrigger><SelectValue placeholder="Tidak ada pajak default" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Tidak ada pajak default</SelectItem>
+                            {purchaseTaxes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <DialogFooter>
                       <Button type="submit" disabled={createProduct.isPending || createImageUploader.isUploading} data-testid="button-submit-product">
@@ -718,6 +752,26 @@ export default function EcommercePage() {
                   resolveImage={resolveImage}
                   idPrefix="edit"
                 />
+                <div className="grid gap-2">
+                  <Label>Tarif Pajak Penjualan Default</Label>
+                  <Select value={editProdSalesTaxId ? String(editProdSalesTaxId) : "none"} onValueChange={(v) => setEditProdSalesTaxId(v === "none" ? null : parseInt(v))} data-testid="select-edit-product-sales-tax">
+                    <SelectTrigger><SelectValue placeholder="Tidak ada pajak default" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Tidak ada pajak default</SelectItem>
+                      {saleTaxes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Tarif Pajak Pembelian Default</Label>
+                  <Select value={editProdPurchaseTaxId ? String(editProdPurchaseTaxId) : "none"} onValueChange={(v) => setEditProdPurchaseTaxId(v === "none" ? null : parseInt(v))} data-testid="select-edit-product-purchase-tax">
+                    <SelectTrigger><SelectValue placeholder="Tidak ada pajak default" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Tidak ada pajak default</SelectItem>
+                      {purchaseTaxes.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>Batal</Button>

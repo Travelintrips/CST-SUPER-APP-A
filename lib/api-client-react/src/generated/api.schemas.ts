@@ -50,6 +50,8 @@ export interface Product {
   category: string;
   description?: string;
   imageUrl?: string | null;
+  defaultSalesTaxId?: number | null;
+  defaultPurchaseTaxId?: number | null;
   createdAt: string;
 }
 
@@ -61,6 +63,8 @@ export interface CreateProductBody {
   category: string;
   description?: string;
   imageUrl?: string | null;
+  defaultSalesTaxId?: number | null;
+  defaultPurchaseTaxId?: number | null;
 }
 
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];

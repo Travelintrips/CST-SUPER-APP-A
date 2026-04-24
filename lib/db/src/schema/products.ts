@@ -11,6 +11,8 @@ export const productsTable = pgTable("products", {
   category: text("category").notNull(),
   description: text("description"),
   imageUrl: text("image_url"),
+  defaultSalesTaxId: integer("default_sales_tax_id"),
+  defaultPurchaseTaxId: integer("default_purchase_tax_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

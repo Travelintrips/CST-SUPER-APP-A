@@ -82,6 +82,8 @@ export const ListProductsResponseItem = zod.object({
   category: zod.string(),
   description: zod.string().optional(),
   imageUrl: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
+  defaultPurchaseTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 export const ListProductsResponse = zod.array(ListProductsResponseItem);
@@ -97,6 +99,8 @@ export const CreateProductBody = zod.object({
   category: zod.string(),
   description: zod.string().optional(),
   imageUrl: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
+  defaultPurchaseTaxId: zod.number().nullish(),
 });
 
 /**
@@ -115,6 +119,8 @@ export const GetProductResponse = zod.object({
   category: zod.string(),
   description: zod.string().optional(),
   imageUrl: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
+  defaultPurchaseTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -133,6 +139,8 @@ export const UpdateProductBody = zod.object({
   category: zod.string(),
   description: zod.string().optional(),
   imageUrl: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
+  defaultPurchaseTaxId: zod.number().nullish(),
 });
 
 export const UpdateProductResponse = zod.object({
@@ -144,6 +152,8 @@ export const UpdateProductResponse = zod.object({
   category: zod.string(),
   description: zod.string().optional(),
   imageUrl: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
+  defaultPurchaseTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 

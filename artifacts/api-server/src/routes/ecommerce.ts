@@ -33,10 +33,12 @@ router.get("/products", async (_req, res) => {
 
 // POST /api/ecommerce/products
 router.post("/products", async (req, res) => {
-  const { name, sku, price, stock, category, description, imageUrl } = req.body;
+  const { name, sku, price, stock, category, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
   const [product] = await db.insert(productsTable).values({
     name, sku, price: String(price), stock: stock ?? 0, category, description,
     imageUrl: normalizeImage(imageUrl),
+    defaultSalesTaxId: defaultSalesTaxId ?? null,
+    defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
   }).returning();
   return res.status(201).json(serializeProduct(product));
 });
@@ -52,10 +54,12 @@ router.get("/products/:id", async (req, res) => {
 // PUT /api/ecommerce/products/:id
 router.put("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, sku, price, stock, category, description, imageUrl } = req.body;
+  const { name, sku, price, stock, category, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
   const [product] = await db.update(productsTable).set({
     name, sku, price: String(price), stock, category, description,
     imageUrl: normalizeImage(imageUrl),
+    defaultSalesTaxId: defaultSalesTaxId ?? null,
+    defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
   }).where(eq(productsTable.id, id)).returning();
   if (!product) return res.status(404).json({ message: "Product not found" });
   return res.json(serializeProduct(product));
