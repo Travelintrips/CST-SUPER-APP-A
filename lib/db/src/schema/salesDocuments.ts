@@ -22,6 +22,11 @@ export const salesDeliveryStatusEnum = pgEnum("sales_delivery_status", [
   "to_deliver",
   "delivered",
 ]);
+export const salesPaymentStatusEnum = pgEnum("sales_payment_status", [
+  "unpaid",
+  "partial",
+  "paid",
+]);
 
 export const salesDocumentsTable = pgTable("sales_documents", {
   id: serial("id").primaryKey(),
@@ -30,6 +35,8 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   status: salesDocStatusEnum("status").notNull().default("draft"),
   invoiceStatus: salesInvoiceStatusEnum("invoice_status").notNull().default("none"),
   deliveryStatus: salesDeliveryStatusEnum("delivery_status").notNull().default("none"),
+  paymentStatus: salesPaymentStatusEnum("payment_status").notNull().default("unpaid"),
+  amountPaid: numeric("amount_paid", { precision: 14, scale: 2 }).notNull().default("0"),
   customerId: integer("customer_id").references(() => customersTable.id, { onDelete: "set null" }),
   customerName: text("customer_name").notNull(),
   totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),

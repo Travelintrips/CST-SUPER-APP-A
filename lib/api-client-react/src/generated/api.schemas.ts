@@ -384,6 +384,15 @@ export const SalesDocumentDeliveryStatus = {
   delivered: "delivered",
 } as const;
 
+export type SalesDocumentPaymentStatus =
+  (typeof SalesDocumentPaymentStatus)[keyof typeof SalesDocumentPaymentStatus];
+
+export const SalesDocumentPaymentStatus = {
+  unpaid: "unpaid",
+  partial: "partial",
+  paid: "paid",
+} as const;
+
 export interface SalesDocument {
   id: number;
   docNumber: string;
@@ -391,6 +400,8 @@ export interface SalesDocument {
   status: SalesDocumentStatus;
   invoiceStatus: SalesDocumentInvoiceStatus;
   deliveryStatus: SalesDocumentDeliveryStatus;
+  paymentStatus: SalesDocumentPaymentStatus;
+  amountPaid: number;
   customerId?: number | null;
   customerName: string;
   totalAmount: number;
@@ -500,6 +511,15 @@ export const PurchaseDocumentBillStatus = {
   billed: "billed",
 } as const;
 
+export type PurchaseDocumentPaymentStatus =
+  (typeof PurchaseDocumentPaymentStatus)[keyof typeof PurchaseDocumentPaymentStatus];
+
+export const PurchaseDocumentPaymentStatus = {
+  unpaid: "unpaid",
+  partial: "partial",
+  paid: "paid",
+} as const;
+
 export interface PurchaseDocument {
   id: number;
   docNumber: string;
@@ -507,6 +527,8 @@ export interface PurchaseDocument {
   status: PurchaseDocumentStatus;
   receiveStatus: PurchaseDocumentReceiveStatus;
   billStatus: PurchaseDocumentBillStatus;
+  paymentStatus: PurchaseDocumentPaymentStatus;
+  amountPaid: number;
   supplierId?: number | null;
   supplierName: string;
   totalAmount: number;
@@ -932,6 +954,8 @@ export interface AccountingPayment {
   ref?: string | null;
   memo?: string | null;
   entryId?: number | null;
+  sourceType?: string | null;
+  sourceDocId?: number | null;
   createdById?: string | null;
   createdAt: string;
 }
@@ -956,6 +980,8 @@ export interface CreateAccountingPaymentBody {
   date: string;
   ref?: string;
   memo?: string;
+  sourceType?: string;
+  sourceDocId?: number;
 }
 
 export interface AccountingSettings {
@@ -1143,6 +1169,8 @@ export type ListAccountingPaymentsParams = {
   paymentType?: ListAccountingPaymentsPaymentType;
   from?: string;
   to?: string;
+  sourceType?: string;
+  sourceDocId?: number;
 };
 
 export type ListAccountingPaymentsPaymentType =

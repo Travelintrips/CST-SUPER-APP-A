@@ -8,6 +8,8 @@ import {
   accountingEntryLinesTable,
   accountingSettingsTable,
   accountingPaymentsTable,
+  salesDocumentsTable,
+  purchaseDocumentsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -281,6 +283,14 @@ router.get("/payments", async (req, res) => {
   if (typeFilter === "inbound" || typeFilter === "outbound") {
     conds.push(eq(accountingPaymentsTable.paymentType, typeFilter));
   }
+  const sourceTypeFilter = typeof req.query["sourceType"] === "string" ? req.query["sourceType"] : null;
+  const sourceDocIdFilter = req.query["sourceDocId"] ? Number(req.query["sourceDocId"]) : null;
+  if (sourceTypeFilter) {
+    conds.push(eq(accountingPaymentsTable.sourceType, sourceTypeFilter));
+  }
+  if (sourceDocIdFilter && !Number.isNaN(sourceDocIdFilter)) {
+    conds.push(eq(accountingPaymentsTable.sourceDocId, sourceDocIdFilter));
+  }
   const rows = await db
     .select()
     .from(accountingPaymentsTable)
@@ -307,7 +317,7 @@ router.get("/payments/:id", async (req, res) => {
 });
 
 router.post("/payments", async (req, res) => {
-  const { paymentType, amount, journalId, partnerName, date: dateStr, ref, memo } = req.body ?? {};
+  const { paymentType, amount, journalId, partnerName, date: dateStr, ref, memo, sourceType, sourceDocId } = req.body ?? {};
   if (!paymentType || !amount || !journalId || !dateStr)
     return res.status(400).json({ message: "paymentType, amount, journalId, date required" });
   if (paymentType !== "inbound" && paymentType !== "outbound")
@@ -367,6 +377,10 @@ router.post("/payments", async (req, res) => {
       journal.code,
     );
 
+    const parsedSourceDocId = sourceDocId ? Number(sourceDocId) : null;
+    const validSourceType =
+      sourceType === "sales_order" || sourceType === "purchase_order" ? sourceType : null;
+
     const [payment] = await db
       .insert(accountingPaymentsTable)
       .values({
@@ -378,9 +392,50 @@ router.post("/payments", async (req, res) => {
         ref: ref ?? null,
         memo: memo ?? null,
         entryId: entry.id,
+        sourceType: validSourceType,
+        sourceDocId: parsedSourceDocId && !Number.isNaN(parsedSourceDocId) ? parsedSourceDocId : null,
         createdById: null,
       })
       .returning();
+
+    // Update payment settlement on the linked document (unpaid → partial → paid)
+    if (validSourceType && parsedSourceDocId && !Number.isNaN(parsedSourceDocId)) {
+      // Sum all payments (including the one just created) for this document
+      const allLinked = await db
+        .select({ amount: accountingPaymentsTable.amount })
+        .from(accountingPaymentsTable)
+        .where(
+          and(
+            eq(accountingPaymentsTable.sourceType, validSourceType),
+            eq(accountingPaymentsTable.sourceDocId, parsedSourceDocId),
+          ),
+        );
+      const totalPaid = allLinked.reduce((s, r) => s + Number(r.amount), 0);
+
+      if (validSourceType === "sales_order") {
+        const [doc] = await db
+          .select({ grandTotal: salesDocumentsTable.grandTotal })
+          .from(salesDocumentsTable)
+          .where(eq(salesDocumentsTable.id, parsedSourceDocId));
+        const grandTotal = Number(doc?.grandTotal ?? 0);
+        const newStatus = totalPaid >= grandTotal && grandTotal > 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+        await db
+          .update(salesDocumentsTable)
+          .set({ paymentStatus: newStatus, amountPaid: String(round2(totalPaid)), updatedAt: new Date() })
+          .where(eq(salesDocumentsTable.id, parsedSourceDocId));
+      } else if (validSourceType === "purchase_order") {
+        const [doc] = await db
+          .select({ grandTotal: purchaseDocumentsTable.grandTotal })
+          .from(purchaseDocumentsTable)
+          .where(eq(purchaseDocumentsTable.id, parsedSourceDocId));
+        const grandTotal = Number(doc?.grandTotal ?? 0);
+        const newStatus = totalPaid >= grandTotal && grandTotal > 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+        await db
+          .update(purchaseDocumentsTable)
+          .set({ paymentStatus: newStatus, amountPaid: String(round2(totalPaid)), updatedAt: new Date() })
+          .where(eq(purchaseDocumentsTable.id, parsedSourceDocId));
+      }
+    }
 
     const entryLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, entry.id));
     return res.status(201).json({

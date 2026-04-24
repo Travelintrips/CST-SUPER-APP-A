@@ -212,6 +212,8 @@ export const accountingPaymentsTable = pgTable("accounting_payments", {
   entryId: integer("entry_id").references(() => accountingEntriesTable.id, {
     onDelete: "set null",
   }),
+  sourceType: text("source_type"),
+  sourceDocId: integer("source_doc_id"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

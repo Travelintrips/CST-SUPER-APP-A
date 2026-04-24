@@ -22,6 +22,11 @@ export const purchaseBillStatusEnum = pgEnum("purchase_bill_status", [
   "to_bill",
   "billed",
 ]);
+export const purchasePaymentStatusEnum = pgEnum("purchase_payment_status", [
+  "unpaid",
+  "partial",
+  "paid",
+]);
 
 export const purchaseDocumentsTable = pgTable("purchase_documents", {
   id: serial("id").primaryKey(),
@@ -30,6 +35,8 @@ export const purchaseDocumentsTable = pgTable("purchase_documents", {
   status: purchaseDocStatusEnum("status").notNull().default("draft"),
   receiveStatus: purchaseReceiveStatusEnum("receive_status").notNull().default("none"),
   billStatus: purchaseBillStatusEnum("bill_status").notNull().default("none"),
+  paymentStatus: purchasePaymentStatusEnum("payment_status").notNull().default("unpaid"),
+  amountPaid: numeric("amount_paid", { precision: 14, scale: 2 }).notNull().default("0"),
   supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   supplierName: text("supplier_name").notNull(),
   totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),

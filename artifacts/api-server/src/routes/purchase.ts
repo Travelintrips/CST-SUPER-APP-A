@@ -45,6 +45,7 @@ function serializeDoc(d: typeof purchaseDocumentsTable.$inferSelect) {
     totalAmount: Number(d.totalAmount),
     taxAmount: Number(d.taxAmount ?? 0),
     grandTotal: Number(d.grandTotal ?? d.totalAmount),
+    amountPaid: Number(d.amountPaid ?? 0),
     expectedDate: d.expectedDate ? d.expectedDate.toISOString() : null,
     confirmedAt: d.confirmedAt ? d.confirmedAt.toISOString() : null,
     createdAt: d.createdAt.toISOString(),
