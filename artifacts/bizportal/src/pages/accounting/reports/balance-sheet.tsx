@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useGetBalanceSheet, getGetBalanceSheetQueryKey } from "@workspace/api-client-react";
@@ -23,7 +24,7 @@ export default function BalanceSheetPage() {
         </div>
 
         <Card><CardContent className="p-4 flex gap-4 items-end">
-          <div className="flex-1"><Label>Per Tanggal</Label><Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} data-testid="input-asof" /></div>
+          <div className="flex-1"><Label>Per Tanggal</Label><DatePicker value={asOf} onChange={setAsOf} data-testid="input-asof" /></div>
           {data && <div className="text-sm text-muted-foreground">{new Date(data.asOf).toLocaleDateString("id-ID")}</div>}
         </CardContent></Card>
 

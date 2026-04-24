@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -353,11 +354,11 @@ export default function SalesDocumentEditorPage() {
             </div>
             <div className="grid gap-1.5">
               <Label>Berlaku Hingga</Label>
-              <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} disabled={!isEditable} />
+              <DatePicker value={validUntil} onChange={setValidUntil} disabled={!isEditable} />
             </div>
             <div className="grid gap-1.5">
               <Label>Tanggal Diharapkan</Label>
-              <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} disabled={!isEditable} />
+              <DatePicker value={expectedDate} onChange={setExpectedDate} disabled={!isEditable} />
             </div>
             <div className="grid gap-1.5 md:col-span-2">
               <Label>Catatan</Label>

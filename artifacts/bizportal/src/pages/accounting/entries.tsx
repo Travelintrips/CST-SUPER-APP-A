@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
@@ -118,7 +119,7 @@ export default function EntriesPage() {
                       <SelectContent>{(journals ?? []).map((j) => (<SelectItem key={j.id} value={String(j.id)}>{j.code} - {j.name}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Tanggal</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} data-testid="input-entry-date" /></div>
+                  <div><Label>Tanggal</Label><DatePicker value={form.date} onChange={(date) => setForm({ ...form, date })} data-testid="input-entry-date" /></div>
                   <div><Label>Referensi</Label><Input value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })} placeholder="opsional" /></div>
                 </div>
                 <div><Label>Deskripsi</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="opsional" /></div>
@@ -172,8 +173,8 @@ export default function EntriesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Dari</Label><Input type="date" value={filter.from ?? ""} onChange={(e) => setFilter({ ...filter, from: e.target.value || undefined })} /></div>
-            <div><Label>Sampai</Label><Input type="date" value={filter.to ?? ""} onChange={(e) => setFilter({ ...filter, to: e.target.value || undefined })} /></div>
+            <div><Label>Dari</Label><DatePicker value={filter.from ?? ""} onChange={(v) => setFilter({ ...filter, from: v || undefined })} /></div>
+            <div><Label>Sampai</Label><DatePicker value={filter.to ?? ""} onChange={(v) => setFilter({ ...filter, to: v || undefined })} /></div>
           </div>
           <Table>
             <TableHeader><TableRow><TableHead>Nomor</TableHead><TableHead>Tanggal</TableHead><TableHead>Jurnal</TableHead><TableHead>Sumber</TableHead><TableHead>Ref</TableHead><TableHead>Deskripsi</TableHead><TableHead className="text-right">Debit</TableHead><TableHead className="text-right">Kredit</TableHead></TableRow></TableHeader>

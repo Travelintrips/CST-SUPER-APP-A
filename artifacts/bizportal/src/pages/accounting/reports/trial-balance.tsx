@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useGetTrialBalance, getGetTrialBalanceQueryKey } from "@workspace/api-client-react";
@@ -27,8 +28,8 @@ export default function TrialBalancePage() {
         </div>
 
         <Card><CardContent className="p-4 flex gap-4">
-          <div className="flex-1"><Label>Dari</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="input-from" /></div>
-          <div className="flex-1"><Label>Sampai</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} data-testid="input-to" /></div>
+          <div className="flex-1"><Label>Dari</Label><DatePicker value={from} onChange={setFrom} data-testid="input-from" /></div>
+          <div className="flex-1"><Label>Sampai</Label><DatePicker value={to} onChange={setTo} data-testid="input-to" /></div>
         </CardContent></Card>
 
         <Card><CardContent className="p-4">

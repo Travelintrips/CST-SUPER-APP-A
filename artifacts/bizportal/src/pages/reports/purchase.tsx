@@ -3,6 +3,7 @@ import { useGetPurchaseReport, getGetPurchaseReportQueryKey } from "@workspace/a
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ShoppingBag } from "lucide-react";
@@ -35,11 +36,11 @@ export default function PurchaseReportPage() {
           <CardContent className="flex gap-4 p-4">
             <div className="flex-1">
               <Label htmlFor="from">Dari Tanggal</Label>
-              <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="input-from" />
+              <DatePicker value={from} onChange={setFrom} data-testid="input-from" />
             </div>
             <div className="flex-1">
               <Label htmlFor="to">Sampai Tanggal</Label>
-              <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} data-testid="input-to" />
+              <DatePicker value={to} onChange={setTo} data-testid="input-to" />
             </div>
           </CardContent>
         </Card>

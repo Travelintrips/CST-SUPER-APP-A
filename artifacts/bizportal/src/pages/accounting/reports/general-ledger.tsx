@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -43,8 +44,8 @@ export default function GeneralLedgerPage() {
               </SelectContent>
             </Select>
           </div>
-          <div><Label>Dari</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="input-from" /></div>
-          <div><Label>Sampai</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} data-testid="input-to" /></div>
+          <div><Label>Dari</Label><DatePicker value={from} onChange={setFrom} data-testid="input-from" /></div>
+          <div><Label>Sampai</Label><DatePicker value={to} onChange={setTo} data-testid="input-to" /></div>
         </CardContent></Card>
 
         {isLoading ? <Card><CardContent className="p-4">Memuat...</CardContent></Card> : !data || data.accounts.length === 0 ? <Card><CardContent className="p-4 text-center text-muted-foreground">Tidak ada data</CardContent></Card> : data.accounts.map((acc) => (
