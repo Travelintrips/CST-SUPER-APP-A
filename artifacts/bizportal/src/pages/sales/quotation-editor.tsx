@@ -268,7 +268,9 @@ export default function SalesDocumentEditorPage() {
     const c = (customers ?? []).find((x) => x.id === cid);
     if (c) {
       setCustomerName(c.name);
-      setTaxRateId(c.defaultSalesTaxId ?? acctSettings?.defaultSalesTaxId ?? null);
+      if (isNew || taxRateId === null) {
+        setTaxRateId(c.defaultSalesTaxId ?? acctSettings?.defaultSalesTaxId ?? null);
+      }
     }
   };
 

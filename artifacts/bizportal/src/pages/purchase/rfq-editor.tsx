@@ -240,7 +240,9 @@ export default function PurchaseDocumentEditorPage() {
     const v = (vendors ?? []).find((x) => x.id === sid);
     if (v) {
       setSupplierName(v.name);
-      setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
+      if (isNew || taxRateId === null) {
+        setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
+      }
     }
   };
 
