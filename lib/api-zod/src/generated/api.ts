@@ -627,6 +627,7 @@ export const ListSalesDocumentsResponseItem = zod.object({
   expectedDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   confirmedAt: zod.string().nullish(),
+  amountPaid: zod.number().optional(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -681,6 +682,7 @@ export const GetSalesDocumentResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
+    amountPaid: zod.number().optional(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -745,6 +747,7 @@ export const UpdateSalesDocumentResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
+    amountPaid: zod.number().optional(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -812,6 +815,7 @@ export const SalesDocumentActionResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
+    amountPaid: zod.number().optional(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -867,6 +871,7 @@ export const ListPurchaseDocumentsResponseItem = zod.object({
   expectedDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   confirmedAt: zod.string().nullish(),
+  amountPaid: zod.number().optional(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -919,6 +924,7 @@ export const GetPurchaseDocumentResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
+    amountPaid: zod.number().optional(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -981,6 +987,7 @@ export const UpdatePurchaseDocumentResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
+    amountPaid: zod.number().optional(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -1047,6 +1054,7 @@ export const PurchaseDocumentActionResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
+    amountPaid: zod.number().optional(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -1557,6 +1565,8 @@ export const ListAccountingPaymentsResponseItem = zod.object({
   ref: zod.string().nullish(),
   memo: zod.string().nullish(),
   entryId: zod.number().nullish(),
+  sourceType: zod.string().nullish(),
+  sourceDocId: zod.number().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -1575,6 +1585,8 @@ export const CreateAccountingPaymentBody = zod.object({
   date: zod.string(),
   ref: zod.string().optional(),
   memo: zod.string().optional(),
+  sourceType: zod.string().optional(),
+  sourceDocId: zod.number().optional(),
 });
 
 /**
@@ -1595,6 +1607,8 @@ export const GetAccountingPaymentResponse = zod
     ref: zod.string().nullish(),
     memo: zod.string().nullish(),
     entryId: zod.number().nullish(),
+    sourceType: zod.string().nullish(),
+    sourceDocId: zod.number().nullish(),
     createdById: zod.string().nullish(),
     createdAt: zod.string(),
   })
@@ -1709,6 +1723,26 @@ export const UpdateAccountingSettingsResponse = zod.object({
   inventoryAccountId: zod.number().nullish(),
   cogsAccountId: zod.number().nullish(),
   updatedAt: zod.string(),
+});
+
+/**
+ * @summary Outstanding AR and AP balances per partner
+ */
+export const GetPartnerBalancesResponse = zod.object({
+  ar: zod.array(
+    zod.object({
+      partnerName: zod.string(),
+      balance: zod.number(),
+    }),
+  ),
+  ap: zod.array(
+    zod.object({
+      partnerName: zod.string(),
+      balance: zod.number(),
+    }),
+  ),
+  totalAr: zod.number(),
+  totalAp: zod.number(),
 });
 
 /**

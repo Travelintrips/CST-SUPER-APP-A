@@ -10,6 +10,7 @@ import {
   accountingPaymentsTable,
   salesDocumentsTable,
   purchaseDocumentsTable,
+  ordersTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -445,6 +446,103 @@ router.post("/payments", async (req, res) => {
   } catch (err) {
     return res.status(400).json({ message: String((err as Error)?.message ?? err) });
   }
+});
+
+// ============ Partner Balances ============
+router.get("/partner-balances", async (_req, res) => {
+  const settings = await ensureAccountingSettings();
+  const arId = settings.arAccountId;
+  const apId = settings.apAccountId;
+
+  const queryAr = async (accountId: number) => {
+    const rows = await db.execute<{ partner_name: string; balance: string }>(sql`
+      WITH lines AS (
+        SELECT
+          CAST(el.debit AS numeric) - CAST(el.credit AS numeric) AS net,
+          e.source::text AS source,
+          e.source_id,
+          e.id AS entry_id
+        FROM accounting_entry_lines el
+        JOIN accounting_entries e ON e.id = el.entry_id
+        WHERE el.account_id = ${accountId}
+          AND e.status = 'posted'
+      ),
+      with_partner AS (
+        SELECT
+          l.net,
+          COALESCE(
+            sd.customer_name,
+            o.customer_name,
+            pd.supplier_name,
+            ap.partner_name,
+            'Tidak Diketahui'
+          ) AS partner_name
+        FROM lines l
+        LEFT JOIN sales_documents sd ON l.source = 'sales_invoice' AND sd.id = l.source_id
+        LEFT JOIN orders o ON l.source = 'ecommerce_order' AND o.id = l.source_id
+        LEFT JOIN purchase_documents pd ON l.source = 'purchase_bill' AND pd.id = l.source_id
+        LEFT JOIN accounting_payments ap ON ap.entry_id = l.entry_id
+      )
+      SELECT
+        partner_name,
+        ROUND(SUM(net), 2) AS balance
+      FROM with_partner
+      GROUP BY partner_name
+      HAVING ROUND(SUM(net), 2) > 0.005
+      ORDER BY balance DESC
+    `);
+    return rows.rows.map((r) => ({ partnerName: r.partner_name, balance: Number(r.balance) }));
+  };
+
+  const queryAp = async (accountId: number) => {
+    const rows = await db.execute<{ partner_name: string; balance: string }>(sql`
+      WITH lines AS (
+        SELECT
+          CAST(el.credit AS numeric) - CAST(el.debit AS numeric) AS net,
+          e.source::text AS source,
+          e.source_id,
+          e.id AS entry_id
+        FROM accounting_entry_lines el
+        JOIN accounting_entries e ON e.id = el.entry_id
+        WHERE el.account_id = ${accountId}
+          AND e.status = 'posted'
+      ),
+      with_partner AS (
+        SELECT
+          l.net,
+          COALESCE(
+            sd.customer_name,
+            o.customer_name,
+            pd.supplier_name,
+            ap.partner_name,
+            'Tidak Diketahui'
+          ) AS partner_name
+        FROM lines l
+        LEFT JOIN sales_documents sd ON l.source = 'sales_invoice' AND sd.id = l.source_id
+        LEFT JOIN orders o ON l.source = 'ecommerce_order' AND o.id = l.source_id
+        LEFT JOIN purchase_documents pd ON l.source = 'purchase_bill' AND pd.id = l.source_id
+        LEFT JOIN accounting_payments ap ON ap.entry_id = l.entry_id
+      )
+      SELECT
+        partner_name,
+        ROUND(SUM(net), 2) AS balance
+      FROM with_partner
+      GROUP BY partner_name
+      HAVING ROUND(SUM(net), 2) > 0.005
+      ORDER BY balance DESC
+    `);
+    return rows.rows.map((r) => ({ partnerName: r.partner_name, balance: Number(r.balance) }));
+  };
+
+  const [ar, ap] = await Promise.all([
+    arId ? queryAr(arId) : Promise.resolve([]),
+    apId ? queryAp(apId) : Promise.resolve([]),
+  ]);
+
+  const totalAr = Math.round(ar.reduce((s, r) => s + r.balance, 0) * 100) / 100;
+  const totalAp = Math.round(ap.reduce((s, r) => s + r.balance, 0) * 100) / 100;
+
+  return res.json({ ar, ap, totalAr, totalAp });
 });
 
 // ============ Settings ============

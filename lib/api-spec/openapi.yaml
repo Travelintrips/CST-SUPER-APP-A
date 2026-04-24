@@ -1426,6 +1426,18 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AccountingSettings" }
 
+  /accounting/partner-balances:
+    get:
+      operationId: getPartnerBalances
+      tags: [accounting]
+      summary: Outstanding AR and AP balances per partner
+      responses:
+        "200":
+          description: Partner balances
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PartnerBalances" }
+
   /accounting/reports/trial-balance:
     get:
       operationId: getTrialBalance
@@ -2052,6 +2064,8 @@ components:
         confirmedAt:
           type: string
           nullable: true
+        amountPaid:
+          type: number
         createdAt:
           type: string
         updatedAt:
@@ -2188,6 +2202,8 @@ components:
         confirmedAt:
           type: string
           nullable: true
+        amountPaid:
+          type: number
         createdAt:
           type: string
         updatedAt:
@@ -2572,6 +2588,8 @@ components:
         ref: { type: string, nullable: true }
         memo: { type: string, nullable: true }
         entryId: { type: integer, nullable: true }
+        sourceType: { type: string, nullable: true }
+        sourceDocId: { type: integer, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
       required: [id, paymentType, amount, journalId, date, createdAt]
@@ -2598,6 +2616,8 @@ components:
         date: { type: string }
         ref: { type: string }
         memo: { type: string }
+        sourceType: { type: string }
+        sourceDocId: { type: integer }
       required: [paymentType, amount, journalId, date]
 
     AccountingSettings:
@@ -2757,3 +2777,23 @@ components:
         totalEquity: { type: number }
         totalLiabilitiesAndEquity: { type: number }
       required: [asOf, assets, liabilities, equity, netIncomeYTD, totalAssets, totalLiabilities, totalEquity, totalLiabilitiesAndEquity]
+
+    PartnerBalanceEntry:
+      type: object
+      properties:
+        partnerName: { type: string }
+        balance: { type: number }
+      required: [partnerName, balance]
+
+    PartnerBalances:
+      type: object
+      properties:
+        ar:
+          type: array
+          items: { $ref: "#/components/schemas/PartnerBalanceEntry" }
+        ap:
+          type: array
+          items: { $ref: "#/components/schemas/PartnerBalanceEntry" }
+        totalAr: { type: number }
+        totalAp: { type: number }
+      required: [ar, ap, totalAr, totalAp]

@@ -18,14 +18,20 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText } from "lucide-react";
+import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users } from "lucide-react";
 import {
   useListAccountingPayments,
   getListAccountingPaymentsQueryKey,
   useCreateAccountingPayment,
   useListJournals,
+  useGetPartnerBalances,
   type AccountingPayment,
+  type PartnerBalanceEntry,
 } from "@workspace/api-client-react";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
@@ -89,6 +95,9 @@ export default function PaymentsPage() {
   const { data: journals = [] } = useListJournals();
   const bankCashJournals = journals.filter((j) => j.type === "bank" || j.type === "cash");
 
+  const { data: partnerBalances } = useGetPartnerBalances();
+  const [balancesOpen, setBalancesOpen] = useState(false);
+
   const createMut = useCreateAccountingPayment();
   const [open, setOpen] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
@@ -108,6 +117,16 @@ export default function PaymentsPage() {
 
   const totalInbound = payments.filter((p) => p.paymentType === "inbound").reduce((s, p) => s + p.amount, 0);
   const totalOutbound = payments.filter((p) => p.paymentType === "outbound").reduce((s, p) => s + p.amount, 0);
+
+  const prefillFromPartner = (entry: PartnerBalanceEntry, paymentType: "inbound" | "outbound") => {
+    setForm((f) => ({
+      ...f,
+      partnerName: entry.partnerName,
+      amount: String(Math.round(entry.balance)),
+      paymentType,
+    }));
+    setOpen(true);
+  };
 
   const submit = async () => {
     if (!form.paymentType || !form.amount || !form.journalId || !form.date) {
@@ -298,6 +317,138 @@ export default function PaymentsPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Collapsible open={balancesOpen} onOpenChange={setBalancesOpen}>
+          <Card className="border-slate-700 bg-slate-900">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-slate-800/50 rounded-t-lg transition-colors pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-indigo-400" /> Saldo Terbuka per Mitra
+                    {partnerBalances && (partnerBalances.ar.length + partnerBalances.ap.length) > 0 && (
+                      <Badge className="bg-indigo-900/50 text-indigo-300 border-indigo-700 text-xs ml-1">
+                        {partnerBalances.ar.length + partnerBalances.ap.length}
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <div className="flex items-center gap-4 text-xs text-slate-400">
+                    {partnerBalances && (
+                      <>
+                        <span className="text-emerald-400 font-mono">AR: {idr(partnerBalances.totalAr)}</span>
+                        <span className="text-red-400 font-mono">AP: {idr(partnerBalances.totalAp)}</span>
+                      </>
+                    )}
+                    {balancesOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                  </div>
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                {!partnerBalances ? (
+                  <p className="text-slate-500 text-sm py-4 text-center">Memuat...</p>
+                ) : (partnerBalances.ar.length === 0 && partnerBalances.ap.length === 0) ? (
+                  <p className="text-slate-500 text-sm py-4 text-center">Tidak ada saldo terbuka. Semua piutang dan hutang telah lunas.</p>
+                ) : (
+                  <Tabs defaultValue="ar">
+                    <TabsList className="mb-3">
+                      <TabsTrigger value="ar" className="gap-1.5 text-xs">
+                        <ArrowDownLeft className="h-3 w-3 text-emerald-400" />
+                        Piutang (AR)
+                        {partnerBalances.ar.length > 0 && (
+                          <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700 text-xs ml-1">
+                            {partnerBalances.ar.length}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
+                      <TabsTrigger value="ap" className="gap-1.5 text-xs">
+                        <ArrowUpRight className="h-3 w-3 text-red-400" />
+                        Hutang (AP)
+                        {partnerBalances.ap.length > 0 && (
+                          <Badge className="bg-red-900/50 text-red-300 border-red-700 text-xs ml-1">
+                            {partnerBalances.ap.length}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="ar">
+                      {partnerBalances.ar.length === 0 ? (
+                        <p className="text-slate-500 text-sm py-3 text-center">Tidak ada piutang terbuka.</p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Pelanggan</TableHead>
+                              <TableHead className="text-right">Saldo Piutang (IDR)</TableHead>
+                              <TableHead className="text-right">Aksi</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {partnerBalances.ar.map((entry) => (
+                              <TableRow key={entry.partnerName} className="hover:bg-slate-800/40">
+                                <TableCell className="text-slate-200 text-sm">{entry.partnerName}</TableCell>
+                                <TableCell className="text-right font-mono text-emerald-400 tabular-nums text-sm">
+                                  {idr(entry.balance)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1 border-emerald-700/50 text-emerald-300 hover:bg-emerald-900/30"
+                                    onClick={() => prefillFromPartner(entry, "inbound")}
+                                    data-testid={`btn-collect-ar-${entry.partnerName}`}
+                                  >
+                                    <ArrowDownLeft className="h-3 w-3" /> Terima Bayar
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </TabsContent>
+                    <TabsContent value="ap">
+                      {partnerBalances.ap.length === 0 ? (
+                        <p className="text-slate-500 text-sm py-3 text-center">Tidak ada hutang terbuka.</p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Pemasok</TableHead>
+                              <TableHead className="text-right">Saldo Hutang (IDR)</TableHead>
+                              <TableHead className="text-right">Aksi</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {partnerBalances.ap.map((entry) => (
+                              <TableRow key={entry.partnerName} className="hover:bg-slate-800/40">
+                                <TableCell className="text-slate-200 text-sm">{entry.partnerName}</TableCell>
+                                <TableCell className="text-right font-mono text-red-400 tabular-nums text-sm">
+                                  {idr(entry.balance)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1 border-red-700/50 text-red-300 hover:bg-red-900/30"
+                                    onClick={() => prefillFromPartner(entry, "outbound")}
+                                    data-testid={`btn-pay-ap-${entry.partnerName}`}
+                                  >
+                                    <ArrowUpRight className="h-3 w-3" /> Bayar
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         <Card className="border-slate-800 bg-slate-900">
           <CardContent className="pt-4">

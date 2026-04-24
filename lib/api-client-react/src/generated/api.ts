@@ -57,6 +57,7 @@ import type {
   ListSalesDocumentsParams,
   MessageResponse,
   Order,
+  PartnerBalances,
   Payment,
   PaymentLinkResponse,
   PosSummary,
@@ -6308,6 +6309,81 @@ export const useUpdateAccountingSettings = <
 > => {
   return useMutation(getUpdateAccountingSettingsMutationOptions(options));
 };
+
+/**
+ * @summary Outstanding AR and AP balances per partner
+ */
+export const getGetPartnerBalancesUrl = () => {
+  return `/api/accounting/partner-balances`;
+};
+
+export const getPartnerBalances = async (
+  options?: RequestInit,
+): Promise<PartnerBalances> => {
+  return customFetch<PartnerBalances>(getGetPartnerBalancesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPartnerBalancesQueryKey = () => {
+  return [`/api/accounting/partner-balances`] as const;
+};
+
+export const getGetPartnerBalancesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPartnerBalances>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPartnerBalances>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPartnerBalancesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPartnerBalances>>
+  > = ({ signal }) => getPartnerBalances({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPartnerBalances>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPartnerBalancesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPartnerBalances>>
+>;
+export type GetPartnerBalancesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Outstanding AR and AP balances per partner
+ */
+
+export function useGetPartnerBalances<
+  TData = Awaited<ReturnType<typeof getPartnerBalances>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPartnerBalances>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPartnerBalancesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Trial balance report
