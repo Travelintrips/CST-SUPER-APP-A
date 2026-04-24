@@ -28,11 +28,11 @@ export default function DashboardPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Overview</h1>
-          <p className="text-muted-foreground mt-2">Aggregated business metrics across all divisions.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin Overview</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Aggregated business metrics across all divisions.</p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
           <Card className="bg-card border-border">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>

@@ -79,12 +79,12 @@ export default function LogisticsPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Logistik</h1>
-          <p className="text-muted-foreground mt-2">Lacak pengiriman dan kelola operasi armada.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Logistik</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Lacak pengiriman dan kelola operasi armada.</p>
         </div>
 
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold tracking-tight">Daftar Pengiriman</h2>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Daftar Pengiriman</h2>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button><Plus className="mr-2 h-4 w-4" /> Buat Pengiriman</Button>
@@ -119,7 +119,7 @@ export default function LogisticsPage() {
           </Dialog>
         </div>
 
-        <Card>
+        <Card className="hidden md:block">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -192,6 +192,57 @@ export default function LogisticsPage() {
             </Table>
           </CardContent>
         </Card>
+
+        <div className="md:hidden space-y-3">
+          {isLoading ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i}><CardContent className="p-4 space-y-2">
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-8 w-full" />
+              </CardContent></Card>
+            ))
+          ) : !shipments || shipments.length === 0 ? (
+            <Card><CardContent className="p-8 text-center">
+              <Navigation2 className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Belum ada pengiriman aktif.</p>
+            </CardContent></Card>
+          ) : (
+            shipments.map((shipment) => (
+              <Card key={shipment.id}><CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-sm font-medium truncate">{shipment.trackingNumber}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{shipment.carrier}</p>
+                  </div>
+                  <Badge variant="outline" className={`capitalize shrink-0 text-xs ${getStatusColor(shipment.status)}`}>
+                    {shipment.status.replace(/_/g, ' ')}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground truncate">{shipment.origin}</span>
+                  <span className="shrink-0">-&gt;</span>
+                  <span className="font-medium truncate">{shipment.destination}</span>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-full h-9">
+                      <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                      Update Status
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[calc(100vw-3rem)] sm:w-auto">
+                    {statuses.map(s => (
+                      <DropdownMenuItem key={s} onClick={() => handleStatusChange(shipment.id, s)} className="capitalize">
+                        Tandai: {s.replace(/_/g, ' ')}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardContent></Card>
+            ))
+          )}
+        </div>
       </div>
     </AppShell>
   );

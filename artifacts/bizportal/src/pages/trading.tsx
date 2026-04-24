@@ -82,19 +82,19 @@ export default function TradingPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Trading & B2B</h1>
-          <p className="text-muted-foreground mt-2">Manage bulk inventory, suppliers, and international trade items.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Trading & B2B</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Manage bulk inventory, suppliers, and international trade items.</p>
         </div>
 
         <Tabs defaultValue="inventory" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="inventory">Inventory</TabsTrigger>
-            <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="inventory" className="flex-1 sm:flex-none">Inventory</TabsTrigger>
+            <TabsTrigger value="suppliers" className="flex-1 sm:flex-none">Suppliers</TabsTrigger>
           </TabsList>
           
           <TabsContent value="inventory" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold tracking-tight">Stock Inventory</h2>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Stock Inventory</h2>
               <Dialog open={isStockDialogOpen} onOpenChange={setIsStockDialogOpen}>
                 <DialogTrigger asChild>
                   <Button><Plus className="mr-2 h-4 w-4" /> Add Stock Item</Button>
@@ -145,7 +145,7 @@ export default function TradingPage() {
               </Dialog>
             </div>
             
-            <Card>
+            <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
@@ -195,11 +195,51 @@ export default function TradingPage() {
                 </Table>
               </CardContent>
             </Card>
+
+            <div className="md:hidden space-y-3">
+              {isLoadingStocks ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i}><CardContent className="p-4 space-y-2">
+                    <Skeleton className="h-5 w-2/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-1/3" />
+                  </CardContent></Card>
+                ))
+              ) : !stocks || stocks.length === 0 ? (
+                <Card><CardContent className="p-8 text-center">
+                  <PackageOpen className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No stock inventory found.</p>
+                </CardContent></Card>
+              ) : (
+                stocks.map((item) => (
+                  <Card key={item.id}><CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{item.productName}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{item.sku}</p>
+                      </div>
+                      {item.hsCode && <Badge variant="outline" className="shrink-0 text-xs">HS {item.hsCode}</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Supplier: <span className="text-foreground">{item.supplierName || 'Unknown'}</span></p>
+                    <div className="flex justify-between items-end pt-1 border-t border-border">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Qty</p>
+                        <p className="text-sm font-medium">{item.quantity} {item.unit}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">Cost</p>
+                        <p className="text-sm font-medium">{formatIDR(item.costPrice)}</p>
+                      </div>
+                    </div>
+                  </CardContent></Card>
+                ))
+              )}
+            </div>
           </TabsContent>
           
           <TabsContent value="suppliers" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold tracking-tight">Suppliers Directory</h2>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Suppliers Directory</h2>
               <Dialog open={isSupplierDialogOpen} onOpenChange={setIsSupplierDialogOpen}>
                 <DialogTrigger asChild>
                   <Button><Plus className="mr-2 h-4 w-4" /> Add Supplier</Button>
@@ -238,7 +278,7 @@ export default function TradingPage() {
               </Dialog>
             </div>
             
-            <Card>
+            <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
@@ -284,6 +324,33 @@ export default function TradingPage() {
                 </Table>
               </CardContent>
             </Card>
+
+            <div className="md:hidden space-y-3">
+              {isLoadingSuppliers ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i}><CardContent className="p-4 space-y-2">
+                    <Skeleton className="h-5 w-2/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </CardContent></Card>
+                ))
+              ) : !suppliers || suppliers.length === 0 ? (
+                <Card><CardContent className="p-8 text-center">
+                  <Building className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No suppliers registered yet.</p>
+                </CardContent></Card>
+              ) : (
+                suppliers.map((supplier) => (
+                  <Card key={supplier.id}><CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium truncate">{supplier.name}</p>
+                      <Badge variant="outline" className="shrink-0">{supplier.country}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{supplier.contactEmail}</p>
+                    {supplier.phone && <p className="text-xs">{supplier.phone}</p>}
+                  </CardContent></Card>
+                ))
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </div>

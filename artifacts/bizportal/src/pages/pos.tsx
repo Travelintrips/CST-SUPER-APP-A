@@ -74,11 +74,11 @@ export default function PosPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Point of Sale</h1>
-          <p className="text-muted-foreground mt-2">Manage daily physical store transactions and retail summaries.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Point of Sale</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Manage daily physical store transactions and retail summaries.</p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-5">
           <Card className="bg-card border-border lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Today's Total</CardTitle>
@@ -128,8 +128,8 @@ export default function PosPage() {
           </Card>
         </div>
 
-        <div className="flex justify-between items-center mt-8">
-          <h2 className="text-xl font-semibold tracking-tight">Recent Transactions</h2>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mt-8">
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Recent Transactions</h2>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90">
@@ -183,7 +183,7 @@ export default function PosPage() {
           </Dialog>
         </div>
 
-        <Card>
+        <Card className="hidden md:block">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -240,6 +240,42 @@ export default function PosPage() {
             </Table>
           </CardContent>
         </Card>
+
+        <div className="md:hidden space-y-3">
+          {isLoadingTx ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}><CardContent className="p-4 space-y-2">
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="h-4 w-1/2" />
+              </CardContent></Card>
+            ))
+          ) : !transactions || transactions.length === 0 ? (
+            <Card><CardContent className="p-8 text-center">
+              <Receipt className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">No transactions yet today.</p>
+            </CardContent></Card>
+          ) : (
+            transactions.map((tx) => (
+              <Card key={tx.id}><CardContent className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{tx.productName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {tx.quantity} × {formatIDR(tx.unitPrice)}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="uppercase font-normal shrink-0 text-xs">
+                    {getPaymentIcon(tx.paymentMethod)}
+                    {tx.paymentMethod}
+                  </Badge>
+                </div>
+                <div className="flex justify-end pt-1 border-t border-border">
+                  <p className="text-base font-bold">{formatIDR(tx.totalPrice)}</p>
+                </div>
+              </CardContent></Card>
+            ))
+          )}
+        </div>
       </div>
     </AppShell>
   );
