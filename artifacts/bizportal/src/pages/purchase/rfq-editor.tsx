@@ -220,9 +220,13 @@ export default function PurchaseDocumentEditorPage() {
     const product = (products ?? []).find((p) => p.id === pid);
     if (product) {
       setLine(idx, { productId: pid, name: product.name, unitCost: Number(product.price) });
-      if (product.defaultPurchaseTaxId) {
-        setTaxRateId(product.defaultPurchaseTaxId);
-      }
+      const currentVendor = (vendors ?? []).find((v) => v.id === supplierId);
+      setTaxRateId(
+        product.defaultPurchaseTaxId
+        ?? currentVendor?.defaultPurchaseTaxId
+        ?? acctSettings?.defaultPurchaseTaxId
+        ?? null
+      );
     }
   };
 

@@ -248,9 +248,13 @@ export default function SalesDocumentEditorPage() {
         name: product.name,
         unitPrice: Number(product.price),
       });
-      if (product.defaultSalesTaxId) {
-        setTaxRateId(product.defaultSalesTaxId);
-      }
+      const currentCustomer = (customers ?? []).find((c) => c.id === customerId);
+      setTaxRateId(
+        product.defaultSalesTaxId
+        ?? currentCustomer?.defaultSalesTaxId
+        ?? acctSettings?.defaultSalesTaxId
+        ?? null
+      );
     }
   };
 
