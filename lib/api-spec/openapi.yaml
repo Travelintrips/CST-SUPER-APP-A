@@ -1769,6 +1769,9 @@ components:
           type: string
         address:
           type: string
+        defaultPurchaseTaxId:
+          type: integer
+          nullable: true
         createdAt:
           type: string
       required: [id, name, country, contactEmail, createdAt]
@@ -1786,6 +1789,9 @@ components:
           type: string
         address:
           type: string
+        defaultPurchaseTaxId:
+          type: integer
+          nullable: true
       required: [name, country, contactEmail]
 
     Shipment:
@@ -1986,6 +1992,9 @@ components:
         notes:
           type: string
           nullable: true
+        defaultSalesTaxId:
+          type: integer
+          nullable: true
         createdAt:
           type: string
       required: [id, name, createdAt]
@@ -2009,6 +2018,9 @@ components:
           nullable: true
         notes:
           type: string
+          nullable: true
+        defaultSalesTaxId:
+          type: integer
           nullable: true
       required: [name]
 

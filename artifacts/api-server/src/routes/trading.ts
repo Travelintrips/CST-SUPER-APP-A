@@ -70,9 +70,9 @@ router.get("/suppliers", async (_req, res) => {
 
 // POST /api/trading/suppliers
 router.post("/suppliers", async (req, res) => {
-  const { name, country, contactEmail, phone, address } = req.body;
+  const { name, country, contactEmail, phone, address, defaultPurchaseTaxId } = req.body;
   const [supplier] = await db.insert(suppliersTable).values({
-    name, country, contactEmail, phone, address
+    name, country, contactEmail, phone, address, defaultPurchaseTaxId: defaultPurchaseTaxId ?? null
   }).returning();
   return res.status(201).json({ ...supplier, createdAt: supplier.createdAt.toISOString() });
 });
@@ -81,13 +81,14 @@ router.post("/suppliers", async (req, res) => {
 router.put("/suppliers/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, country, contactEmail, phone, address } = req.body;
+  const { name, country, contactEmail, phone, address, defaultPurchaseTaxId } = req.body;
   const patch: Record<string, unknown> = {};
   if (typeof name === "string") patch["name"] = name;
   if (typeof country === "string") patch["country"] = country;
   if (typeof contactEmail === "string") patch["contactEmail"] = contactEmail;
   if (phone !== undefined) patch["phone"] = phone;
   if (address !== undefined) patch["address"] = address;
+  if (defaultPurchaseTaxId !== undefined) patch["defaultPurchaseTaxId"] = defaultPurchaseTaxId;
 
   const [updated] = await db.update(suppliersTable).set(patch).where(eq(suppliersTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Supplier not found" });

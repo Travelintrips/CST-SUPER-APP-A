@@ -6165,13 +6165,8 @@ export const voidAccountingPayment = async (
   });
 };
 
-export type VoidAccountingPaymentMutationResult = NonNullable<
-  Awaited<ReturnType<typeof voidAccountingPayment>>
->;
-export type VoidAccountingPaymentMutationError = ErrorType<unknown>;
-
 export const getVoidAccountingPaymentMutationOptions = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<MessageResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -6187,24 +6182,38 @@ export const getVoidAccountingPaymentMutationOptions = <
   { id: number },
   TContext
 > => {
-  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
   const mutationKey = ["voidAccountingPayment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof voidAccountingPayment>>,
     { id: number }
-  > = ({ id }) => {
+  > = (props) => {
+    const { id } = props ?? {};
+
     return voidAccountingPayment(id, requestOptions);
   };
-  return { mutationKey, mutationFn, ...mutationOptions };
+
+  return { mutationFn, ...mutationOptions };
 };
 
-export type UseVoidAccountingPaymentMutationResult = NonNullable<
+export type VoidAccountingPaymentMutationResult = NonNullable<
   Awaited<ReturnType<typeof voidAccountingPayment>>
 >;
-export type UseVoidAccountingPaymentMutationError = ErrorType<unknown>;
 
+export type VoidAccountingPaymentMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Void a posted payment by creating a reversing journal entry
+ */
 export const useVoidAccountingPayment = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<MessageResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -6220,8 +6229,7 @@ export const useVoidAccountingPayment = <
   { id: number },
   TContext
 > => {
-  const mutationOptions = getVoidAccountingPaymentMutationOptions(options);
-  return useMutation(mutationOptions);
+  return useMutation(getVoidAccountingPaymentMutationOptions(options));
 };
 
 /**

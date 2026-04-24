@@ -231,7 +231,10 @@ export default function PurchaseDocumentEditorPage() {
     const sid = Number(val);
     setSupplierId(sid);
     const v = (vendors ?? []).find((x) => x.id === sid);
-    if (v) setSupplierName(v.name);
+    if (v) {
+      setSupplierName(v.name);
+      setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
+    }
   };
 
   const validate = (): string | null => {

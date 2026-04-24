@@ -14,6 +14,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -27,6 +34,7 @@ import {
   useCreateSupplier,
   useUpdateSupplier,
   useDeleteSupplier,
+  useListTaxes,
   getListSuppliersQueryKey,
   type Supplier,
 } from "@workspace/api-client-react";
@@ -37,9 +45,12 @@ export default function VendorsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data: vendors } = useListSuppliers();
+  const { data: taxes } = useListTaxes();
   const createMut = useCreateSupplier();
   const updateMut = useUpdateSupplier();
   const deleteMut = useDeleteSupplier();
+
+  const purchaseTaxes = (taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -49,11 +60,12 @@ export default function VendorsPage() {
     contactEmail: "",
     phone: "",
     address: "",
+    defaultPurchaseTaxId: null as number | null,
   });
 
   const reset = () => {
     setEditing(null);
-    setForm({ name: "", country: "", contactEmail: "", phone: "", address: "" });
+    setForm({ name: "", country: "", contactEmail: "", phone: "", address: "", defaultPurchaseTaxId: null });
   };
 
   const startEdit = (v: Supplier) => {
@@ -64,6 +76,7 @@ export default function VendorsPage() {
       contactEmail: v.contactEmail,
       phone: v.phone ?? "",
       address: v.address ?? "",
+      defaultPurchaseTaxId: v.defaultPurchaseTaxId ?? null,
     });
     setOpen(true);
   };
@@ -79,6 +92,7 @@ export default function VendorsPage() {
       contactEmail: form.contactEmail,
       phone: form.phone || undefined,
       address: form.address || undefined,
+      defaultPurchaseTaxId: form.defaultPurchaseTaxId,
     };
     try {
       if (editing) {
@@ -105,6 +119,12 @@ export default function VendorsPage() {
     } catch (e) {
       toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
     }
+  };
+
+  const taxLabel = (id: number | null | undefined) => {
+    if (!id) return "-";
+    const t = (taxes ?? []).find((x) => x.id === id);
+    return t ? `${t.name} (${t.rate}%)` : "-";
   };
 
   return (
@@ -148,6 +168,23 @@ export default function VendorsPage() {
                   <Label htmlFor="address">Alamat</Label>
                   <Textarea id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                 </div>
+                <div className="grid gap-1.5">
+                  <Label>Tarif Pajak Default (PPN Pembelian)</Label>
+                  <Select
+                    value={form.defaultPurchaseTaxId ? String(form.defaultPurchaseTaxId) : "none"}
+                    onValueChange={(v) => setForm({ ...form, defaultPurchaseTaxId: v === "none" ? null : parseInt(v) })}
+                  >
+                    <SelectTrigger data-testid="select-vendor-tax">
+                      <SelectValue placeholder="Gunakan default global" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— Gunakan default global —</SelectItem>
+                      {purchaseTaxes.map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.rate}%)</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
@@ -171,6 +208,7 @@ export default function VendorsPage() {
                   <TableHead>Negara</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Telepon</TableHead>
+                  <TableHead>Pajak Default</TableHead>
                   <TableHead className="w-[120px] text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -181,6 +219,7 @@ export default function VendorsPage() {
                     <TableCell>{v.country}</TableCell>
                     <TableCell>{v.contactEmail}</TableCell>
                     <TableCell>{v.phone ?? "-"}</TableCell>
+                    <TableCell>{taxLabel(v.defaultPurchaseTaxId)}</TableCell>
                     <TableCell className="text-right">
                       <Button size="icon" variant="ghost" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>
                         <Pencil className="h-4 w-4" />
@@ -193,7 +232,7 @@ export default function VendorsPage() {
                 ))}
                 {(!vendors || vendors.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       Belum ada vendor.
                     </TableCell>
                   </TableRow>

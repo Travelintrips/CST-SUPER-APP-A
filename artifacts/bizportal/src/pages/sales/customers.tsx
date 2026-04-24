@@ -14,6 +14,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -27,6 +34,7 @@ import {
   useCreateCustomer,
   useUpdateCustomer,
   useDeleteCustomer,
+  useListTaxes,
   getListCustomersQueryKey,
   type Customer,
 } from "@workspace/api-client-react";
@@ -37,9 +45,12 @@ export default function CustomersPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data: customers } = useListCustomers();
+  const { data: taxes } = useListTaxes();
   const createMut = useCreateCustomer();
   const updateMut = useUpdateCustomer();
   const deleteMut = useDeleteCustomer();
+
+  const saleTaxes = (taxes ?? []).filter((t) => t.kind === "sale" && t.isActive);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -50,11 +61,12 @@ export default function CustomersPage() {
     taxId: "",
     address: "",
     notes: "",
+    defaultSalesTaxId: null as number | null,
   });
 
   const reset = () => {
     setEditing(null);
-    setForm({ name: "", email: "", phone: "", taxId: "", address: "", notes: "" });
+    setForm({ name: "", email: "", phone: "", taxId: "", address: "", notes: "", defaultSalesTaxId: null });
   };
 
   const startEdit = (c: Customer) => {
@@ -66,6 +78,7 @@ export default function CustomersPage() {
       taxId: c.taxId ?? "",
       address: c.address ?? "",
       notes: c.notes ?? "",
+      defaultSalesTaxId: c.defaultSalesTaxId ?? null,
     });
     setOpen(true);
   };
@@ -82,6 +95,7 @@ export default function CustomersPage() {
       taxId: form.taxId || null,
       address: form.address || null,
       notes: form.notes || null,
+      defaultSalesTaxId: form.defaultSalesTaxId,
     };
     try {
       if (editing) {
@@ -108,6 +122,12 @@ export default function CustomersPage() {
     } catch (e) {
       toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
     }
+  };
+
+  const taxLabel = (id: number | null | undefined) => {
+    if (!id) return "-";
+    const t = (taxes ?? []).find((x) => x.id === id);
+    return t ? `${t.name} (${t.rate}%)` : "-";
   };
 
   return (
@@ -155,6 +175,23 @@ export default function CustomersPage() {
                   <Label htmlFor="notes">Catatan</Label>
                   <Textarea id="notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                 </div>
+                <div className="grid gap-1.5">
+                  <Label>Tarif Pajak Default (PPN Penjualan)</Label>
+                  <Select
+                    value={form.defaultSalesTaxId ? String(form.defaultSalesTaxId) : "none"}
+                    onValueChange={(v) => setForm({ ...form, defaultSalesTaxId: v === "none" ? null : parseInt(v) })}
+                  >
+                    <SelectTrigger data-testid="select-customer-tax">
+                      <SelectValue placeholder="Gunakan default global" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— Gunakan default global —</SelectItem>
+                      {saleTaxes.map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.rate}%)</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
@@ -178,6 +215,7 @@ export default function CustomersPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Telepon</TableHead>
                   <TableHead>NPWP</TableHead>
+                  <TableHead>Pajak Default</TableHead>
                   <TableHead className="w-[120px] text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -188,6 +226,7 @@ export default function CustomersPage() {
                     <TableCell>{c.email ?? "-"}</TableCell>
                     <TableCell>{c.phone ?? "-"}</TableCell>
                     <TableCell>{c.taxId ?? "-"}</TableCell>
+                    <TableCell>{taxLabel(c.defaultSalesTaxId)}</TableCell>
                     <TableCell className="text-right">
                       <Button size="icon" variant="ghost" onClick={() => startEdit(c)} data-testid={`button-edit-customer-${c.id}`}>
                         <Pencil className="h-4 w-4" />
@@ -200,7 +239,7 @@ export default function CustomersPage() {
                 ))}
                 {(!customers || customers.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       Belum ada customer.
                     </TableCell>
                   </TableRow>

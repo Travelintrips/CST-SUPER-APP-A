@@ -323,6 +323,7 @@ export const ListSuppliersResponseItem = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  defaultPurchaseTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 export const ListSuppliersResponse = zod.array(ListSuppliersResponseItem);
@@ -336,6 +337,7 @@ export const CreateSupplierBody = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  defaultPurchaseTaxId: zod.number().nullish(),
 });
 
 /**
@@ -351,6 +353,7 @@ export const UpdateSupplierBody = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  defaultPurchaseTaxId: zod.number().nullish(),
 });
 
 export const UpdateSupplierResponse = zod.object({
@@ -360,6 +363,7 @@ export const UpdateSupplierResponse = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  defaultPurchaseTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -548,6 +552,7 @@ export const ListCustomersResponseItem = zod.object({
   taxId: zod.string().nullish(),
   address: zod.string().nullish(),
   notes: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 export const ListCustomersResponse = zod.array(ListCustomersResponseItem);
@@ -562,6 +567,7 @@ export const CreateCustomerBody = zod.object({
   taxId: zod.string().nullish(),
   address: zod.string().nullish(),
   notes: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
 });
 
 /**
@@ -578,6 +584,7 @@ export const UpdateCustomerBody = zod.object({
   taxId: zod.string().nullish(),
   address: zod.string().nullish(),
   notes: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
 });
 
 export const UpdateCustomerResponse = zod.object({
@@ -588,6 +595,7 @@ export const UpdateCustomerResponse = zod.object({
   taxId: zod.string().nullish(),
   address: zod.string().nullish(),
   notes: zod.string().nullish(),
+  defaultSalesTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -1560,6 +1568,7 @@ export const ListAccountingPaymentsQueryParams = zod.object({
 export const ListAccountingPaymentsResponseItem = zod.object({
   id: zod.number(),
   paymentType: zod.enum(["inbound", "outbound"]),
+  status: zod.enum(["posted", "voided"]),
   amount: zod.number(),
   journalId: zod.number(),
   partnerName: zod.string().nullish(),
@@ -1567,6 +1576,7 @@ export const ListAccountingPaymentsResponseItem = zod.object({
   ref: zod.string().nullish(),
   memo: zod.string().nullish(),
   entryId: zod.number().nullish(),
+  voidEntryId: zod.number().nullish(),
   sourceType: zod.string().nullish(),
   sourceDocId: zod.number().nullish(),
   createdById: zod.string().nullish(),
@@ -1602,6 +1612,7 @@ export const GetAccountingPaymentResponse = zod
   .object({
     id: zod.number(),
     paymentType: zod.enum(["inbound", "outbound"]),
+    status: zod.enum(["posted", "voided"]),
     amount: zod.number(),
     journalId: zod.number(),
     partnerName: zod.string().nullish(),
@@ -1609,6 +1620,78 @@ export const GetAccountingPaymentResponse = zod
     ref: zod.string().nullish(),
     memo: zod.string().nullish(),
     entryId: zod.number().nullish(),
+    voidEntryId: zod.number().nullish(),
+    sourceType: zod.string().nullish(),
+    sourceDocId: zod.number().nullish(),
+    createdById: zod.string().nullish(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      entry: zod
+        .object({
+          id: zod.number(),
+          entryNumber: zod.string(),
+          journalId: zod.number(),
+          date: zod.string(),
+          ref: zod.string().nullish(),
+          description: zod.string().nullish(),
+          status: zod.enum(["draft", "posted"]),
+          source: zod.enum([
+            "manual",
+            "sales_invoice",
+            "purchase_bill",
+            "sales_payment",
+            "purchase_payment",
+            "pos_sale",
+            "ecommerce_order",
+            "stock_received",
+            "manual_payment",
+          ]),
+          sourceId: zod.number().nullish(),
+          totalDebit: zod.number(),
+          totalCredit: zod.number(),
+          createdById: zod.string().nullish(),
+          createdAt: zod.string(),
+        })
+        .and(
+          zod.object({
+            lines: zod.array(
+              zod.object({
+                id: zod.number(),
+                entryId: zod.number(),
+                accountId: zod.number(),
+                description: zod.string().nullish(),
+                debit: zod.number(),
+                credit: zod.number(),
+              }),
+            ),
+          }),
+        )
+        .nullish(),
+    }),
+  );
+
+/**
+ * @summary Void a posted payment by creating a reversing journal entry
+ */
+export const VoidAccountingPaymentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const VoidAccountingPaymentResponse = zod
+  .object({
+    id: zod.number(),
+    paymentType: zod.enum(["inbound", "outbound"]),
+    status: zod.enum(["posted", "voided"]),
+    amount: zod.number(),
+    journalId: zod.number(),
+    partnerName: zod.string().nullish(),
+    date: zod.string(),
+    ref: zod.string().nullish(),
+    memo: zod.string().nullish(),
+    entryId: zod.number().nullish(),
+    voidEntryId: zod.number().nullish(),
     sourceType: zod.string().nullish(),
     sourceDocId: zod.number().nullish(),
     createdById: zod.string().nullish(),

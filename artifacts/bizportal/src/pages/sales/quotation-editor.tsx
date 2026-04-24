@@ -259,7 +259,10 @@ export default function SalesDocumentEditorPage() {
     const cid = Number(val);
     setCustomerId(cid);
     const c = (customers ?? []).find((x) => x.id === cid);
-    if (c) setCustomerName(c.name);
+    if (c) {
+      setCustomerName(c.name);
+      setTaxRateId(c.defaultSalesTaxId ?? acctSettings?.defaultSalesTaxId ?? null);
+    }
   };
 
   const validate = (): string | null => {

@@ -160,6 +160,7 @@ export interface Supplier {
   contactEmail: string;
   phone?: string;
   address?: string;
+  defaultPurchaseTaxId?: number | null;
   createdAt: string;
 }
 
@@ -169,6 +170,7 @@ export interface CreateSupplierBody {
   contactEmail: string;
   phone?: string;
   address?: string;
+  defaultPurchaseTaxId?: number | null;
 }
 
 export type ShipmentStatus =
@@ -316,6 +318,7 @@ export interface Customer {
   taxId?: string | null;
   address?: string | null;
   notes?: string | null;
+  defaultSalesTaxId?: number | null;
   createdAt: string;
 }
 
@@ -326,6 +329,7 @@ export interface CreateCustomerBody {
   taxId?: string | null;
   address?: string | null;
   notes?: string | null;
+  defaultSalesTaxId?: number | null;
 }
 
 export interface SalesDocumentLine {

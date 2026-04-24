@@ -118,13 +118,13 @@ router.get("/customers", async (_req, res) => {
 });
 
 router.post("/customers", async (req, res) => {
-  const { name, email, phone, taxId, address, notes } = req.body ?? {};
+  const { name, email, phone, taxId, address, notes, defaultSalesTaxId } = req.body ?? {};
   if (typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "name required" });
   }
   const [created] = await db
     .insert(customersTable)
-    .values({ name, email, phone, taxId, address, notes })
+    .values({ name, email, phone, taxId, address, notes, defaultSalesTaxId: defaultSalesTaxId ?? null })
     .returning();
   return res.status(201).json(serializeCustomer(created));
 });
@@ -132,7 +132,7 @@ router.post("/customers", async (req, res) => {
 router.put("/customers/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, email, phone, taxId, address, notes } = req.body ?? {};
+  const { name, email, phone, taxId, address, notes, defaultSalesTaxId } = req.body ?? {};
   const patch: Record<string, unknown> = {};
   if (typeof name === "string") patch["name"] = name;
   if (email !== undefined) patch["email"] = email;
@@ -140,6 +140,7 @@ router.put("/customers/:id", async (req, res) => {
   if (taxId !== undefined) patch["taxId"] = taxId;
   if (address !== undefined) patch["address"] = address;
   if (notes !== undefined) patch["notes"] = notes;
+  if (defaultSalesTaxId !== undefined) patch["defaultSalesTaxId"] = defaultSalesTaxId;
   const [updated] = await db
     .update(customersTable)
     .set(patch)
