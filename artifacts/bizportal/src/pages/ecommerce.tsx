@@ -225,15 +225,15 @@ export default function EcommercePage() {
   };
 
   const handleCreateTaxRateChange = (val: string, subtotal: number) => {
-    setCreateTaxRateId(val);
-    if (val) setCreateTaxAmount(computeTax(subtotal, val));
-    else setCreateTaxAmount(0);
+    const rateId = val === "none" ? "" : val;
+    setCreateTaxRateId(rateId);
+    setCreateTaxAmount(rateId ? computeTax(subtotal, rateId) : 0);
   };
 
   const handleEditTaxRateChange = (val: string, subtotal: number) => {
-    setEditTaxRateId(val);
-    if (val) setEditTaxAmount(computeTax(subtotal, val));
-    else setEditTaxAmount(0);
+    const rateId = val === "none" ? "" : val;
+    setEditTaxRateId(rateId);
+    setEditTaxAmount(rateId ? computeTax(subtotal, rateId) : 0);
   };
 
   const handleCreateOrder = (e: React.FormEvent<HTMLFormElement>) => {
@@ -308,7 +308,7 @@ export default function EcommercePage() {
     setEditOrderStatus((order.status as OrderStatus) ?? "pending");
     setEditSubtotal(order.totalAmount);
     setEditTaxRateId("");
-    setEditTaxAmount(order.taxAmount ?? 0);
+    setEditTaxAmount(0);
   };
 
   return (
@@ -537,9 +537,8 @@ export default function EcommercePage() {
                             type="number"
                             min="0"
                             value={createTaxAmount}
-                            onChange={(e) => !createTaxRateId && setCreateTaxAmount(Number(e.target.value) || 0)}
-                            readOnly={!!createTaxRateId}
-                            className={createTaxRateId ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+                            readOnly
+                            className="bg-muted text-muted-foreground cursor-not-allowed"
                             data-testid="input-order-tax"
                           />
                         </div>
@@ -769,9 +768,8 @@ export default function EcommercePage() {
                       type="number"
                       min="0"
                       value={editTaxAmount}
-                      onChange={(e) => !editTaxRateId && setEditTaxAmount(Number(e.target.value) || 0)}
-                      readOnly={!!editTaxRateId}
-                      className={editTaxRateId ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+                      readOnly
+                      className="bg-muted text-muted-foreground cursor-not-allowed"
                       data-testid="input-edit-order-tax"
                     />
                   </div>
