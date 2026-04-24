@@ -9,6 +9,7 @@ import {
   useUpdateOrder,
   useDeleteOrder,
   useListTaxes,
+  useGetAccountingSettings,
   getListProductsQueryKey,
   getListOrdersQueryKey,
   type Product,
@@ -110,6 +111,7 @@ export default function EcommercePage() {
   const [editTaxAmount, setEditTaxAmount] = useState(0);
 
   const { data: allTaxes = [] as AccountingTax[] } = useListTaxes();
+  const { data: accountingSettings } = useGetAccountingSettings();
   const saleTaxes = allTaxes.filter((t) => t.kind === "sale" && t.isActive);
 
   const createImageUploader = useUpload({
@@ -300,8 +302,17 @@ export default function EcommercePage() {
       setCreateSubtotal(0);
       setCreateTaxRateId("");
       setCreateTaxAmount(0);
+    } else {
+      const defaultId = accountingSettings?.defaultSalesTaxId;
+      if (defaultId) {
+        setCreateTaxRateId(String(defaultId));
+      } else {
+        setCreateTaxRateId("");
+      }
+      setCreateSubtotal(0);
+      setCreateTaxAmount(0);
     }
-  }, [isOrderDialogOpen]);
+  }, [isOrderDialogOpen, accountingSettings?.defaultSalesTaxId]);
 
   const openEditOrder = (order: Order) => {
     setEditingOrder(order);
