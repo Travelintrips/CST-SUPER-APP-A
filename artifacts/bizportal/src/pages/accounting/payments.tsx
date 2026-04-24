@@ -67,8 +67,8 @@ export default function PaymentsPage() {
 
   const reset = () => setForm(emptyForm);
 
-  const totalInbound = (payments as AccountingPayment[]).filter((p) => p.paymentType === "inbound").reduce((s: number, p: AccountingPayment) => s + p.amount, 0);
-  const totalOutbound = (payments as AccountingPayment[]).filter((p) => p.paymentType === "outbound").reduce((s: number, p: AccountingPayment) => s + p.amount, 0);
+  const totalInbound = payments.filter((p) => p.paymentType === "inbound").reduce((s, p) => s + p.amount, 0);
+  const totalOutbound = payments.filter((p) => p.paymentType === "outbound").reduce((s, p) => s + p.amount, 0);
 
   const submit = async () => {
     if (!form.paymentType || !form.amount || !form.journalId || !form.date) {
@@ -318,7 +318,7 @@ export default function PaymentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(payments as AccountingPayment[]).map((p) => {
+                  {payments.map((p) => {
                     const journal = journals.find((j) => j.id === p.journalId);
                     return (
                       <TableRow key={p.id}>
