@@ -22,6 +22,10 @@ tags:
     description: Point of Sale division
   - name: dashboard
     description: Dashboard summary
+  - name: sales
+    description: Sales — quotations, orders, customers, invoices
+  - name: purchase
+    description: Purchase — RFQ, purchase orders, vendors, bills
 
 paths:
   /healthz:
@@ -604,6 +608,364 @@ paths:
               schema:
                 $ref: "#/components/schemas/PosSummary"
 
+  /sales/summary:
+    get:
+      operationId: getSalesSummary
+      tags: [sales]
+      summary: Sales dashboard summary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesSummary"
+
+  /sales/customers:
+    get:
+      operationId: listCustomers
+      tags: [sales]
+      summary: List customers
+      responses:
+        "200":
+          description: Customers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Customer"
+    post:
+      operationId: createCustomer
+      tags: [sales]
+      summary: Create a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
+  /sales/customers/{id}:
+    put:
+      operationId: updateCustomer
+      tags: [sales]
+      summary: Update a customer
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+    delete:
+      operationId: deleteCustomer
+      tags: [sales]
+      summary: Delete a customer
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /sales/documents:
+    get:
+      operationId: listSalesDocuments
+      tags: [sales]
+      summary: List sales documents (quotations and orders)
+      parameters:
+        - in: query
+          name: kind
+          required: false
+          schema:
+            type: string
+            enum: [quote, order]
+        - in: query
+          name: invoiceStatus
+          required: false
+          schema:
+            type: string
+            enum: [none, to_invoice, invoiced]
+      responses:
+        "200":
+          description: Sales documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesDocument"
+    post:
+      operationId: createSalesDocument
+      tags: [sales]
+      summary: Create a sales document (quotation or order)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSalesDocumentBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesDocument"
+
+  /sales/documents/{id}:
+    get:
+      operationId: getSalesDocument
+      tags: [sales]
+      summary: Get a sales document with its lines
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sales document with lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesDocumentDetail"
+    put:
+      operationId: updateSalesDocument
+      tags: [sales]
+      summary: Update a sales document and its lines
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSalesDocumentBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesDocumentDetail"
+    delete:
+      operationId: deleteSalesDocument
+      tags: [sales]
+      summary: Delete a sales document
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /sales/documents/{id}/action:
+    post:
+      operationId: salesDocumentAction
+      tags: [sales]
+      summary: Perform a workflow action on a sales document (send, confirm, cancel, invoice, deliver, draft)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesDocumentActionBody"
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesDocumentDetail"
+
+  /purchase/summary:
+    get:
+      operationId: getPurchaseSummary
+      tags: [purchase]
+      summary: Purchase dashboard summary
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseSummary"
+
+  /purchase/documents:
+    get:
+      operationId: listPurchaseDocuments
+      tags: [purchase]
+      summary: List purchase documents (RFQs and orders)
+      parameters:
+        - in: query
+          name: kind
+          required: false
+          schema:
+            type: string
+            enum: [rfq, order]
+        - in: query
+          name: billStatus
+          required: false
+          schema:
+            type: string
+            enum: [none, to_bill, billed]
+      responses:
+        "200":
+          description: Purchase documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PurchaseDocument"
+    post:
+      operationId: createPurchaseDocument
+      tags: [purchase]
+      summary: Create a purchase document (RFQ or order)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePurchaseDocumentBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDocument"
+
+  /purchase/documents/{id}:
+    get:
+      operationId: getPurchaseDocument
+      tags: [purchase]
+      summary: Get a purchase document with its lines
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Purchase document with lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDocumentDetail"
+    put:
+      operationId: updatePurchaseDocument
+      tags: [purchase]
+      summary: Update a purchase document and its lines
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePurchaseDocumentBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDocumentDetail"
+    delete:
+      operationId: deletePurchaseDocument
+      tags: [purchase]
+      summary: Delete a purchase document
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /purchase/documents/{id}/action:
+    post:
+      operationId: purchaseDocumentAction
+      tags: [purchase]
+      summary: Perform a workflow action on a purchase document (send, confirm, cancel, receive, bill, draft)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseDocumentActionBody"
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDocumentDetail"
+
 components:
   schemas:
     HealthStatus:
@@ -980,3 +1342,335 @@ components:
         topProduct:
           type: string
       required: [todayTotal, todayCount, monthTotal, monthCount]
+
+    SalesSummary:
+      type: object
+      properties:
+        quotationsCount:
+          type: integer
+        ordersCount:
+          type: integer
+        toInvoiceCount:
+          type: integer
+        totalRevenue:
+          type: number
+        topCustomer:
+          type: string
+          nullable: true
+      required: [quotationsCount, ordersCount, toInvoiceCount, totalRevenue]
+
+    PurchaseSummary:
+      type: object
+      properties:
+        rfqCount:
+          type: integer
+        ordersCount:
+          type: integer
+        toBillCount:
+          type: integer
+        totalSpend:
+          type: number
+        topVendor:
+          type: string
+          nullable: true
+      required: [rfqCount, ordersCount, toBillCount, totalSpend]
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        taxId:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, name, createdAt]
+
+    CreateCustomerBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        taxId:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required: [name]
+
+    SalesDocumentLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+        productId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        subtotal:
+          type: number
+      required: [id, documentId, name, quantity, unitPrice, subtotal]
+
+    CreateSalesDocumentLineBody:
+      type: object
+      properties:
+        productId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+      required: [name, quantity, unitPrice]
+
+    SalesDocument:
+      type: object
+      properties:
+        id:
+          type: integer
+        docNumber:
+          type: string
+        kind:
+          type: string
+          enum: [quote, order]
+        status:
+          type: string
+          enum: [draft, sent, confirmed, done, cancelled]
+        invoiceStatus:
+          type: string
+          enum: [none, to_invoice, invoiced]
+        deliveryStatus:
+          type: string
+          enum: [none, to_deliver, delivered]
+        customerId:
+          type: integer
+          nullable: true
+        customerName:
+          type: string
+        totalAmount:
+          type: number
+        validUntil:
+          type: string
+          nullable: true
+        expectedDate:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        confirmedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, docNumber, kind, status, invoiceStatus, deliveryStatus, customerName, totalAmount, createdAt, updatedAt]
+
+    SalesDocumentDetail:
+      allOf:
+        - $ref: "#/components/schemas/SalesDocument"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items:
+                $ref: "#/components/schemas/SalesDocumentLine"
+          required: [lines]
+
+    CreateSalesDocumentBody:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [quote, order]
+        customerId:
+          type: integer
+          nullable: true
+        customerName:
+          type: string
+        validUntil:
+          type: string
+          nullable: true
+        expectedDate:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateSalesDocumentLineBody"
+      required: [customerName, lines]
+
+    SalesDocumentActionBody:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [send, confirm, cancel, draft, mark_invoiced, mark_delivered]
+      required: [action]
+
+    PurchaseDocumentLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+        productId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        subtotal:
+          type: number
+      required: [id, documentId, name, quantity, unitCost, subtotal]
+
+    CreatePurchaseDocumentLineBody:
+      type: object
+      properties:
+        productId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+        unitCost:
+          type: number
+      required: [name, quantity, unitCost]
+
+    PurchaseDocument:
+      type: object
+      properties:
+        id:
+          type: integer
+        docNumber:
+          type: string
+        kind:
+          type: string
+          enum: [rfq, order]
+        status:
+          type: string
+          enum: [draft, sent, confirmed, done, cancelled]
+        receiveStatus:
+          type: string
+          enum: [none, to_receive, received]
+        billStatus:
+          type: string
+          enum: [none, to_bill, billed]
+        supplierId:
+          type: integer
+          nullable: true
+        supplierName:
+          type: string
+        totalAmount:
+          type: number
+        expectedDate:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        confirmedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, docNumber, kind, status, receiveStatus, billStatus, supplierName, totalAmount, createdAt, updatedAt]
+
+    PurchaseDocumentDetail:
+      allOf:
+        - $ref: "#/components/schemas/PurchaseDocument"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items:
+                $ref: "#/components/schemas/PurchaseDocumentLine"
+          required: [lines]
+
+    CreatePurchaseDocumentBody:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [rfq, order]
+        supplierId:
+          type: integer
+          nullable: true
+        supplierName:
+          type: string
+        expectedDate:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreatePurchaseDocumentLineBody"
+      required: [supplierName, lines]
+
+    PurchaseDocumentActionBody:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [send, confirm, cancel, draft, mark_received, mark_billed]
+      required: [action]

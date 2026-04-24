@@ -5,3 +5,6 @@ export * from "./suppliers";
 export * from "./stocks";
 export * from "./shipments";
 export * from "./transactions";
+export * from "./customers";
+export * from "./salesDocuments";
+export * from "./purchaseDocuments";

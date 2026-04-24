@@ -287,3 +287,305 @@ export interface PosSummary {
   monthCount: number;
   topProduct?: string;
 }
+
+export interface SalesSummary {
+  quotationsCount: number;
+  ordersCount: number;
+  toInvoiceCount: number;
+  totalRevenue: number;
+  topCustomer?: string | null;
+}
+
+export interface PurchaseSummary {
+  rfqCount: number;
+  ordersCount: number;
+  toBillCount: number;
+  totalSpend: number;
+  topVendor?: string | null;
+}
+
+export interface Customer {
+  id: number;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  taxId?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface CreateCustomerBody {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  taxId?: string | null;
+  address?: string | null;
+  notes?: string | null;
+}
+
+export interface SalesDocumentLine {
+  id: number;
+  documentId: number;
+  productId?: number | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface CreateSalesDocumentLineBody {
+  productId?: number | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unitPrice: number;
+}
+
+export type SalesDocumentKind =
+  (typeof SalesDocumentKind)[keyof typeof SalesDocumentKind];
+
+export const SalesDocumentKind = {
+  quote: "quote",
+  order: "order",
+} as const;
+
+export type SalesDocumentStatus =
+  (typeof SalesDocumentStatus)[keyof typeof SalesDocumentStatus];
+
+export const SalesDocumentStatus = {
+  draft: "draft",
+  sent: "sent",
+  confirmed: "confirmed",
+  done: "done",
+  cancelled: "cancelled",
+} as const;
+
+export type SalesDocumentInvoiceStatus =
+  (typeof SalesDocumentInvoiceStatus)[keyof typeof SalesDocumentInvoiceStatus];
+
+export const SalesDocumentInvoiceStatus = {
+  none: "none",
+  to_invoice: "to_invoice",
+  invoiced: "invoiced",
+} as const;
+
+export type SalesDocumentDeliveryStatus =
+  (typeof SalesDocumentDeliveryStatus)[keyof typeof SalesDocumentDeliveryStatus];
+
+export const SalesDocumentDeliveryStatus = {
+  none: "none",
+  to_deliver: "to_deliver",
+  delivered: "delivered",
+} as const;
+
+export interface SalesDocument {
+  id: number;
+  docNumber: string;
+  kind: SalesDocumentKind;
+  status: SalesDocumentStatus;
+  invoiceStatus: SalesDocumentInvoiceStatus;
+  deliveryStatus: SalesDocumentDeliveryStatus;
+  customerId?: number | null;
+  customerName: string;
+  totalAmount: number;
+  validUntil?: string | null;
+  expectedDate?: string | null;
+  notes?: string | null;
+  confirmedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SalesDocumentDetail = SalesDocument & {
+  lines: SalesDocumentLine[];
+};
+
+export type CreateSalesDocumentBodyKind =
+  (typeof CreateSalesDocumentBodyKind)[keyof typeof CreateSalesDocumentBodyKind];
+
+export const CreateSalesDocumentBodyKind = {
+  quote: "quote",
+  order: "order",
+} as const;
+
+export interface CreateSalesDocumentBody {
+  kind?: CreateSalesDocumentBodyKind;
+  customerId?: number | null;
+  customerName: string;
+  validUntil?: string | null;
+  expectedDate?: string | null;
+  notes?: string | null;
+  lines: CreateSalesDocumentLineBody[];
+}
+
+export type SalesDocumentActionBodyAction =
+  (typeof SalesDocumentActionBodyAction)[keyof typeof SalesDocumentActionBodyAction];
+
+export const SalesDocumentActionBodyAction = {
+  send: "send",
+  confirm: "confirm",
+  cancel: "cancel",
+  draft: "draft",
+  mark_invoiced: "mark_invoiced",
+  mark_delivered: "mark_delivered",
+} as const;
+
+export interface SalesDocumentActionBody {
+  action: SalesDocumentActionBodyAction;
+}
+
+export interface PurchaseDocumentLine {
+  id: number;
+  documentId: number;
+  productId?: number | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unitCost: number;
+  subtotal: number;
+}
+
+export interface CreatePurchaseDocumentLineBody {
+  productId?: number | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unitCost: number;
+}
+
+export type PurchaseDocumentKind =
+  (typeof PurchaseDocumentKind)[keyof typeof PurchaseDocumentKind];
+
+export const PurchaseDocumentKind = {
+  rfq: "rfq",
+  order: "order",
+} as const;
+
+export type PurchaseDocumentStatus =
+  (typeof PurchaseDocumentStatus)[keyof typeof PurchaseDocumentStatus];
+
+export const PurchaseDocumentStatus = {
+  draft: "draft",
+  sent: "sent",
+  confirmed: "confirmed",
+  done: "done",
+  cancelled: "cancelled",
+} as const;
+
+export type PurchaseDocumentReceiveStatus =
+  (typeof PurchaseDocumentReceiveStatus)[keyof typeof PurchaseDocumentReceiveStatus];
+
+export const PurchaseDocumentReceiveStatus = {
+  none: "none",
+  to_receive: "to_receive",
+  received: "received",
+} as const;
+
+export type PurchaseDocumentBillStatus =
+  (typeof PurchaseDocumentBillStatus)[keyof typeof PurchaseDocumentBillStatus];
+
+export const PurchaseDocumentBillStatus = {
+  none: "none",
+  to_bill: "to_bill",
+  billed: "billed",
+} as const;
+
+export interface PurchaseDocument {
+  id: number;
+  docNumber: string;
+  kind: PurchaseDocumentKind;
+  status: PurchaseDocumentStatus;
+  receiveStatus: PurchaseDocumentReceiveStatus;
+  billStatus: PurchaseDocumentBillStatus;
+  supplierId?: number | null;
+  supplierName: string;
+  totalAmount: number;
+  expectedDate?: string | null;
+  notes?: string | null;
+  confirmedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PurchaseDocumentDetail = PurchaseDocument & {
+  lines: PurchaseDocumentLine[];
+};
+
+export type CreatePurchaseDocumentBodyKind =
+  (typeof CreatePurchaseDocumentBodyKind)[keyof typeof CreatePurchaseDocumentBodyKind];
+
+export const CreatePurchaseDocumentBodyKind = {
+  rfq: "rfq",
+  order: "order",
+} as const;
+
+export interface CreatePurchaseDocumentBody {
+  kind?: CreatePurchaseDocumentBodyKind;
+  supplierId?: number | null;
+  supplierName: string;
+  expectedDate?: string | null;
+  notes?: string | null;
+  lines: CreatePurchaseDocumentLineBody[];
+}
+
+export type PurchaseDocumentActionBodyAction =
+  (typeof PurchaseDocumentActionBodyAction)[keyof typeof PurchaseDocumentActionBodyAction];
+
+export const PurchaseDocumentActionBodyAction = {
+  send: "send",
+  confirm: "confirm",
+  cancel: "cancel",
+  draft: "draft",
+  mark_received: "mark_received",
+  mark_billed: "mark_billed",
+} as const;
+
+export interface PurchaseDocumentActionBody {
+  action: PurchaseDocumentActionBodyAction;
+}
+
+export type ListSalesDocumentsParams = {
+  kind?: ListSalesDocumentsKind;
+  invoiceStatus?: ListSalesDocumentsInvoiceStatus;
+};
+
+export type ListSalesDocumentsKind =
+  (typeof ListSalesDocumentsKind)[keyof typeof ListSalesDocumentsKind];
+
+export const ListSalesDocumentsKind = {
+  quote: "quote",
+  order: "order",
+} as const;
+
+export type ListSalesDocumentsInvoiceStatus =
+  (typeof ListSalesDocumentsInvoiceStatus)[keyof typeof ListSalesDocumentsInvoiceStatus];
+
+export const ListSalesDocumentsInvoiceStatus = {
+  none: "none",
+  to_invoice: "to_invoice",
+  invoiced: "invoiced",
+} as const;
+
+export type ListPurchaseDocumentsParams = {
+  kind?: ListPurchaseDocumentsKind;
+  billStatus?: ListPurchaseDocumentsBillStatus;
+};
+
+export type ListPurchaseDocumentsKind =
+  (typeof ListPurchaseDocumentsKind)[keyof typeof ListPurchaseDocumentsKind];
+
+export const ListPurchaseDocumentsKind = {
+  rfq: "rfq",
+  order: "order",
+} as const;
+
+export type ListPurchaseDocumentsBillStatus =
+  (typeof ListPurchaseDocumentsBillStatus)[keyof typeof ListPurchaseDocumentsBillStatus];
+
+export const ListPurchaseDocumentsBillStatus = {
+  none: "none",
+  to_bill: "to_bill",
+  billed: "billed",
+} as const;

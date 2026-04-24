@@ -15,6 +15,16 @@ import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
+import SalesDashboardPage from "@/pages/sales/dashboard";
+import SalesDocumentsListPage from "@/pages/sales/documents-list";
+import SalesDocumentEditorPage from "@/pages/sales/quotation-editor";
+import CustomersPage from "@/pages/sales/customers";
+import SalesInvoicesPage from "@/pages/sales/invoices";
+import PurchaseDashboardPage from "@/pages/purchase/dashboard";
+import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
+import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
+import VendorsPage from "@/pages/purchase/vendors";
+import PurchaseBillsPage from "@/pages/purchase/bills";
 
 const queryClient = new QueryClient();
 
@@ -154,6 +164,56 @@ function Router() {
       </Route>
       <Route path="/users">
         <ProtectedRoute component={UsersPage} />
+      </Route>
+
+      <Route path="/sales">
+        <ProtectedRoute component={SalesDashboardPage} />
+      </Route>
+      <Route path="/sales/quotations">
+        <ProtectedRoute component={() => <SalesDocumentsListPage kind="quote" />} />
+      </Route>
+      <Route path="/sales/quotations/new">
+        <ProtectedRoute component={SalesDocumentEditorPage} />
+      </Route>
+      <Route path="/sales/quotations/:id">
+        <ProtectedRoute component={SalesDocumentEditorPage} />
+      </Route>
+      <Route path="/sales/orders">
+        <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />
+      </Route>
+      <Route path="/sales/orders/:id">
+        <ProtectedRoute component={SalesDocumentEditorPage} />
+      </Route>
+      <Route path="/sales/customers">
+        <ProtectedRoute component={CustomersPage} />
+      </Route>
+      <Route path="/sales/invoices">
+        <ProtectedRoute component={SalesInvoicesPage} />
+      </Route>
+
+      <Route path="/purchase">
+        <ProtectedRoute component={PurchaseDashboardPage} />
+      </Route>
+      <Route path="/purchase/rfq">
+        <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />
+      </Route>
+      <Route path="/purchase/rfq/new">
+        <ProtectedRoute component={PurchaseDocumentEditorPage} />
+      </Route>
+      <Route path="/purchase/rfq/:id">
+        <ProtectedRoute component={PurchaseDocumentEditorPage} />
+      </Route>
+      <Route path="/purchase/orders">
+        <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />
+      </Route>
+      <Route path="/purchase/orders/:id">
+        <ProtectedRoute component={PurchaseDocumentEditorPage} />
+      </Route>
+      <Route path="/purchase/vendors">
+        <ProtectedRoute component={VendorsPage} />
+      </Route>
+      <Route path="/purchase/bills">
+        <ProtectedRoute component={PurchaseBillsPage} />
       </Route>
 
       <Route component={NotFound} />

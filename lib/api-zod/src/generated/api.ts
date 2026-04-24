@@ -519,3 +519,516 @@ export const GetPosSummaryResponse = zod.object({
   monthCount: zod.number(),
   topProduct: zod.string().optional(),
 });
+
+/**
+ * @summary Sales dashboard summary
+ */
+export const GetSalesSummaryResponse = zod.object({
+  quotationsCount: zod.number(),
+  ordersCount: zod.number(),
+  toInvoiceCount: zod.number(),
+  totalRevenue: zod.number(),
+  topCustomer: zod.string().nullish(),
+});
+
+/**
+ * @summary List customers
+ */
+export const ListCustomersResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  email: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  taxId: zod.string().nullish(),
+  address: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListCustomersResponse = zod.array(ListCustomersResponseItem);
+
+/**
+ * @summary Create a customer
+ */
+export const CreateCustomerBody = zod.object({
+  name: zod.string(),
+  email: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  taxId: zod.string().nullish(),
+  address: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Update a customer
+ */
+export const UpdateCustomerParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateCustomerBody = zod.object({
+  name: zod.string(),
+  email: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  taxId: zod.string().nullish(),
+  address: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateCustomerResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  email: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  taxId: zod.string().nullish(),
+  address: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a customer
+ */
+export const DeleteCustomerParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteCustomerResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary List sales documents (quotations and orders)
+ */
+export const ListSalesDocumentsQueryParams = zod.object({
+  kind: zod.enum(["quote", "order"]).optional(),
+  invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]).optional(),
+});
+
+export const ListSalesDocumentsResponseItem = zod.object({
+  id: zod.number(),
+  docNumber: zod.string(),
+  kind: zod.enum(["quote", "order"]),
+  status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+  invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
+  deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
+  customerId: zod.number().nullish(),
+  customerName: zod.string(),
+  totalAmount: zod.number(),
+  validUntil: zod.string().nullish(),
+  expectedDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  confirmedAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListSalesDocumentsResponse = zod.array(
+  ListSalesDocumentsResponseItem,
+);
+
+/**
+ * @summary Create a sales document (quotation or order)
+ */
+export const CreateSalesDocumentBody = zod.object({
+  kind: zod.enum(["quote", "order"]).optional(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string(),
+  validUntil: zod.string().nullish(),
+  expectedDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      productId: zod.number().nullish(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      quantity: zod.number(),
+      unitPrice: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get a sales document with its lines
+ */
+export const GetSalesDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetSalesDocumentResponse = zod
+  .object({
+    id: zod.number(),
+    docNumber: zod.string(),
+    kind: zod.enum(["quote", "order"]),
+    status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+    invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
+    deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
+    customerId: zod.number().nullish(),
+    customerName: zod.string(),
+    totalAmount: zod.number(),
+    validUntil: zod.string().nullish(),
+    expectedDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    confirmedAt: zod.string().nullish(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          documentId: zod.number(),
+          productId: zod.number().nullish(),
+          name: zod.string(),
+          description: zod.string().nullish(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          subtotal: zod.number(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Update a sales document and its lines
+ */
+export const UpdateSalesDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateSalesDocumentBody = zod.object({
+  kind: zod.enum(["quote", "order"]).optional(),
+  customerId: zod.number().nullish(),
+  customerName: zod.string(),
+  validUntil: zod.string().nullish(),
+  expectedDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      productId: zod.number().nullish(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      quantity: zod.number(),
+      unitPrice: zod.number(),
+    }),
+  ),
+});
+
+export const UpdateSalesDocumentResponse = zod
+  .object({
+    id: zod.number(),
+    docNumber: zod.string(),
+    kind: zod.enum(["quote", "order"]),
+    status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+    invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
+    deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
+    customerId: zod.number().nullish(),
+    customerName: zod.string(),
+    totalAmount: zod.number(),
+    validUntil: zod.string().nullish(),
+    expectedDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    confirmedAt: zod.string().nullish(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          documentId: zod.number(),
+          productId: zod.number().nullish(),
+          name: zod.string(),
+          description: zod.string().nullish(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          subtotal: zod.number(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Delete a sales document
+ */
+export const DeleteSalesDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteSalesDocumentResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Perform a workflow action on a sales document (send, confirm, cancel, invoice, deliver, draft)
+ */
+export const SalesDocumentActionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SalesDocumentActionBody = zod.object({
+  action: zod.enum([
+    "send",
+    "confirm",
+    "cancel",
+    "draft",
+    "mark_invoiced",
+    "mark_delivered",
+  ]),
+});
+
+export const SalesDocumentActionResponse = zod
+  .object({
+    id: zod.number(),
+    docNumber: zod.string(),
+    kind: zod.enum(["quote", "order"]),
+    status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+    invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
+    deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
+    customerId: zod.number().nullish(),
+    customerName: zod.string(),
+    totalAmount: zod.number(),
+    validUntil: zod.string().nullish(),
+    expectedDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    confirmedAt: zod.string().nullish(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          documentId: zod.number(),
+          productId: zod.number().nullish(),
+          name: zod.string(),
+          description: zod.string().nullish(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          subtotal: zod.number(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Purchase dashboard summary
+ */
+export const GetPurchaseSummaryResponse = zod.object({
+  rfqCount: zod.number(),
+  ordersCount: zod.number(),
+  toBillCount: zod.number(),
+  totalSpend: zod.number(),
+  topVendor: zod.string().nullish(),
+});
+
+/**
+ * @summary List purchase documents (RFQs and orders)
+ */
+export const ListPurchaseDocumentsQueryParams = zod.object({
+  kind: zod.enum(["rfq", "order"]).optional(),
+  billStatus: zod.enum(["none", "to_bill", "billed"]).optional(),
+});
+
+export const ListPurchaseDocumentsResponseItem = zod.object({
+  id: zod.number(),
+  docNumber: zod.string(),
+  kind: zod.enum(["rfq", "order"]),
+  status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+  receiveStatus: zod.enum(["none", "to_receive", "received"]),
+  billStatus: zod.enum(["none", "to_bill", "billed"]),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string(),
+  totalAmount: zod.number(),
+  expectedDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  confirmedAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListPurchaseDocumentsResponse = zod.array(
+  ListPurchaseDocumentsResponseItem,
+);
+
+/**
+ * @summary Create a purchase document (RFQ or order)
+ */
+export const CreatePurchaseDocumentBody = zod.object({
+  kind: zod.enum(["rfq", "order"]).optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string(),
+  expectedDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      productId: zod.number().nullish(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      quantity: zod.number(),
+      unitCost: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get a purchase document with its lines
+ */
+export const GetPurchaseDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetPurchaseDocumentResponse = zod
+  .object({
+    id: zod.number(),
+    docNumber: zod.string(),
+    kind: zod.enum(["rfq", "order"]),
+    status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+    receiveStatus: zod.enum(["none", "to_receive", "received"]),
+    billStatus: zod.enum(["none", "to_bill", "billed"]),
+    supplierId: zod.number().nullish(),
+    supplierName: zod.string(),
+    totalAmount: zod.number(),
+    expectedDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    confirmedAt: zod.string().nullish(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          documentId: zod.number(),
+          productId: zod.number().nullish(),
+          name: zod.string(),
+          description: zod.string().nullish(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          subtotal: zod.number(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Update a purchase document and its lines
+ */
+export const UpdatePurchaseDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdatePurchaseDocumentBody = zod.object({
+  kind: zod.enum(["rfq", "order"]).optional(),
+  supplierId: zod.number().nullish(),
+  supplierName: zod.string(),
+  expectedDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  lines: zod.array(
+    zod.object({
+      productId: zod.number().nullish(),
+      name: zod.string(),
+      description: zod.string().nullish(),
+      quantity: zod.number(),
+      unitCost: zod.number(),
+    }),
+  ),
+});
+
+export const UpdatePurchaseDocumentResponse = zod
+  .object({
+    id: zod.number(),
+    docNumber: zod.string(),
+    kind: zod.enum(["rfq", "order"]),
+    status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+    receiveStatus: zod.enum(["none", "to_receive", "received"]),
+    billStatus: zod.enum(["none", "to_bill", "billed"]),
+    supplierId: zod.number().nullish(),
+    supplierName: zod.string(),
+    totalAmount: zod.number(),
+    expectedDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    confirmedAt: zod.string().nullish(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          documentId: zod.number(),
+          productId: zod.number().nullish(),
+          name: zod.string(),
+          description: zod.string().nullish(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          subtotal: zod.number(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Delete a purchase document
+ */
+export const DeletePurchaseDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeletePurchaseDocumentResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Perform a workflow action on a purchase document (send, confirm, cancel, receive, bill, draft)
+ */
+export const PurchaseDocumentActionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PurchaseDocumentActionBody = zod.object({
+  action: zod.enum([
+    "send",
+    "confirm",
+    "cancel",
+    "draft",
+    "mark_received",
+    "mark_billed",
+  ]),
+});
+
+export const PurchaseDocumentActionResponse = zod
+  .object({
+    id: zod.number(),
+    docNumber: zod.string(),
+    kind: zod.enum(["rfq", "order"]),
+    status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+    receiveStatus: zod.enum(["none", "to_receive", "received"]),
+    billStatus: zod.enum(["none", "to_bill", "billed"]),
+    supplierId: zod.number().nullish(),
+    supplierName: zod.string(),
+    totalAmount: zod.number(),
+    expectedDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    confirmedAt: zod.string().nullish(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      lines: zod.array(
+        zod.object({
+          id: zod.number(),
+          documentId: zod.number(),
+          productId: zod.number().nullish(),
+          name: zod.string(),
+          description: zod.string().nullish(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          subtotal: zod.number(),
+        }),
+      ),
+    }),
+  );

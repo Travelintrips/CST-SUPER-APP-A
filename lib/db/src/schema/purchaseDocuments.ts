@@ -1,0 +1,70 @@
+import { pgTable, serial, text, integer, numeric, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { suppliersTable } from "./suppliers";
+import { productsTable } from "./products";
+
+export const purchaseDocKindEnum = pgEnum("purchase_doc_kind", ["rfq", "order"]);
+export const purchaseDocStatusEnum = pgEnum("purchase_doc_status", [
+  "draft",
+  "sent",
+  "confirmed",
+  "done",
+  "cancelled",
+]);
+export const purchaseReceiveStatusEnum = pgEnum("purchase_receive_status", [
+  "none",
+  "to_receive",
+  "received",
+]);
+export const purchaseBillStatusEnum = pgEnum("purchase_bill_status", [
+  "none",
+  "to_bill",
+  "billed",
+]);
+
+export const purchaseDocumentsTable = pgTable("purchase_documents", {
+  id: serial("id").primaryKey(),
+  docNumber: text("doc_number").notNull().unique(),
+  kind: purchaseDocKindEnum("kind").notNull().default("rfq"),
+  status: purchaseDocStatusEnum("status").notNull().default("draft"),
+  receiveStatus: purchaseReceiveStatusEnum("receive_status").notNull().default("none"),
+  billStatus: purchaseBillStatusEnum("bill_status").notNull().default("none"),
+  supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
+  supplierName: text("supplier_name").notNull(),
+  totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  expectedDate: timestamp("expected_date"),
+  notes: text("notes"),
+  confirmedAt: timestamp("confirmed_at"),
+  createdById: text("created_by_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const purchaseDocumentLinesTable = pgTable("purchase_document_lines", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id")
+    .notNull()
+    .references(() => purchaseDocumentsTable.id, { onDelete: "cascade" }),
+  productId: integer("product_id").references(() => productsTable.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("1"),
+  unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
+  subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+});
+
+export const insertPurchaseDocumentSchema = createInsertSchema(purchaseDocumentsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  docNumber: true,
+});
+export const insertPurchaseDocumentLineSchema = createInsertSchema(purchaseDocumentLinesTable).omit({
+  id: true,
+});
+
+export type InsertPurchaseDocument = z.infer<typeof insertPurchaseDocumentSchema>;
+export type InsertPurchaseDocumentLine = z.infer<typeof insertPurchaseDocumentLineSchema>;
+export type PurchaseDocument = typeof purchaseDocumentsTable.$inferSelect;
+export type PurchaseDocumentLine = typeof purchaseDocumentLinesTable.$inferSelect;

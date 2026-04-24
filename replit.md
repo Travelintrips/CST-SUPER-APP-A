@@ -40,6 +40,20 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - Frontend helper: `@workspace/object-storage-web` provides `useUpload` and
   `ObjectUploader` (Uppy-based dashboard) for uploads from React.
 
+## Sales & Purchase Modules
+
+- BizPortal includes Odoo-style Sales and Purchase modules (admin role only).
+- Sales: quotations (SQ/YYYY/00001) → confirm → sales orders (SO) with invoice
+  (`none|to_invoice|invoiced`) and delivery (`none|to_deliver|delivered`)
+  sub-statuses. Customers managed at `/sales/customers`.
+- Purchase: RFQs (RFQ/YYYY/00001) → confirm → purchase orders (PO) with receive
+  and bill sub-statuses. Vendors are the existing `suppliers` table from Trading.
+- Backend routes (`/api/sales`, `/api/purchase`) are gated by `requireAdmin`
+  middleware (`artifacts/api-server/src/lib/requireAdmin.ts`). All endpoints
+  return 401 without auth and 403 for non-admin users.
+- Frontend sidebar uses collapsible groups (shadcn `SidebarMenuSub`) with active
+  group auto-expanded on mount.
+
 ## Codegen Notes
 
 - After running orval, the auto-generated `lib/api-zod/src/index.ts` re-exports

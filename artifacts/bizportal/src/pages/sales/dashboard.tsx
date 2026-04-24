@@ -1,0 +1,122 @@
+import { Link } from "wouter";
+import { AppShell } from "@/components/layout/AppShell";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  useGetSalesSummary,
+  useListSalesDocuments,
+} from "@workspace/api-client-react";
+import { FileText, ShoppingBag, Receipt, TrendingUp, Plus } from "lucide-react";
+
+const idr = (n: number) =>
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+
+export default function SalesDashboardPage() {
+  const { data: summary } = useGetSalesSummary();
+  const { data: recentDocs } = useListSalesDocuments();
+
+  const recent = (recentDocs ?? []).slice(0, 8);
+
+  return (
+    <AppShell>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Sales</h1>
+            <p className="text-sm text-muted-foreground">Ringkasan penjualan dan dokumen terbaru.</p>
+          </div>
+          <div className="flex gap-2">
+            <Link href="/sales/quotations">
+              <Button variant="outline" data-testid="link-go-quotations">
+                <FileText className="mr-2 h-4 w-4" /> Quotations
+              </Button>
+            </Link>
+            <Link href="/sales/quotations">
+              <Button data-testid="button-new-quote">
+                <Plus className="mr-2 h-4 w-4" /> New Quotation
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Quotations</CardTitle>
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-quotations">{summary?.quotationsCount ?? 0}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Sales Orders</CardTitle>
+              <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-orders">{summary?.ordersCount ?? 0}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">To Invoice</CardTitle>
+              <Receipt className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-to-invoice">{summary?.toInvoiceCount ?? 0}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Revenue</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-revenue">{idr(summary?.totalRevenue ?? 0)}</div>
+              {summary?.topCustomer && (
+                <p className="text-xs text-muted-foreground mt-1">Top: {summary.topCustomer}</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Dokumen Terbaru</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recent.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada dokumen.</p>
+            ) : (
+              <div className="space-y-2">
+                {recent.map((d) => (
+                  <Link
+                    key={d.id}
+                    href={d.kind === "order" ? `/sales/orders/${d.id}` : `/sales/quotations/${d.id}`}
+                  >
+                    <div
+                      className="flex items-center justify-between rounded-md border p-3 hover:bg-accent cursor-pointer"
+                      data-testid={`recent-doc-${d.id}`}
+                    >
+                      <div>
+                        <div className="font-medium">{d.docNumber}</div>
+                        <div className="text-xs text-muted-foreground">{d.customerName}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline" className="capitalize">{d.kind}</Badge>
+                        <Badge variant="secondary" className="capitalize">{d.status}</Badge>
+                        <div className="font-medium">{idr(Number(d.totalAmount))}</div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </AppShell>
+  );
+}

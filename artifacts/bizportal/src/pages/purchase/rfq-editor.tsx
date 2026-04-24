@@ -1,0 +1,409 @@
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useRoute, Link } from "wouter";
+import { AppShell } from "@/components/layout/AppShell";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import {
+  useGetPurchaseDocument,
+  useCreatePurchaseDocument,
+  useUpdatePurchaseDocument,
+  usePurchaseDocumentAction,
+  useDeletePurchaseDocument,
+  useListSuppliers,
+  useListProducts,
+  getGetPurchaseDocumentQueryKey,
+  getListPurchaseDocumentsQueryKey,
+} from "@workspace/api-client-react";
+
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save } from "lucide-react";
+
+const idr = (n: number) =>
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+
+interface LineDraft {
+  productId?: number | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unitCost: number;
+}
+
+export default function PurchaseDocumentEditorPage() {
+  const [, paramsNew] = useRoute("/purchase/rfq/new");
+  const [, paramsRfq] = useRoute("/purchase/rfq/:id");
+  const [, paramsOrder] = useRoute("/purchase/orders/:id");
+  const [, navigate] = useLocation();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const isNew = !!paramsNew;
+  const idStr = paramsRfq?.id ?? paramsOrder?.id;
+  const id = idStr ? Number(idStr) : null;
+
+  const { data: doc, isLoading: docLoading } = useGetPurchaseDocument(id ?? 0, {
+    query: {
+      enabled: !isNew && id !== null,
+      queryKey: getGetPurchaseDocumentQueryKey(id ?? 0),
+    },
+  });
+  const { data: vendors } = useListSuppliers();
+  const { data: products } = useListProducts();
+  const createMut = useCreatePurchaseDocument();
+  const updateMut = useUpdatePurchaseDocument();
+  const actionMut = usePurchaseDocumentAction();
+  const deleteMut = useDeletePurchaseDocument();
+
+  const [supplierId, setSupplierId] = useState<number | null>(null);
+  const [supplierName, setSupplierName] = useState("");
+  const [expectedDate, setExpectedDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [lines, setLines] = useState<LineDraft[]>([
+    { name: "", quantity: 1, unitCost: 0 },
+  ]);
+
+  useEffect(() => {
+    if (doc) {
+      setSupplierId(doc.supplierId ?? null);
+      setSupplierName(doc.supplierName);
+      setExpectedDate(doc.expectedDate ? doc.expectedDate.slice(0, 10) : "");
+      setNotes(doc.notes ?? "");
+      setLines(
+        doc.lines.length > 0
+          ? doc.lines.map((l) => ({
+              productId: l.productId ?? null,
+              name: l.name,
+              description: l.description ?? null,
+              quantity: Number(l.quantity),
+              unitCost: Number(l.unitCost),
+            }))
+          : [{ name: "", quantity: 1, unitCost: 0 }],
+      );
+    }
+  }, [doc]);
+
+  const total = useMemo(
+    () => lines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unitCost || 0), 0),
+    [lines],
+  );
+
+  const isEditable = isNew || (doc && (doc.status === "draft" || doc.status === "sent"));
+
+  const setLine = (idx: number, patch: Partial<LineDraft>) => {
+    setLines((arr) => arr.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  };
+  const addLine = () => setLines((arr) => [...arr, { name: "", quantity: 1, unitCost: 0 }]);
+  const removeLine = (idx: number) => setLines((arr) => arr.filter((_, i) => i !== idx));
+
+  const onProductChange = (idx: number, productIdStr: string) => {
+    if (productIdStr === "__custom") {
+      setLine(idx, { productId: null });
+      return;
+    }
+    const pid = Number(productIdStr);
+    const product = (products ?? []).find((p) => p.id === pid);
+    if (product) {
+      setLine(idx, { productId: pid, name: product.name, unitCost: Number(product.price) });
+    }
+  };
+
+  const onVendorChange = (val: string) => {
+    if (val === "__none") {
+      setSupplierId(null);
+      return;
+    }
+    const sid = Number(val);
+    setSupplierId(sid);
+    const v = (vendors ?? []).find((x) => x.id === sid);
+    if (v) setSupplierName(v.name);
+  };
+
+  const validate = (): string | null => {
+    if (!supplierName.trim()) return "Vendor wajib diisi";
+    if (lines.length === 0) return "Minimal satu baris item";
+    for (const l of lines) {
+      if (!l.name.trim()) return "Nama item pada setiap baris wajib diisi";
+      if (Number(l.quantity) <= 0) return "Kuantitas harus > 0";
+    }
+    return null;
+  };
+
+  const save = async () => {
+    const err = validate();
+    if (err) {
+      toast({ title: err, variant: "destructive" });
+      return;
+    }
+    const body = {
+      kind: "rfq" as const,
+      supplierId,
+      supplierName,
+      expectedDate: expectedDate ? new Date(expectedDate).toISOString() : null,
+      notes: notes || null,
+      lines: lines.map((l) => ({
+        productId: l.productId ?? null,
+        name: l.name,
+        description: l.description ?? null,
+        quantity: Number(l.quantity),
+        unitCost: Number(l.unitCost),
+      })),
+    };
+    try {
+      if (isNew) {
+        const created = await createMut.mutateAsync({ data: body });
+        qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
+        toast({ title: "RFQ dibuat", description: created.docNumber });
+        navigate(`/purchase/rfq/${created.id}`);
+      } else if (id) {
+        await updateMut.mutateAsync({ id, data: body });
+        qc.invalidateQueries({ queryKey: getGetPurchaseDocumentQueryKey(id) });
+        qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
+        toast({ title: "Dokumen diperbarui" });
+      }
+    } catch (e) {
+      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+    }
+  };
+
+  const runAction = async (action: "send" | "confirm" | "cancel" | "draft" | "mark_received" | "mark_billed") => {
+    if (!id) return;
+    try {
+      const result = await actionMut.mutateAsync({ id, data: { action } });
+      qc.invalidateQueries({ queryKey: getGetPurchaseDocumentQueryKey(id) });
+      qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
+      toast({ title: `Status: ${result.status}` });
+      if (action === "confirm") navigate(`/purchase/orders/${id}`);
+    } catch (e) {
+      toast({ title: "Aksi gagal", description: String(e), variant: "destructive" });
+    }
+  };
+
+  const remove = async () => {
+    if (!id) return;
+    if (!confirm("Hapus dokumen ini?")) return;
+    try {
+      await deleteMut.mutateAsync({ id });
+      qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
+      toast({ title: "Dihapus" });
+      navigate("/purchase/rfq");
+    } catch (e) {
+      toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
+    }
+  };
+
+  const isOrderView = !!paramsOrder;
+  const backHref = isOrderView ? "/purchase/orders" : "/purchase/rfq";
+
+  if (!isNew && docLoading) {
+    return <AppShell><div className="text-muted-foreground">Memuat...</div></AppShell>;
+  }
+
+  return (
+    <AppShell>
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Link href={backHref}>
+              <Button variant="ghost" size="icon" data-testid="button-back"><ArrowLeft className="h-4 w-4" /></Button>
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold">{isNew ? "RFQ Baru" : doc?.docNumber}</h1>
+              {doc && (
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="outline" className="capitalize">{doc.kind}</Badge>
+                  <Badge variant="secondary" className="capitalize">{doc.status}</Badge>
+                  {doc.kind === "order" && (
+                    <>
+                      <Badge variant="outline" className="capitalize">Receive: {doc.receiveStatus.replace("_", " ")}</Badge>
+                      <Badge variant="outline" className="capitalize">Bill: {doc.billStatus.replace("_", " ")}</Badge>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {isEditable && (
+              <Button onClick={save} disabled={createMut.isPending || updateMut.isPending} data-testid="button-save">
+                <Save className="mr-2 h-4 w-4" /> Simpan
+              </Button>
+            )}
+            {!isNew && doc?.status === "draft" && (
+              <Button variant="outline" onClick={() => runAction("send")} data-testid="button-send"><Send className="mr-2 h-4 w-4" /> Kirim</Button>
+            )}
+            {!isNew && (doc?.status === "draft" || doc?.status === "sent") && (
+              <Button variant="default" onClick={() => runAction("confirm")} data-testid="button-confirm"><Check className="mr-2 h-4 w-4" /> Konfirmasi</Button>
+            )}
+            {!isNew && doc?.kind === "order" && doc?.receiveStatus === "to_receive" && (
+              <Button variant="outline" onClick={() => runAction("mark_received")} data-testid="button-receive"><Truck className="mr-2 h-4 w-4" /> Diterima</Button>
+            )}
+            {!isNew && doc?.kind === "order" && doc?.billStatus === "to_bill" && (
+              <Button variant="outline" onClick={() => runAction("mark_billed")} data-testid="button-bill"><FileText className="mr-2 h-4 w-4" /> Billed</Button>
+            )}
+            {!isNew && doc?.status === "cancelled" && (
+              <Button variant="outline" onClick={() => runAction("draft")} data-testid="button-redraft"><FileEdit className="mr-2 h-4 w-4" /> Set ke Draft</Button>
+            )}
+            {!isNew && doc && doc.status !== "cancelled" && doc.status !== "done" && (
+              <Button variant="outline" onClick={() => runAction("cancel")} data-testid="button-cancel"><X className="mr-2 h-4 w-4" /> Batalkan</Button>
+            )}
+            {!isNew && doc?.status === "draft" && (
+              <Button variant="ghost" onClick={remove} data-testid="button-delete"><Trash2 className="mr-2 h-4 w-4 text-destructive" /></Button>
+            )}
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle>Informasi Vendor</CardTitle></CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label>Vendor</Label>
+              <Select value={supplierId !== null ? String(supplierId) : "__none"} onValueChange={onVendorChange} disabled={!isEditable}>
+                <SelectTrigger data-testid="select-vendor"><SelectValue placeholder="Pilih vendor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Bebas (isi nama manual) —</SelectItem>
+                  {(vendors ?? []).map((v) => (
+                    <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Nama Vendor</Label>
+              <Input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} disabled={!isEditable} data-testid="input-vendor-name" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Tanggal Diharapkan</Label>
+              <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} disabled={!isEditable} />
+            </div>
+            <div className="grid gap-1.5 md:col-span-2">
+              <Label>Catatan</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!isEditable} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Item</CardTitle>
+            {isEditable && (
+              <Button size="sm" variant="outline" onClick={addLine} data-testid="button-add-line">
+                <Plus className="mr-2 h-4 w-4" /> Tambah Baris
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[200px]">Produk</TableHead>
+                  <TableHead>Deskripsi</TableHead>
+                  <TableHead className="w-[100px] text-right">Qty</TableHead>
+                  <TableHead className="w-[150px] text-right">Harga Beli</TableHead>
+                  <TableHead className="w-[150px] text-right">Subtotal</TableHead>
+                  {isEditable && <TableHead className="w-[40px]"></TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lines.map((l, idx) => (
+                  <TableRow key={idx} data-testid={`row-line-${idx}`}>
+                    <TableCell>
+                      <Select
+                        value={l.productId !== null && l.productId !== undefined ? String(l.productId) : "__custom"}
+                        onValueChange={(v) => onProductChange(idx, v)}
+                        disabled={!isEditable}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Pilih atau custom" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__custom">— Custom —</SelectItem>
+                          {(products ?? []).map((p) => (
+                            <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        className="mt-2"
+                        placeholder="Nama item"
+                        value={l.name}
+                        onChange={(e) => setLine(idx, { name: e.target.value })}
+                        disabled={!isEditable}
+                        data-testid={`input-line-name-${idx}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Textarea
+                        rows={1}
+                        value={l.description ?? ""}
+                        onChange={(e) => setLine(idx, { description: e.target.value })}
+                        disabled={!isEditable}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="text-right"
+                        value={l.quantity}
+                        onChange={(e) => setLine(idx, { quantity: Number(e.target.value) })}
+                        disabled={!isEditable}
+                        data-testid={`input-line-qty-${idx}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="text-right"
+                        value={l.unitCost}
+                        onChange={(e) => setLine(idx, { unitCost: Number(e.target.value) })}
+                        disabled={!isEditable}
+                        data-testid={`input-line-cost-${idx}`}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {idr(Number(l.quantity || 0) * Number(l.unitCost || 0))}
+                    </TableCell>
+                    {isEditable && (
+                      <TableCell>
+                        <Button size="icon" variant="ghost" onClick={() => removeLine(idx)} disabled={lines.length === 1}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex justify-end mt-4">
+              <div className="text-right">
+                <div className="text-sm text-muted-foreground">Total</div>
+                <div className="text-2xl font-bold" data-testid="text-total">{idr(total)}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </AppShell>
+  );
+}
