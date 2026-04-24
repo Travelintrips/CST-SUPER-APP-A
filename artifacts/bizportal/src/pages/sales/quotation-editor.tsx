@@ -565,14 +565,16 @@ export default function SalesDocumentEditorPage() {
               <CardTitle className="flex items-center gap-2">
                 <Wallet className="h-4 w-4" /> Pembayaran
               </CardTitle>
-              {doc?.kind === "order" && (
+              {doc?.kind === "order" &&
+                doc?.invoiceStatus === "invoiced" &&
+                Math.max(0, Number(doc?.grandTotal ?? 0) - Number(doc?.amountPaid ?? 0)) > 0 && (
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={openPayDialog}
                   data-testid="button-record-payment"
                 >
-                  <CreditCard className="mr-2 h-4 w-4" /> Catat Pembayaran
+                  <CreditCard className="mr-2 h-4 w-4" /> Bayar
                 </Button>
               )}
             </CardHeader>
