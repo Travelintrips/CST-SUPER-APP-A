@@ -38,4 +38,22 @@ app.use(clerkMiddleware());
 
 app.use("/api", router);
 
+// Global error handler — logs unhandled errors and returns JSON
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  logger.error(
+    {
+      err: { message: err.message, stack: err.stack, name: err.name },
+      method: req.method,
+      url: req.url,
+    },
+    "Unhandled request error",
+  );
+  if (res.headersSent) return;
+  const isProd = process.env["NODE_ENV"] === "production";
+  res.status(500).json({
+    message: "Internal Server Error",
+    ...(isProd ? {} : { error: err.message }),
+  });
+});
+
 export default app;

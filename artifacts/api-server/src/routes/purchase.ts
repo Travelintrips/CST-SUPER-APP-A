@@ -1,13 +1,23 @@
 import { Router } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf } from "../lib/pdfInvoice.js";
+import { postPurchaseBill } from "../lib/accounting.js";
 import {
   db,
   suppliersTable,
   purchaseDocumentsTable,
   purchaseDocumentLinesTable,
+  accountingTaxesTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, type SQL } from "drizzle-orm";
+
+async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
+  if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
+  const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, taxRateId));
+  if (!tax) return { taxAmount: 0, grandTotal: subtotal };
+  const taxAmount = Math.round(subtotal * Number(tax.rate)) / 100;
+  return { taxAmount, grandTotal: subtotal + taxAmount };
+}
 
 const router = Router();
 
@@ -33,6 +43,8 @@ function serializeDoc(d: typeof purchaseDocumentsTable.$inferSelect) {
   return {
     ...d,
     totalAmount: Number(d.totalAmount),
+    taxAmount: Number(d.taxAmount ?? 0),
+    grandTotal: Number(d.grandTotal ?? d.totalAmount),
     expectedDate: d.expectedDate ? d.expectedDate.toISOString() : null,
     confirmedAt: d.confirmedAt ? d.confirmedAt.toISOString() : null,
     createdAt: d.createdAt.toISOString(),
@@ -52,11 +64,14 @@ function serializeLine(l: typeof purchaseDocumentLinesTable.$inferSelect) {
 async function nextDocNumber(kind: PurchaseKind): Promise<string> {
   const prefix = kind === "rfq" ? "RFQ" : "PO";
   const year = new Date().getFullYear();
-  const [{ count }] = await db
-    .select({ count: sql<number>`cast(count(*) as int)` })
+  const pattern = `${prefix}/${year}/%`;
+  const [row] = await db
+    .select({
+      maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(doc_number, '/', 3) AS int)), 0)`,
+    })
     .from(purchaseDocumentsTable)
-    .where(eq(purchaseDocumentsTable.kind, kind));
-  const seq = (Number(count) + 1).toString().padStart(5, "0");
+    .where(sql`doc_number LIKE ${pattern}`);
+  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
 }
 
@@ -127,7 +142,7 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
-  const { kind, supplierId, supplierName, expectedDate, notes, lines } = req.body ?? {};
+  const { kind, supplierId, supplierName, expectedDate, notes, lines, taxRateId } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -145,6 +160,7 @@ router.post("/documents", async (req, res) => {
     (s, l) => s + Number(l.quantity) * Number(l.unitCost),
     0,
   );
+  const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
 
   const [doc] = await db
     .insert(purchaseDocumentsTable)
@@ -155,6 +171,9 @@ router.post("/documents", async (req, res) => {
       supplierId: supplierId ?? null,
       supplierName,
       totalAmount: String(total),
+      taxRateId: taxRateId ?? null,
+      taxAmount: String(taxAmount),
+      grandTotal: String(grandTotal),
       expectedDate: expectedDate ? new Date(expectedDate) : null,
       notes: notes ?? null,
     })
@@ -182,20 +201,25 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { supplierId, supplierName, expectedDate, notes, lines, kind } = req.body ?? {};
+  const { supplierId, supplierName, expectedDate, notes, lines, kind, taxRateId } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof supplierName === "string") patch["supplierName"] = supplierName;
   if (supplierId !== undefined) patch["supplierId"] = supplierId;
   if (expectedDate !== undefined) patch["expectedDate"] = expectedDate ? new Date(expectedDate) : null;
   if (notes !== undefined) patch["notes"] = notes;
   if (kind === "rfq" || kind === "order") patch["kind"] = kind;
+  if (taxRateId !== undefined) patch["taxRateId"] = taxRateId;
 
   if (Array.isArray(lines)) {
     const total = (lines as LineInput[]).reduce(
       (s, l) => s + Number(l.quantity) * Number(l.unitCost),
       0,
     );
+    const effTaxId = taxRateId !== undefined ? taxRateId : existing.taxRateId;
+    const { taxAmount, grandTotal } = await computeTax(total, effTaxId);
     patch["totalAmount"] = String(total);
+    patch["taxAmount"] = String(taxAmount);
+    patch["grandTotal"] = String(grandTotal);
     await db
       .delete(purchaseDocumentLinesTable)
       .where(eq(purchaseDocumentLinesTable.documentId, id));
@@ -212,6 +236,11 @@ router.put("/documents/:id", async (req, res) => {
         })),
       );
     }
+  } else if (taxRateId !== undefined) {
+    const total = Number(existing.totalAmount);
+    const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
+    patch["taxAmount"] = String(taxAmount);
+    patch["grandTotal"] = String(grandTotal);
   }
 
   await db.update(purchaseDocumentsTable).set(patch).where(eq(purchaseDocumentsTable.id, id));
@@ -271,6 +300,20 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(purchaseDocumentsTable).set(patch).where(eq(purchaseDocumentsTable.id, id));
+
+  if (action === "mark_billed" && doc.billStatus !== "billed") {
+    const net = Number(doc.totalAmount);
+    const taxAmount = Number(doc.taxAmount ?? 0);
+    void postPurchaseBill({
+      purchaseDocId: doc.id,
+      docNumber: doc.docNumber,
+      supplierName: doc.supplierName,
+      netAmount: net,
+      taxAmount,
+      taxAccountId: null,
+    });
+  }
+
   const detail = await loadDocWithLines(id);
   return res.json(detail);
 });

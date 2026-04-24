@@ -31,6 +31,8 @@ import {
   useDeletePurchaseDocument,
   useListSuppliers,
   useListProducts,
+  useListTaxes,
+  useGetAccountingSettings,
   getGetPurchaseDocumentQueryKey,
   getListPurchaseDocumentsQueryKey,
 } from "@workspace/api-client-react";
@@ -69,6 +71,8 @@ export default function PurchaseDocumentEditorPage() {
   });
   const { data: vendors } = useListSuppliers();
   const { data: products } = useListProducts();
+  const { data: taxes } = useListTaxes();
+  const { data: acctSettings } = useGetAccountingSettings();
   const createMut = useCreatePurchaseDocument();
   const updateMut = useUpdatePurchaseDocument();
   const actionMut = usePurchaseDocumentAction();
@@ -81,6 +85,8 @@ export default function PurchaseDocumentEditorPage() {
   const [lines, setLines] = useState<LineDraft[]>([
     { name: "", quantity: 1, unitCost: 0 },
   ]);
+  const [taxRateId, setTaxRateId] = useState<number | null>(null);
+  const [taxApplied, setTaxApplied] = useState(false);
 
   useEffect(() => {
     if (doc) {
@@ -88,6 +94,8 @@ export default function PurchaseDocumentEditorPage() {
       setSupplierName(doc.supplierName);
       setExpectedDate(doc.expectedDate ? doc.expectedDate.slice(0, 10) : "");
       setNotes(doc.notes ?? "");
+      setTaxRateId(doc.taxRateId ?? null);
+      setTaxApplied(true);
       setLines(
         doc.lines.length > 0
           ? doc.lines.map((l) => ({
@@ -102,10 +110,21 @@ export default function PurchaseDocumentEditorPage() {
     }
   }, [doc]);
 
-  const total = useMemo(
+  useEffect(() => {
+    if (isNew && !taxApplied && acctSettings?.defaultPurchaseTaxId) {
+      setTaxRateId(acctSettings.defaultPurchaseTaxId);
+      setTaxApplied(true);
+    }
+  }, [isNew, taxApplied, acctSettings]);
+
+  const subtotal = useMemo(
     () => lines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unitCost || 0), 0),
     [lines],
   );
+  const selectedTax = useMemo(() => taxes?.find((t) => t.id === taxRateId) ?? null, [taxes, taxRateId]);
+  const taxAmount = useMemo(() => selectedTax ? Math.round(subtotal * Number(selectedTax.rate)) / 100 : 0, [subtotal, selectedTax]);
+  const grandTotal = subtotal + taxAmount;
+  const total = subtotal;
 
   const isEditable = isNew || (doc && (doc.status === "draft" || doc.status === "sent"));
 
@@ -158,6 +177,7 @@ export default function PurchaseDocumentEditorPage() {
       kind: "rfq" as const,
       supplierId,
       supplierName,
+      taxRateId: taxRateId ?? null,
       expectedDate: expectedDate ? new Date(expectedDate).toISOString() : null,
       notes: notes || null,
       lines: lines.map((l) => ({
@@ -400,10 +420,24 @@ export default function PurchaseDocumentEditorPage() {
                 ))}
               </TableBody>
             </Table>
-            <div className="flex justify-end mt-4">
-              <div className="text-right">
-                <div className="text-sm text-muted-foreground">Total</div>
-                <div className="text-2xl font-bold" data-testid="text-total">{idr(total)}</div>
+            <div className="flex justify-between mt-4 gap-6">
+              <div className="w-64">
+                <Label>Pajak (PPN)</Label>
+                <Select value={taxRateId ? String(taxRateId) : "none"} onValueChange={(v) => setTaxRateId(v === "none" ? null : parseInt(v))} disabled={!isEditable}>
+                  <SelectTrigger data-testid="select-doc-tax"><SelectValue placeholder="Tanpa pajak" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Tanpa pajak —</SelectItem>
+                    {(taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive).map((t) => (
+                      <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.rate}%)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="text-right space-y-1">
+                <div className="text-sm text-muted-foreground">Subtotal: <span className="font-mono ml-2" data-testid="text-subtotal">{idr(subtotal)}</span></div>
+                {selectedTax && <div className="text-sm text-muted-foreground">{selectedTax.name}: <span className="font-mono ml-2" data-testid="text-tax-amount">{idr(taxAmount)}</span></div>}
+                <div className="text-sm text-muted-foreground">Grand Total</div>
+                <div className="text-2xl font-bold" data-testid="text-total">{idr(grandTotal)}</div>
               </div>
             </div>
           </CardContent>

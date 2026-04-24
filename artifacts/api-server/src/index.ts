@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { seedAccountingDefaults } from "./lib/accountingSeed";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,9 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Run idempotent accounting seed (no-op if accounts already exist)
+  seedAccountingDefaults().catch((seedErr) => {
+    logger.error({ err: seedErr }, "Accounting seed failed");
+  });
 });

@@ -29,6 +29,16 @@ import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
 import ReportsApAgingPage from "@/pages/reports/ap-aging";
+import AccountingAccountsPage from "@/pages/accounting/accounts";
+import AccountingJournalsPage from "@/pages/accounting/journals";
+import AccountingTaxesPage from "@/pages/accounting/taxes";
+import AccountingEntriesPage from "@/pages/accounting/entries";
+import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
+import AccountingSettingsPage from "@/pages/accounting/settings";
+import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance";
+import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
+import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
+import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
 
 const queryClient = new QueryClient();
 
@@ -231,6 +241,37 @@ function Router() {
       </Route>
       <Route path="/reports/ap-aging">
         <ProtectedRoute component={ReportsApAgingPage} />
+      </Route>
+
+      <Route path="/accounting/accounts">
+        <ProtectedRoute component={AccountingAccountsPage} />
+      </Route>
+      <Route path="/accounting/journals">
+        <ProtectedRoute component={AccountingJournalsPage} />
+      </Route>
+      <Route path="/accounting/taxes">
+        <ProtectedRoute component={AccountingTaxesPage} />
+      </Route>
+      <Route path="/accounting/entries">
+        <ProtectedRoute component={AccountingEntriesPage} />
+      </Route>
+      <Route path="/accounting/entries/:id">
+        <ProtectedRoute component={AccountingEntryDetailPage} />
+      </Route>
+      <Route path="/accounting/settings">
+        <ProtectedRoute component={AccountingSettingsPage} />
+      </Route>
+      <Route path="/accounting/reports/trial-balance">
+        <ProtectedRoute component={AccountingTrialBalancePage} />
+      </Route>
+      <Route path="/accounting/reports/general-ledger">
+        <ProtectedRoute component={AccountingGeneralLedgerPage} />
+      </Route>
+      <Route path="/accounting/reports/profit-loss">
+        <ProtectedRoute component={AccountingProfitLossPage} />
+      </Route>
+      <Route path="/accounting/reports/balance-sheet">
+        <ProtectedRoute component={AccountingBalanceSheetPage} />
       </Route>
 
       <Route component={NotFound} />

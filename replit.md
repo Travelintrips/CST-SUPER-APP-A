@@ -48,11 +48,60 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
   sub-statuses. Customers managed at `/sales/customers`.
 - Purchase: RFQs (RFQ/YYYY/00001) → confirm → purchase orders (PO) with receive
   and bill sub-statuses. Vendors are the existing `suppliers` table from Trading.
+- Both editors expose a `taxRateId` (PPN) selector. Sales/Purchase document rows
+  store `taxRateId`, `taxAmount`, and `grandTotal` (subtotal + taxAmount).
+  New documents auto-fill from `accountingSettings.defaultSalesTaxId` /
+  `defaultPurchaseTaxId`.
 - Backend routes (`/api/sales`, `/api/purchase`) are gated by `requireAdmin`
   middleware (`artifacts/api-server/src/lib/requireAdmin.ts`). All endpoints
   return 401 without auth and 403 for non-admin users.
 - Frontend sidebar uses collapsible groups (shadcn `SidebarMenuSub`) with active
   group auto-expanded on mount.
+
+## Accounting Module (Phase 1)
+
+- Odoo-style double-entry accounting at `/accounting/*` (admin only).
+- Schema (`lib/db/src/schema/accounting.ts`):
+  - `chart_of_accounts` (code, name, type asset/liability/equity/income/expense, isActive)
+  - `accounting_journals` (code, name, kind sales/purchase/bank/cash/general)
+  - `accounting_taxes` (name, kind sale/purchase, rate, account)
+  - `accounting_entries` (entryNumber, date, journalId, ref, description, status draft/posted, totalDebit, totalCredit)
+  - `accounting_entry_lines` (entryId, accountId, debit, credit, description)
+  - `accounting_settings` (singleton row with default account & tax mappings)
+- Idempotent boot seed (`artifacts/api-server/src/lib/accountingSeed.ts`)
+  installs Indonesian default CoA (~20 accounts), 5 journals, PPN 11%
+  (Keluaran/Masukan), and accountingSettings only when chart_of_accounts is empty.
+- Routes (`artifacts/api-server/src/routes/accounting.ts`):
+  full CRUD on accounts/journals/taxes/entries; reports for trial-balance,
+  general-ledger, profit-loss, balance-sheet; settings GET/PATCH.
+- Auto-posting helpers (`artifacts/api-server/src/lib/accounting.ts`) called
+  fire-and-forget from sales/purchase action endpoints and payment webhooks:
+  - Invoice sales doc → DR AR / CR Sales Income + CR PPN Output
+  - Bill purchase doc → DR Purchase + DR PPN Input / CR AP
+  - Sales payment paid → DR Bank / CR AR
+  - Purchase payment paid → DR AP / CR Bank
+  Each posting is idempotent via status guard on the source document.
+- Frontend pages: `pages/accounting/{accounts,journals,taxes,entries,
+  entry-detail,settings}.tsx` and `pages/accounting/reports/{trial-balance,
+  general-ledger,profit-loss,balance-sheet}.tsx`. Sidebar group "Akunting" in
+  `AppShell.tsx`.
+- Sales/purchase PUT endpoints recompute `taxAmount`/`grandTotal` server-side
+  whenever lines change OR `taxRateId` changes (server-authoritative).
+- Doc-number generators use `MAX(seq)+1` over `doc_number LIKE 'PREFIX/YYYY/%'`
+  (not `count(*) by kind`) to avoid duplicate-key collisions on the global
+  `doc_number` unique constraint.
+- `app.ts` has a global Express error handler that logs unhandled errors via
+  pino and returns `{message:"Internal Server Error"}` (in dev it also returns
+  `error: <message>`; suppressed in production).
+
+## Admin Allowlist
+
+- `requireAdmin` and the `users` route promote a user to `admin` if their
+  verified Clerk email matches `ADMIN_EMAILS` (default
+  `divatranssoetta@gmail.com`) or its domain matches `ADMIN_EMAIL_DOMAINS`
+  (comma-separated, default empty). The dev environment sets
+  `ADMIN_EMAIL_DOMAINS=example.com` so the e2e testing helper (which signs in
+  arbitrary `*@example.com` users) can exercise admin-gated routes.
 
 ## Codegen Notes
 

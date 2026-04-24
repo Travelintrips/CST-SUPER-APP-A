@@ -4,10 +4,20 @@ import {
   customersTable,
   salesDocumentsTable,
   salesDocumentLinesTable,
+  accountingTaxesTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf } from "../lib/pdfInvoice.js";
+import { postSalesInvoice } from "../lib/accounting.js";
+
+async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
+  if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
+  const [tax] = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.id, taxRateId));
+  if (!tax) return { taxAmount: 0, grandTotal: subtotal };
+  const taxAmount = Math.round(subtotal * Number(tax.rate)) / 100;
+  return { taxAmount, grandTotal: subtotal + taxAmount };
+}
 
 const router = Router();
 
@@ -36,6 +46,8 @@ function serializeDoc(d: typeof salesDocumentsTable.$inferSelect) {
   return {
     ...d,
     totalAmount: Number(d.totalAmount),
+    taxAmount: Number(d.taxAmount ?? 0),
+    grandTotal: Number(d.grandTotal ?? d.totalAmount),
     validUntil: d.validUntil ? d.validUntil.toISOString() : null,
     expectedDate: d.expectedDate ? d.expectedDate.toISOString() : null,
     confirmedAt: d.confirmedAt ? d.confirmedAt.toISOString() : null,
@@ -56,11 +68,14 @@ function serializeLine(l: typeof salesDocumentLinesTable.$inferSelect) {
 async function nextDocNumber(kind: SalesDocKind): Promise<string> {
   const prefix = kind === "quote" ? "SQ" : "SO";
   const year = new Date().getFullYear();
-  const [{ count }] = await db
-    .select({ count: sql<number>`cast(count(*) as int)` })
+  const pattern = `${prefix}/${year}/%`;
+  const [row] = await db
+    .select({
+      maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(doc_number, '/', 3) AS int)), 0)`,
+    })
     .from(salesDocumentsTable)
-    .where(eq(salesDocumentsTable.kind, kind));
-  const seq = (Number(count) + 1).toString().padStart(5, "0");
+    .where(sql`doc_number LIKE ${pattern}`);
+  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
 }
 
@@ -179,7 +194,7 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
-  const { kind, customerId, customerName, validUntil, expectedDate, notes, lines } = req.body ?? {};
+  const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())
     return res.status(400).json({ message: "customerName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -191,6 +206,7 @@ router.post("/documents", async (req, res) => {
     (s, l) => s + Number(l.quantity) * Number(l.unitPrice),
     0,
   );
+  const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
 
   const [doc] = await db
     .insert(salesDocumentsTable)
@@ -201,6 +217,9 @@ router.post("/documents", async (req, res) => {
       customerId: customerId ?? null,
       customerName,
       totalAmount: String(total),
+      taxRateId: taxRateId ?? null,
+      taxAmount: String(taxAmount),
+      grandTotal: String(grandTotal),
       validUntil: validUntil ? new Date(validUntil) : null,
       expectedDate: expectedDate ? new Date(expectedDate) : null,
       notes: notes ?? null,
@@ -229,7 +248,7 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { customerId, customerName, validUntil, expectedDate, notes, lines, kind } = req.body ?? {};
+  const { customerId, customerName, validUntil, expectedDate, notes, lines, kind, taxRateId } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof customerName === "string") patch["customerName"] = customerName;
   if (customerId !== undefined) patch["customerId"] = customerId;
@@ -237,13 +256,18 @@ router.put("/documents/:id", async (req, res) => {
   if (expectedDate !== undefined) patch["expectedDate"] = expectedDate ? new Date(expectedDate) : null;
   if (notes !== undefined) patch["notes"] = notes;
   if (kind === "quote" || kind === "order") patch["kind"] = kind;
+  if (taxRateId !== undefined) patch["taxRateId"] = taxRateId;
 
   if (Array.isArray(lines)) {
     const total = (lines as LineInput[]).reduce(
       (s, l) => s + Number(l.quantity) * Number(l.unitPrice),
       0,
     );
+    const effTaxId = taxRateId !== undefined ? taxRateId : existing.taxRateId;
+    const { taxAmount, grandTotal } = await computeTax(total, effTaxId);
     patch["totalAmount"] = String(total);
+    patch["taxAmount"] = String(taxAmount);
+    patch["grandTotal"] = String(grandTotal);
     await db.delete(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
     if (lines.length > 0) {
       await db.insert(salesDocumentLinesTable).values(
@@ -258,6 +282,11 @@ router.put("/documents/:id", async (req, res) => {
         })),
       );
     }
+  } else if (taxRateId !== undefined) {
+    const total = Number(existing.totalAmount);
+    const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
+    patch["taxAmount"] = String(taxAmount);
+    patch["grandTotal"] = String(grandTotal);
   }
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
@@ -314,6 +343,24 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  // Auto-post journal entry when newly invoiced
+  if (
+    action === "mark_invoiced" &&
+    doc.invoiceStatus !== "invoiced"
+  ) {
+    const net = Number(doc.totalAmount);
+    const taxAmount = Number(doc.taxAmount ?? 0);
+    void postSalesInvoice({
+      salesDocId: doc.id,
+      docNumber: doc.docNumber,
+      customerName: doc.customerName,
+      netAmount: net,
+      taxAmount,
+      taxAccountId: null,
+    });
+  }
+
   const detail = await loadDocWithLines(id);
   return res.json(detail);
 });

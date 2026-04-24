@@ -30,6 +30,8 @@ tags:
     description: Business reports — sales, purchase, AR/AP aging
   - name: payments
     description: Payments — Paylabs payment links and webhooks
+  - name: accounting
+    description: Accounting — chart of accounts, journals, journal entries, financial reports
 
 paths:
   /healthz:
@@ -1117,6 +1119,333 @@ paths:
               schema:
                 $ref: "#/components/schemas/Payment"
 
+  /accounting/accounts:
+    get:
+      operationId: listAccounts
+      tags: [accounting]
+      summary: List chart of accounts
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Account" }
+    post:
+      operationId: createAccount
+      tags: [accounting]
+      summary: Create account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAccountBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+
+  /accounting/accounts/{id}:
+    patch:
+      operationId: updateAccount
+      tags: [accounting]
+      summary: Update account
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAccountBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+    delete:
+      operationId: deleteAccount
+      tags: [accounting]
+      summary: Delete account
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /accounting/journals:
+    get:
+      operationId: listJournals
+      tags: [accounting]
+      summary: List journals
+      responses:
+        "200":
+          description: Journals
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountingJournal" }
+    post:
+      operationId: createJournal
+      tags: [accounting]
+      summary: Create journal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateJournalBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingJournal" }
+
+  /accounting/journals/{id}:
+    patch:
+      operationId: updateJournal
+      tags: [accounting]
+      summary: Update journal
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateJournalBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingJournal" }
+
+  /accounting/taxes:
+    get:
+      operationId: listTaxes
+      tags: [accounting]
+      summary: List taxes
+      responses:
+        "200":
+          description: Taxes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountingTax" }
+    post:
+      operationId: createTax
+      tags: [accounting]
+      summary: Create tax
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTaxBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingTax" }
+
+  /accounting/taxes/{id}:
+    patch:
+      operationId: updateTax
+      tags: [accounting]
+      summary: Update tax
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTaxBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingTax" }
+
+  /accounting/entries:
+    get:
+      operationId: listAccountingEntries
+      tags: [accounting]
+      summary: List journal entries
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: journalId
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountingEntry" }
+    post:
+      operationId: createAccountingEntry
+      tags: [accounting]
+      summary: Create manual journal entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEntryBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingEntryDetail" }
+
+  /accounting/entries/{id}:
+    get:
+      operationId: getAccountingEntry
+      tags: [accounting]
+      summary: Get journal entry detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Entry detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingEntryDetail" }
+
+  /accounting/settings:
+    get:
+      operationId: getAccountingSettings
+      tags: [accounting]
+      summary: Get accounting settings (account mappings)
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingSettings" }
+    patch:
+      operationId: updateAccountingSettings
+      tags: [accounting]
+      summary: Update account mappings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAccountingSettingsBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingSettings" }
+
+  /accounting/reports/trial-balance:
+    get:
+      operationId: getTrialBalance
+      tags: [accounting]
+      summary: Trial balance report
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Trial balance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrialBalanceReport" }
+
+  /accounting/reports/general-ledger:
+    get:
+      operationId: getGeneralLedger
+      tags: [accounting]
+      summary: General ledger report
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: accountId
+          schema: { type: integer }
+      responses:
+        "200":
+          description: General ledger
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeneralLedgerReport" }
+
+  /accounting/reports/profit-loss:
+    get:
+      operationId: getProfitLoss
+      tags: [accounting]
+      summary: Profit & loss report
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Profit & loss
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfitLossReport" }
+
+  /accounting/reports/balance-sheet:
+    get:
+      operationId: getBalanceSheet
+      tags: [accounting]
+      summary: Balance sheet report (as of date)
+      parameters:
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Balance sheet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BalanceSheetReport" }
+
 components:
   schemas:
     HealthStatus:
@@ -1640,6 +1969,13 @@ components:
           type: string
         totalAmount:
           type: number
+        taxRateId:
+          type: integer
+          nullable: true
+        taxAmount:
+          type: number
+        grandTotal:
+          type: number
         validUntil:
           type: string
           nullable: true
@@ -1656,7 +1992,7 @@ components:
           type: string
         updatedAt:
           type: string
-      required: [id, docNumber, kind, status, invoiceStatus, deliveryStatus, customerName, totalAmount, createdAt, updatedAt]
+      required: [id, docNumber, kind, status, invoiceStatus, deliveryStatus, customerName, totalAmount, taxAmount, grandTotal, createdAt, updatedAt]
 
     SalesDocumentDetail:
       allOf:
@@ -1688,6 +2024,9 @@ components:
           nullable: true
         notes:
           type: string
+          nullable: true
+        taxRateId:
+          type: integer
           nullable: true
         lines:
           type: array
@@ -1769,6 +2108,13 @@ components:
           type: string
         totalAmount:
           type: number
+        taxRateId:
+          type: integer
+          nullable: true
+        taxAmount:
+          type: number
+        grandTotal:
+          type: number
         expectedDate:
           type: string
           nullable: true
@@ -1782,7 +2128,7 @@ components:
           type: string
         updatedAt:
           type: string
-      required: [id, docNumber, kind, status, receiveStatus, billStatus, supplierName, totalAmount, createdAt, updatedAt]
+      required: [id, docNumber, kind, status, receiveStatus, billStatus, supplierName, totalAmount, taxAmount, grandTotal, createdAt, updatedAt]
 
     PurchaseDocumentDetail:
       allOf:
@@ -1811,6 +2157,9 @@ components:
           nullable: true
         notes:
           type: string
+          nullable: true
+        taxRateId:
+          type: integer
           nullable: true
         lines:
           type: array
@@ -1966,3 +2315,331 @@ components:
         message: { type: string, nullable: true }
         payment: { $ref: "#/components/schemas/Payment" }
       required: [configured, payment]
+
+    Account:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [asset, liability, equity, revenue, expense]
+        parentId: { type: integer, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string }
+      required: [id, code, name, type, isActive, createdAt]
+
+    CreateAccountBody:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [asset, liability, equity, revenue, expense]
+        parentId: { type: integer, nullable: true }
+        isActive: { type: boolean }
+      required: [code, name, type]
+
+    UpdateAccountBody:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [asset, liability, equity, revenue, expense]
+        parentId: { type: integer, nullable: true }
+        isActive: { type: boolean }
+
+    AccountingJournal:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [sales, purchase, bank, cash, general]
+        defaultDebitAccountId: { type: integer, nullable: true }
+        defaultCreditAccountId: { type: integer, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string }
+      required: [id, code, name, type, isActive, createdAt]
+
+    CreateJournalBody:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [sales, purchase, bank, cash, general]
+        defaultDebitAccountId: { type: integer, nullable: true }
+        defaultCreditAccountId: { type: integer, nullable: true }
+        isActive: { type: boolean }
+      required: [code, name, type]
+
+    UpdateJournalBody:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        type:
+          type: string
+          enum: [sales, purchase, bank, cash, general]
+        defaultDebitAccountId: { type: integer, nullable: true }
+        defaultCreditAccountId: { type: integer, nullable: true }
+        isActive: { type: boolean }
+
+    AccountingTax:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        rate: { type: number }
+        kind:
+          type: string
+          enum: [sale, purchase]
+        accountId: { type: integer }
+        isActive: { type: boolean }
+        createdAt: { type: string }
+      required: [id, name, rate, kind, accountId, isActive, createdAt]
+
+    CreateTaxBody:
+      type: object
+      properties:
+        name: { type: string }
+        rate: { type: number }
+        kind:
+          type: string
+          enum: [sale, purchase]
+        accountId: { type: integer }
+        isActive: { type: boolean }
+      required: [name, rate, kind, accountId]
+
+    UpdateTaxBody:
+      type: object
+      properties:
+        name: { type: string }
+        rate: { type: number }
+        kind:
+          type: string
+          enum: [sale, purchase]
+        accountId: { type: integer }
+        isActive: { type: boolean }
+
+    AccountingEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        entryNumber: { type: string }
+        journalId: { type: integer }
+        date: { type: string }
+        ref: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        status:
+          type: string
+          enum: [draft, posted]
+        source:
+          type: string
+          enum: [manual, sales_invoice, purchase_bill, sales_payment, purchase_payment]
+        sourceId: { type: integer, nullable: true }
+        totalDebit: { type: number }
+        totalCredit: { type: number }
+        createdById: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, entryNumber, journalId, date, status, source, totalDebit, totalCredit, createdAt]
+
+    AccountingEntryLine:
+      type: object
+      properties:
+        id: { type: integer }
+        entryId: { type: integer }
+        accountId: { type: integer }
+        description: { type: string, nullable: true }
+        debit: { type: number }
+        credit: { type: number }
+      required: [id, entryId, accountId, debit, credit]
+
+    AccountingEntryDetail:
+      allOf:
+        - $ref: "#/components/schemas/AccountingEntry"
+        - type: object
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/AccountingEntryLine" }
+          required: [lines]
+
+    CreateEntryLineBody:
+      type: object
+      properties:
+        accountId: { type: integer }
+        debit: { type: number }
+        credit: { type: number }
+        description: { type: string, nullable: true }
+      required: [accountId]
+
+    CreateEntryBody:
+      type: object
+      properties:
+        journalId: { type: integer }
+        date: { type: string }
+        ref: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/CreateEntryLineBody" }
+      required: [journalId, date, lines]
+
+    AccountingSettings:
+      type: object
+      properties:
+        id: { type: integer }
+        arAccountId: { type: integer, nullable: true }
+        apAccountId: { type: integer, nullable: true }
+        salesIncomeAccountId: { type: integer, nullable: true }
+        purchaseExpenseAccountId: { type: integer, nullable: true }
+        defaultBankAccountId: { type: integer, nullable: true }
+        ppnOutputAccountId: { type: integer, nullable: true }
+        ppnInputAccountId: { type: integer, nullable: true }
+        salesJournalId: { type: integer, nullable: true }
+        purchaseJournalId: { type: integer, nullable: true }
+        bankJournalId: { type: integer, nullable: true }
+        defaultSalesTaxId: { type: integer, nullable: true }
+        defaultPurchaseTaxId: { type: integer, nullable: true }
+        updatedAt: { type: string }
+      required: [id, updatedAt]
+
+    UpdateAccountingSettingsBody:
+      type: object
+      properties:
+        arAccountId: { type: integer, nullable: true }
+        apAccountId: { type: integer, nullable: true }
+        salesIncomeAccountId: { type: integer, nullable: true }
+        purchaseExpenseAccountId: { type: integer, nullable: true }
+        defaultBankAccountId: { type: integer, nullable: true }
+        ppnOutputAccountId: { type: integer, nullable: true }
+        ppnInputAccountId: { type: integer, nullable: true }
+        salesJournalId: { type: integer, nullable: true }
+        purchaseJournalId: { type: integer, nullable: true }
+        bankJournalId: { type: integer, nullable: true }
+        defaultSalesTaxId: { type: integer, nullable: true }
+        defaultPurchaseTaxId: { type: integer, nullable: true }
+
+    TrialBalanceRow:
+      type: object
+      properties:
+        accountId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        type: { type: string }
+        debit: { type: number }
+        credit: { type: number }
+        balance: { type: number }
+      required: [accountId, code, name, type, debit, credit, balance]
+
+    TrialBalanceReport:
+      type: object
+      properties:
+        from: { type: string, nullable: true }
+        to: { type: string, nullable: true }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/TrialBalanceRow" }
+        totalDebit: { type: number }
+        totalCredit: { type: number }
+      required: [rows, totalDebit, totalCredit]
+
+    GeneralLedgerLine:
+      type: object
+      properties:
+        date: { type: string }
+        entryNumber: { type: string }
+        ref: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        debit: { type: number }
+        credit: { type: number }
+        balance: { type: number }
+      required: [date, entryNumber, debit, credit, balance]
+
+    GeneralLedgerAccount:
+      type: object
+      properties:
+        accountId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        type: { type: string }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/GeneralLedgerLine" }
+        totalDebit: { type: number }
+        totalCredit: { type: number }
+        endingBalance: { type: number }
+      required: [accountId, code, name, type, rows, totalDebit, totalCredit, endingBalance]
+
+    GeneralLedgerReport:
+      type: object
+      properties:
+        from: { type: string, nullable: true }
+        to: { type: string, nullable: true }
+        accounts:
+          type: array
+          items: { $ref: "#/components/schemas/GeneralLedgerAccount" }
+      required: [accounts]
+
+    PnlRow:
+      type: object
+      properties:
+        accountId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        amount: { type: number }
+      required: [accountId, code, name, amount]
+
+    ProfitLossReport:
+      type: object
+      properties:
+        from: { type: string, nullable: true }
+        to: { type: string, nullable: true }
+        revenues:
+          type: array
+          items: { $ref: "#/components/schemas/PnlRow" }
+        expenses:
+          type: array
+          items: { $ref: "#/components/schemas/PnlRow" }
+        totalRevenue: { type: number }
+        totalExpense: { type: number }
+        netIncome: { type: number }
+      required: [revenues, expenses, totalRevenue, totalExpense, netIncome]
+
+    BalanceSheetRow:
+      type: object
+      properties:
+        accountId: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        amount: { type: number }
+      required: [accountId, code, name, amount]
+
+    BalanceSheetReport:
+      type: object
+      properties:
+        asOf: { type: string }
+        assets:
+          type: array
+          items: { $ref: "#/components/schemas/BalanceSheetRow" }
+        liabilities:
+          type: array
+          items: { $ref: "#/components/schemas/BalanceSheetRow" }
+        equity:
+          type: array
+          items: { $ref: "#/components/schemas/BalanceSheetRow" }
+        netIncomeYTD: { type: number }
+        totalAssets: { type: number }
+        totalLiabilities: { type: number }
+        totalEquity: { type: number }
+        totalLiabilitiesAndEquity: { type: number }
+      required: [asOf, assets, liabilities, equity, netIncomeYTD, totalAssets, totalLiabilities, totalEquity, totalLiabilitiesAndEquity]

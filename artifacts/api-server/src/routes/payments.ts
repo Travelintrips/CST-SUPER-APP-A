@@ -7,6 +7,7 @@ import {
 import { eq, desc } from "drizzle-orm";
 import crypto from "node:crypto";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { postPaymentReceived, postSalesInvoice } from "../lib/accounting.js";
 
 const router = Router();
 
@@ -93,7 +94,7 @@ router.post("/sales/:id/create-link", async (req, res) => {
   }
 
   const merchantTradeNo = `BIZ-${doc.id}-${Date.now()}`;
-  const amount = Number(doc.totalAmount);
+  const amount = Number(doc.grandTotal ?? doc.totalAmount);
 
   if (!paylabsConfigured()) {
     const [created] = await db
@@ -229,11 +230,33 @@ router.post("/paylabs/webhook", async (req, res) => {
     .set({ status: newStatus, paidAt, raw: req.body, updatedAt: new Date() })
     .where(eq(paymentsTable.id, payment.id));
 
-  if (newStatus === "paid" && payment.refKind === "sales") {
-    await db
-      .update(salesDocumentsTable)
-      .set({ invoiceStatus: "invoiced", updatedAt: new Date() })
-      .where(eq(salesDocumentsTable.id, payment.refId));
+  if (newStatus === "paid" && payment.status !== "paid") {
+    if (payment.refKind === "sales") {
+      const [doc] = await db
+        .select()
+        .from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.id, payment.refId));
+      if (doc && doc.invoiceStatus !== "invoiced") {
+        await db
+          .update(salesDocumentsTable)
+          .set({ invoiceStatus: "invoiced", updatedAt: new Date() })
+          .where(eq(salesDocumentsTable.id, payment.refId));
+        void postSalesInvoice({
+          salesDocId: doc.id,
+          docNumber: doc.docNumber,
+          customerName: doc.customerName,
+          netAmount: Number(doc.totalAmount),
+          taxAmount: Number(doc.taxAmount ?? 0),
+          taxAccountId: null,
+        });
+      }
+    }
+    void postPaymentReceived({
+      paymentId: payment.id,
+      refKind: payment.refKind,
+      refDocNumber: payment.refDocNumber,
+      amount: Number(payment.amount),
+    });
   }
 
   return res.json({ errCode: "0", errMsg: "OK" });
@@ -249,11 +272,33 @@ router.post("/:id/simulate-paid", async (req, res) => {
     .update(paymentsTable)
     .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
     .where(eq(paymentsTable.id, id));
-  if (payment.refKind === "sales") {
-    await db
-      .update(salesDocumentsTable)
-      .set({ invoiceStatus: "invoiced", updatedAt: new Date() })
+  if (payment.refKind === "sales" && payment.status !== "paid") {
+    const [doc] = await db
+      .select()
+      .from(salesDocumentsTable)
       .where(eq(salesDocumentsTable.id, payment.refId));
+    if (doc && doc.invoiceStatus !== "invoiced") {
+      await db
+        .update(salesDocumentsTable)
+        .set({ invoiceStatus: "invoiced", updatedAt: new Date() })
+        .where(eq(salesDocumentsTable.id, payment.refId));
+      void postSalesInvoice({
+        salesDocId: doc.id,
+        docNumber: doc.docNumber,
+        customerName: doc.customerName,
+        netAmount: Number(doc.totalAmount),
+        taxAmount: Number(doc.taxAmount ?? 0),
+        taxAccountId: null,
+      });
+    }
+  }
+  if (payment.status !== "paid") {
+    void postPaymentReceived({
+      paymentId: payment.id,
+      refKind: payment.refKind,
+      refDocNumber: payment.refDocNumber,
+      amount: Number(payment.amount),
+    });
   }
   const [updated] = await db.select().from(paymentsTable).where(eq(paymentsTable.id, id));
   return res.json(serializePayment(updated));

@@ -390,6 +390,9 @@ export interface SalesDocument {
   customerId?: number | null;
   customerName: string;
   totalAmount: number;
+  taxRateId?: number | null;
+  taxAmount: number;
+  grandTotal: number;
   validUntil?: string | null;
   expectedDate?: string | null;
   notes?: string | null;
@@ -417,6 +420,7 @@ export interface CreateSalesDocumentBody {
   validUntil?: string | null;
   expectedDate?: string | null;
   notes?: string | null;
+  taxRateId?: number | null;
   lines: CreateSalesDocumentLineBody[];
 }
 
@@ -502,6 +506,9 @@ export interface PurchaseDocument {
   supplierId?: number | null;
   supplierName: string;
   totalAmount: number;
+  taxRateId?: number | null;
+  taxAmount: number;
+  grandTotal: number;
   expectedDate?: string | null;
   notes?: string | null;
   confirmedAt?: string | null;
@@ -527,6 +534,7 @@ export interface CreatePurchaseDocumentBody {
   supplierName: string;
   expectedDate?: string | null;
   notes?: string | null;
+  taxRateId?: number | null;
   lines: CreatePurchaseDocumentLineBody[];
 }
 
@@ -665,6 +673,352 @@ export interface PaymentLinkResponse {
   payment: Payment;
 }
 
+export type AccountType = (typeof AccountType)[keyof typeof AccountType];
+
+export const AccountType = {
+  asset: "asset",
+  liability: "liability",
+  equity: "equity",
+  revenue: "revenue",
+  expense: "expense",
+} as const;
+
+export interface Account {
+  id: number;
+  code: string;
+  name: string;
+  type: AccountType;
+  parentId?: number | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type CreateAccountBodyType =
+  (typeof CreateAccountBodyType)[keyof typeof CreateAccountBodyType];
+
+export const CreateAccountBodyType = {
+  asset: "asset",
+  liability: "liability",
+  equity: "equity",
+  revenue: "revenue",
+  expense: "expense",
+} as const;
+
+export interface CreateAccountBody {
+  code: string;
+  name: string;
+  type: CreateAccountBodyType;
+  parentId?: number | null;
+  isActive?: boolean;
+}
+
+export type UpdateAccountBodyType =
+  (typeof UpdateAccountBodyType)[keyof typeof UpdateAccountBodyType];
+
+export const UpdateAccountBodyType = {
+  asset: "asset",
+  liability: "liability",
+  equity: "equity",
+  revenue: "revenue",
+  expense: "expense",
+} as const;
+
+export interface UpdateAccountBody {
+  code?: string;
+  name?: string;
+  type?: UpdateAccountBodyType;
+  parentId?: number | null;
+  isActive?: boolean;
+}
+
+export type AccountingJournalType =
+  (typeof AccountingJournalType)[keyof typeof AccountingJournalType];
+
+export const AccountingJournalType = {
+  sales: "sales",
+  purchase: "purchase",
+  bank: "bank",
+  cash: "cash",
+  general: "general",
+} as const;
+
+export interface AccountingJournal {
+  id: number;
+  code: string;
+  name: string;
+  type: AccountingJournalType;
+  defaultDebitAccountId?: number | null;
+  defaultCreditAccountId?: number | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type CreateJournalBodyType =
+  (typeof CreateJournalBodyType)[keyof typeof CreateJournalBodyType];
+
+export const CreateJournalBodyType = {
+  sales: "sales",
+  purchase: "purchase",
+  bank: "bank",
+  cash: "cash",
+  general: "general",
+} as const;
+
+export interface CreateJournalBody {
+  code: string;
+  name: string;
+  type: CreateJournalBodyType;
+  defaultDebitAccountId?: number | null;
+  defaultCreditAccountId?: number | null;
+  isActive?: boolean;
+}
+
+export type UpdateJournalBodyType =
+  (typeof UpdateJournalBodyType)[keyof typeof UpdateJournalBodyType];
+
+export const UpdateJournalBodyType = {
+  sales: "sales",
+  purchase: "purchase",
+  bank: "bank",
+  cash: "cash",
+  general: "general",
+} as const;
+
+export interface UpdateJournalBody {
+  code?: string;
+  name?: string;
+  type?: UpdateJournalBodyType;
+  defaultDebitAccountId?: number | null;
+  defaultCreditAccountId?: number | null;
+  isActive?: boolean;
+}
+
+export type AccountingTaxKind =
+  (typeof AccountingTaxKind)[keyof typeof AccountingTaxKind];
+
+export const AccountingTaxKind = {
+  sale: "sale",
+  purchase: "purchase",
+} as const;
+
+export interface AccountingTax {
+  id: number;
+  name: string;
+  rate: number;
+  kind: AccountingTaxKind;
+  accountId: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type CreateTaxBodyKind =
+  (typeof CreateTaxBodyKind)[keyof typeof CreateTaxBodyKind];
+
+export const CreateTaxBodyKind = {
+  sale: "sale",
+  purchase: "purchase",
+} as const;
+
+export interface CreateTaxBody {
+  name: string;
+  rate: number;
+  kind: CreateTaxBodyKind;
+  accountId: number;
+  isActive?: boolean;
+}
+
+export type UpdateTaxBodyKind =
+  (typeof UpdateTaxBodyKind)[keyof typeof UpdateTaxBodyKind];
+
+export const UpdateTaxBodyKind = {
+  sale: "sale",
+  purchase: "purchase",
+} as const;
+
+export interface UpdateTaxBody {
+  name?: string;
+  rate?: number;
+  kind?: UpdateTaxBodyKind;
+  accountId?: number;
+  isActive?: boolean;
+}
+
+export type AccountingEntryStatus =
+  (typeof AccountingEntryStatus)[keyof typeof AccountingEntryStatus];
+
+export const AccountingEntryStatus = {
+  draft: "draft",
+  posted: "posted",
+} as const;
+
+export type AccountingEntrySource =
+  (typeof AccountingEntrySource)[keyof typeof AccountingEntrySource];
+
+export const AccountingEntrySource = {
+  manual: "manual",
+  sales_invoice: "sales_invoice",
+  purchase_bill: "purchase_bill",
+  sales_payment: "sales_payment",
+  purchase_payment: "purchase_payment",
+} as const;
+
+export interface AccountingEntry {
+  id: number;
+  entryNumber: string;
+  journalId: number;
+  date: string;
+  ref?: string | null;
+  description?: string | null;
+  status: AccountingEntryStatus;
+  source: AccountingEntrySource;
+  sourceId?: number | null;
+  totalDebit: number;
+  totalCredit: number;
+  createdById?: string | null;
+  createdAt: string;
+}
+
+export interface AccountingEntryLine {
+  id: number;
+  entryId: number;
+  accountId: number;
+  description?: string | null;
+  debit: number;
+  credit: number;
+}
+
+export type AccountingEntryDetail = AccountingEntry & {
+  lines: AccountingEntryLine[];
+};
+
+export interface CreateEntryLineBody {
+  accountId: number;
+  debit?: number;
+  credit?: number;
+  description?: string | null;
+}
+
+export interface CreateEntryBody {
+  journalId: number;
+  date: string;
+  ref?: string | null;
+  description?: string | null;
+  lines: CreateEntryLineBody[];
+}
+
+export interface AccountingSettings {
+  id: number;
+  arAccountId?: number | null;
+  apAccountId?: number | null;
+  salesIncomeAccountId?: number | null;
+  purchaseExpenseAccountId?: number | null;
+  defaultBankAccountId?: number | null;
+  ppnOutputAccountId?: number | null;
+  ppnInputAccountId?: number | null;
+  salesJournalId?: number | null;
+  purchaseJournalId?: number | null;
+  bankJournalId?: number | null;
+  defaultSalesTaxId?: number | null;
+  defaultPurchaseTaxId?: number | null;
+  updatedAt: string;
+}
+
+export interface UpdateAccountingSettingsBody {
+  arAccountId?: number | null;
+  apAccountId?: number | null;
+  salesIncomeAccountId?: number | null;
+  purchaseExpenseAccountId?: number | null;
+  defaultBankAccountId?: number | null;
+  ppnOutputAccountId?: number | null;
+  ppnInputAccountId?: number | null;
+  salesJournalId?: number | null;
+  purchaseJournalId?: number | null;
+  bankJournalId?: number | null;
+  defaultSalesTaxId?: number | null;
+  defaultPurchaseTaxId?: number | null;
+}
+
+export interface TrialBalanceRow {
+  accountId: number;
+  code: string;
+  name: string;
+  type: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface TrialBalanceReport {
+  from?: string | null;
+  to?: string | null;
+  rows: TrialBalanceRow[];
+  totalDebit: number;
+  totalCredit: number;
+}
+
+export interface GeneralLedgerLine {
+  date: string;
+  entryNumber: string;
+  ref?: string | null;
+  description?: string | null;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface GeneralLedgerAccount {
+  accountId: number;
+  code: string;
+  name: string;
+  type: string;
+  rows: GeneralLedgerLine[];
+  totalDebit: number;
+  totalCredit: number;
+  endingBalance: number;
+}
+
+export interface GeneralLedgerReport {
+  from?: string | null;
+  to?: string | null;
+  accounts: GeneralLedgerAccount[];
+}
+
+export interface PnlRow {
+  accountId: number;
+  code: string;
+  name: string;
+  amount: number;
+}
+
+export interface ProfitLossReport {
+  from?: string | null;
+  to?: string | null;
+  revenues: PnlRow[];
+  expenses: PnlRow[];
+  totalRevenue: number;
+  totalExpense: number;
+  netIncome: number;
+}
+
+export interface BalanceSheetRow {
+  accountId: number;
+  code: string;
+  name: string;
+  amount: number;
+}
+
+export interface BalanceSheetReport {
+  asOf: string;
+  assets: BalanceSheetRow[];
+  liabilities: BalanceSheetRow[];
+  equity: BalanceSheetRow[];
+  netIncomeYTD: number;
+  totalAssets: number;
+  totalLiabilities: number;
+  totalEquity: number;
+  totalLiabilitiesAndEquity: number;
+}
+
 export type ListSalesDocumentsParams = {
   kind?: ListSalesDocumentsKind;
   invoiceStatus?: ListSalesDocumentsInvoiceStatus;
@@ -716,5 +1070,31 @@ export type GetSalesReportParams = {
 
 export type GetPurchaseReportParams = {
   from?: string;
+  to?: string;
+};
+
+export type ListAccountingEntriesParams = {
+  from?: string;
+  to?: string;
+  journalId?: number;
+};
+
+export type GetTrialBalanceParams = {
+  from?: string;
+  to?: string;
+};
+
+export type GetGeneralLedgerParams = {
+  from?: string;
+  to?: string;
+  accountId?: number;
+};
+
+export type GetProfitLossParams = {
+  from?: string;
+  to?: string;
+};
+
+export type GetBalanceSheetParams = {
   to?: string;
 };

@@ -10,6 +10,18 @@ const ADMIN_EMAILS = (process.env["ADMIN_EMAILS"] ?? "divatranssoetta@gmail.com"
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
+const ADMIN_EMAIL_DOMAINS = (process.env["ADMIN_EMAIL_DOMAINS"] ?? "")
+  .split(",")
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
+
+function emailIsAdmin(email: string): boolean {
+  const lower = email.toLowerCase();
+  if (ADMIN_EMAILS.includes(lower)) return true;
+  const domain = lower.split("@")[1] ?? "";
+  return !!domain && ADMIN_EMAIL_DOMAINS.includes(domain);
+}
+
 const ALLOWED_ROLES = ["admin", "ecommerce", "trading", "logistics", "pos"] as const;
 type AllowedRole = typeof ALLOWED_ROLES[number];
 
@@ -34,7 +46,7 @@ async function ensureUserRecord(userId: string) {
   // Only auto-promote to admin when the Clerk email is verified AND in the allowlist.
   const isAdminEmail = !!clerkInfo
     && clerkInfo.verified
-    && ADMIN_EMAILS.includes(clerkInfo.email.toLowerCase());
+    && emailIsAdmin(clerkInfo.email);
 
   if (existing.length === 0) {
     await db.insert(usersTable).values({

@@ -8,6 +8,18 @@ const ADMIN_EMAILS = (process.env["ADMIN_EMAILS"] ?? "divatranssoetta@gmail.com"
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
+const ADMIN_EMAIL_DOMAINS = (process.env["ADMIN_EMAIL_DOMAINS"] ?? "")
+  .split(",")
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
+
+function emailIsAdmin(email: string): boolean {
+  const lower = email.toLowerCase();
+  if (ADMIN_EMAILS.includes(lower)) return true;
+  const domain = lower.split("@")[1] ?? "";
+  return !!domain && ADMIN_EMAIL_DOMAINS.includes(domain);
+}
+
 async function fetchClerkEmail(userId: string) {
   try {
     const u = await clerkClient.users.getUser(userId);
@@ -31,7 +43,7 @@ export async function requireAdmin(req: Request, res: Response): Promise<boolean
   let rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (rows.length === 0) {
     const info = await fetchClerkEmail(userId);
-    const isAdmin = !!info && info.verified && ADMIN_EMAILS.includes(info.email.toLowerCase());
+    const isAdmin = !!info && info.verified && emailIsAdmin(info.email);
     await db.insert(usersTable).values({
       id: userId,
       email: info?.email ?? `${userId}@unknown.com`,
