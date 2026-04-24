@@ -8,10 +8,12 @@ import {
   useCreateOrder,
   useUpdateOrder,
   useDeleteOrder,
+  useListTaxes,
   getListProductsQueryKey,
   getListOrdersQueryKey,
   type Product,
   type Order,
+  type AccountingTax,
 } from "@workspace/api-client-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -98,6 +100,17 @@ export default function EcommercePage() {
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   const [createImageUrl, setCreateImageUrl] = useState<string | null>(null);
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
+
+  const [createSubtotal, setCreateSubtotal] = useState(0);
+  const [createTaxRateId, setCreateTaxRateId] = useState<string>("");
+  const [createTaxAmount, setCreateTaxAmount] = useState(0);
+
+  const [editSubtotal, setEditSubtotal] = useState(0);
+  const [editTaxRateId, setEditTaxRateId] = useState<string>("");
+  const [editTaxAmount, setEditTaxAmount] = useState(0);
+
+  const { data: allTaxes = [] as AccountingTax[] } = useListTaxes();
+  const saleTaxes = allTaxes.filter((t) => t.kind === "sale" && t.isActive);
 
   const createImageUploader = useUpload({
     onSuccess: (res) => {
@@ -204,6 +217,25 @@ export default function EcommercePage() {
     });
   };
 
+  const computeTax = (subtotal: number, taxRateId: string): number => {
+    if (!taxRateId) return 0;
+    const tax = saleTaxes.find((t) => String(t.id) === taxRateId);
+    if (!tax) return 0;
+    return Math.round((subtotal * Number(tax.rate)) / 100);
+  };
+
+  const handleCreateTaxRateChange = (val: string, subtotal: number) => {
+    setCreateTaxRateId(val);
+    if (val) setCreateTaxAmount(computeTax(subtotal, val));
+    else setCreateTaxAmount(0);
+  };
+
+  const handleEditTaxRateChange = (val: string, subtotal: number) => {
+    setEditTaxRateId(val);
+    if (val) setEditTaxAmount(computeTax(subtotal, val));
+    else setEditTaxAmount(0);
+  };
+
   const handleCreateOrder = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -212,8 +244,8 @@ export default function EcommercePage() {
         customerName: formData.get("customerName") as string,
         customerEmail: formData.get("customerEmail") as string,
         items: formData.get("items") as string,
-        totalAmount: Number(formData.get("totalAmount")),
-        taxAmount: Number(formData.get("taxAmount") ?? 0),
+        totalAmount: createSubtotal,
+        taxAmount: createTaxAmount,
       }
     }, {
       onSuccess: () => {
@@ -235,8 +267,8 @@ export default function EcommercePage() {
         customerName: formData.get("customerName") as string,
         customerEmail: formData.get("customerEmail") as string,
         items: formData.get("items") as string,
-        totalAmount: Number(formData.get("totalAmount")),
-        taxAmount: Number(formData.get("taxAmount") ?? 0),
+        totalAmount: editSubtotal,
+        taxAmount: editTaxAmount,
         status: editOrderStatus,
       }
     }, {
@@ -263,9 +295,20 @@ export default function EcommercePage() {
     });
   };
 
+  useEffect(() => {
+    if (!isOrderDialogOpen) {
+      setCreateSubtotal(0);
+      setCreateTaxRateId("");
+      setCreateTaxAmount(0);
+    }
+  }, [isOrderDialogOpen]);
+
   const openEditOrder = (order: Order) => {
     setEditingOrder(order);
     setEditOrderStatus((order.status as OrderStatus) ?? "pending");
+    setEditSubtotal(order.totalAmount);
+    setEditTaxRateId("");
+    setEditTaxAmount(order.taxAmount ?? 0);
   };
 
   return (
@@ -457,9 +500,49 @@ export default function EcommercePage() {
                       <div className="grid gap-2"><Label htmlFor="customerName">Nama Pelanggan</Label><Input id="customerName" name="customerName" required data-testid="input-order-customer-name" /></div>
                       <div className="grid gap-2"><Label htmlFor="customerEmail">Email Pelanggan</Label><Input id="customerEmail" name="customerEmail" type="email" required data-testid="input-order-customer-email" /></div>
                       <div className="grid gap-2"><Label htmlFor="items">Ringkasan Item</Label><Input id="items" name="items" placeholder="cth. 2x T-Shirt, 1x Sepatu" required data-testid="input-order-items" /></div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="totalAmount">Subtotal (IDR)</Label>
+                        <Input
+                          id="totalAmount"
+                          name="totalAmount"
+                          type="number"
+                          min="0"
+                          required
+                          value={createSubtotal || ""}
+                          onChange={(e) => {
+                            const sub = Number(e.target.value) || 0;
+                            setCreateSubtotal(sub);
+                            if (createTaxRateId) setCreateTaxAmount(computeTax(sub, createTaxRateId));
+                          }}
+                          data-testid="input-order-total"
+                        />
+                      </div>
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2"><Label htmlFor="totalAmount">Subtotal (IDR)</Label><Input id="totalAmount" name="totalAmount" type="number" min="0" required data-testid="input-order-total" /></div>
-                        <div className="grid gap-2"><Label htmlFor="taxAmount">PPN (IDR)</Label><Input id="taxAmount" name="taxAmount" type="number" min="0" defaultValue={0} data-testid="input-order-tax" /></div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="create-tax-rate">Tarif PPN</Label>
+                          <Select value={createTaxRateId} onValueChange={(v) => handleCreateTaxRateChange(v === "none" ? "" : v, createSubtotal)} data-testid="select-create-tax-rate">
+                            <SelectTrigger id="create-tax-rate" data-testid="select-trigger-create-tax-rate"><SelectValue placeholder="Tidak ada PPN" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Tidak ada PPN</SelectItem>
+                              {saleTaxes.map((t) => (
+                                <SelectItem key={t.id} value={String(t.id)}>{t.name} ({Number(t.rate).toFixed(0)}%)</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="create-tax-amount">PPN (IDR)</Label>
+                          <Input
+                            id="create-tax-amount"
+                            type="number"
+                            min="0"
+                            value={createTaxAmount}
+                            onChange={(e) => !createTaxRateId && setCreateTaxAmount(Number(e.target.value) || 0)}
+                            readOnly={!!createTaxRateId}
+                            className={createTaxRateId ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+                            data-testid="input-order-tax"
+                          />
+                        </div>
                       </div>
                     </div>
                     <DialogFooter>
@@ -650,9 +733,48 @@ export default function EcommercePage() {
                 <div className="grid gap-2"><Label htmlFor="edit-customer-name">Nama Pelanggan</Label><Input id="edit-customer-name" name="customerName" defaultValue={editingOrder.customerName} required data-testid="input-edit-order-customer-name" /></div>
                 <div className="grid gap-2"><Label htmlFor="edit-customer-email">Email Pelanggan</Label><Input id="edit-customer-email" name="customerEmail" type="email" defaultValue={editingOrder.customerEmail} required data-testid="input-edit-order-customer-email" /></div>
                 <div className="grid gap-2"><Label htmlFor="edit-items">Ringkasan Item</Label><Input id="edit-items" name="items" defaultValue={editingOrder.items ?? ""} required data-testid="input-edit-order-items" /></div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-total">Subtotal (IDR)</Label>
+                  <Input
+                    id="edit-total"
+                    type="number"
+                    min="0"
+                    required
+                    value={editSubtotal || ""}
+                    onChange={(e) => {
+                      const sub = Number(e.target.value) || 0;
+                      setEditSubtotal(sub);
+                      if (editTaxRateId) setEditTaxAmount(computeTax(sub, editTaxRateId));
+                    }}
+                    data-testid="input-edit-order-total"
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2"><Label htmlFor="edit-total">Subtotal (IDR)</Label><Input id="edit-total" name="totalAmount" type="number" min="0" defaultValue={editingOrder.totalAmount} required data-testid="input-edit-order-total" /></div>
-                  <div className="grid gap-2"><Label htmlFor="edit-tax">PPN (IDR)</Label><Input id="edit-tax" name="taxAmount" type="number" min="0" defaultValue={editingOrder.taxAmount ?? 0} data-testid="input-edit-order-tax" /></div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-tax-rate">Tarif PPN</Label>
+                    <Select value={editTaxRateId} onValueChange={(v) => handleEditTaxRateChange(v === "none" ? "" : v, editSubtotal)} data-testid="select-edit-tax-rate">
+                      <SelectTrigger id="edit-tax-rate" data-testid="select-trigger-edit-tax-rate"><SelectValue placeholder="Tidak ada PPN" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Tidak ada PPN</SelectItem>
+                        {saleTaxes.map((t) => (
+                          <SelectItem key={t.id} value={String(t.id)}>{t.name} ({Number(t.rate).toFixed(0)}%)</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-tax-amount">PPN (IDR)</Label>
+                    <Input
+                      id="edit-tax-amount"
+                      type="number"
+                      min="0"
+                      value={editTaxAmount}
+                      onChange={(e) => !editTaxRateId && setEditTaxAmount(Number(e.target.value) || 0)}
+                      readOnly={!!editTaxRateId}
+                      className={editTaxRateId ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+                      data-testid="input-edit-order-tax"
+                    />
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-status">Status</Label>
