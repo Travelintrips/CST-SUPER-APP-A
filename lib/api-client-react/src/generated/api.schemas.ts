@@ -924,9 +924,18 @@ export const AccountingPaymentPaymentType = {
   outbound: "outbound",
 } as const;
 
+export type AccountingPaymentStatus =
+  (typeof AccountingPaymentStatus)[keyof typeof AccountingPaymentStatus];
+
+export const AccountingPaymentStatus = {
+  posted: "posted",
+  voided: "voided",
+} as const;
+
 export interface AccountingPayment {
   id: number;
   paymentType: AccountingPaymentPaymentType;
+  status: AccountingPaymentStatus;
   amount: number;
   journalId: number;
   partnerName?: string | null;
@@ -934,6 +943,7 @@ export interface AccountingPayment {
   ref?: string | null;
   memo?: string | null;
   entryId?: number | null;
+  voidEntryId?: number | null;
   sourceType?: string | null;
   sourceDocId?: number | null;
   createdById?: string | null;

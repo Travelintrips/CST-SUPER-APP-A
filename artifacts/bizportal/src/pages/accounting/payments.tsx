@@ -18,11 +18,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users } from "lucide-react";
+import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban } from "lucide-react";
 import {
   useListAccountingPayments,
   getListAccountingPaymentsQueryKey,
   useCreateAccountingPayment,
+  useVoidAccountingPayment,
   useListJournals,
   useGetPartnerBalances,
   type AccountingPayment,
@@ -49,6 +50,88 @@ function LinkedDocBadge({ sourceType, sourceDocId }: { sourceType?: string | nul
         <FileText className="h-3 w-3" /> {label} #{sourceDocId}
       </Badge>
     </Link>
+  );
+}
+
+function VoidDialog({ payment, onVoided }: { payment: AccountingPayment; onVoided: () => void }) {
+  const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+  const voidMut = useVoidAccountingPayment();
+
+  const handleVoid = async () => {
+    try {
+      await voidMut.mutateAsync({ id: payment.id });
+      toast({ title: "Pembayaran dibatalkan", description: "Jurnal pembalik otomatis telah dibuat." });
+      setOpen(false);
+      onVoided();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
+      toast({ title: "Gagal membatalkan", description: msg, variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-xs gap-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 px-2"
+          data-testid={`void-btn-${payment.id}`}
+        >
+          <Ban className="h-3 w-3" /> Batalkan
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Batalkan Pembayaran?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2 text-sm text-slate-300">
+          <p>
+            Tindakan ini akan membuat <strong>jurnal pembalik otomatis</strong> (DR/CR dibalik) dan
+            menandai pembayaran ini sebagai <strong>Dibatalkan</strong>.
+          </p>
+          <div className="rounded-md border border-slate-700 bg-slate-800 p-3 space-y-1 text-xs font-mono">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Mitra</span>
+              <span>{payment.partnerName ?? "-"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Jumlah</span>
+              <span className={payment.paymentType === "inbound" ? "text-emerald-400" : "text-red-400"}>
+                {idr(payment.amount)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Tanggal</span>
+              <span>{formatDate(payment.date)}</span>
+            </div>
+            {payment.ref && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Ref</span>
+                <span>{payment.ref}</span>
+              </div>
+            )}
+          </div>
+          <p className="text-amber-400 text-xs">
+            Aksi ini tidak dapat dibatalkan. Jurnal pembalik akan langsung diposting.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={voidMut.isPending}>
+            Kembali
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleVoid}
+            disabled={voidMut.isPending}
+            data-testid={`void-confirm-btn-${payment.id}`}
+          >
+            {voidMut.isPending ? "Membatalkan..." : "Ya, Batalkan"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -115,8 +198,9 @@ export default function PaymentsPage() {
 
   const reset = () => setForm(emptyForm);
 
-  const totalInbound = payments.filter((p) => p.paymentType === "inbound").reduce((s, p) => s + p.amount, 0);
-  const totalOutbound = payments.filter((p) => p.paymentType === "outbound").reduce((s, p) => s + p.amount, 0);
+  const activePayments = payments.filter((p) => p.status !== "voided");
+  const totalInbound = activePayments.filter((p) => p.paymentType === "inbound").reduce((s, p) => s + p.amount, 0);
+  const totalOutbound = activePayments.filter((p) => p.paymentType === "outbound").reduce((s, p) => s + p.amount, 0);
 
   const prefillFromPartner = (entry: PartnerBalanceEntry, paymentType: "inbound" | "outbound") => {
     setForm((f) => ({
@@ -167,6 +251,10 @@ export default function PaymentsPage() {
   };
 
   const hasFilters = filter.paymentType || filter.from || filter.to || filter.sourceType || filter.sourceDocId || refSearch;
+
+  const handleVoided = async () => {
+    await qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey() });
+  };
 
   return (
     <AppShell>
@@ -547,19 +635,22 @@ export default function PaymentsPage() {
                   <TableRow>
                     <TableHead>Tanggal</TableHead>
                     <TableHead>Tipe</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Mitra</TableHead>
                     <TableHead>Referensi</TableHead>
                     <TableHead className="text-right">Jumlah (IDR)</TableHead>
                     <TableHead>Jurnal</TableHead>
                     <TableHead>Dokumen Terkait</TableHead>
                     <TableHead>Entry</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {payments.map((p) => {
                     const journal = journals.find((j) => j.id === p.journalId);
+                    const isVoided = p.status === "voided";
                     return (
-                      <TableRow key={p.id}>
+                      <TableRow key={p.id} className={isVoided ? "opacity-50" : undefined}>
                         <TableCell className="text-slate-300 text-xs whitespace-nowrap">
                           {formatDate(p.date)}
                         </TableCell>
@@ -574,10 +665,21 @@ export default function PaymentsPage() {
                             </Badge>
                           )}
                         </TableCell>
+                        <TableCell>
+                          {isVoided ? (
+                            <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-xs gap-1">
+                              <Ban className="h-3 w-3" /> Dibatalkan
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-green-900/40 text-green-300 border-green-700 text-xs">
+                              Diposting
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell className="text-slate-300 text-sm">{p.partnerName ?? "-"}</TableCell>
                         <TableCell className="text-slate-400 text-xs font-mono">{p.ref ?? "-"}</TableCell>
                         <TableCell className="text-right font-mono text-sm tabular-nums">
-                          <span className={p.paymentType === "inbound" ? "text-emerald-400" : "text-red-400"}>
+                          <span className={isVoided ? "text-slate-500 line-through" : p.paymentType === "inbound" ? "text-emerald-400" : "text-red-400"}>
                             {idr(p.amount)}
                           </span>
                         </TableCell>
@@ -600,6 +702,11 @@ export default function PaymentsPage() {
                             </Link>
                           ) : (
                             <span className="text-slate-600 text-xs">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {!isVoided && (
+                            <VoidDialog payment={p} onVoided={handleVoided} />
                           )}
                         </TableCell>
                       </TableRow>

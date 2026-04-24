@@ -55,6 +55,11 @@ export const accountingPaymentTypeEnum = pgEnum("accounting_payment_type", [
   "outbound",
 ]);
 
+export const accountingPaymentStatusEnum = pgEnum("accounting_payment_status", [
+  "posted",
+  "voided",
+]);
+
 export const chartOfAccountsTable = pgTable("chart_of_accounts", {
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),
@@ -201,6 +206,7 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
 export const accountingPaymentsTable = pgTable("accounting_payments", {
   id: serial("id").primaryKey(),
   paymentType: accountingPaymentTypeEnum("payment_type").notNull(),
+  status: accountingPaymentStatusEnum("status").notNull().default("posted"),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
   journalId: integer("journal_id")
     .notNull()
@@ -210,6 +216,9 @@ export const accountingPaymentsTable = pgTable("accounting_payments", {
   ref: text("ref"),
   memo: text("memo"),
   entryId: integer("entry_id").references(() => accountingEntriesTable.id, {
+    onDelete: "set null",
+  }),
+  voidEntryId: integer("void_entry_id").references(() => accountingEntriesTable.id, {
     onDelete: "set null",
   }),
   sourceType: text("source_type"),

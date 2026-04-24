@@ -1405,6 +1405,33 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AccountingPaymentDetail" }
 
+  /accounting/payments/{id}/void:
+    post:
+      operationId: voidAccountingPayment
+      tags: [accounting]
+      summary: Void a posted payment by creating a reversing journal entry
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Voided payment with reversing entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountingPaymentDetail" }
+        "400":
+          description: Bad request (already voided, etc.)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+        "404":
+          description: Payment not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
   /accounting/settings:
     get:
       operationId: getAccountingSettings
@@ -2587,6 +2614,9 @@ components:
         paymentType:
           type: string
           enum: [inbound, outbound]
+        status:
+          type: string
+          enum: [posted, voided]
         amount: { type: number }
         journalId: { type: integer }
         partnerName: { type: string, nullable: true }
@@ -2594,11 +2624,12 @@ components:
         ref: { type: string, nullable: true }
         memo: { type: string, nullable: true }
         entryId: { type: integer, nullable: true }
+        voidEntryId: { type: integer, nullable: true }
         sourceType: { type: string, nullable: true }
         sourceDocId: { type: integer, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
-      required: [id, paymentType, amount, journalId, date, createdAt]
+      required: [id, paymentType, status, amount, journalId, date, createdAt]
 
     AccountingPaymentDetail:
       allOf:

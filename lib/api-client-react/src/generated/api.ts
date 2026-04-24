@@ -6149,6 +6149,82 @@ export function useGetAccountingPayment<
 }
 
 /**
+ * @summary Void a posted payment by creating a reversing journal entry
+ */
+export const getVoidAccountingPaymentUrl = (id: number) => {
+  return `/api/accounting/payments/${id}/void`;
+};
+
+export const voidAccountingPayment = async (
+  id: number,
+  options?: RequestInit,
+): Promise<AccountingPaymentDetail> => {
+  return customFetch<AccountingPaymentDetail>(getVoidAccountingPaymentUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export type VoidAccountingPaymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof voidAccountingPayment>>
+>;
+export type VoidAccountingPaymentMutationError = ErrorType<unknown>;
+
+export const getVoidAccountingPaymentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voidAccountingPayment>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof voidAccountingPayment>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationKey = ["voidAccountingPayment"];
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof voidAccountingPayment>>,
+    { id: number }
+  > = ({ id }) => {
+    return voidAccountingPayment(id, requestOptions);
+  };
+  return { mutationKey, mutationFn, ...mutationOptions };
+};
+
+export type UseVoidAccountingPaymentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof voidAccountingPayment>>
+>;
+export type UseVoidAccountingPaymentMutationError = ErrorType<unknown>;
+
+export const useVoidAccountingPayment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voidAccountingPayment>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof voidAccountingPayment>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationOptions = getVoidAccountingPaymentMutationOptions(options);
+  return useMutation(mutationOptions);
+};
+
+/**
  * @summary Get accounting settings (account mappings)
  */
 export const getGetAccountingSettingsUrl = () => {

@@ -400,9 +400,9 @@ router.post("/payments", async (req, res) => {
 
     // Update payment settlement on the linked document (unpaid → partial → paid)
     if (validSourceType && parsedSourceDocId && !Number.isNaN(parsedSourceDocId)) {
-      // Sum all payments (including the one just created) for this document
+      // Sum all non-voided payments (including the one just created) for this document
       const allLinked = await db
-        .select({ amount: accountingPaymentsTable.amount })
+        .select({ amount: accountingPaymentsTable.amount, status: accountingPaymentsTable.status })
         .from(accountingPaymentsTable)
         .where(
           and(
@@ -410,7 +410,9 @@ router.post("/payments", async (req, res) => {
             eq(accountingPaymentsTable.sourceDocId, parsedSourceDocId),
           ),
         );
-      const totalPaid = allLinked.reduce((s, r) => s + Number(r.amount), 0);
+      const totalPaid = allLinked
+        .filter((r) => r.status !== "voided")
+        .reduce((s, r) => s + Number(r.amount), 0);
 
       if (validSourceType === "sales_order") {
         const [doc] = await db
@@ -542,6 +544,105 @@ router.get("/partner-balances", async (_req, res) => {
   const totalAp = Math.round(ap.reduce((s, r) => s + r.balance, 0) * 100) / 100;
 
   return res.json({ ar, ap, totalAr, totalAp });
+});
+
+router.post("/payments/:id/void", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [payment] = await db.select().from(accountingPaymentsTable).where(eq(accountingPaymentsTable.id, id));
+  if (!payment) return res.status(404).json({ message: "Not found" });
+  if (payment.status === "voided") return res.status(400).json({ message: "Pembayaran sudah dibatalkan sebelumnya." });
+
+  if (!payment.entryId) return res.status(400).json({ message: "Tidak ada jurnal yang terkait dengan pembayaran ini." });
+
+  const [origEntry] = await db.select().from(accountingEntriesTable).where(eq(accountingEntriesTable.id, payment.entryId));
+  if (!origEntry) return res.status(400).json({ message: "Jurnal asli tidak ditemukan." });
+
+  const origLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, origEntry.id));
+
+  const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.id, payment.journalId));
+  if (!journal) return res.status(400).json({ message: "Jurnal tidak ditemukan." });
+
+  const reversalLines: PostingLine[] = origLines.map((l) => ({
+    accountId: l.accountId,
+    debit: Number(l.credit),
+    credit: Number(l.debit),
+    description: `[VOID] ${l.description ?? ""}`.trim(),
+  }));
+
+  try {
+    const voidEntry = await postEntry(
+      {
+        journalId: payment.journalId,
+        date: new Date(),
+        ref: payment.ref ?? null,
+        description: `[VOID] ${origEntry.description ?? `Pembayaran #${payment.id}`}`,
+        source: "manual",
+        lines: reversalLines,
+      },
+      journal.code,
+    );
+
+    await db
+      .update(accountingPaymentsTable)
+      .set({ status: "voided", voidEntryId: voidEntry.id })
+      .where(eq(accountingPaymentsTable.id, id));
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const validSourceType =
+      payment.sourceType === "sales_order" || payment.sourceType === "purchase_order"
+        ? payment.sourceType
+        : null;
+
+    if (validSourceType && payment.sourceDocId) {
+      const allLinked = await db
+        .select({ amount: accountingPaymentsTable.amount, status: accountingPaymentsTable.status })
+        .from(accountingPaymentsTable)
+        .where(
+          and(
+            eq(accountingPaymentsTable.sourceType, validSourceType),
+            eq(accountingPaymentsTable.sourceDocId, payment.sourceDocId),
+          ),
+        );
+      const totalPaid = allLinked
+        .filter((r) => r.status !== "voided")
+        .reduce((s, r) => s + Number(r.amount), 0);
+
+      if (validSourceType === "sales_order") {
+        const [doc] = await db
+          .select({ grandTotal: salesDocumentsTable.grandTotal })
+          .from(salesDocumentsTable)
+          .where(eq(salesDocumentsTable.id, payment.sourceDocId));
+        const grandTotal = Number(doc?.grandTotal ?? 0);
+        const newStatus = totalPaid >= grandTotal && grandTotal > 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+        await db
+          .update(salesDocumentsTable)
+          .set({ paymentStatus: newStatus, amountPaid: String(round2(totalPaid)), updatedAt: new Date() })
+          .where(eq(salesDocumentsTable.id, payment.sourceDocId));
+      } else if (validSourceType === "purchase_order") {
+        const [doc] = await db
+          .select({ grandTotal: purchaseDocumentsTable.grandTotal })
+          .from(purchaseDocumentsTable)
+          .where(eq(purchaseDocumentsTable.id, payment.sourceDocId));
+        const grandTotal = Number(doc?.grandTotal ?? 0);
+        const newStatus = totalPaid >= grandTotal && grandTotal > 0 ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+        await db
+          .update(purchaseDocumentsTable)
+          .set({ paymentStatus: newStatus, amountPaid: String(round2(totalPaid)), updatedAt: new Date() })
+          .where(eq(purchaseDocumentsTable.id, payment.sourceDocId));
+      }
+    }
+
+    const [updated] = await db.select().from(accountingPaymentsTable).where(eq(accountingPaymentsTable.id, id));
+    const voidLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, voidEntry.id));
+    return res.json({
+      ...serializePayment(updated!),
+      entry: { ...serializeEntry(voidEntry), lines: voidLines.map(serializeEntryLine) },
+    });
+  } catch (err) {
+    return res.status(400).json({ message: String((err as Error)?.message ?? err) });
+  }
 });
 
 // ============ Settings ============
