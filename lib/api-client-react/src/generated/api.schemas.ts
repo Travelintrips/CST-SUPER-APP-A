@@ -88,6 +88,25 @@ export interface CreateOrderBody {
   totalAmount: number;
 }
 
+export type UpdateOrderBodyStatus =
+  (typeof UpdateOrderBodyStatus)[keyof typeof UpdateOrderBodyStatus];
+
+export const UpdateOrderBodyStatus = {
+  pending: "pending",
+  processing: "processing",
+  shipped: "shipped",
+  delivered: "delivered",
+  cancelled: "cancelled",
+} as const;
+
+export interface UpdateOrderBody {
+  customerName: string;
+  customerEmail: string;
+  items: string;
+  totalAmount: number;
+  status: UpdateOrderBodyStatus;
+}
+
 export interface StockItem {
   id: number;
   productName: string;

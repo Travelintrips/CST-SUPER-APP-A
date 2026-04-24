@@ -68,4 +68,22 @@ router.post("/orders", async (req, res) => {
   return res.status(201).json({ ...order, totalAmount: Number(order.totalAmount), createdAt: order.createdAt.toISOString() });
 });
 
+// PUT /api/ecommerce/orders/:id
+router.put("/orders/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { customerName, customerEmail, items, totalAmount, status } = req.body;
+  const [order] = await db.update(ordersTable).set({
+    customerName, customerEmail, items, totalAmount: String(totalAmount), status,
+  }).where(eq(ordersTable.id, id)).returning();
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  return res.json({ ...order, totalAmount: Number(order.totalAmount), createdAt: order.createdAt.toISOString() });
+});
+
+// DELETE /api/ecommerce/orders/:id
+router.delete("/orders/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  await db.delete(ordersTable).where(eq(ordersTable.id, id));
+  return res.json({ message: "Order deleted" });
+});
+
 export default router;

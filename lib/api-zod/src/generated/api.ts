@@ -151,6 +151,54 @@ export const CreateOrderBody = zod.object({
 });
 
 /**
+ * @summary Update an order
+ */
+export const UpdateOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateOrderBody = zod.object({
+  customerName: zod.string(),
+  customerEmail: zod.string(),
+  items: zod.string(),
+  totalAmount: zod.number(),
+  status: zod.enum([
+    "pending",
+    "processing",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ]),
+});
+
+export const UpdateOrderResponse = zod.object({
+  id: zod.number(),
+  customerName: zod.string(),
+  customerEmail: zod.string(),
+  status: zod.enum([
+    "pending",
+    "processing",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ]),
+  totalAmount: zod.number(),
+  items: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete an order
+ */
+export const DeleteOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteOrderResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
  * @summary List all stock items
  */
 export const ListStocksResponseItem = zod.object({

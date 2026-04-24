@@ -1,8 +1,9 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Link } from "wouter";
 
 export default function DashboardPage() {
   const { data: summary, isLoading } = useGetDashboardSummary({
@@ -33,91 +34,97 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-emerald-500" />
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-7 w-[120px] bg-muted" />
-              ) : (
-                <div className="text-2xl font-bold">{formatIDR(summary?.totalRevenue || 0)}</div>
-              )}
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-blue-500" />
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-7 w-[80px] bg-muted" />
-              ) : (
-                <div className="text-2xl font-bold">{formatNumber(summary?.totalOrders || 0)}</div>
-              )}
-            </CardContent>
-          </Card>
+          <StatCard
+            title="Total Revenue"
+            href="/ecommerce?tab=orders"
+            icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
+            isLoading={isLoading}
+            value={formatIDR(summary?.totalRevenue || 0)}
+            testId="stat-revenue"
+          />
 
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Shipments</CardTitle>
-              <Truck className="h-4 w-4 text-indigo-500" />
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-7 w-[80px] bg-muted" />
-              ) : (
-                <div className="text-2xl font-bold">{formatNumber(summary?.totalShipments || 0)}</div>
-              )}
-            </CardContent>
-          </Card>
+          <StatCard
+            title="Total Orders"
+            href="/ecommerce?tab=orders"
+            icon={<ShoppingCart className="h-4 w-4 text-blue-500" />}
+            isLoading={isLoading}
+            value={formatNumber(summary?.totalOrders || 0)}
+            testId="stat-orders"
+          />
 
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Stock Value</CardTitle>
-              <Package className="h-4 w-4 text-violet-500" />
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-7 w-[120px] bg-muted" />
-              ) : (
-                <div className="text-2xl font-bold">{formatIDR(summary?.totalStockValue || 0)}</div>
-              )}
-            </CardContent>
-          </Card>
+          <StatCard
+            title="Total Shipments"
+            href="/logistics"
+            icon={<Truck className="h-4 w-4 text-indigo-500" />}
+            isLoading={isLoading}
+            value={formatNumber(summary?.totalShipments || 0)}
+            testId="stat-shipments"
+          />
 
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today's Transactions</CardTitle>
-              <Activity className="h-4 w-4 text-amber-500" />
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-7 w-[80px] bg-muted" />
-              ) : (
-                <div className="text-2xl font-bold">{formatNumber(summary?.todayTransactions || 0)}</div>
-              )}
-            </CardContent>
-          </Card>
+          <StatCard
+            title="Stock Value"
+            href="/trading"
+            icon={<Package className="h-4 w-4 text-violet-500" />}
+            isLoading={isLoading}
+            value={formatIDR(summary?.totalStockValue || 0)}
+            testId="stat-stock-value"
+          />
 
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-destructive">Low Stock Alerts</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <Skeleton className="h-7 w-[80px] bg-muted" />
-              ) : (
-                <div className="text-2xl font-bold text-destructive">{formatNumber(summary?.lowStockCount || 0)}</div>
-              )}
-            </CardContent>
-          </Card>
+          <StatCard
+            title="Today's Transactions"
+            href="/pos"
+            icon={<Activity className="h-4 w-4 text-amber-500" />}
+            isLoading={isLoading}
+            value={formatNumber(summary?.todayTransactions || 0)}
+            testId="stat-today-tx"
+          />
+
+          <StatCard
+            title="Low Stock Alerts"
+            href="/trading"
+            icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
+            isLoading={isLoading}
+            value={formatNumber(summary?.lowStockCount || 0)}
+            valueClassName="text-destructive"
+            titleClassName="text-destructive"
+            testId="stat-low-stock"
+          />
         </div>
       </div>
     </AppShell>
+  );
+}
+
+interface StatCardProps {
+  title: string;
+  href: string;
+  icon: React.ReactNode;
+  isLoading: boolean;
+  value: string;
+  valueClassName?: string;
+  titleClassName?: string;
+  testId?: string;
+}
+
+function StatCard({ title, href, icon, isLoading, value, valueClassName, titleClassName, testId }: StatCardProps) {
+  return (
+    <Link href={href} data-testid={testId} className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
+      <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className={`text-sm font-medium ${titleClassName ?? ""}`}>{title}</CardTitle>
+          <div className="flex items-center gap-1">
+            {icon}
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-7 w-[80px] bg-muted" />
+          ) : (
+            <div className={`text-xl sm:text-2xl font-bold truncate ${valueClassName ?? ""}`}>{value}</div>
+          )}
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

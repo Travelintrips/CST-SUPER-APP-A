@@ -1,52 +1,100 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { 
-  useListProducts, 
-  useCreateProduct, 
-  useListOrders, 
+import {
+  useListProducts,
+  useCreateProduct,
+  useUpdateProduct,
+  useDeleteProduct,
+  useListOrders,
   useCreateOrder,
+  useUpdateOrder,
+  useDeleteOrder,
   getListProductsQueryKey,
-  getListOrdersQueryKey
+  getListOrdersQueryKey,
+  type Product,
+  type Order,
 } from "@workspace/api-client-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSearch, useLocation } from "wouter";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, PackageSearch, ShoppingBag } from "lucide-react";
+import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+
+const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
+type OrderStatus = typeof ORDER_STATUSES[number];
 
 export default function EcommercePage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+
+  const initialTab = (() => {
+    const params = new URLSearchParams(search);
+    const t = params.get("tab");
+    return t === "orders" ? "orders" : "products";
+  })();
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const t = params.get("tab");
+    const next = t === "orders" || t === "products" ? t : "products";
+    setActiveTab((prev) => (prev !== next ? next : prev));
+  }, [search]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const params = new URLSearchParams(search);
+    if (value === "orders") params.set("tab", "orders");
+    else params.delete("tab");
+    const qs = params.toString();
+    setLocation(qs ? `/ecommerce?${qs}` : `/ecommerce`, { replace: true });
+  };
+
   const { data: products, isLoading: isLoadingProducts } = useListProducts({
     query: { queryKey: getListProductsQueryKey() }
   });
-  
+
   const { data: orders, isLoading: isLoadingOrders } = useListOrders({
     query: { queryKey: getListOrdersQueryKey() }
   });
 
   const createProduct = useCreateProduct();
+  const updateProduct = useUpdateProduct();
+  const deleteProduct = useDeleteProduct();
   const createOrder = useCreateOrder();
+  const updateOrder = useUpdateOrder();
+  const deleteOrder = useDeleteOrder();
 
   const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
   const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editOrderStatus, setEditOrderStatus] = useState<OrderStatus>("pending");
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
 
-  const formatIDR = (value: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
+  const formatIDR = (value: number) =>
+    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 
   const getOrderStatusColor = (status: string) => {
     switch (status) {
@@ -62,7 +110,6 @@ export default function EcommercePage() {
   const handleCreateProduct = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
     createProduct.mutate({
       data: {
         name: formData.get("name") as string,
@@ -75,18 +122,52 @@ export default function EcommercePage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         setIsProductDialogOpen(false);
-        toast({ title: "Product created successfully" });
+        toast({ title: "Produk berhasil dibuat" });
       },
-      onError: () => {
-        toast({ title: "Failed to create product", variant: "destructive" });
+      onError: () => toast({ title: "Gagal membuat produk", variant: "destructive" }),
+    });
+  };
+
+  const handleEditProduct = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    const formData = new FormData(e.currentTarget);
+    updateProduct.mutate({
+      id: editingProduct.id,
+      data: {
+        name: formData.get("name") as string,
+        sku: formData.get("sku") as string,
+        price: Number(formData.get("price")),
+        stock: Number(formData.get("stock")),
+        category: formData.get("category") as string,
       }
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        setEditingProduct(null);
+        toast({ title: "Produk berhasil diperbarui" });
+      },
+      onError: () => toast({ title: "Gagal memperbarui produk", variant: "destructive" }),
+    });
+  };
+
+  const handleConfirmDeleteProduct = () => {
+    if (!deletingProduct) return;
+    const id = deletingProduct.id;
+    deleteProduct.mutate({ id }, {
+      onSuccess: () => {
+        queryClient.setQueryData<Product[]>(getListProductsQueryKey(), (old) => old?.filter(p => p.id !== id) ?? []);
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        setDeletingProduct(null);
+        toast({ title: "Produk berhasil dihapus" });
+      },
+      onError: () => toast({ title: "Gagal menghapus produk", variant: "destructive" }),
     });
   };
 
   const handleCreateOrder = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
     createOrder.mutate({
       data: {
         customerName: formData.get("customerName") as string,
@@ -98,12 +179,52 @@ export default function EcommercePage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         setIsOrderDialogOpen(false);
-        toast({ title: "Order created successfully" });
+        toast({ title: "Order berhasil dibuat" });
       },
-      onError: () => {
-        toast({ title: "Failed to create order", variant: "destructive" });
-      }
+      onError: () => toast({ title: "Gagal membuat order", variant: "destructive" }),
     });
+  };
+
+  const handleEditOrder = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+    const formData = new FormData(e.currentTarget);
+    updateOrder.mutate({
+      id: editingOrder.id,
+      data: {
+        customerName: formData.get("customerName") as string,
+        customerEmail: formData.get("customerEmail") as string,
+        items: formData.get("items") as string,
+        totalAmount: Number(formData.get("totalAmount")),
+        status: editOrderStatus,
+      }
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        setEditingOrder(null);
+        toast({ title: "Order berhasil diperbarui" });
+      },
+      onError: () => toast({ title: "Gagal memperbarui order", variant: "destructive" }),
+    });
+  };
+
+  const handleConfirmDeleteOrder = () => {
+    if (!deletingOrder) return;
+    const id = deletingOrder.id;
+    deleteOrder.mutate({ id }, {
+      onSuccess: () => {
+        queryClient.setQueryData<Order[]>(getListOrdersQueryKey(), (old) => old?.filter(o => o.id !== id) ?? []);
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        setDeletingOrder(null);
+        toast({ title: "Order berhasil dihapus" });
+      },
+      onError: () => toast({ title: "Gagal menghapus order", variant: "destructive" }),
+    });
+  };
+
+  const openEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    setEditOrderStatus((order.status as OrderStatus) ?? "pending");
   };
 
   return (
@@ -111,72 +232,59 @@ export default function EcommercePage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">E-Commerce</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Manage your online store catalog and customer orders.</p>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Kelola katalog toko online dan pesanan pelanggan.</p>
         </div>
 
-        <Tabs defaultValue="products" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="products" className="flex-1 sm:flex-none">Products</TabsTrigger>
-            <TabsTrigger value="orders" className="flex-1 sm:flex-none">Orders</TabsTrigger>
+            <TabsTrigger value="products" className="flex-1 sm:flex-none" data-testid="tab-products">Produk</TabsTrigger>
+            <TabsTrigger value="orders" className="flex-1 sm:flex-none" data-testid="tab-orders">Order</TabsTrigger>
           </TabsList>
-          
+
+          {/* PRODUCTS TAB */}
           <TabsContent value="products" className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Product Catalog</h2>
+              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Katalog Produk</h2>
               <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button><Plus className="mr-2 h-4 w-4" /> Add Product</Button>
+                  <Button data-testid="button-add-product"><Plus className="mr-2 h-4 w-4" /> Tambah Produk</Button>
                 </DialogTrigger>
                 <DialogContent>
                   <form onSubmit={handleCreateProduct}>
                     <DialogHeader>
-                      <DialogTitle>Add New Product</DialogTitle>
-                      <DialogDescription>Create a new product listing in your catalog.</DialogDescription>
+                      <DialogTitle>Tambah Produk Baru</DialogTitle>
+                      <DialogDescription>Buat produk baru di katalog Anda.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="name">Product Name</Label>
-                        <Input id="name" name="name" required />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="sku">SKU</Label>
-                        <Input id="sku" name="sku" required />
-                      </div>
+                      <div className="grid gap-2"><Label htmlFor="name">Nama Produk</Label><Input id="name" name="name" required data-testid="input-product-name" /></div>
+                      <div className="grid gap-2"><Label htmlFor="sku">SKU</Label><Input id="sku" name="sku" required data-testid="input-product-sku" /></div>
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                          <Label htmlFor="price">Price (IDR)</Label>
-                          <Input id="price" name="price" type="number" min="0" required />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label htmlFor="stock">Stock</Label>
-                          <Input id="stock" name="stock" type="number" min="0" required />
-                        </div>
+                        <div className="grid gap-2"><Label htmlFor="price">Harga (IDR)</Label><Input id="price" name="price" type="number" min="0" required data-testid="input-product-price" /></div>
+                        <div className="grid gap-2"><Label htmlFor="stock">Stok</Label><Input id="stock" name="stock" type="number" min="0" required data-testid="input-product-stock" /></div>
                       </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="category">Category</Label>
-                        <Input id="category" name="category" required />
-                      </div>
+                      <div className="grid gap-2"><Label htmlFor="category">Kategori</Label><Input id="category" name="category" required data-testid="input-product-category" /></div>
                     </div>
                     <DialogFooter>
-                      <Button type="submit" disabled={createProduct.isPending}>
-                        {createProduct.isPending ? "Creating..." : "Create Product"}
+                      <Button type="submit" disabled={createProduct.isPending} data-testid="button-submit-product">
+                        {createProduct.isPending ? "Menyimpan..." : "Buat Produk"}
                       </Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
             </div>
-            
+
             <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product Name</TableHead>
+                      <TableHead>Nama Produk</TableHead>
                       <TableHead>SKU</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Price</TableHead>
-                      <TableHead className="text-right">Stock</TableHead>
+                      <TableHead>Kategori</TableHead>
+                      <TableHead className="text-right">Harga</TableHead>
+                      <TableHead className="text-right">Stok</TableHead>
+                      <TableHead className="text-right w-[120px]">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -188,30 +296,37 @@ export default function EcommercePage() {
                           <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-4 w-[80px] ml-auto" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-4 w-[40px] ml-auto" /></TableCell>
+                          <TableCell className="text-right"><Skeleton className="h-8 w-[80px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
                     ) : products?.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
+                        <TableCell colSpan={6} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
-                            <p>No products found. Add your first product.</p>
+                            <p>Belum ada produk. Tambahkan produk pertama Anda.</p>
                           </div>
                         </TableCell>
                       </TableRow>
                     ) : (
                       products?.map((product) => (
-                        <TableRow key={product.id}>
+                        <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
                           <TableCell className="font-medium">{product.name}</TableCell>
                           <TableCell>{product.sku}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{product.category}</Badge>
-                          </TableCell>
+                          <TableCell><Badge variant="outline">{product.category}</Badge></TableCell>
                           <TableCell className="text-right">{formatIDR(product.price)}</TableCell>
                           <TableCell className="text-right font-medium">
-                            <span className={product.stock < 10 ? "text-destructive" : ""}>
-                              {product.stock}
-                            </span>
+                            <span className={product.stock < 10 ? "text-destructive" : ""}>{product.stock}</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => setEditingProduct(product)} data-testid={`button-edit-product-${product.id}`} aria-label="Edit produk">
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => setDeletingProduct(product)} data-testid={`button-delete-product-${product.id}`} aria-label="Hapus produk" className="text-destructive hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -233,11 +348,11 @@ export default function EcommercePage() {
               ) : products?.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <PackageSearch className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No products found. Add your first product.</p>
+                  <p className="text-sm text-muted-foreground">Belum ada produk. Tambahkan produk pertama Anda.</p>
                 </CardContent></Card>
               ) : (
                 products?.map((product) => (
-                  <Card key={product.id}><CardContent className="p-4 space-y-2">
+                  <Card key={product.id} data-testid={`card-product-${product.id}`}><CardContent className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium truncate">{product.name}</p>
@@ -247,73 +362,69 @@ export default function EcommercePage() {
                     </div>
                     <div className="flex justify-between items-end pt-1 border-t border-border">
                       <div>
-                        <p className="text-xs text-muted-foreground">Price</p>
+                        <p className="text-xs text-muted-foreground">Harga</p>
                         <p className="text-sm font-medium">{formatIDR(product.price)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Stock</p>
-                        <p className={`text-sm font-medium ${product.stock < 10 ? "text-destructive" : ""}`}>
-                          {product.stock}
-                        </p>
+                        <p className="text-xs text-muted-foreground">Stok</p>
+                        <p className={`text-sm font-medium ${product.stock < 10 ? "text-destructive" : ""}`}>{product.stock}</p>
                       </div>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditingProduct(product)} data-testid={`button-edit-product-mobile-${product.id}`}>
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1 text-destructive hover:text-destructive" onClick={() => setDeletingProduct(product)} data-testid={`button-delete-product-mobile-${product.id}`}>
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Hapus
+                      </Button>
                     </div>
                   </CardContent></Card>
                 ))
               )}
             </div>
           </TabsContent>
-          
+
+          {/* ORDERS TAB */}
           <TabsContent value="orders" className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Recent Orders</h2>
+              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Order Terbaru</h2>
               <Dialog open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button><Plus className="mr-2 h-4 w-4" /> Add Order</Button>
+                  <Button data-testid="button-add-order"><Plus className="mr-2 h-4 w-4" /> Tambah Order</Button>
                 </DialogTrigger>
                 <DialogContent>
                   <form onSubmit={handleCreateOrder}>
                     <DialogHeader>
-                      <DialogTitle>Create Manual Order</DialogTitle>
-                      <DialogDescription>Manually enter a customer order into the system.</DialogDescription>
+                      <DialogTitle>Buat Order Manual</DialogTitle>
+                      <DialogDescription>Masukkan order pelanggan secara manual.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="customerName">Customer Name</Label>
-                        <Input id="customerName" name="customerName" required />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="customerEmail">Customer Email</Label>
-                        <Input id="customerEmail" name="customerEmail" type="email" required />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="items">Items Summary</Label>
-                        <Input id="items" name="items" placeholder="e.g. 2x T-Shirt, 1x Shoes" required />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="totalAmount">Total Amount (IDR)</Label>
-                        <Input id="totalAmount" name="totalAmount" type="number" min="0" required />
-                      </div>
+                      <div className="grid gap-2"><Label htmlFor="customerName">Nama Pelanggan</Label><Input id="customerName" name="customerName" required data-testid="input-order-customer-name" /></div>
+                      <div className="grid gap-2"><Label htmlFor="customerEmail">Email Pelanggan</Label><Input id="customerEmail" name="customerEmail" type="email" required data-testid="input-order-customer-email" /></div>
+                      <div className="grid gap-2"><Label htmlFor="items">Ringkasan Item</Label><Input id="items" name="items" placeholder="cth. 2x T-Shirt, 1x Sepatu" required data-testid="input-order-items" /></div>
+                      <div className="grid gap-2"><Label htmlFor="totalAmount">Total (IDR)</Label><Input id="totalAmount" name="totalAmount" type="number" min="0" required data-testid="input-order-total" /></div>
                     </div>
                     <DialogFooter>
-                      <Button type="submit" disabled={createOrder.isPending}>
-                        {createOrder.isPending ? "Creating..." : "Create Order"}
+                      <Button type="submit" disabled={createOrder.isPending} data-testid="button-submit-order">
+                        {createOrder.isPending ? "Menyimpan..." : "Buat Order"}
                       </Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
             </div>
-            
+
             <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Order ID</TableHead>
-                      <TableHead>Customer</TableHead>
+                      <TableHead>Pelanggan</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Total Amount</TableHead>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right w-[120px]">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -325,20 +436,21 @@ export default function EcommercePage() {
                           <TableCell><Skeleton className="h-6 w-[80px] rounded-full" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-4 w-[100px] ml-auto" /></TableCell>
+                          <TableCell className="text-right"><Skeleton className="h-8 w-[80px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
                     ) : orders?.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
+                        <TableCell colSpan={6} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <ShoppingBag className="h-8 w-8 mb-2 opacity-50" />
-                            <p>No orders found.</p>
+                            <p>Belum ada order.</p>
                           </div>
                         </TableCell>
                       </TableRow>
                     ) : (
                       orders?.map((order) => (
-                        <TableRow key={order.id}>
+                        <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
                           <TableCell className="font-medium">#ORD-{order.id.toString().padStart(4, '0')}</TableCell>
                           <TableCell>
                             <div className="flex flex-col">
@@ -347,14 +459,20 @@ export default function EcommercePage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={`capitalize ${getOrderStatusColor(order.status)}`}>
-                              {order.status}
-                            </Badge>
+                            <Badge variant="outline" className={`capitalize ${getOrderStatusColor(order.status)}`}>{order.status}</Badge>
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {new Date(order.createdAt).toLocaleDateString()}
-                          </TableCell>
+                          <TableCell className="text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                           <TableCell className="text-right font-medium">{formatIDR(order.totalAmount)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-${order.id}`} aria-label="Edit order">
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => setDeletingOrder(order)} data-testid={`button-delete-order-${order.id}`} aria-label="Hapus order" className="text-destructive hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -375,16 +493,14 @@ export default function EcommercePage() {
               ) : orders?.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <ShoppingBag className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No orders found.</p>
+                  <p className="text-sm text-muted-foreground">Belum ada order.</p>
                 </CardContent></Card>
               ) : (
                 orders?.map((order) => (
-                  <Card key={order.id}><CardContent className="p-4 space-y-2">
+                  <Card key={order.id} data-testid={`card-order-${order.id}`}><CardContent className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium font-mono text-sm">#ORD-{order.id.toString().padStart(4, '0')}</p>
-                      <Badge variant="outline" className={`capitalize shrink-0 ${getOrderStatusColor(order.status)}`}>
-                        {order.status}
-                      </Badge>
+                      <Badge variant="outline" className={`capitalize shrink-0 ${getOrderStatusColor(order.status)}`}>{order.status}</Badge>
                     </div>
                     <div>
                       <p className="text-sm font-medium truncate">{order.customerName}</p>
@@ -394,6 +510,14 @@ export default function EcommercePage() {
                       <p className="text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</p>
                       <p className="text-sm font-bold">{formatIDR(order.totalAmount)}</p>
                     </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-mobile-${order.id}`}>
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1 text-destructive hover:text-destructive" onClick={() => setDeletingOrder(order)} data-testid={`button-delete-order-mobile-${order.id}`}>
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Hapus
+                      </Button>
+                    </div>
                   </CardContent></Card>
                 ))
               )}
@@ -401,6 +525,110 @@ export default function EcommercePage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* EDIT PRODUCT DIALOG */}
+      <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
+        <DialogContent>
+          {editingProduct && (
+            <form onSubmit={handleEditProduct}>
+              <DialogHeader>
+                <DialogTitle>Edit Produk</DialogTitle>
+                <DialogDescription>Perbarui detail produk.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2"><Label htmlFor="edit-name">Nama Produk</Label><Input id="edit-name" name="name" defaultValue={editingProduct.name} required data-testid="input-edit-product-name" /></div>
+                <div className="grid gap-2"><Label htmlFor="edit-sku">SKU</Label><Input id="edit-sku" name="sku" defaultValue={editingProduct.sku} required data-testid="input-edit-product-sku" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2"><Label htmlFor="edit-price">Harga (IDR)</Label><Input id="edit-price" name="price" type="number" min="0" defaultValue={editingProduct.price} required data-testid="input-edit-product-price" /></div>
+                  <div className="grid gap-2"><Label htmlFor="edit-stock">Stok</Label><Input id="edit-stock" name="stock" type="number" min="0" defaultValue={editingProduct.stock} required data-testid="input-edit-product-stock" /></div>
+                </div>
+                <div className="grid gap-2"><Label htmlFor="edit-category">Kategori</Label><Input id="edit-category" name="category" defaultValue={editingProduct.category} required data-testid="input-edit-product-category" /></div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>Batal</Button>
+                <Button type="submit" disabled={updateProduct.isPending} data-testid="button-save-product">
+                  {updateProduct.isPending ? "Menyimpan..." : "Simpan Perubahan"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* EDIT ORDER DIALOG */}
+      <Dialog open={!!editingOrder} onOpenChange={(open) => !open && setEditingOrder(null)}>
+        <DialogContent>
+          {editingOrder && (
+            <form onSubmit={handleEditOrder}>
+              <DialogHeader>
+                <DialogTitle>Edit Order</DialogTitle>
+                <DialogDescription>Perbarui detail order pelanggan.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2"><Label htmlFor="edit-customer-name">Nama Pelanggan</Label><Input id="edit-customer-name" name="customerName" defaultValue={editingOrder.customerName} required data-testid="input-edit-order-customer-name" /></div>
+                <div className="grid gap-2"><Label htmlFor="edit-customer-email">Email Pelanggan</Label><Input id="edit-customer-email" name="customerEmail" type="email" defaultValue={editingOrder.customerEmail} required data-testid="input-edit-order-customer-email" /></div>
+                <div className="grid gap-2"><Label htmlFor="edit-items">Ringkasan Item</Label><Input id="edit-items" name="items" defaultValue={editingOrder.items ?? ""} required data-testid="input-edit-order-items" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2"><Label htmlFor="edit-total">Total (IDR)</Label><Input id="edit-total" name="totalAmount" type="number" min="0" defaultValue={editingOrder.totalAmount} required data-testid="input-edit-order-total" /></div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-status">Status</Label>
+                    <Select value={editOrderStatus} onValueChange={(v) => setEditOrderStatus(v as OrderStatus)}>
+                      <SelectTrigger id="edit-status" data-testid="select-edit-order-status"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ORDER_STATUSES.map(s => (
+                          <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditingOrder(null)}>Batal</Button>
+                <Button type="submit" disabled={updateOrder.isPending} data-testid="button-save-order">
+                  {updateOrder.isPending ? "Menyimpan..." : "Simpan Perubahan"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE PRODUCT CONFIRMATION */}
+      <AlertDialog open={!!deletingProduct} onOpenChange={(open) => !open && setDeletingProduct(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus produk ini?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Produk <strong>{deletingProduct?.name}</strong> akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-product">Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteProduct} disabled={deleteProduct.isPending} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-delete-product">
+              {deleteProduct.isPending ? "Menghapus..." : "Hapus"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* DELETE ORDER CONFIRMATION */}
+      <AlertDialog open={!!deletingOrder} onOpenChange={(open) => !open && setDeletingOrder(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus order ini?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Order <strong>#ORD-{deletingOrder?.id.toString().padStart(4, '0')}</strong> dari {deletingOrder?.customerName} akan dihapus permanen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-order">Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteOrder} disabled={deleteOrder.isPending} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-delete-order">
+              {deleteOrder.isPending ? "Menghapus..." : "Hapus"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

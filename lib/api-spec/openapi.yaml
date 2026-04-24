@@ -186,6 +186,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/Order"
 
+  /ecommerce/orders/{id}:
+    put:
+      operationId: updateOrder
+      tags: [ecommerce]
+      summary: Update an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderBody"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+    delete:
+      operationId: deleteOrder
+      tags: [ecommerce]
+      summary: Delete an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
   /trading/stocks:
     get:
       operationId: listStocks
@@ -471,6 +513,22 @@ components:
         totalAmount:
           type: number
       required: [customerName, customerEmail, items, totalAmount]
+
+    UpdateOrderBody:
+      type: object
+      properties:
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+        items:
+          type: string
+        totalAmount:
+          type: number
+        status:
+          type: string
+          enum: [pending, processing, shipped, delivered, cancelled]
+      required: [customerName, customerEmail, items, totalAmount, status]
 
     StockItem:
       type: object
