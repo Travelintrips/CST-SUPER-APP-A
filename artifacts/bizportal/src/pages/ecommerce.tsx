@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2 } from "lucide-react";
+import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -94,6 +94,7 @@ export default function EcommercePage() {
   const [editOrderStatus, setEditOrderStatus] = useState<OrderStatus>("pending");
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+  const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   const [createImageUrl, setCreateImageUrl] = useState<string | null>(null);
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
 
@@ -526,6 +527,9 @@ export default function EcommercePage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => setPrintingOrder(order)} data-testid={`button-print-order-${order.id}`} aria-label="Cetak invoice">
+                                <Printer className="h-4 w-4" />
+                              </Button>
                               <Button size="icon" variant="ghost" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-${order.id}`} aria-label="Edit order">
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -577,6 +581,9 @@ export default function EcommercePage() {
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setPrintingOrder(order)} data-testid={`button-print-order-mobile-${order.id}`}>
+                        <Printer className="h-3.5 w-3.5 mr-1.5" /> Cetak
+                      </Button>
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-mobile-${order.id}`}>
                         <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
                       </Button>
@@ -704,7 +711,149 @@ export default function EcommercePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* INVOICE PRINT DIALOG */}
+      {printingOrder && (
+        <OrderInvoiceDialog
+          order={printingOrder}
+          formatIDR={formatIDR}
+          onClose={() => setPrintingOrder(null)}
+        />
+      )}
     </AppShell>
+  );
+}
+
+interface OrderInvoiceDialogProps {
+  order: Order;
+  formatIDR: (v: number) => string;
+  onClose: () => void;
+}
+
+function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogProps) {
+  const orderId = `#ORD-${order.id.toString().padStart(4, '0')}`;
+  const date = new Date(order.createdAt).toLocaleDateString('id-ID', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const subtotal = order.totalAmount;
+  const tax = order.taxAmount ?? 0;
+  const grand = order.grandTotal ?? (subtotal + tax);
+  const taxPct = subtotal > 0 && tax > 0 ? Math.round((tax / subtotal) * 100) : 11;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <>
+      <style>{`
+        @media print {
+          body > *:not(#order-invoice-print-root) { display: none !important; }
+          #order-invoice-print-root { display: block !important; position: fixed; inset: 0; background: white; z-index: 99999; padding: 40px; }
+          #order-invoice-print-root .no-print { display: none !important; }
+        }
+        @media screen {
+          #order-invoice-print-root { display: none; }
+        }
+      `}</style>
+
+      <div id="order-invoice-print-root" aria-hidden="true">
+        <div style={{ maxWidth: 600, margin: '0 auto', fontFamily: 'sans-serif', color: '#000' }}>
+          <div style={{ borderBottom: '2px solid #000', paddingBottom: 16, marginBottom: 24 }}>
+            <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>INVOICE</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 14, color: '#555' }}>BizPortal</p>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+            <div>
+              <p style={{ fontWeight: 600, margin: '0 0 4px' }}>Tagihan Kepada:</p>
+              <p style={{ margin: 0 }}>{order.customerName}</p>
+              <p style={{ margin: 0, color: '#555' }}>{order.customerEmail}</p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ fontWeight: 600, margin: '0 0 4px' }}>{orderId}</p>
+              <p style={{ margin: 0, color: '#555' }}>{date}</p>
+            </div>
+          </div>
+          {order.items && (
+            <div style={{ marginBottom: 24 }}>
+              <p style={{ fontWeight: 600, margin: '0 0 8px' }}>Item:</p>
+              <p style={{ margin: 0, color: '#333', whiteSpace: 'pre-wrap' }}>{order.items}</p>
+            </div>
+          )}
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd' }}>Subtotal</td>
+                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd', textAlign: 'right' }}>{formatIDR(subtotal)}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd' }}>PPN {taxPct}%</td>
+                <td style={{ padding: '8px 0', borderTop: '1px solid #ddd', textAlign: 'right' }}>{formatIDR(tax)}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '12px 0', borderTop: '2px solid #000', fontWeight: 700, fontSize: 16 }}>Grand Total</td>
+                <td style={{ padding: '12px 0', borderTop: '2px solid #000', textAlign: 'right', fontWeight: 700, fontSize: 16 }}>{formatIDR(grand)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style={{ marginTop: 32, fontSize: 12, color: '#888', textAlign: 'center' }}>
+            Terima kasih atas pembelian Anda.
+          </p>
+        </div>
+      </div>
+
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-w-lg" data-testid="dialog-invoice">
+          <DialogHeader>
+            <DialogTitle>Invoice {orderId}</DialogTitle>
+            <DialogDescription>Pratinjau invoice dengan rincian PPN sebelum dicetak.</DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-white text-foreground p-6 space-y-4" data-testid="invoice-preview">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Tagihan Kepada</p>
+                <p className="font-medium">{order.customerName}</p>
+                <p className="text-sm text-muted-foreground">{order.customerEmail}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Tanggal</p>
+                <p className="font-medium text-sm">{date}</p>
+              </div>
+            </div>
+
+            {order.items && (
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Item</p>
+                <p className="text-sm">{order.items}</p>
+              </div>
+            )}
+
+            <div className="border-t pt-4 space-y-2">
+              <div className="flex justify-between text-sm" data-testid="invoice-subtotal">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatIDR(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm" data-testid="invoice-tax">
+                <span className="text-muted-foreground">PPN {taxPct}%</span>
+                <span>{formatIDR(tax)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-base border-t pt-2" data-testid="invoice-grand-total">
+                <span>Grand Total</span>
+                <span>{formatIDR(grand)}</span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} className="no-print">Tutup</Button>
+            <Button onClick={handlePrint} className="no-print" data-testid="button-print-invoice">
+              <Printer className="h-4 w-4 mr-2" /> Cetak
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

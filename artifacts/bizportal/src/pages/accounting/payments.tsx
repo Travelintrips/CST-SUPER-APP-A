@@ -24,6 +24,7 @@ import {
   getListAccountingPaymentsQueryKey,
   useCreateAccountingPayment,
   useListJournals,
+  type AccountingPayment,
 } from "@workspace/api-client-react";
 
 const idr = (n: number) =>
@@ -43,7 +44,7 @@ export default function PaymentsPage() {
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
   }), [filter]);
 
-  const { data: payments = [], isLoading } = useListAccountingPayments(params, {
+  const { data: payments = [] as AccountingPayment[], isLoading } = useListAccountingPayments(params, {
     query: { queryKey: getListAccountingPaymentsQueryKey(params) },
   });
   const { data: journals = [] } = useListJournals();
@@ -66,8 +67,8 @@ export default function PaymentsPage() {
 
   const reset = () => setForm(emptyForm);
 
-  const totalInbound = payments.filter((p) => p.paymentType === "inbound").reduce((s, p) => s + p.amount, 0);
-  const totalOutbound = payments.filter((p) => p.paymentType === "outbound").reduce((s, p) => s + p.amount, 0);
+  const totalInbound = (payments as AccountingPayment[]).filter((p) => p.paymentType === "inbound").reduce((s: number, p: AccountingPayment) => s + p.amount, 0);
+  const totalOutbound = (payments as AccountingPayment[]).filter((p) => p.paymentType === "outbound").reduce((s: number, p: AccountingPayment) => s + p.amount, 0);
 
   const submit = async () => {
     if (!form.paymentType || !form.amount || !form.journalId || !form.date) {
@@ -317,7 +318,7 @@ export default function PaymentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments.map((p) => {
+                  {(payments as AccountingPayment[]).map((p) => {
                     const journal = journals.find((j) => j.id === p.journalId);
                     return (
                       <TableRow key={p.id}>
