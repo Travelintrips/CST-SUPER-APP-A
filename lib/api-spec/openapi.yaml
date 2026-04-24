@@ -318,6 +318,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/StockItem"
 
+  /trading/stocks/{id}:
+    put:
+      operationId: updateStockItem
+      tags: [trading]
+      summary: Update a stock item
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStockItemBody"
+      responses:
+        "200":
+          description: Updated stock item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    delete:
+      operationId: deleteStockItem
+      tags: [trading]
+      summary: Delete a stock item
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
   /trading/suppliers:
     get:
       operationId: listSuppliers
@@ -349,6 +403,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Supplier"
+
+  /trading/suppliers/{id}:
+    put:
+      operationId: updateSupplier
+      tags: [trading]
+      summary: Update a supplier
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierBody"
+      responses:
+        "200":
+          description: Updated supplier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    delete:
+      operationId: deleteSupplier
+      tags: [trading]
+      summary: Delete a supplier
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
 
   /logistics/shipments:
     get:

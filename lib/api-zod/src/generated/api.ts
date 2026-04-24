@@ -262,6 +262,47 @@ export const CreateStockItemBody = zod.object({
 });
 
 /**
+ * @summary Update a stock item
+ */
+export const UpdateStockItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateStockItemBody = zod.object({
+  productName: zod.string(),
+  sku: zod.string(),
+  quantity: zod.number(),
+  unit: zod.string(),
+  costPrice: zod.number(),
+  supplierId: zod.number().optional(),
+  hsCode: zod.string().optional(),
+});
+
+export const UpdateStockItemResponse = zod.object({
+  id: zod.number(),
+  productName: zod.string(),
+  sku: zod.string(),
+  quantity: zod.number(),
+  unit: zod.string(),
+  costPrice: zod.number(),
+  supplierId: zod.number().optional(),
+  supplierName: zod.string().optional(),
+  hsCode: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a stock item
+ */
+export const DeleteStockItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteStockItemResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
  * @summary List all suppliers
  */
 export const ListSuppliersResponseItem = zod.object({
@@ -284,6 +325,42 @@ export const CreateSupplierBody = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+});
+
+/**
+ * @summary Update a supplier
+ */
+export const UpdateSupplierParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateSupplierBody = zod.object({
+  name: zod.string(),
+  country: zod.string(),
+  contactEmail: zod.string(),
+  phone: zod.string().optional(),
+  address: zod.string().optional(),
+});
+
+export const UpdateSupplierResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  country: zod.string(),
+  contactEmail: zod.string(),
+  phone: zod.string().optional(),
+  address: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a supplier
+ */
+export const DeleteSupplierParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteSupplierResponse = zod.object({
+  message: zod.string(),
 });
 
 /**
