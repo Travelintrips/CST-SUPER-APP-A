@@ -10,7 +10,6 @@ import {
   accountingPaymentsTable,
   salesDocumentsTable,
   purchaseDocumentsTable,
-  ordersTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";

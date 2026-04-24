@@ -1553,6 +1553,8 @@ export const ListAccountingPaymentsQueryParams = zod.object({
   paymentType: zod.enum(["inbound", "outbound"]).optional(),
   from: zod.date().optional(),
   to: zod.date().optional(),
+  sourceType: zod.coerce.string().nullish(),
+  sourceDocId: zod.coerce.number().nullish(),
 });
 
 export const ListAccountingPaymentsResponseItem = zod.object({

@@ -1161,6 +1161,8 @@ export type ListAccountingPaymentsParams = {
   paymentType?: ListAccountingPaymentsPaymentType;
   from?: string;
   to?: string;
+  sourceType?: string | null;
+  sourceDocId?: number | null;
 };
 
 export type ListAccountingPaymentsPaymentType =
