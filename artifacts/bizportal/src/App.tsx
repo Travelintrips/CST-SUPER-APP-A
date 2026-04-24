@@ -13,6 +13,7 @@ import TradingPage from "@/pages/trading";
 import LogisticsPage from "@/pages/logistics";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
+import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
 
 const queryClient = new QueryClient();
@@ -150,6 +151,9 @@ function Router() {
       </Route>
       <Route path="/settings">
         <ProtectedRoute component={SettingsPage} />
+      </Route>
+      <Route path="/users">
+        <ProtectedRoute component={UsersPage} />
       </Route>
 
       <Route component={NotFound} />

@@ -88,6 +88,23 @@ export interface CreateOrderBody {
   totalAmount: number;
 }
 
+export type UpdateUserBodyRole =
+  (typeof UpdateUserBodyRole)[keyof typeof UpdateUserBodyRole];
+
+export const UpdateUserBodyRole = {
+  admin: "admin",
+  ecommerce: "ecommerce",
+  trading: "trading",
+  logistics: "logistics",
+  pos: "pos",
+} as const;
+
+export interface UpdateUserBody {
+  role: UpdateUserBodyRole;
+  division?: string | null;
+  name?: string;
+}
+
 export type UpdateOrderBodyStatus =
   (typeof UpdateOrderBodyStatus)[keyof typeof UpdateOrderBodyStatus];
 

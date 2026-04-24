@@ -10,7 +10,8 @@ import {
   Calculator, 
   Settings, 
   LogOut,
-  Building2
+  Building2,
+  Users
 } from "lucide-react";
 import {
   Sidebar,
@@ -57,6 +58,7 @@ export function AppShell({ children }: AppShellProps) {
     { title: "Trading", href: "/trading", icon: Package, roles: ["admin", "trading"] },
     { title: "Logistics", href: "/logistics", icon: Truck, roles: ["admin", "logistics"] },
     { title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
+    { title: "Pengguna", href: "/users", icon: Users, roles: ["admin"] },
     { title: "Settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
   ];
 

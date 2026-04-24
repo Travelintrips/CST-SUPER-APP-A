@@ -26,6 +26,39 @@ export const GetCurrentUserResponse = zod.object({
 });
 
 /**
+ * @summary List all users (admin only)
+ */
+export const ListUsersResponseItem = zod.object({
+  id: zod.string(),
+  email: zod.string(),
+  name: zod.string(),
+  role: zod.enum(["admin", "ecommerce", "trading", "logistics", "pos"]),
+  division: zod.string().optional(),
+});
+export const ListUsersResponse = zod.array(ListUsersResponseItem);
+
+/**
+ * @summary Update a user's role and division (admin only)
+ */
+export const UpdateUserParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateUserBody = zod.object({
+  role: zod.enum(["admin", "ecommerce", "trading", "logistics", "pos"]),
+  division: zod.string().nullish(),
+  name: zod.string().optional(),
+});
+
+export const UpdateUserResponse = zod.object({
+  id: zod.string(),
+  email: zod.string(),
+  name: zod.string(),
+  role: zod.enum(["admin", "ecommerce", "trading", "logistics", "pos"]),
+  division: zod.string().optional(),
+});
+
+/**
  * @summary Get aggregated summary for all divisions
  */
 export const GetDashboardSummaryResponse = zod.object({
