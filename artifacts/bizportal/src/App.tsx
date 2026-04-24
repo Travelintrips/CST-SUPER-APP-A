@@ -280,13 +280,14 @@ function Router() {
 }
 
 function ClerkQueryClientCacheInvalidator() {
-  const { addListener } = window.Clerk || {};
+  const clerkWindow = window as typeof window & { Clerk?: { addListener?: (cb: (ev: { user?: { id?: string | null } | null }) => void) => () => void } };
+  const { addListener } = clerkWindow.Clerk || {};
   const qc = useQueryClient();
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!addListener) return;
-    const unsubscribe = addListener(({ user }: any) => {
+    const unsubscribe = addListener(({ user }) => {
       const userId = user?.id ?? null;
       if (
         prevUserIdRef.current !== undefined &&
