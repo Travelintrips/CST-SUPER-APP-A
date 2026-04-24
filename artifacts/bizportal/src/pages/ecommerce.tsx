@@ -308,7 +308,7 @@ export default function EcommercePage() {
     setEditOrderStatus((order.status as OrderStatus) ?? "pending");
     setEditSubtotal(order.totalAmount);
     setEditTaxRateId("");
-    setEditTaxAmount(0);
+    setEditTaxAmount(order.taxAmount ?? 0);
   };
 
   return (
