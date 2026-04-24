@@ -16,7 +16,7 @@ import {
   type Order,
   type AccountingTax,
 } from "@workspace/api-client-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
@@ -113,6 +113,9 @@ export default function EcommercePage() {
   const { data: allTaxes = [] as AccountingTax[] } = useListTaxes();
   const { data: accountingSettings } = useGetAccountingSettings();
   const saleTaxes = allTaxes.filter((t) => t.kind === "sale" && t.isActive);
+
+  const defaultSalesTaxIdRef = useRef<number | null | undefined>(undefined);
+  defaultSalesTaxIdRef.current = accountingSettings?.defaultSalesTaxId;
 
   const createImageUploader = useUpload({
     onSuccess: (res) => {
@@ -303,16 +306,13 @@ export default function EcommercePage() {
       setCreateTaxRateId("");
       setCreateTaxAmount(0);
     } else {
-      const defaultId = accountingSettings?.defaultSalesTaxId;
-      if (defaultId) {
-        setCreateTaxRateId(String(defaultId));
-      } else {
-        setCreateTaxRateId("");
-      }
+      const defaultId = defaultSalesTaxIdRef.current;
+      const validDefault = defaultId && saleTaxes.some((t) => t.id === defaultId);
+      setCreateTaxRateId(validDefault ? String(defaultId) : "");
       setCreateSubtotal(0);
       setCreateTaxAmount(0);
     }
-  }, [isOrderDialogOpen, accountingSettings?.defaultSalesTaxId]);
+  }, [isOrderDialogOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openEditOrder = (order: Order) => {
     setEditingOrder(order);
