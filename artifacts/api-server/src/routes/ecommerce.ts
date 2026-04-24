@@ -1,26 +1,43 @@
 import { Router } from "express";
 import { db, productsTable, ordersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
+const objectStorageService = new ObjectStorageService();
+
+function normalizeImage(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") return null;
+  try {
+    return objectStorageService.normalizeObjectEntityPath(value);
+  } catch {
+    return null;
+  }
+}
+
+function serializeProduct(p: typeof productsTable.$inferSelect) {
+  return {
+    ...p,
+    price: Number(p.price),
+    createdAt: p.createdAt.toISOString(),
+  };
+}
 
 // GET /api/ecommerce/products
 router.get("/products", async (_req, res) => {
   const products = await db.select().from(productsTable).orderBy(productsTable.createdAt);
-  return res.json(products.map(p => ({
-    ...p,
-    price: Number(p.price),
-    createdAt: p.createdAt.toISOString(),
-  })));
+  return res.json(products.map(serializeProduct));
 });
 
 // POST /api/ecommerce/products
 router.post("/products", async (req, res) => {
-  const { name, sku, price, stock, category, description } = req.body;
+  const { name, sku, price, stock, category, description, imageUrl } = req.body;
   const [product] = await db.insert(productsTable).values({
-    name, sku, price: String(price), stock: stock ?? 0, category, description
+    name, sku, price: String(price), stock: stock ?? 0, category, description,
+    imageUrl: normalizeImage(imageUrl),
   }).returning();
-  return res.status(201).json({ ...product, price: Number(product.price), createdAt: product.createdAt.toISOString() });
+  return res.status(201).json(serializeProduct(product));
 });
 
 // GET /api/ecommerce/products/:id
@@ -28,18 +45,19 @@ router.get("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   if (!product) return res.status(404).json({ message: "Product not found" });
-  return res.json({ ...product, price: Number(product.price), createdAt: product.createdAt.toISOString() });
+  return res.json(serializeProduct(product));
 });
 
 // PUT /api/ecommerce/products/:id
 router.put("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, sku, price, stock, category, description } = req.body;
+  const { name, sku, price, stock, category, description, imageUrl } = req.body;
   const [product] = await db.update(productsTable).set({
-    name, sku, price: String(price), stock, category, description
+    name, sku, price: String(price), stock, category, description,
+    imageUrl: normalizeImage(imageUrl),
   }).where(eq(productsTable.id, id)).returning();
   if (!product) return res.status(404).json({ message: "Product not found" });
-  return res.json({ ...product, price: Number(product.price), createdAt: product.createdAt.toISOString() });
+  return res.json(serializeProduct(product));
 });
 
 // DELETE /api/ecommerce/products/:id

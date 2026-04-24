@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Receipt, Banknote, CreditCard, Wallet, QrCode, Search, Plus, Minus, Trash2, ChevronRight, ShoppingBag, X } from "lucide-react";
+import { Receipt, Banknote, CreditCard, Wallet, QrCode, Search, Plus, Minus, Trash2, ChevronRight, ShoppingBag, X, ImageIcon, Paperclip, FileText, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -15,18 +15,28 @@ import {
   useGetPosSummary,
   useListTransactions,
   useCreateTransaction,
+  useUpdateTransactionDocument,
   useListProducts,
   getGetPosSummaryQueryKey,
   getListTransactionsQueryKey,
   type Product,
 } from "@workspace/api-client-react";
+import { useUpload } from "@workspace/object-storage-web";
 
 type CartItem = {
   id: number;
   name: string;
   price: number;
   qty: number;
+  imageUrl?: string | null;
 };
+
+function resolveStoredUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  if (url.startsWith("/api/")) return url;
+  return url;
+}
 
 type PaymentMethod = "cash" | "debit" | "credit" | "qris" | "transfer";
 const PAYMENT_OPTS: { value: PaymentMethod; label: string; icon: React.ReactNode }[] = [
@@ -58,6 +68,32 @@ export default function PosPage() {
   const { data: transactions, isLoading: isLoadingTx } = useListTransactions();
   const { data: products, isLoading: isLoadingProducts } = useListProducts();
   const createTransaction = useCreateTransaction();
+  const updateDocument = useUpdateTransactionDocument();
+  const [uploadingTxId, setUploadingTxId] = useState<number | null>(null);
+
+  const docUploader = useUpload({
+    onError: () => {
+      setUploadingTxId(null);
+      toast({ title: "Gagal mengunggah dokumen", variant: "destructive" });
+    },
+  });
+
+  const handleAttachDocument = async (transactionId: number, file: File) => {
+    setUploadingTxId(transactionId);
+    const result = await docUploader.uploadFile(file);
+    if (!result) { setUploadingTxId(null); return; }
+    updateDocument.mutate(
+      { id: transactionId, data: { documentUrl: result.objectPath } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
+          toast({ title: "Dokumen berhasil dilampirkan" });
+        },
+        onError: () => toast({ title: "Gagal menyimpan dokumen", variant: "destructive" }),
+        onSettled: () => setUploadingTxId(null),
+      }
+    );
+  };
 
   const formatIDR = (v: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v);
 
@@ -74,11 +110,11 @@ export default function PosPage() {
     return products.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
   }, [products, search]);
 
-  const addToCart = (p: Product) => {
+  const addToCart = (p: Pick<Product, "id" | "name" | "price"> & { imageUrl?: string | null }) => {
     setCart((cur) => {
       const existing = cur.find((c) => c.id === p.id);
       if (existing) return cur.map((c) => c.id === p.id ? { ...c, qty: c.qty + 1 } : c);
-      return [...cur, { id: p.id, name: p.name, price: p.price, qty: 1 }];
+      return [...cur, { id: p.id, name: p.name, price: p.price, qty: 1, imageUrl: p.imageUrl ?? null }];
     });
   };
   const decFromCart = (id: number) => setCart((cur) => cur.flatMap((c) => c.id === id ? (c.qty <= 1 ? [] : [{ ...c, qty: c.qty - 1 }]) : [c]));
@@ -189,28 +225,40 @@ export default function PosPage() {
                     </div>
                   ) : (
                     <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                      {filteredProducts.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          disabled={isCheckingOut}
-                          onClick={() => addToCart(p)}
-                          className="text-left rounded-md border bg-card hover:bg-accent hover:border-primary/50 transition-colors p-3 flex flex-col gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
-                          data-testid={`product-${p.id}`}
-                          aria-label={`Tambah ${p.name} ke keranjang`}
-                        >
-                          <Badge variant="outline" className="self-start text-[10px] uppercase tracking-wide">{p.category}</Badge>
-                          <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem]">{p.name}</p>
-                          <p className="text-xs text-muted-foreground">{p.sku}</p>
-                          <p className="text-sm font-bold mt-auto">{formatIDR(p.price)}</p>
-                          {p.stock <= 5 && p.stock > 0 && (
-                            <p className="text-[10px] text-amber-500">Stock: {p.stock}</p>
-                          )}
-                          {p.stock === 0 && (
-                            <p className="text-[10px] text-destructive">Stok habis</p>
-                          )}
-                        </button>
-                      ))}
+                      {filteredProducts.map((p) => {
+                        const img = resolveStoredUrl(p.imageUrl);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            disabled={isCheckingOut}
+                            onClick={() => addToCart(p)}
+                            className="text-left rounded-md border bg-card hover:bg-accent hover:border-primary/50 transition-colors p-2 flex flex-col gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
+                            data-testid={`product-${p.id}`}
+                            aria-label={`Tambah ${p.name} ke keranjang`}
+                          >
+                            <div className="relative aspect-square w-full overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                              {img ? (
+                                <img src={img} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
+                              ) : (
+                                <ImageIcon className="h-7 w-7 text-muted-foreground/60" />
+                              )}
+                              <Badge variant="outline" className="absolute top-1 left-1 text-[10px] uppercase tracking-wide bg-background/90 backdrop-blur">
+                                {p.category}
+                              </Badge>
+                            </div>
+                            <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem] mt-1">{p.name}</p>
+                            <p className="text-xs text-muted-foreground">{p.sku}</p>
+                            <p className="text-sm font-bold mt-auto">{formatIDR(p.price)}</p>
+                            {p.stock <= 5 && p.stock > 0 && (
+                              <p className="text-[10px] text-amber-500">Stock: {p.stock}</p>
+                            )}
+                            {p.stock === 0 && (
+                              <p className="text-[10px] text-destructive">Stok habis</p>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -238,20 +286,28 @@ export default function PosPage() {
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                      {cart.map((item) => (
-                        <div key={item.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/40" data-testid={`cart-item-${item.id}`}>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{item.name}</p>
-                            <p className="text-xs text-muted-foreground">{formatIDR(item.price)} × {item.qty}</p>
+                      {cart.map((item) => {
+                        const img = resolveStoredUrl(item.imageUrl);
+                        return (
+                          <div key={item.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/40" data-testid={`cart-item-${item.id}`}>
+                            <div className="h-10 w-10 rounded-md bg-background border overflow-hidden flex items-center justify-center shrink-0">
+                              {img
+                                ? <img src={img} alt={item.name} loading="lazy" className="h-full w-full object-cover" />
+                                : <ImageIcon className="h-4 w-4 text-muted-foreground/60" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">{formatIDR(item.price)} × {item.qty}</p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button size="icon" variant="outline" className="h-7 w-7" disabled={isCheckingOut} onClick={() => decFromCart(item.id)} data-testid={`button-dec-${item.id}`} aria-label="Kurangi"><Minus className="h-3 w-3" /></Button>
+                              <span className="text-sm font-medium w-6 text-center">{item.qty}</span>
+                              <Button size="icon" variant="outline" className="h-7 w-7" disabled={isCheckingOut} onClick={() => addToCart({ id: item.id, name: item.name, price: item.price, imageUrl: item.imageUrl })} data-testid={`button-inc-${item.id}`} aria-label="Tambah"><Plus className="h-3 w-3" /></Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={isCheckingOut} onClick={() => removeFromCart(item.id)} data-testid={`button-remove-${item.id}`} aria-label="Hapus"><Trash2 className="h-3 w-3" /></Button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Button size="icon" variant="outline" className="h-7 w-7" disabled={isCheckingOut} onClick={() => decFromCart(item.id)} data-testid={`button-dec-${item.id}`} aria-label="Kurangi"><Minus className="h-3 w-3" /></Button>
-                            <span className="text-sm font-medium w-6 text-center">{item.qty}</span>
-                            <Button size="icon" variant="outline" className="h-7 w-7" disabled={isCheckingOut} onClick={() => addToCart({ id: item.id, name: item.name, price: item.price } as Product)} data-testid={`button-inc-${item.id}`} aria-label="Tambah"><Plus className="h-3 w-3" /></Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={isCheckingOut} onClick={() => removeFromCart(item.id)} data-testid={`button-remove-${item.id}`} aria-label="Hapus"><Trash2 className="h-3 w-3" /></Button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -354,6 +410,7 @@ export default function PosPage() {
                       <TableHead className="text-right">Harga</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-right">Pembayaran</TableHead>
+                      <TableHead className="text-right w-[140px]">Dokumen</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -366,11 +423,12 @@ export default function PosPage() {
                           <TableCell className="text-right"><Skeleton className="h-4 w-[80px] ml-auto" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-4 w-[80px] ml-auto" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-6 w-[80px] rounded-full ml-auto" /></TableCell>
+                          <TableCell className="text-right"><Skeleton className="h-7 w-[100px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
                     ) : transactions?.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-32 text-center">
+                        <TableCell colSpan={7} className="h-32 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <Receipt className="h-8 w-8 mb-2 opacity-50" />
                             <p>Belum ada transaksi.</p>
@@ -392,6 +450,14 @@ export default function PosPage() {
                               {getPaymentIcon(tx.paymentMethod)}
                               {tx.paymentMethod}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <TransactionDocumentControl
+                              transactionId={tx.id}
+                              documentUrl={tx.documentUrl ?? null}
+                              isUploading={uploadingTxId === tx.id}
+                              onUpload={(file) => handleAttachDocument(tx.id, file)}
+                            />
                           </TableCell>
                         </TableRow>
                       ))
@@ -429,7 +495,14 @@ export default function PosPage() {
                         {tx.paymentMethod}
                       </Badge>
                     </div>
-                    <div className="flex justify-end pt-1 border-t border-border">
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
+                      <TransactionDocumentControl
+                        transactionId={tx.id}
+                        documentUrl={tx.documentUrl ?? null}
+                        isUploading={uploadingTxId === tx.id}
+                        onUpload={(file) => handleAttachDocument(tx.id, file)}
+                        compact
+                      />
                       <p className="text-base font-bold">{formatIDR(tx.totalPrice)}</p>
                     </div>
                   </CardContent></Card>
@@ -470,5 +543,61 @@ function PosStatCard({ title, href, icon, isLoading, value, testId }: PosStatCar
         </CardContent>
       </Card>
     </Link>
+  );
+}
+
+interface TransactionDocumentControlProps {
+  transactionId: number;
+  documentUrl: string | null;
+  isUploading: boolean;
+  onUpload: (file: File) => void;
+  compact?: boolean;
+}
+
+function TransactionDocumentControl({ transactionId, documentUrl, isUploading, onUpload, compact }: TransactionDocumentControlProps) {
+  const inputId = `tx-doc-input-${transactionId}`;
+  const resolved = resolveStoredUrl(documentUrl);
+  return (
+    <div className={`flex items-center gap-1.5 ${compact ? "" : "justify-end"}`}>
+      <input
+        id={inputId}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        data-testid={`input-tx-doc-${transactionId}`}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onUpload(f);
+          e.target.value = "";
+        }}
+      />
+      {resolved && (
+        <a
+          href={resolved}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center text-xs text-primary hover:underline"
+          data-testid={`link-tx-doc-${transactionId}`}
+          aria-label="Lihat dokumen transaksi"
+        >
+          <FileText className="h-3.5 w-3.5 mr-1" /> Lihat
+        </a>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-7 px-2 text-xs"
+        disabled={isUploading}
+        onClick={() => document.getElementById(inputId)?.click()}
+        data-testid={`button-attach-doc-${transactionId}`}
+        aria-label={resolved ? "Ganti dokumen" : "Lampirkan dokumen"}
+      >
+        {isUploading
+          ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          : <Paperclip className="h-3.5 w-3.5 mr-1" />}
+        {isUploading ? "Mengunggah" : resolved ? "Ganti" : "Lampirkan"}
+      </Button>
+    </div>
   );
 }

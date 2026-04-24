@@ -24,4 +24,27 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
+## Object Storage
+
+- Replit Object Storage backs product images (e-commerce) and per-transaction
+  documents (POS). Required env: `DEFAULT_OBJECT_STORAGE_BUCKET_ID`,
+  `PRIVATE_OBJECT_DIR`, `PUBLIC_OBJECT_SEARCH_PATHS`.
+- API endpoints (Clerk-auth required):
+  - `POST /api/storage/uploads/request-url` → `{uploadURL, objectPath}`.
+    Validates max 10MB and allowed MIME prefixes (`image/`, `application/pdf`).
+  - `GET /api/storage/objects/*` → streams private objects (auth required).
+  - `GET /api/storage/public-objects/*` → streams public assets.
+- Storage paths: server only stores normalized internal paths
+  (`/objects/<entityId>`). External URLs are rejected at the write boundary.
+  The web client prepends `/api/storage` when displaying.
+- Frontend helper: `@workspace/object-storage-web` provides `useUpload` and
+  `ObjectUploader` (Uppy-based dashboard) for uploads from React.
+
+## Codegen Notes
+
+- After running orval, the auto-generated `lib/api-zod/src/index.ts` re-exports
+  both `./generated/api` and `./generated/api.schemas`, which causes duplicate
+  symbol errors. Workflow: run `pnpm exec orval`, then overwrite that file with
+  a single line: `export * from "./generated/api";`, then `pnpm -w run typecheck:libs`.
+
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.

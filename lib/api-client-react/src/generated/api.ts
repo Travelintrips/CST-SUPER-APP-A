@@ -29,12 +29,15 @@ import type {
   Order,
   PosSummary,
   Product,
+  RequestUploadUrlBody,
+  RequestUploadUrlResponse,
   Shipment,
   StockItem,
   Supplier,
   Transaction,
   UpdateOrderBody,
   UpdateShipmentStatusBody,
+  UpdateTransactionDocumentBody,
   UpdateUserBody,
   UserProfile,
 } from "./api.schemas";
@@ -2248,6 +2251,180 @@ export const useCreateTransaction = <
   TContext
 > => {
   return useMutation(getCreateTransactionMutationOptions(options));
+};
+
+/**
+ * @summary Attach or remove a supporting document URL on a transaction
+ */
+export const getUpdateTransactionDocumentUrl = (id: number) => {
+  return `/api/pos/transactions/${id}/document`;
+};
+
+export const updateTransactionDocument = async (
+  id: number,
+  updateTransactionDocumentBody: UpdateTransactionDocumentBody,
+  options?: RequestInit,
+): Promise<Transaction> => {
+  return customFetch<Transaction>(getUpdateTransactionDocumentUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateTransactionDocumentBody),
+  });
+};
+
+export const getUpdateTransactionDocumentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateTransactionDocument>>,
+    TError,
+    { id: number; data: BodyType<UpdateTransactionDocumentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateTransactionDocument>>,
+  TError,
+  { id: number; data: BodyType<UpdateTransactionDocumentBody> },
+  TContext
+> => {
+  const mutationKey = ["updateTransactionDocument"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateTransactionDocument>>,
+    { id: number; data: BodyType<UpdateTransactionDocumentBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateTransactionDocument(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateTransactionDocumentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateTransactionDocument>>
+>;
+export type UpdateTransactionDocumentMutationBody =
+  BodyType<UpdateTransactionDocumentBody>;
+export type UpdateTransactionDocumentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Attach or remove a supporting document URL on a transaction
+ */
+export const useUpdateTransactionDocument = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateTransactionDocument>>,
+    TError,
+    { id: number; data: BodyType<UpdateTransactionDocumentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateTransactionDocument>>,
+  TError,
+  { id: number; data: BodyType<UpdateTransactionDocumentBody> },
+  TContext
+> => {
+  return useMutation(getUpdateTransactionDocumentMutationOptions(options));
+};
+
+/**
+ * @summary Request a presigned URL for uploading a file to object storage
+ */
+export const getRequestUploadUrlUrl = () => {
+  return `/api/storage/uploads/request-url`;
+};
+
+export const requestUploadUrl = async (
+  requestUploadUrlBody: RequestUploadUrlBody,
+  options?: RequestInit,
+): Promise<RequestUploadUrlResponse> => {
+  return customFetch<RequestUploadUrlResponse>(getRequestUploadUrlUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(requestUploadUrlBody),
+  });
+};
+
+export const getRequestUploadUrlMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestUploadUrl>>,
+    TError,
+    { data: BodyType<RequestUploadUrlBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof requestUploadUrl>>,
+  TError,
+  { data: BodyType<RequestUploadUrlBody> },
+  TContext
+> => {
+  const mutationKey = ["requestUploadUrl"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof requestUploadUrl>>,
+    { data: BodyType<RequestUploadUrlBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return requestUploadUrl(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RequestUploadUrlMutationResult = NonNullable<
+  Awaited<ReturnType<typeof requestUploadUrl>>
+>;
+export type RequestUploadUrlMutationBody = BodyType<RequestUploadUrlBody>;
+export type RequestUploadUrlMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Request a presigned URL for uploading a file to object storage
+ */
+export const useRequestUploadUrl = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof requestUploadUrl>>,
+    TError,
+    { data: BodyType<RequestUploadUrlBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof requestUploadUrl>>,
+  TError,
+  { data: BodyType<RequestUploadUrlBody> },
+  TContext
+> => {
+  return useMutation(getRequestUploadUrlMutationOptions(options));
 };
 
 /**

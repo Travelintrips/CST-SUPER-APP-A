@@ -49,6 +49,7 @@ export interface Product {
   stock: number;
   category: string;
   description?: string;
+  imageUrl?: string | null;
   createdAt: string;
 }
 
@@ -59,6 +60,7 @@ export interface CreateProductBody {
   stock: number;
   category: string;
   description?: string;
+  imageUrl?: string | null;
 }
 
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
@@ -232,6 +234,7 @@ export interface Transaction {
   totalPrice: number;
   paymentMethod: TransactionPaymentMethod;
   cashierId?: string;
+  documentUrl?: string | null;
   createdAt: string;
 }
 
@@ -252,6 +255,29 @@ export interface CreateTransactionBody {
   unitPrice: number;
   totalPrice: number;
   paymentMethod: CreateTransactionBodyPaymentMethod;
+  documentUrl?: string | null;
+}
+
+export interface UpdateTransactionDocumentBody {
+  documentUrl: string | null;
+}
+
+export interface RequestUploadUrlBody {
+  name: string;
+  size: number;
+  contentType: string;
+}
+
+export type RequestUploadUrlResponseMetadata = {
+  name: string;
+  size: number;
+  contentType: string;
+};
+
+export interface RequestUploadUrlResponse {
+  uploadURL: string;
+  objectPath: string;
+  metadata: RequestUploadUrlResponseMetadata;
 }
 
 export interface PosSummary {

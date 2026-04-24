@@ -547,6 +547,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/Transaction"
 
+  /pos/transactions/{id}/document:
+    patch:
+      operationId: updateTransactionDocument
+      tags: [pos]
+      summary: Attach or remove a supporting document URL on a transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTransactionDocumentBody"
+      responses:
+        "200":
+          description: Updated transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a presigned URL for uploading a file to object storage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlBody"
+      responses:
+        "200":
+          description: Presigned upload URL and final object path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestUploadUrlResponse"
+
   /pos/summary:
     get:
       operationId: getPosSummary
@@ -626,6 +670,9 @@ components:
           type: string
         description:
           type: string
+        imageUrl:
+          type: string
+          nullable: true
         createdAt:
           type: string
       required: [id, name, sku, price, stock, category, createdAt]
@@ -645,6 +692,9 @@ components:
           type: string
         description:
           type: string
+        imageUrl:
+          type: string
+          nullable: true
       required: [name, sku, price, stock, category]
 
     Order:
@@ -852,6 +902,9 @@ components:
           enum: [cash, debit, credit, qris, transfer]
         cashierId:
           type: string
+        documentUrl:
+          type: string
+          nullable: true
         createdAt:
           type: string
       required: [id, productName, quantity, unitPrice, totalPrice, paymentMethod, createdAt]
@@ -870,7 +923,48 @@ components:
         paymentMethod:
           type: string
           enum: [cash, debit, credit, qris, transfer]
+        documentUrl:
+          type: string
+          nullable: true
       required: [productName, quantity, unitPrice, totalPrice, paymentMethod]
+
+    UpdateTransactionDocumentBody:
+      type: object
+      properties:
+        documentUrl:
+          type: string
+          nullable: true
+      required: [documentUrl]
+
+    RequestUploadUrlBody:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required: [name, size, contentType]
+
+    RequestUploadUrlResponse:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          type: object
+          properties:
+            name:
+              type: string
+            size:
+              type: integer
+            contentType:
+              type: string
+          required: [name, size, contentType]
+      required: [uploadURL, objectPath, metadata]
 
     PosSummary:
       type: object

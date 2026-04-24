@@ -81,6 +81,7 @@ export const ListProductsResponseItem = zod.object({
   stock: zod.number(),
   category: zod.string(),
   description: zod.string().optional(),
+  imageUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 export const ListProductsResponse = zod.array(ListProductsResponseItem);
@@ -95,6 +96,7 @@ export const CreateProductBody = zod.object({
   stock: zod.number(),
   category: zod.string(),
   description: zod.string().optional(),
+  imageUrl: zod.string().nullish(),
 });
 
 /**
@@ -112,6 +114,7 @@ export const GetProductResponse = zod.object({
   stock: zod.number(),
   category: zod.string(),
   description: zod.string().optional(),
+  imageUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -129,6 +132,7 @@ export const UpdateProductBody = zod.object({
   stock: zod.number(),
   category: zod.string(),
   description: zod.string().optional(),
+  imageUrl: zod.string().nullish(),
 });
 
 export const UpdateProductResponse = zod.object({
@@ -139,6 +143,7 @@ export const UpdateProductResponse = zod.object({
   stock: zod.number(),
   category: zod.string(),
   description: zod.string().optional(),
+  imageUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -445,6 +450,7 @@ export const ListTransactionsResponseItem = zod.object({
   totalPrice: zod.number(),
   paymentMethod: zod.enum(["cash", "debit", "credit", "qris", "transfer"]),
   cashierId: zod.string().optional(),
+  documentUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 export const ListTransactionsResponse = zod.array(ListTransactionsResponseItem);
@@ -458,6 +464,49 @@ export const CreateTransactionBody = zod.object({
   unitPrice: zod.number(),
   totalPrice: zod.number(),
   paymentMethod: zod.enum(["cash", "debit", "credit", "qris", "transfer"]),
+  documentUrl: zod.string().nullish(),
+});
+
+/**
+ * @summary Attach or remove a supporting document URL on a transaction
+ */
+export const UpdateTransactionDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateTransactionDocumentBody = zod.object({
+  documentUrl: zod.string().nullable(),
+});
+
+export const UpdateTransactionDocumentResponse = zod.object({
+  id: zod.number(),
+  productName: zod.string(),
+  quantity: zod.number(),
+  unitPrice: zod.number(),
+  totalPrice: zod.number(),
+  paymentMethod: zod.enum(["cash", "debit", "credit", "qris", "transfer"]),
+  cashierId: zod.string().optional(),
+  documentUrl: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Request a presigned URL for uploading a file to object storage
+ */
+export const RequestUploadUrlBody = zod.object({
+  name: zod.string(),
+  size: zod.number(),
+  contentType: zod.string(),
+});
+
+export const RequestUploadUrlResponse = zod.object({
+  uploadURL: zod.string(),
+  objectPath: zod.string(),
+  metadata: zod.object({
+    name: zod.string(),
+    size: zod.number(),
+    contentType: zod.string(),
+  }),
 });
 
 /**

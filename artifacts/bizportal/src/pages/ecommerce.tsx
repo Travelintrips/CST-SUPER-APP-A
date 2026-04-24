@@ -38,6 +38,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useUpload } from "@workspace/object-storage-web";
+import { ImagePlus, ImageIcon, Loader2 } from "lucide-react";
 
 const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
 type OrderStatus = typeof ORDER_STATUSES[number];
@@ -92,6 +94,30 @@ export default function EcommercePage() {
   const [editOrderStatus, setEditOrderStatus] = useState<OrderStatus>("pending");
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+  const [createImageUrl, setCreateImageUrl] = useState<string | null>(null);
+  const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
+
+  const createImageUploader = useUpload({
+    onSuccess: (res) => {
+      setCreateImageUrl(res.objectPath);
+      toast({ title: "Gambar berhasil diunggah" });
+    },
+    onError: () => toast({ title: "Gagal mengunggah gambar", variant: "destructive" }),
+  });
+  const editImageUploader = useUpload({
+    onSuccess: (res) => {
+      setEditImageUrl(res.objectPath);
+      toast({ title: "Gambar berhasil diunggah" });
+    },
+    onError: () => toast({ title: "Gagal mengunggah gambar", variant: "destructive" }),
+  });
+
+  const resolveImage = (url?: string | null) => {
+    if (!url) return null;
+    if (url.startsWith("/objects/")) return `/api/storage${url}`;
+    if (url.startsWith("/api/")) return url;
+    return url;
+  };
 
   const formatIDR = (value: number) =>
     new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
@@ -117,11 +143,13 @@ export default function EcommercePage() {
         price: Number(formData.get("price")),
         stock: Number(formData.get("stock")),
         category: formData.get("category") as string,
+        imageUrl: createImageUrl,
       }
     }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         setIsProductDialogOpen(false);
+        setCreateImageUrl(null);
         toast({ title: "Produk berhasil dibuat" });
       },
       onError: () => toast({ title: "Gagal membuat produk", variant: "destructive" }),
@@ -140,6 +168,7 @@ export default function EcommercePage() {
         price: Number(formData.get("price")),
         stock: Number(formData.get("stock")),
         category: formData.get("category") as string,
+        imageUrl: editImageUrl,
       }
     }, {
       onSuccess: () => {
@@ -150,6 +179,14 @@ export default function EcommercePage() {
       onError: () => toast({ title: "Gagal memperbarui produk", variant: "destructive" }),
     });
   };
+
+  useEffect(() => {
+    if (!isProductDialogOpen) setCreateImageUrl(null);
+  }, [isProductDialogOpen]);
+
+  useEffect(() => {
+    setEditImageUrl(editingProduct?.imageUrl ?? null);
+  }, [editingProduct]);
 
   const handleConfirmDeleteProduct = () => {
     if (!deletingProduct) return;
@@ -263,9 +300,17 @@ export default function EcommercePage() {
                         <div className="grid gap-2"><Label htmlFor="stock">Stok</Label><Input id="stock" name="stock" type="number" min="0" required data-testid="input-product-stock" /></div>
                       </div>
                       <div className="grid gap-2"><Label htmlFor="category">Kategori</Label><Input id="category" name="category" required data-testid="input-product-category" /></div>
+                      <ProductImageField
+                        imageUrl={createImageUrl}
+                        isUploading={createImageUploader.isUploading}
+                        onPickFile={(file) => createImageUploader.uploadFile(file)}
+                        onRemove={() => setCreateImageUrl(null)}
+                        resolveImage={resolveImage}
+                        idPrefix="create"
+                      />
                     </div>
                     <DialogFooter>
-                      <Button type="submit" disabled={createProduct.isPending} data-testid="button-submit-product">
+                      <Button type="submit" disabled={createProduct.isPending || createImageUploader.isUploading} data-testid="button-submit-product">
                         {createProduct.isPending ? "Menyimpan..." : "Buat Produk"}
                       </Button>
                     </DialogFooter>
@@ -279,6 +324,7 @@ export default function EcommercePage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[64px]">Foto</TableHead>
                       <TableHead>Nama Produk</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead>Kategori</TableHead>
@@ -291,6 +337,7 @@ export default function EcommercePage() {
                     {isLoadingProducts ? (
                       Array.from({ length: 5 }).map((_, i) => (
                         <TableRow key={i}>
+                          <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[150px]" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
@@ -301,7 +348,7 @@ export default function EcommercePage() {
                       ))
                     ) : products?.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center">
+                        <TableCell colSpan={7} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
                             <p>Belum ada produk. Tambahkan produk pertama Anda.</p>
@@ -311,6 +358,9 @@ export default function EcommercePage() {
                     ) : (
                       products?.map((product) => (
                         <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
+                          <TableCell>
+                            <ProductThumb src={resolveImage(product.imageUrl)} alt={product.name} />
+                          </TableCell>
                           <TableCell className="font-medium">{product.name}</TableCell>
                           <TableCell>{product.sku}</TableCell>
                           <TableCell><Badge variant="outline">{product.category}</Badge></TableCell>
@@ -353,7 +403,8 @@ export default function EcommercePage() {
               ) : (
                 products?.map((product) => (
                   <Card key={product.id} data-testid={`card-product-${product.id}`}><CardContent className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-3">
+                      <ProductThumb src={resolveImage(product.imageUrl)} alt={product.name} size="md" />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium truncate">{product.name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{product.sku}</p>
@@ -543,10 +594,18 @@ export default function EcommercePage() {
                   <div className="grid gap-2"><Label htmlFor="edit-stock">Stok</Label><Input id="edit-stock" name="stock" type="number" min="0" defaultValue={editingProduct.stock} required data-testid="input-edit-product-stock" /></div>
                 </div>
                 <div className="grid gap-2"><Label htmlFor="edit-category">Kategori</Label><Input id="edit-category" name="category" defaultValue={editingProduct.category} required data-testid="input-edit-product-category" /></div>
+                <ProductImageField
+                  imageUrl={editImageUrl}
+                  isUploading={editImageUploader.isUploading}
+                  onPickFile={(file) => editImageUploader.uploadFile(file)}
+                  onRemove={() => setEditImageUrl(null)}
+                  resolveImage={resolveImage}
+                  idPrefix="edit"
+                />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>Batal</Button>
-                <Button type="submit" disabled={updateProduct.isPending} data-testid="button-save-product">
+                <Button type="submit" disabled={updateProduct.isPending || editImageUploader.isUploading} data-testid="button-save-product">
                   {updateProduct.isPending ? "Menyimpan..." : "Simpan Perubahan"}
                 </Button>
               </DialogFooter>
@@ -630,5 +689,63 @@ export default function EcommercePage() {
         </AlertDialogContent>
       </AlertDialog>
     </AppShell>
+  );
+}
+
+function ProductThumb({ src, alt, size = "sm" }: { src: string | null; alt: string; size?: "sm" | "md" }) {
+  const dims = size === "md" ? "h-14 w-14" : "h-10 w-10";
+  if (!src) {
+    return (
+      <div className={`${dims} rounded-md border border-dashed bg-muted flex items-center justify-center text-muted-foreground shrink-0`} aria-label="Belum ada gambar">
+        <ImageIcon className="h-4 w-4 opacity-60" />
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} className={`${dims} rounded-md object-cover border shrink-0`} loading="lazy" />;
+}
+
+interface ProductImageFieldProps {
+  imageUrl: string | null;
+  isUploading: boolean;
+  onPickFile: (file: File) => void;
+  onRemove: () => void;
+  resolveImage: (url?: string | null) => string | null;
+  idPrefix: string;
+}
+
+function ProductImageField({ imageUrl, isUploading, onPickFile, onRemove, resolveImage, idPrefix }: ProductImageFieldProps) {
+  const inputId = `${idPrefix}-product-image-input`;
+  const preview = resolveImage(imageUrl);
+  return (
+    <div className="grid gap-2">
+      <Label>Foto Produk</Label>
+      <div className="flex items-center gap-3">
+        <ProductThumb src={preview} alt="Pratinjau produk" size="md" />
+        <div className="flex-1 flex flex-wrap gap-2">
+          <input
+            id={inputId}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            data-testid={`input-${idPrefix}-product-image`}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPickFile(f);
+              e.target.value = "";
+            }}
+          />
+          <Button type="button" variant="outline" size="sm" disabled={isUploading} onClick={() => document.getElementById(inputId)?.click()} data-testid={`button-${idPrefix}-upload-image`}>
+            {isUploading ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />}
+            {isUploading ? "Mengunggah..." : imageUrl ? "Ganti Foto" : "Unggah Foto"}
+          </Button>
+          {imageUrl && !isUploading && (
+            <Button type="button" variant="ghost" size="sm" onClick={onRemove} className="text-muted-foreground hover:text-destructive" data-testid={`button-${idPrefix}-remove-image`}>
+              <Trash2 className="h-4 w-4 mr-1.5" /> Hapus
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">Format: JPG/PNG, maks 10MB.</p>
+    </div>
   );
 }

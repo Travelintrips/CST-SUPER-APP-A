@@ -12,6 +12,7 @@ export const transactionsTable = pgTable("transactions", {
   totalPrice: numeric("total_price", { precision: 12, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
   cashierId: text("cashier_id"),
+  documentUrl: text("document_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
