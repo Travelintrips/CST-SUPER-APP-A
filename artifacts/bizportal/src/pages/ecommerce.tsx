@@ -16,7 +16,7 @@ import {
   type Order,
   type AccountingTax,
 } from "@workspace/api-client-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
@@ -122,6 +122,12 @@ export default function EcommercePage() {
 
   const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+
+  const categories = useMemo(
+    () => [...new Set((products ?? []).map((p) => p.category))].sort(),
+    [products],
+  );
 
   const filteredProducts = (products ?? []).filter((p) => {
     if (filterSalesTaxId !== "all") {
@@ -138,6 +144,7 @@ export default function EcommercePage() {
         if (String(p.defaultPurchaseTaxId) !== filterPurchaseTaxId) return false;
       }
     }
+    if (filterCategory !== "all" && p.category !== filterCategory) return false;
     return true;
   });
 
@@ -457,6 +464,17 @@ export default function EcommercePage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={filterCategory} onValueChange={setFilterCategory} data-testid="filter-category">
+                <SelectTrigger className="sm:w-[200px]" data-testid="filter-category-trigger">
+                  <SelectValue placeholder="Filter Kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Kategori</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <Card className="hidden md:block">
@@ -495,7 +513,7 @@ export default function EcommercePage() {
                         <TableCell colSpan={9} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
-                            <p>{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                            <p>{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -552,7 +570,7 @@ export default function EcommercePage() {
               ) : filteredProducts.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <PackageSearch className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                  <p className="text-sm text-muted-foreground">{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                 </CardContent></Card>
               ) : (
                 filteredProducts.map((product) => (
