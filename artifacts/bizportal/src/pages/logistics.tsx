@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock } from "lucide-react";
+import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   useListShipments,
@@ -25,6 +25,7 @@ import {
 export default function LogisticsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const { data: shipments, isLoading } = useListShipments();
   const createShipment = useCreateShipment();
@@ -32,11 +33,33 @@ export default function LogisticsPage() {
 
   const { data: freightShipments, isLoading: freightLoading } = useListFreightShipments();
 
+  const FREIGHT_STATUS_LABELS: Record<string, string> = {
+    draft: "Draft",
+    rfq_sent: "RFQ Dikirim",
+    confirmed: "Dikonfirmasi",
+    in_transit: "Dalam Perjalanan",
+    completed: "Selesai",
+    cancelled: "Dibatalkan",
+  };
+
+  const FREIGHT_STATUS_COLORS: Record<string, string> = {
+    draft: "bg-muted text-muted-foreground",
+    rfq_sent: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    confirmed: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    in_transit: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+    completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    cancelled: "bg-destructive/10 text-destructive border-destructive/20",
+  };
+
   const activeFreight = freightShipments?.filter(
     (s) => s.status !== "cancelled" && s.status !== "completed"
   ) ?? [];
   const awaitingQuote = freightShipments?.filter((s) => s.status === "rfq_sent") ?? [];
   const inTransit = freightShipments?.filter((s) => s.status === "in_transit") ?? [];
+
+  const recentFreight = [...activeFreight]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -140,6 +163,72 @@ export default function LogisticsPage() {
                   <p className="text-xs text-muted-foreground">Dalam Perjalanan</p>
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Active Freight Shipments */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Shipment Freight Terbaru</CardTitle>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/logistics/freight">
+                  Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+            <CardDescription>5 shipment aktif paling baru</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {freightLoading ? (
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-40 flex-1" />
+                    <Skeleton className="h-6 w-24 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            ) : recentFreight.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+                <Package className="h-8 w-8 opacity-40" />
+                <p className="text-sm">Tidak ada shipment freight aktif.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>No. Shipment</TableHead>
+                    <TableHead className="hidden sm:table-cell">Rute</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentFreight.map((s) => (
+                    <TableRow
+                      key={s.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/logistics/freight/${s.id}`)}
+                    >
+                      <TableCell className="font-mono text-sm font-semibold">{s.shipmentNumber}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                        {s.origin} → {s.destination}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={FREIGHT_STATUS_COLORS[s.status] ?? ""}>
+                          {FREIGHT_STATUS_LABELS[s.status] ?? s.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
           </CardContent>
         </Card>
