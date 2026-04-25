@@ -1,19 +1,45 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 
-const REFRESH_INTERVAL_MS = 60_000;
+const STORAGE_KEY = "dashboard_refresh_interval";
+
+const INTERVAL_OPTIONS = [
+  { label: "30 detik", value: "30000" },
+  { label: "1 menit", value: "60000" },
+  { label: "5 menit", value: "300000" },
+  { label: "Mati", value: "off" },
+] as const;
+
+type IntervalValue = typeof INTERVAL_OPTIONS[number]["value"];
+
+function getStoredInterval(): IntervalValue {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && INTERVAL_OPTIONS.some((o) => o.value === stored)) {
+      return stored as IntervalValue;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "60000";
+}
 
 export default function DashboardPage() {
+  const [intervalValue, setIntervalValue] = useState<IntervalValue>(getStoredInterval);
+
+  const refetchInterval = intervalValue === "off" ? false : Number(intervalValue);
+
   const { data: summary, isLoading, isFetching, refetch, dataUpdatedAt } = useGetDashboardSummary({
     query: {
       queryKey: getGetDashboardSummaryQueryKey(),
-      refetchInterval: REFRESH_INTERVAL_MS,
+      refetchInterval,
     }
   });
 
@@ -22,6 +48,16 @@ export default function DashboardPage() {
   const handleRefresh = useCallback(async () => {
     await refetch();
   }, [refetch]);
+
+  const handleIntervalChange = (value: string) => {
+    const v = value as IntervalValue;
+    setIntervalValue(v);
+    try {
+      localStorage.setItem(STORAGE_KEY, v);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const activeFreightCount = summary?.activeFreightCount ?? 0;
   const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
@@ -52,18 +88,35 @@ export default function DashboardPage() {
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin Overview</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Aggregated business metrics across all divisions.</p>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isFetching}
-              data-testid="dashboard-refresh-btn"
-              className="gap-1.5"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-              {isFetching ? "Memuat..." : "Refresh"}
-            </Button>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <div className="flex items-center gap-2">
+              <Select value={intervalValue} onValueChange={handleIntervalChange}>
+                <SelectTrigger
+                  className="h-8 w-[120px] text-xs"
+                  data-testid="dashboard-refresh-interval-select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {INTERVAL_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isFetching}
+                data-testid="dashboard-refresh-btn"
+                className="gap-1.5 h-8"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+                {isFetching ? "Memuat..." : "Refresh"}
+              </Button>
+            </div>
             {!isLoading && lastUpdated && (
               <p className="text-xs text-muted-foreground">
                 Diperbarui: {formatLastUpdated(lastUpdated)}
