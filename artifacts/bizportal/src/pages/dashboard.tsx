@@ -124,23 +124,29 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <p className="text-2xl font-bold">{activeFreightCount}</p>
-                  <p className="text-xs text-muted-foreground">Shipment Aktif</p>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-2xl font-bold text-amber-500">{awaitingQuoteCount}</p>
-                    {awaitingQuoteCount > 0 && (
-                      <Clock className="h-4 w-4 text-amber-500 shrink-0" />
-                    )}
+                <Link href="/logistics/freight?status=active" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <div className="space-y-1">
+                    <p className="text-2xl font-bold">{activeFreightCount}</p>
+                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Shipment Aktif</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">Menunggu Persetujuan Quote</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-2xl font-bold text-indigo-500">{inTransitCount}</p>
-                  <p className="text-xs text-muted-foreground">Dalam Perjalanan</p>
-                </div>
+                </Link>
+                <Link href="/logistics/freight?status=rfq_sent" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-2xl font-bold text-amber-500">{awaitingQuoteCount}</p>
+                      {awaitingQuoteCount > 0 && (
+                        <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Menunggu Persetujuan Quote</p>
+                  </div>
+                </Link>
+                <Link href="/logistics/freight?status=in_transit" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <div className="space-y-1">
+                    <p className="text-2xl font-bold text-indigo-500">{inTransitCount}</p>
+                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Dalam Perjalanan</p>
+                  </div>
+                </Link>
               </div>
             )}
           </CardContent>

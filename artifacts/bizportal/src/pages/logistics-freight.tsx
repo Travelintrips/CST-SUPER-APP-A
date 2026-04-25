@@ -1,12 +1,12 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, RefreshCw, Ship, Trash2, Eye } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
@@ -32,11 +32,30 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
+const ACTIVE_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit"];
+
+const FILTER_LABELS: Record<string, string> = {
+  active: "Shipment Aktif",
+  rfq_sent: "Menunggu Persetujuan Quote",
+  in_transit: "Dalam Perjalanan",
+};
+
 export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [location, setLocation] = useLocation();
   const { data: shipments, isLoading } = useListFreightShipments();
   const deleteShipment = useDeleteFreightShipment();
+
+  void location;
+  const searchParams = new URLSearchParams(window.location.search);
+  const statusFilter = searchParams.get("status") ?? null;
+
+  const filteredShipments = shipments?.filter((s) => {
+    if (!statusFilter) return true;
+    if (statusFilter === "active") return ACTIVE_STATUSES.includes(s.status);
+    return s.status === statusFilter;
+  }) ?? [];
 
   const handleDelete = (id: number, shipmentNumber: string) => {
     if (!confirm(`Hapus shipment ${shipmentNumber}?`)) return;
@@ -61,6 +80,18 @@ export default function LogisticsFreightPage() {
           <div className="flex items-center gap-2">
             <Ship className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Freight Forwarding</h1>
+            {statusFilter && (
+              <Badge variant="secondary" className="flex items-center gap-1 ml-1">
+                {FILTER_LABELS[statusFilter] ?? statusFilter}
+                <button
+                  onClick={() => setLocation("/logistics/freight")}
+                  className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
+                  title="Hapus filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
           </div>
           <div className="flex gap-2">
             <Button
@@ -103,14 +134,16 @@ export default function LogisticsFreightPage() {
                       ))}
                     </TableRow>
                   ))
-                ) : !shipments?.length ? (
+                ) : !filteredShipments.length ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                      Belum ada freight shipment. Buat shipment pertama Anda.
+                      {statusFilter
+                        ? "Tidak ada shipment dengan filter ini."
+                        : "Belum ada freight shipment. Buat shipment pertama Anda."}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  shipments.map((s) => (
+                  filteredShipments.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell className="font-mono text-sm font-semibold">{s.shipmentNumber}</TableCell>
                       <TableCell>{s.shipperName}</TableCell>
