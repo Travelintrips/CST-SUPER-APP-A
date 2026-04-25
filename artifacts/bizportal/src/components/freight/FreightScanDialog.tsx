@@ -15,10 +15,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
-import { QrCode, ScanLine, CheckCircle, AlertCircle, Loader2, X } from "lucide-react";
+import {
+  QrCode,
+  ScanLine,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  X,
+  ChevronDown,
+  FileText,
+} from "lucide-react";
 
-// All form fields that can be populated via scan
+// ── Form field types ──────────────────────────────────────────────────────────
+
 export type FreightFormFields = {
   shipperName?: string;
   shipperAddress?: string;
@@ -43,7 +58,7 @@ export type FreightFormFields = {
   notes?: string;
 };
 
-const FIELD_LABELS: Record<keyof FreightFormFields, string> = {
+export const FIELD_LABELS: Record<keyof FreightFormFields, string> = {
   shipperName: "Nama Shipper",
   shipperAddress: "Alamat Shipper",
   consigneeName: "Nama Consignee",
@@ -53,26 +68,174 @@ const FIELD_LABELS: Record<keyof FreightFormFields, string> = {
   hsCode: "HS Code",
   grossWeight: "Berat Bruto (kg)",
   netWeight: "Berat Neto (kg)",
-  quantity: "Jumlah",
+  quantity: "Jumlah / Pieces",
   packingType: "Jenis Packing",
   dimensions: "Dimensi",
-  marksAndNumbers: "Marks & Numbers",
+  marksAndNumbers: "Marks & Numbers / AWB No.",
   measurement: "Measurement (CBM)",
-  origin: "Asal",
-  destination: "Tujuan",
-  portOfLoading: "Port of Loading",
-  portOfDischarge: "Port of Discharge",
-  vessel: "Vessel / Nama Kapal",
-  voyage: "Voyage No.",
-  notes: "Catatan",
+  origin: "Asal / Origin",
+  destination: "Tujuan / Destination",
+  portOfLoading: "Port / Airport of Loading",
+  portOfDischarge: "Port / Airport of Discharge",
+  vessel: "Vessel / Airline / Flight No.",
+  voyage: "Voyage / Flight Date",
+  notes: "Catatan / Remarks",
 };
 
 const VALID_KEYS = Object.keys(FIELD_LABELS) as (keyof FreightFormFields)[];
 
+// ── AWB field alias map ────────────────────────────────────────────────────────
+// Maps common AWB JSON keys → one or more FreightFormFields keys.
+// A single AWB key can populate multiple form fields (e.g. originAirport → origin + portOfLoading).
+
+type AliasMap = Partial<Record<string, (keyof FreightFormFields)[]>>;
+
+const AWB_ALIASES: AliasMap = {
+  // AWB number → Marks & Numbers field
+  awbNumber: ["marksAndNumbers"],
+  awb_number: ["marksAndNumbers"],
+  awb: ["marksAndNumbers"],
+  mawb: ["marksAndNumbers"],
+  hawb: ["marksAndNumbers"],
+  blNumber: ["marksAndNumbers"],
+  bl_number: ["marksAndNumbers"],
+
+  // Shipper
+  shipper: ["shipperName"],
+  shipperName: ["shipperName"],
+  shipper_name: ["shipperName"],
+  shipperAddr: ["shipperAddress"],
+  shipper_address: ["shipperAddress"],
+  shipperAddress: ["shipperAddress"],
+
+  // Consignee
+  consignee: ["consigneeName"],
+  consigneeName: ["consigneeName"],
+  consignee_name: ["consigneeName"],
+  consigneeAddr: ["consigneeAddress"],
+  consignee_address: ["consigneeAddress"],
+  consigneeAddress: ["consigneeAddress"],
+
+  // Notify
+  notify: ["notifyParty"],
+  notifyParty: ["notifyParty"],
+  notify_party: ["notifyParty"],
+  notifyAddress: ["notifyParty"],
+
+  // Commodity
+  goods: ["commodity"],
+  goodsDesc: ["commodity"],
+  goods_description: ["commodity"],
+  cargo: ["commodity"],
+  cargoDesc: ["commodity"],
+  commodity: ["commodity"],
+  description: ["commodity"],
+
+  // HS Code
+  hs: ["hsCode"],
+  hs_code: ["hsCode"],
+  hscode: ["hsCode"],
+  tariff: ["hsCode"],
+  hsCode: ["hsCode"],
+
+  // Weights
+  gw: ["grossWeight"],
+  gross_weight: ["grossWeight"],
+  grossKg: ["grossWeight"],
+  grossWeight: ["grossWeight"],
+  chargeableWeight: ["grossWeight"],
+  cw: ["grossWeight"],
+
+  nw: ["netWeight"],
+  net_weight: ["netWeight"],
+  netKg: ["netWeight"],
+  netWeight: ["netWeight"],
+
+  // Pieces / Quantity
+  pcs: ["quantity"],
+  pieces: ["quantity"],
+  qty: ["quantity"],
+  quantity: ["quantity"],
+  noOfPieces: ["quantity"],
+  no_of_pieces: ["quantity"],
+
+  // Packing
+  packing: ["packingType"],
+  packingType: ["packingType"],
+  packing_type: ["packingType"],
+  packageType: ["packingType"],
+
+  // Dimensions
+  dim: ["dimensions"],
+  dimensions: ["dimensions"],
+
+  // Volume / CBM
+  cbm: ["measurement"],
+  volume: ["measurement"],
+  measurement: ["measurement"],
+  volumeCbm: ["measurement"],
+
+  // Origin — fills both origin AND portOfLoading
+  from: ["origin", "portOfLoading"],
+  origin: ["origin", "portOfLoading"],
+  originCity: ["origin"],
+  originAirport: ["origin", "portOfLoading"],
+  origin_airport: ["origin", "portOfLoading"],
+  pol: ["origin", "portOfLoading"],
+  aog: ["portOfLoading"],
+  portOfLoading: ["portOfLoading"],
+  port_of_loading: ["portOfLoading"],
+  airportOfDeparture: ["origin", "portOfLoading"],
+  departurePort: ["origin", "portOfLoading"],
+
+  // Destination — fills both destination AND portOfDischarge
+  to: ["destination", "portOfDischarge"],
+  destination: ["destination", "portOfDischarge"],
+  destCity: ["destination"],
+  destAirport: ["destination", "portOfDischarge"],
+  dest_airport: ["destination", "portOfDischarge"],
+  pod: ["destination", "portOfDischarge"],
+  aod: ["portOfDischarge"],
+  portOfDischarge: ["portOfDischarge"],
+  port_of_discharge: ["portOfDischarge"],
+  airportOfArrival: ["destination", "portOfDischarge"],
+  arrivalPort: ["destination", "portOfDischarge"],
+
+  // Carrier / Vessel
+  airline: ["vessel"],
+  carrier: ["vessel"],
+  flight: ["vessel"],
+  flightNo: ["vessel"],
+  flight_no: ["vessel"],
+  flightNumber: ["vessel"],
+  vessel: ["vessel"],
+  vesselName: ["vessel"],
+
+  // Flight date / Voyage
+  flightDate: ["voyage"],
+  flight_date: ["voyage"],
+  etd: ["voyage"],
+  voyage: ["voyage"],
+  flightDateVoyage: ["voyage"],
+
+  // Marks
+  marks: ["marksAndNumbers"],
+  marksAndNumbers: ["marksAndNumbers"],
+  marks_and_numbers: ["marksAndNumbers"],
+
+  // Notes / Remarks
+  remarks: ["notes"],
+  notes: ["notes"],
+  specialInstructions: ["notes"],
+  handling: ["notes"],
+};
+
+// ── Scan state ────────────────────────────────────────────────────────────────
+
 type ScanState =
   | { kind: "idle" }
   | { kind: "scanning" }
-  | { kind: "json"; fields: FreightFormFields }
+  | { kind: "json"; fields: FreightFormFields; isAwb: boolean }
   | { kind: "text"; value: string; targetField: keyof FreightFormFields | "" };
 
 interface Props {
@@ -80,6 +243,37 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   onApply: (fields: FreightFormFields) => void;
 }
+
+// ── Sample AWB JSON ───────────────────────────────────────────────────────────
+
+const AWB_SAMPLE = JSON.stringify(
+  {
+    awbNumber: "081-12345678",
+    shipper: "PT. Maju Bersama",
+    shipperAddr: "Jl. Sudirman No. 1, Jakarta",
+    consignee: "Singapore Trading Co. Pte. Ltd.",
+    consigneeAddr: "10 Kallang Ave, Singapore 339510",
+    notify: "Same as consignee",
+    originAirport: "Jakarta (CGK)",
+    destAirport: "Singapore (SIN)",
+    airline: "Garuda Indonesia",
+    flightNo: "GA 826",
+    flightDate: "2026-05-10",
+    pcs: "5",
+    gw: "150.5",
+    nw: "148.0",
+    cbm: "1.2",
+    goods: "Peralatan Elektronik",
+    hs: "8471.30.00",
+    packing: "Karton",
+    dim: "60x40x50 cm",
+    remarks: "Handle with care",
+  },
+  null,
+  2
+);
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -90,9 +284,14 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
   const [scanState, setScanState] = useState<ScanState>({ kind: "idle" });
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
+  const [showFormat, setShowFormat] = useState(false);
 
   const stopCamera = useCallback(() => {
-    try { readerRef.current?.reset?.(); } catch { /* ignore */ }
+    try {
+      readerRef.current?.reset?.();
+    } catch {
+      /* ignore */
+    }
     readerRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -103,6 +302,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
     setCameraError(null);
     setScanState({ kind: "scanning" });
     setApplied(false);
+    setShowFormat(false);
     try {
       const { BrowserMultiFormatReader } = await import("@zxing/browser");
       const reader = new BrowserMultiFormatReader();
@@ -118,19 +318,20 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
         await videoRef.current.play();
       }
 
-      reader.decodeFromStream(stream, videoRef.current!, (result, err) => {
+      reader.decodeFromStream(stream, videoRef.current!, (result) => {
         if (result) {
           const text = result.getText();
           stopCamera();
           parseResult(text);
         }
-        if (err && !(err.message?.includes("No MultiFormat"))) {
-          // ignore continuous not-found errors
-        }
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Gagal mengakses kamera";
-      setCameraError(msg.includes("Permission") ? "Izin kamera ditolak." : msg);
+      setCameraError(
+        msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")
+          ? "Izin kamera ditolak. Aktifkan akses kamera di pengaturan browser."
+          : msg
+      );
       setScanState({ kind: "idle" });
     }
   }, [stopCamera]);
@@ -141,21 +342,53 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
       if (typeof obj === "object" && obj !== null) {
         const fields: FreightFormFields = {};
         let matched = 0;
+        let isAwb = false;
+
+        // First pass: direct field name match
         for (const key of VALID_KEYS) {
           if (key in obj && obj[key] !== undefined && obj[key] !== null) {
             (fields as Record<string, string>)[key] = String(obj[key]);
             matched++;
           }
         }
+
+        // Second pass: AWB alias match
+        for (const [alias, targets] of Object.entries(AWB_ALIASES)) {
+          if (alias in obj && obj[alias] !== undefined && obj[alias] !== null) {
+            const val = String(obj[alias]);
+            for (const target of targets!) {
+              if (!(target in fields)) {
+                (fields as Record<string, string>)[target] = val;
+                matched++;
+              }
+            }
+            // Detect AWB format by known AWB keys
+            if (["awb", "awbNumber", "mawb", "hawb", "awb_number", "airline", "flightNo", "pcs", "gw"].includes(alias)) {
+              isAwb = true;
+            }
+          }
+        }
+
         if (matched > 0) {
-          setScanState({ kind: "json", fields });
+          setScanState({ kind: "json", fields, isAwb });
           return;
         }
       }
     } catch {
-      // not JSON
+      // not JSON — fall through to text mode
     }
-    setScanState({ kind: "text", value: text, targetField: "" });
+
+    // Plain text / barcode — auto-detect AWB number pattern (e.g. "081-12345678")
+    const awbPattern = /^\d{3}-\d{7,8}$/;
+    if (awbPattern.test(text.trim())) {
+      setScanState({
+        kind: "text",
+        value: text.trim(),
+        targetField: "marksAndNumbers",
+      });
+    } else {
+      setScanState({ kind: "text", value: text, targetField: "" });
+    }
   }
 
   function handleApplyJson(fields: FreightFormFields) {
@@ -169,7 +402,11 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
   }
 
   function handleApplyText() {
-    const state = scanState as { kind: "text"; value: string; targetField: keyof FreightFormFields | "" };
+    const state = scanState as {
+      kind: "text";
+      value: string;
+      targetField: keyof FreightFormFields | "";
+    };
     if (!state.targetField) return;
     onApply({ [state.targetField]: state.value } as FreightFormFields);
     setApplied(true);
@@ -194,19 +431,21 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
       setScanState({ kind: "idle" });
       setCameraError(null);
       setApplied(false);
+      setShowFormat(false);
     }
     return () => stopCamera();
   }, [open]);
 
-  const isScanningOrIdle = scanState.kind === "idle" || scanState.kind === "scanning";
+  const isScanningOrIdle =
+    scanState.kind === "idle" || scanState.kind === "scanning";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <QrCode className="h-5 w-5" />
-            Scan Dokumen / QR Code
+            Scan AWB / Dokumen
           </DialogTitle>
         </DialogHeader>
 
@@ -225,7 +464,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <ScanLine className="h-10 w-10 text-white/80 animate-pulse" />
                   <span className="text-white/80 text-xs mt-2 bg-black/40 px-2 py-1 rounded">
-                    Arahkan ke QR code atau barcode
+                    Arahkan ke QR code AWB atau barcode
                   </span>
                 </div>
               )}
@@ -248,36 +487,53 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
             </div>
           )}
 
-          {/* JSON result — multiple fields */}
+          {/* JSON / AWB QR result */}
           {scanState.kind === "json" && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-green-600">
                 <CheckCircle className="h-4 w-4" />
-                QR berhasil dibaca — {Object.keys(scanState.fields).length} field ditemukan
+                {scanState.isAwb ? "Data AWB berhasil dibaca" : "QR berhasil dibaca"}{" "}
+                — {Object.keys(scanState.fields).length} field ditemukan
               </div>
-              <div className="max-h-52 overflow-y-auto space-y-1.5 rounded-lg border p-3 bg-muted/30">
-                {(Object.entries(scanState.fields) as [keyof FreightFormFields, string][]).map(
-                  ([key, value]) => (
-                    <div key={key} className="flex items-start gap-2 text-sm">
-                      <Badge variant="secondary" className="shrink-0 text-xs font-normal">
-                        {FIELD_LABELS[key]}
-                      </Badge>
-                      <span className="text-muted-foreground truncate">{value}</span>
-                    </div>
-                  )
-                )}
+              <div className="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border p-3 bg-muted/30">
+                {(
+                  Object.entries(scanState.fields) as [
+                    keyof FreightFormFields,
+                    string
+                  ][]
+                ).map(([key, value]) => (
+                  <div key={key} className="flex items-start gap-2 text-sm">
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 text-xs font-normal"
+                    >
+                      {FIELD_LABELS[key]}
+                    </Badge>
+                    <span className="text-muted-foreground break-all">
+                      {value}
+                    </span>
+                  </div>
+                ))}
               </div>
               {applied ? (
                 <div className="flex items-center gap-2 text-green-600 text-sm">
                   <CheckCircle className="h-4 w-4" />
-                  Field berhasil diisi!
+                  Form berhasil diisi!
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <Button className="flex-1" onClick={() => handleApplyJson(scanState.fields)}>
+                  <Button
+                    className="flex-1"
+                    onClick={() => handleApplyJson(scanState.fields)}
+                  >
                     Isi Form Sekarang
                   </Button>
-                  <Button variant="outline" size="icon" onClick={handleRescan} title="Scan ulang">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRescan}
+                    title="Scan ulang"
+                  >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
@@ -285,7 +541,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
             </div>
           )}
 
-          {/* Plain text result — single field picker */}
+          {/* Plain text result */}
           {scanState.kind === "text" && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-blue-600">
@@ -296,7 +552,9 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                 {scanState.value}
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Masukkan ke field:</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Masukkan ke field:
+                </Label>
                 <Select
                   value={scanState.targetField}
                   onValueChange={(v) =>
@@ -332,20 +590,62 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                   >
                     Isi Field
                   </Button>
-                  <Button variant="outline" size="icon" onClick={handleRescan} title="Scan ulang">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRescan}
+                    title="Scan ulang"
+                  >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               )}
             </div>
           )}
+
+          {/* AWB format reference */}
+          <Collapsible open={showFormat} onOpenChange={setShowFormat}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground"
+                type="button"
+              >
+                <span className="flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  Lihat format QR AWB yang didukung
+                </span>
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${showFormat ? "rotate-180" : ""}`}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Buat QR code dari JSON berikut. Field AWB standar seperti{" "}
+                  <code className="bg-muted px-1 rounded">awbNumber</code>,{" "}
+                  <code className="bg-muted px-1 rounded">shipper</code>,{" "}
+                  <code className="bg-muted px-1 rounded">originAirport</code>,{" "}
+                  <code className="bg-muted px-1 rounded">gw</code>,{" "}
+                  <code className="bg-muted px-1 rounded">pcs</code>, dll.
+                  langsung dikenali.
+                </p>
+                <pre className="text-xs bg-muted rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+                  {AWB_SAMPLE}
+                </pre>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
 
-        <DialogFooter>
-          <p className="text-xs text-muted-foreground flex-1">
-            QR dengan data JSON akan mengisi semua field sekaligus. Barcode biasa dapat diarahkan ke satu field.
-          </p>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="mt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+          >
             Tutup
           </Button>
         </DialogFooter>
