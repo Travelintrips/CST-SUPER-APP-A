@@ -5,8 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, RefreshCw, Ship, Trash2, Eye } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
@@ -45,6 +47,19 @@ const STATUS_FILTERS: { value: string | null; label: string }[] = [
   { value: "cancelled", label: "Dibatalkan" },
 ];
 
+function buildUrl(params: Record<string, string | null>): string {
+  const sp = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === "") {
+      sp.delete(key);
+    } else {
+      sp.set(key, value);
+    }
+  }
+  const qs = sp.toString();
+  return qs ? `/logistics/freight?${qs}` : "/logistics/freight";
+}
+
 export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -55,20 +70,48 @@ export default function LogisticsFreightPage() {
   void location;
   const searchParams = new URLSearchParams(window.location.search);
   const statusFilter = searchParams.get("status") ?? null;
+  const fromFilter = searchParams.get("from") ?? "";
+  const toFilter = searchParams.get("to") ?? "";
 
   const setStatusFilter = (value: string | null) => {
-    if (value === null) {
-      setLocation("/logistics/freight");
-    } else {
-      setLocation(`/logistics/freight?status=${value}`);
-    }
+    setLocation(buildUrl({ status: value }));
   };
 
-  const filteredShipments = shipments?.filter((s) => {
-    if (!statusFilter) return true;
-    if (statusFilter === "active") return ACTIVE_STATUSES.includes(s.status);
-    return s.status === statusFilter;
-  }) ?? [];
+  const setDateFilter = (from: string, to: string) => {
+    setLocation(buildUrl({ from: from || null, to: to || null }));
+  };
+
+  const clearDateFilter = () => {
+    setLocation(buildUrl({ from: null, to: null }));
+  };
+
+  const hasDateFilter = fromFilter !== "" || toFilter !== "";
+
+  const filteredShipments = (shipments ?? []).filter((s) => {
+    if (statusFilter) {
+      if (statusFilter === "active") {
+        if (!ACTIVE_STATUSES.includes(s.status)) return false;
+      } else {
+        if (s.status !== statusFilter) return false;
+      }
+    }
+
+    if (hasDateFilter) {
+      const createdAt = new Date(s.createdAt);
+      if (fromFilter) {
+        const from = new Date(fromFilter);
+        from.setHours(0, 0, 0, 0);
+        if (createdAt < from) return false;
+      }
+      if (toFilter) {
+        const to = new Date(toFilter);
+        to.setHours(23, 59, 59, 999);
+        if (createdAt > to) return false;
+      }
+    }
+
+    return true;
+  });
 
   const getFilterCount = (value: string | null): number => {
     if (!shipments) return 0;
@@ -139,6 +182,46 @@ export default function LogisticsFreightPage() {
           })}
         </div>
 
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Dari Tanggal</Label>
+              <Input
+                type="date"
+                value={fromFilter}
+                onChange={(e) => setDateFilter(e.target.value, toFilter)}
+                className="w-40 h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Sampai Tanggal</Label>
+              <Input
+                type="date"
+                value={toFilter}
+                min={fromFilter || undefined}
+                onChange={(e) => setDateFilter(fromFilter, e.target.value)}
+                className="w-40 h-8 text-sm"
+              />
+            </div>
+            {hasDateFilter && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearDateFilter}
+                className="h-8 gap-1 text-muted-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+                Reset Tanggal
+              </Button>
+            )}
+          </div>
+          {(statusFilter || hasDateFilter) && (
+            <p className="text-xs text-muted-foreground self-end pb-1">
+              Menampilkan {filteredShipments.length} shipment
+            </p>
+          )}
+        </div>
+
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -166,7 +249,7 @@ export default function LogisticsFreightPage() {
                 ) : !filteredShipments.length ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                      {statusFilter
+                      {statusFilter || hasDateFilter
                         ? "Tidak ada shipment dengan filter ini."
                         : "Belum ada freight shipment. Buat shipment pertama Anda."}
                     </TableCell>
