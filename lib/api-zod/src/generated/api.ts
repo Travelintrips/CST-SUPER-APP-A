@@ -2020,3 +2020,211 @@ export const GetBalanceSheetResponse = zod.object({
   totalEquity: zod.number(),
   totalLiabilitiesAndEquity: zod.number(),
 });
+
+/**
+ * @summary List correspondences
+ */
+export const ListCorrespondencesQueryParams = zod.object({
+  q: zod.coerce.string().optional(),
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]).optional(),
+  direction: zod.enum(["inbound", "outbound"]).optional(),
+  customerId: zod.coerce.number().optional(),
+  supplierId: zod.coerce.number().optional(),
+});
+
+export const ListCorrespondencesResponseItem = zod.object({
+  id: zod.number(),
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]),
+  direction: zod.enum(["inbound", "outbound"]),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()),
+  attachments: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+  correspondedAt: zod.string(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListCorrespondencesResponse = zod.array(
+  ListCorrespondencesResponseItem,
+);
+
+/**
+ * @summary Create a correspondence
+ */
+export const CreateCorrespondenceBody = zod.object({
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]).optional(),
+  direction: zod.enum(["inbound", "outbound"]).optional(),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()).optional(),
+  correspondedAt: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+});
+
+/**
+ * @summary Get a correspondence with attachments
+ */
+export const GetCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetCorrespondenceResponse = zod
+  .object({
+    id: zod.number(),
+    kind: zod.enum(["email", "whatsapp", "letter", "other"]),
+    direction: zod.enum(["inbound", "outbound"]),
+    subject: zod.string(),
+    body: zod.string().nullish(),
+    extractedText: zod.string().nullish(),
+    senderName: zod.string().nullish(),
+    senderEmail: zod.string().nullish(),
+    receiverName: zod.string().nullish(),
+    receiverEmail: zod.string().nullish(),
+    customerId: zod.number().nullish(),
+    supplierId: zod.number().nullish(),
+    tags: zod.array(zod.string()),
+    attachments: zod.string().nullish(),
+    emailMessageId: zod.string().nullish(),
+    emailThreadId: zod.string().nullish(),
+    correspondedAt: zod.string(),
+    createdById: zod.string().nullish(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      attachments: zod.array(
+        zod.object({
+          id: zod.number(),
+          correspondenceId: zod.number(),
+          fileName: zod.string(),
+          objectPath: zod.string(),
+          mimeType: zod.string().nullish(),
+          extractedText: zod.string().nullish(),
+          createdAt: zod.string(),
+        }),
+      ),
+      customerName: zod.string().nullish(),
+      supplierName: zod.string().nullish(),
+    }),
+  );
+
+/**
+ * @summary Update a correspondence
+ */
+export const UpdateCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateCorrespondenceBody = zod.object({
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]).optional(),
+  direction: zod.enum(["inbound", "outbound"]).optional(),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()).optional(),
+  correspondedAt: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+});
+
+export const UpdateCorrespondenceResponse = zod.object({
+  id: zod.number(),
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]),
+  direction: zod.enum(["inbound", "outbound"]),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()),
+  attachments: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+  correspondedAt: zod.string(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a correspondence
+ */
+export const DeleteCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteCorrespondenceResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Add an attachment to a correspondence
+ */
+export const AddCorrespondenceAttachmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AddCorrespondenceAttachmentBody = zod.object({
+  objectPath: zod.string(),
+  fileName: zod.string().nullish(),
+  mimeType: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete an attachment
+ */
+export const DeleteCorrespondenceAttachmentParams = zod.object({
+  id: zod.coerce.number(),
+  attId: zod.coerce.number(),
+});
+
+export const DeleteCorrespondenceAttachmentResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Update extracted text of an attachment
+ */
+export const UpdateCorrespondenceAttachmentExtractedTextParams = zod.object({
+  id: zod.coerce.number(),
+  attId: zod.coerce.number(),
+});
+
+export const UpdateCorrespondenceAttachmentExtractedTextBody = zod.object({
+  extractedText: zod.string().nullable(),
+});
+
+export const UpdateCorrespondenceAttachmentExtractedTextResponse = zod.object({
+  id: zod.number(),
+  correspondenceId: zod.number(),
+  fileName: zod.string(),
+  objectPath: zod.string(),
+  mimeType: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+  createdAt: zod.string(),
+});

@@ -1621,6 +1621,130 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BalanceSheetReport" }
 
+  /correspondences:
+    get:
+      operationId: listCorrespondences
+      summary: List correspondences
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string, enum: [email, whatsapp, letter, other] } }
+        - { name: direction, in: query, schema: { type: string, enum: [inbound, outbound] } }
+        - { name: customerId, in: query, schema: { type: integer } }
+        - { name: supplierId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Correspondence list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Correspondence" }
+    post:
+      operationId: createCorrespondence
+      summary: Create a correspondence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCorrespondenceBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Correspondence" }
+
+  /correspondences/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getCorrespondence
+      summary: Get a correspondence with attachments
+      responses:
+        "200":
+          description: Correspondence detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrespondenceDetail" }
+    put:
+      operationId: updateCorrespondence
+      summary: Update a correspondence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCorrespondenceBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Correspondence" }
+    delete:
+      operationId: deleteCorrespondence
+      summary: Delete a correspondence
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /correspondences/{id}/attachments:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: addCorrespondenceAttachment
+      summary: Add an attachment to a correspondence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCorrespondenceAttachmentBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrespondenceAttachment" }
+
+  /correspondences/{id}/attachments/{attId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: attId, in: path, required: true, schema: { type: integer } }
+    delete:
+      operationId: deleteCorrespondenceAttachment
+      summary: Delete an attachment
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /correspondences/{id}/attachments/{attId}/extracted-text:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: attId, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: updateCorrespondenceAttachmentExtractedText
+      summary: Update extracted text of an attachment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extractedText: { type: string, nullable: true }
+              required: [extractedText]
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrespondenceAttachment" }
+
 components:
   schemas:
     HealthStatus:
@@ -2950,3 +3074,79 @@ components:
         totalAr: { type: number }
         totalAp: { type: number }
       required: [ar, ap, totalAr, totalAp]
+
+    Correspondence:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [email, whatsapp, letter, other] }
+        direction: { type: string, enum: [inbound, outbound] }
+        subject: { type: string }
+        body: { type: string, nullable: true }
+        extractedText: { type: string, nullable: true }
+        senderName: { type: string, nullable: true }
+        senderEmail: { type: string, nullable: true }
+        receiverName: { type: string, nullable: true }
+        receiverEmail: { type: string, nullable: true }
+        customerId: { type: integer, nullable: true }
+        supplierId: { type: integer, nullable: true }
+        tags: { type: array, items: { type: string } }
+        attachments: { type: string, nullable: true }
+        emailMessageId: { type: string, nullable: true }
+        emailThreadId: { type: string, nullable: true }
+        correspondedAt: { type: string }
+        createdById: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, kind, direction, subject, tags, correspondedAt, createdAt]
+
+    CorrespondenceAttachment:
+      type: object
+      properties:
+        id: { type: integer }
+        correspondenceId: { type: integer }
+        fileName: { type: string }
+        objectPath: { type: string }
+        mimeType: { type: string, nullable: true }
+        extractedText: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, correspondenceId, fileName, objectPath, createdAt]
+
+    CorrespondenceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Correspondence"
+        - type: object
+          properties:
+            attachments:
+              type: array
+              items: { $ref: "#/components/schemas/CorrespondenceAttachment" }
+            customerName: { type: string, nullable: true }
+            supplierName: { type: string, nullable: true }
+          required: [attachments]
+
+    CreateCorrespondenceBody:
+      type: object
+      properties:
+        kind: { type: string, enum: [email, whatsapp, letter, other] }
+        direction: { type: string, enum: [inbound, outbound] }
+        subject: { type: string }
+        body: { type: string, nullable: true }
+        senderName: { type: string, nullable: true }
+        senderEmail: { type: string, nullable: true }
+        receiverName: { type: string, nullable: true }
+        receiverEmail: { type: string, nullable: true }
+        customerId: { type: integer, nullable: true }
+        supplierId: { type: integer, nullable: true }
+        tags: { type: array, items: { type: string } }
+        correspondedAt: { type: string, nullable: true }
+        emailMessageId: { type: string, nullable: true }
+        emailThreadId: { type: string, nullable: true }
+      required: [subject]
+
+    CreateCorrespondenceAttachmentBody:
+      type: object
+      properties:
+        objectPath: { type: string }
+        fileName: { type: string, nullable: true }
+        mimeType: { type: string, nullable: true }
+        extractedText: { type: string, nullable: true }
+      required: [objectPath]

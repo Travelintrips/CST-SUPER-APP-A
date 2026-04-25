@@ -1125,6 +1125,104 @@ export interface PartnerBalances {
   totalAp: number;
 }
 
+export type CorrespondenceKind =
+  (typeof CorrespondenceKind)[keyof typeof CorrespondenceKind];
+
+export const CorrespondenceKind = {
+  email: "email",
+  whatsapp: "whatsapp",
+  letter: "letter",
+  other: "other",
+} as const;
+
+export type CorrespondenceDirection =
+  (typeof CorrespondenceDirection)[keyof typeof CorrespondenceDirection];
+
+export const CorrespondenceDirection = {
+  inbound: "inbound",
+  outbound: "outbound",
+} as const;
+
+export interface Correspondence {
+  id: number;
+  kind: CorrespondenceKind;
+  direction: CorrespondenceDirection;
+  subject: string;
+  body?: string | null;
+  extractedText?: string | null;
+  senderName?: string | null;
+  senderEmail?: string | null;
+  receiverName?: string | null;
+  receiverEmail?: string | null;
+  customerId?: number | null;
+  supplierId?: number | null;
+  tags: string[];
+  attachments?: string | null;
+  emailMessageId?: string | null;
+  emailThreadId?: string | null;
+  correspondedAt: string;
+  createdById?: string | null;
+  createdAt: string;
+}
+
+export interface CorrespondenceAttachment {
+  id: number;
+  correspondenceId: number;
+  fileName: string;
+  objectPath: string;
+  mimeType?: string | null;
+  extractedText?: string | null;
+  createdAt: string;
+}
+
+export type CorrespondenceDetail = Correspondence & {
+  attachments: CorrespondenceAttachment[];
+  customerName?: string | null;
+  supplierName?: string | null;
+};
+
+export type CreateCorrespondenceBodyKind =
+  (typeof CreateCorrespondenceBodyKind)[keyof typeof CreateCorrespondenceBodyKind];
+
+export const CreateCorrespondenceBodyKind = {
+  email: "email",
+  whatsapp: "whatsapp",
+  letter: "letter",
+  other: "other",
+} as const;
+
+export type CreateCorrespondenceBodyDirection =
+  (typeof CreateCorrespondenceBodyDirection)[keyof typeof CreateCorrespondenceBodyDirection];
+
+export const CreateCorrespondenceBodyDirection = {
+  inbound: "inbound",
+  outbound: "outbound",
+} as const;
+
+export interface CreateCorrespondenceBody {
+  kind?: CreateCorrespondenceBodyKind;
+  direction?: CreateCorrespondenceBodyDirection;
+  subject: string;
+  body?: string | null;
+  senderName?: string | null;
+  senderEmail?: string | null;
+  receiverName?: string | null;
+  receiverEmail?: string | null;
+  customerId?: number | null;
+  supplierId?: number | null;
+  tags?: string[];
+  correspondedAt?: string | null;
+  emailMessageId?: string | null;
+  emailThreadId?: string | null;
+}
+
+export interface CreateCorrespondenceAttachmentBody {
+  objectPath: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  extractedText?: string | null;
+}
+
 export type ListSalesDocumentsParams = {
   kind?: ListSalesDocumentsKind;
   invoiceStatus?: ListSalesDocumentsInvoiceStatus;
@@ -1219,4 +1317,34 @@ export type GetProfitLossParams = {
 
 export type GetBalanceSheetParams = {
   to?: string;
+};
+
+export type ListCorrespondencesParams = {
+  q?: string;
+  kind?: ListCorrespondencesKind;
+  direction?: ListCorrespondencesDirection;
+  customerId?: number;
+  supplierId?: number;
+};
+
+export type ListCorrespondencesKind =
+  (typeof ListCorrespondencesKind)[keyof typeof ListCorrespondencesKind];
+
+export const ListCorrespondencesKind = {
+  email: "email",
+  whatsapp: "whatsapp",
+  letter: "letter",
+  other: "other",
+} as const;
+
+export type ListCorrespondencesDirection =
+  (typeof ListCorrespondencesDirection)[keyof typeof ListCorrespondencesDirection];
+
+export const ListCorrespondencesDirection = {
+  inbound: "inbound",
+  outbound: "outbound",
+} as const;
+
+export type UpdateCorrespondenceAttachmentExtractedTextBody = {
+  extractedText: string | null;
 };

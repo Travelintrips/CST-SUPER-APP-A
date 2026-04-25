@@ -1,0 +1,646 @@
+import { AppShell } from "@/components/layout/AppShell";
+import {
+  useListCorrespondences,
+  useCreateCorrespondence,
+  useUpdateCorrespondence,
+  useDeleteCorrespondence,
+  useAddCorrespondenceAttachment,
+  useDeleteCorrespondenceAttachment,
+  useListCustomers,
+  useListSuppliers,
+  getListCorrespondencesQueryKey,
+  type Correspondence,
+  type CorrespondenceDetail,
+  type CorrespondenceAttachment,
+} from "@workspace/api-client-react";
+import { useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { useUpload } from "@workspace/object-storage-web";
+import {
+  Plus, Search, Mail, MessageCircle, FileText, MoreHorizontal,
+  Paperclip, Trash2, Eye, Pencil, Download, FileImage, ArrowDownLeft, ArrowUpRight,
+} from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+const KIND_LABELS: Record<string, string> = {
+  email: "Email",
+  whatsapp: "WhatsApp",
+  letter: "Surat",
+  other: "Lainnya",
+};
+
+const KIND_ICONS: Record<string, React.ReactNode> = {
+  email: <Mail className="h-3.5 w-3.5" />,
+  whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
+  letter: <FileText className="h-3.5 w-3.5" />,
+  other: <MoreHorizontal className="h-3.5 w-3.5" />,
+};
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "numeric", month: "short", year: "numeric",
+  });
+}
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString("id-ID", {
+    day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function resolveAttachmentUrl(objectPath: string) {
+  if (!objectPath) return null;
+  if (objectPath.startsWith("/objects/")) return `/api/storage${objectPath}`;
+  if (objectPath.startsWith("/api/")) return objectPath;
+  return objectPath;
+}
+
+function isImage(mimeType?: string | null, fileName?: string) {
+  if (mimeType?.startsWith("image/")) return true;
+  if (fileName) {
+    const ext = fileName.split(".").pop()?.toLowerCase();
+    return ["jpg", "jpeg", "png", "gif", "webp"].includes(ext ?? "");
+  }
+  return false;
+}
+
+type FormState = {
+  kind: string;
+  direction: string;
+  subject: string;
+  body: string;
+  senderName: string;
+  senderEmail: string;
+  receiverName: string;
+  receiverEmail: string;
+  customerId: string;
+  supplierId: string;
+  tags: string;
+  correspondedAt: string;
+};
+
+const emptyForm = (): FormState => ({
+  kind: "email",
+  direction: "inbound",
+  subject: "",
+  body: "",
+  senderName: "",
+  senderEmail: "",
+  receiverName: "",
+  receiverEmail: "",
+  customerId: "__none",
+  supplierId: "__none",
+  tags: "",
+  correspondedAt: new Date().toISOString().slice(0, 16),
+});
+
+export default function CorrespondencesPage() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  const [searchQ, setSearchQ] = useState("");
+  const [filterKind, setFilterKind] = useState("__all__");
+  const [filterDirection, setFilterDirection] = useState("__all__");
+
+  const queryParams = useMemo(() => ({
+    ...(searchQ.trim() ? { q: searchQ.trim() } : {}),
+    ...(filterKind !== "__all__" ? { kind: filterKind as "email" | "whatsapp" | "letter" | "other" } : {}),
+    ...(filterDirection !== "__all__" ? { direction: filterDirection as "inbound" | "outbound" } : {}),
+  }), [searchQ, filterKind, filterDirection]);
+
+  const { data: correspondences, isLoading } = useListCorrespondences(queryParams, {
+    query: { queryKey: getListCorrespondencesQueryKey(queryParams) },
+  });
+  const { data: customers = [] } = useListCustomers();
+  const { data: suppliers = [] } = useListSuppliers();
+
+  const createCorrespondence = useCreateCorrespondence();
+  const updateCorrespondence = useUpdateCorrespondence();
+  const deleteCorrespondence = useDeleteCorrespondence();
+  const addAttachment = useAddCorrespondenceAttachment();
+  const deleteAttachment = useDeleteCorrespondenceAttachment();
+
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm());
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [viewingDetail, setViewingDetail] = useState<CorrespondenceDetail | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
+
+  const uploader = useUpload({
+    onSuccess: async (res) => {
+      if (!viewingDetail) return;
+      addAttachment.mutate({
+        id: viewingDetail.id,
+        data: { objectPath: res.objectPath, fileName: res.objectPath.split("/").pop() },
+      }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+          toast({ title: "Lampiran berhasil ditambahkan" });
+          refreshDetail(viewingDetail.id);
+        },
+        onError: () => toast({ title: "Gagal menyimpan lampiran", variant: "destructive" }),
+      });
+    },
+    onError: () => toast({ title: "Gagal mengunggah file", variant: "destructive" }),
+  });
+
+  async function refreshDetail(id: number) {
+    try {
+      const res = await fetch(`/api/correspondences/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setViewingDetail(data);
+      }
+    } catch {}
+  }
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm());
+    setIsFormOpen(true);
+  }
+
+  function openEdit(c: Correspondence) {
+    setEditingId(c.id);
+    setForm({
+      kind: c.kind,
+      direction: c.direction,
+      subject: c.subject,
+      body: c.body ?? "",
+      senderName: c.senderName ?? "",
+      senderEmail: c.senderEmail ?? "",
+      receiverName: c.receiverName ?? "",
+      receiverEmail: c.receiverEmail ?? "",
+      customerId: c.customerId ? String(c.customerId) : "__none",
+      supplierId: c.supplierId ? String(c.supplierId) : "__none",
+      tags: c.tags.join(", "),
+      correspondedAt: new Date(c.correspondedAt).toISOString().slice(0, 16),
+    });
+    setIsFormOpen(true);
+  }
+
+  async function openView(c: Correspondence) {
+    await refreshDetail(c.id);
+    setViewOpen(true);
+  }
+
+  function buildPayload(f: FormState) {
+    return {
+      kind: f.kind as "email" | "whatsapp" | "letter" | "other",
+      direction: f.direction as "inbound" | "outbound",
+      subject: f.subject,
+      body: f.body || null,
+      senderName: f.senderName || null,
+      senderEmail: f.senderEmail || null,
+      receiverName: f.receiverName || null,
+      receiverEmail: f.receiverEmail || null,
+      customerId: f.customerId !== "__none" ? parseInt(f.customerId) : null,
+      supplierId: f.supplierId !== "__none" ? parseInt(f.supplierId) : null,
+      tags: f.tags ? f.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      correspondedAt: f.correspondedAt ? new Date(f.correspondedAt).toISOString() : null,
+    };
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.subject.trim()) return;
+    const payload = buildPayload(form);
+    if (editingId !== null) {
+      updateCorrespondence.mutate({ id: editingId, data: payload }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+          setIsFormOpen(false);
+          toast({ title: "Korespondensi berhasil diperbarui" });
+        },
+        onError: () => toast({ title: "Gagal memperbarui", variant: "destructive" }),
+      });
+    } else {
+      createCorrespondence.mutate({ data: payload }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+          setIsFormOpen(false);
+          toast({ title: "Korespondensi berhasil disimpan" });
+        },
+        onError: () => toast({ title: "Gagal menyimpan", variant: "destructive" }),
+      });
+    }
+  }
+
+  function handleDelete() {
+    if (deletingId === null) return;
+    deleteCorrespondence.mutate({ id: deletingId }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+        setDeletingId(null);
+        toast({ title: "Korespondensi berhasil dihapus" });
+      },
+      onError: () => toast({ title: "Gagal menghapus", variant: "destructive" }),
+    });
+  }
+
+  function handleDeleteAttachment(att: CorrespondenceAttachment) {
+    if (!viewingDetail) return;
+    deleteAttachment.mutate({ id: viewingDetail.id, attId: att.id }, {
+      onSuccess: () => {
+        toast({ title: "Lampiran dihapus" });
+        refreshDetail(viewingDetail.id);
+        queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+      },
+      onError: () => toast({ title: "Gagal menghapus lampiran", variant: "destructive" }),
+    });
+  }
+
+  const isFiltered = searchQ.trim() || filterKind !== "__all__" || filterDirection !== "__all__";
+
+  return (
+    <AppShell>
+      <div className="space-y-4 p-4 md:p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Korespondensi</h1>
+            <p className="text-sm text-muted-foreground">Arsip email, surat, dan dokumen penawaran</p>
+          </div>
+          <Button onClick={openCreate} data-testid="button-add-correspondence">
+            <Plus className="h-4 w-4 mr-2" /> Tambah
+          </Button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              className="pl-9"
+              placeholder="Cari subjek, pengirim, isi..."
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              data-testid="input-correspondence-search"
+            />
+          </div>
+          <Select value={filterKind} onValueChange={setFilterKind} data-testid="filter-kind">
+            <SelectTrigger className="sm:w-[160px]"><SelectValue placeholder="Semua Jenis" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Semua Jenis</SelectItem>
+              <SelectItem value="email">Email</SelectItem>
+              <SelectItem value="whatsapp">WhatsApp</SelectItem>
+              <SelectItem value="letter">Surat</SelectItem>
+              <SelectItem value="other">Lainnya</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterDirection} onValueChange={setFilterDirection} data-testid="filter-direction">
+            <SelectTrigger className="sm:w-[160px]"><SelectValue placeholder="Semua Arah" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Semua Arah</SelectItem>
+              <SelectItem value="inbound">Masuk</SelectItem>
+              <SelectItem value="outbound">Keluar</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          {isLoading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
+            ))
+          ) : (correspondences ?? []).length === 0 ? (
+            <Card><CardContent className="p-12 text-center text-muted-foreground">
+              <Mail className="h-10 w-10 mb-3 mx-auto opacity-40" />
+              <p className="font-medium">{isFiltered ? "Tidak ada korespondensi yang cocok." : "Belum ada korespondensi."}</p>
+              {!isFiltered && <p className="text-sm mt-1">Klik "Tambah" untuk mencatat korespondensi pertama.</p>}
+            </CardContent></Card>
+          ) : (
+            (correspondences ?? []).map((c) => (
+              <Card key={c.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => openView(c)} data-testid={`card-correspondence-${c.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="mt-0.5 shrink-0 text-muted-foreground">
+                        {c.direction === "inbound"
+                          ? <ArrowDownLeft className="h-4 w-4 text-blue-400" />
+                          : <ArrowUpRight className="h-4 w-4 text-emerald-400" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                          <Badge variant="outline" className="gap-1 text-xs shrink-0">
+                            {KIND_ICONS[c.kind]}{KIND_LABELS[c.kind]}
+                          </Badge>
+                          {c.tags.length > 0 && c.tags.slice(0, 3).map((t) => (
+                            <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                          ))}
+                        </div>
+                        <p className="font-medium truncate">{c.subject}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {c.senderName || c.senderEmail
+                            ? `Dari: ${c.senderName ?? c.senderEmail}`
+                            : c.receiverName || c.receiverEmail
+                            ? `Ke: ${c.receiverName ?? c.receiverEmail}`
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-muted-foreground hidden sm:block">{formatDate(c.correspondedAt)}</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openView(c); }}>
+                            <Eye className="h-4 w-4 mr-2" />Lihat Detail
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(c); }}>
+                            <Pencil className="h-4 w-4 mr-2" />Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={(e) => { e.stopPropagation(); setDeletingId(c.id); }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />Hapus
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* CREATE / EDIT DIALOG */}
+      <Dialog open={isFormOpen} onOpenChange={(o) => !o && setIsFormOpen(false)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle>{editingId ? "Edit Korespondensi" : "Tambah Korespondensi"}</DialogTitle>
+              <DialogDescription>Catat email, surat, atau penawaran sebagai arsip.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Jenis</Label>
+                  <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="email">Email</SelectItem>
+                      <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                      <SelectItem value="letter">Surat</SelectItem>
+                      <SelectItem value="other">Lainnya</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Arah</Label>
+                  <Select value={form.direction} onValueChange={(v) => setForm({ ...form, direction: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inbound">Masuk (Dari Luar)</SelectItem>
+                      <SelectItem value="outbound">Keluar (Ke Luar)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="subject">Subjek / Judul *</Label>
+                <Input
+                  id="subject"
+                  required
+                  value={form.subject}
+                  onChange={(e) => setForm({ ...form, subject: e.target.value })}
+                  placeholder="Penawaran Freight Samarinda - PT ABC"
+                  data-testid="input-subject"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Pengirim</Label>
+                  <Input value={form.senderName} onChange={(e) => setForm({ ...form, senderName: e.target.value })} placeholder="Nama pengirim" />
+                  <Input value={form.senderEmail} onChange={(e) => setForm({ ...form, senderEmail: e.target.value })} placeholder="email@domain.com" type="email" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Penerima</Label>
+                  <Input value={form.receiverName} onChange={(e) => setForm({ ...form, receiverName: e.target.value })} placeholder="Nama penerima" />
+                  <Input value={form.receiverEmail} onChange={(e) => setForm({ ...form, receiverEmail: e.target.value })} placeholder="email@domain.com" type="email" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Terkait Customer</Label>
+                  <Select value={form.customerId} onValueChange={(v) => setForm({ ...form, customerId: v })}>
+                    <SelectTrigger><SelectValue placeholder="— Tidak ada —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Tidak ada —</SelectItem>
+                      {customers.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Terkait Vendor</Label>
+                  <Select value={form.supplierId} onValueChange={(v) => setForm({ ...form, supplierId: v })}>
+                    <SelectTrigger><SelectValue placeholder="— Tidak ada —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Tidak ada —</SelectItem>
+                      {suppliers.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Tanggal Korespondensi</Label>
+                <Input
+                  type="datetime-local"
+                  value={form.correspondedAt}
+                  onChange={(e) => setForm({ ...form, correspondedAt: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Tag (pisahkan dengan koma)</Label>
+                <Input
+                  value={form.tags}
+                  onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                  placeholder="freight, penawaran, samarinda"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Isi / Catatan</Label>
+                <Textarea
+                  rows={4}
+                  value={form.body}
+                  onChange={(e) => setForm({ ...form, body: e.target.value })}
+                  placeholder="Salin isi email atau tambahkan catatan penting..."
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Batal</Button>
+              <Button type="submit" disabled={createCorrespondence.isPending || updateCorrespondence.isPending} data-testid="button-save-correspondence">
+                {createCorrespondence.isPending || updateCorrespondence.isPending ? "Menyimpan..." : "Simpan"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* VIEW DETAIL DIALOG */}
+      <Dialog open={viewOpen} onOpenChange={(o) => { if (!o) { setViewOpen(false); setViewingDetail(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {viewingDetail && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <Badge variant="outline" className="gap-1">
+                    {KIND_ICONS[viewingDetail.kind]}{KIND_LABELS[viewingDetail.kind]}
+                  </Badge>
+                  <Badge variant={viewingDetail.direction === "inbound" ? "secondary" : "outline"} className="gap-1">
+                    {viewingDetail.direction === "inbound"
+                      ? <><ArrowDownLeft className="h-3 w-3" />Masuk</>
+                      : <><ArrowUpRight className="h-3 w-3" />Keluar</>}
+                  </Badge>
+                </div>
+                <DialogTitle className="text-lg leading-snug">{viewingDetail.subject}</DialogTitle>
+                <DialogDescription asChild>
+                  <div className="space-y-1 text-sm">
+                    <p className="text-muted-foreground">{formatDateTime(viewingDetail.correspondedAt)}</p>
+                    {(viewingDetail.senderName || viewingDetail.senderEmail) && (
+                      <p>Dari: <span className="font-medium">{viewingDetail.senderName ?? ""} {viewingDetail.senderEmail ? `<${viewingDetail.senderEmail}>` : ""}</span></p>
+                    )}
+                    {(viewingDetail.receiverName || viewingDetail.receiverEmail) && (
+                      <p>Ke: <span className="font-medium">{viewingDetail.receiverName ?? ""} {viewingDetail.receiverEmail ? `<${viewingDetail.receiverEmail}>` : ""}</span></p>
+                    )}
+                    {viewingDetail.customerName && <p>Customer: <span className="font-medium">{viewingDetail.customerName}</span></p>}
+                    {viewingDetail.supplierName && <p>Vendor: <span className="font-medium">{viewingDetail.supplierName}</span></p>}
+                    {viewingDetail.tags.length > 0 && (
+                      <div className="flex gap-1 flex-wrap pt-1">
+                        {viewingDetail.tags.map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                      </div>
+                    )}
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+
+              {viewingDetail.body && (
+                <div className="mt-2">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Isi / Catatan</p>
+                  <div className="text-sm bg-muted/30 rounded-md p-3 whitespace-pre-wrap leading-relaxed">
+                    {viewingDetail.body}
+                  </div>
+                </div>
+              )}
+
+              {/* ATTACHMENTS */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">Lampiran ({(viewingDetail.attachments as CorrespondenceAttachment[]).length})</p>
+                  <label className="cursor-pointer">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      disabled={uploader.isUploading}
+                      onClick={() => document.getElementById("att-upload")?.click()}
+                      type="button"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {uploader.isUploading ? "Mengunggah..." : "Tambah Lampiran"}
+                    </Button>
+                    <input
+                      id="att-upload"
+                      type="file"
+                      className="hidden"
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploader.uploadFile(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                {(viewingDetail.attachments as CorrespondenceAttachment[]).length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4 border border-dashed rounded-md">
+                    Belum ada lampiran. Upload gambar atau dokumen.
+                  </p>
+                ) : (
+                  <div className="grid gap-2">
+                    {(viewingDetail.attachments as CorrespondenceAttachment[]).map((att) => {
+                      const url = resolveAttachmentUrl(att.objectPath);
+                      return (
+                        <div key={att.id} className="border rounded-md overflow-hidden">
+                          {isImage(att.mimeType, att.fileName) && url && (
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt={att.fileName} className="w-full max-h-64 object-contain bg-muted" />
+                            </a>
+                          )}
+                          <div className="flex items-center gap-2 p-2 bg-muted/20">
+                            <FileImage className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="text-sm truncate flex-1">{att.fileName}</span>
+                            {url && (
+                              <a href={url} target="_blank" rel="noreferrer" download>
+                                <Button size="icon" variant="ghost" className="h-7 w-7"><Download className="h-3.5 w-3.5" /></Button>
+                              </a>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteAttachment(att)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                          {att.extractedText && (
+                            <div className="p-2 text-xs text-muted-foreground bg-muted/10 border-t whitespace-pre-wrap max-h-32 overflow-y-auto">
+                              <span className="font-medium">Teks terdeteksi:</span> {att.extractedText}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="mt-4">
+                <Button variant="outline" onClick={() => openEdit(viewingDetail)} className="gap-1.5">
+                  <Pencil className="h-3.5 w-3.5" />Edit
+                </Button>
+                <Button variant="outline" onClick={() => { setViewOpen(false); setViewingDetail(null); }}>Tutup</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE CONFIRM */}
+      <AlertDialog open={deletingId !== null} onOpenChange={(o) => !o && setDeletingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus korespondensi ini?</AlertDialogTitle>
+            <AlertDialogDescription>Semua lampiran juga akan ikut dihapus. Tindakan ini tidak dapat dibatalkan.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
+              Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AppShell>
+  );
+}

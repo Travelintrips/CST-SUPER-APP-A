@@ -24,6 +24,7 @@ import {
   Wallet,
   FileSpreadsheet,
   Landmark,
+  Mail,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -153,6 +154,7 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", title: "Trading", href: "/trading", icon: Package, roles: ["admin", "trading"] },
     { type: "flat", title: "Logistics", href: "/logistics", icon: Truck, roles: ["admin", "logistics"] },
     { type: "flat", title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
+    { type: "flat", title: "Korespondensi", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", title: "Pengguna", href: "/users", icon: Users, roles: ["admin"] },
     { type: "flat", title: "Settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
   ];

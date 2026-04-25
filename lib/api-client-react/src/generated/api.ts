@@ -27,8 +27,13 @@ import type {
   AccountingTax,
   AgingReport,
   BalanceSheetReport,
+  Correspondence,
+  CorrespondenceAttachment,
+  CorrespondenceDetail,
   CreateAccountBody,
   CreateAccountingPaymentBody,
+  CreateCorrespondenceAttachmentBody,
+  CreateCorrespondenceBody,
   CreateCustomerBody,
   CreateEntryBody,
   CreateJournalBody,
@@ -54,6 +59,7 @@ import type {
   HealthStatus,
   ListAccountingEntriesParams,
   ListAccountingPaymentsParams,
+  ListCorrespondencesParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
   MessageResponse,
@@ -84,6 +90,7 @@ import type {
   TrialBalanceReport,
   UpdateAccountBody,
   UpdateAccountingSettingsBody,
+  UpdateCorrespondenceAttachmentExtractedTextBody,
   UpdateJournalBody,
   UpdateOrderBody,
   UpdateShipmentStatusBody,
@@ -7195,3 +7202,755 @@ export function useGetBalanceSheet<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List correspondences
+ */
+export const getListCorrespondencesUrl = (
+  params?: ListCorrespondencesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/correspondences?${stringifiedParams}`
+    : `/api/correspondences`;
+};
+
+export const listCorrespondences = async (
+  params?: ListCorrespondencesParams,
+  options?: RequestInit,
+): Promise<Correspondence[]> => {
+  return customFetch<Correspondence[]>(getListCorrespondencesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListCorrespondencesQueryKey = (
+  params?: ListCorrespondencesParams,
+) => {
+  return [`/api/correspondences`, ...(params ? [params] : [])] as const;
+};
+
+export const getListCorrespondencesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCorrespondences>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListCorrespondencesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCorrespondences>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCorrespondencesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCorrespondences>>
+  > = ({ signal }) =>
+    listCorrespondences(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCorrespondences>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCorrespondencesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCorrespondences>>
+>;
+export type ListCorrespondencesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List correspondences
+ */
+
+export function useListCorrespondences<
+  TData = Awaited<ReturnType<typeof listCorrespondences>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListCorrespondencesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCorrespondences>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCorrespondencesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a correspondence
+ */
+export const getCreateCorrespondenceUrl = () => {
+  return `/api/correspondences`;
+};
+
+export const createCorrespondence = async (
+  createCorrespondenceBody: CreateCorrespondenceBody,
+  options?: RequestInit,
+): Promise<Correspondence> => {
+  return customFetch<Correspondence>(getCreateCorrespondenceUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createCorrespondenceBody),
+  });
+};
+
+export const getCreateCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCorrespondence>>,
+    TError,
+    { data: BodyType<CreateCorrespondenceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createCorrespondence>>,
+  TError,
+  { data: BodyType<CreateCorrespondenceBody> },
+  TContext
+> => {
+  const mutationKey = ["createCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createCorrespondence>>,
+    { data: BodyType<CreateCorrespondenceBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createCorrespondence(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createCorrespondence>>
+>;
+export type CreateCorrespondenceMutationBody =
+  BodyType<CreateCorrespondenceBody>;
+export type CreateCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a correspondence
+ */
+export const useCreateCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCorrespondence>>,
+    TError,
+    { data: BodyType<CreateCorrespondenceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createCorrespondence>>,
+  TError,
+  { data: BodyType<CreateCorrespondenceBody> },
+  TContext
+> => {
+  return useMutation(getCreateCorrespondenceMutationOptions(options));
+};
+
+/**
+ * @summary Get a correspondence with attachments
+ */
+export const getGetCorrespondenceUrl = (id: number) => {
+  return `/api/correspondences/${id}`;
+};
+
+export const getCorrespondence = async (
+  id: number,
+  options?: RequestInit,
+): Promise<CorrespondenceDetail> => {
+  return customFetch<CorrespondenceDetail>(getGetCorrespondenceUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCorrespondenceQueryKey = (id: number) => {
+  return [`/api/correspondences/${id}`] as const;
+};
+
+export const getGetCorrespondenceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCorrespondence>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCorrespondence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCorrespondenceQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCorrespondence>>
+  > = ({ signal }) => getCorrespondence(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCorrespondence>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCorrespondenceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCorrespondence>>
+>;
+export type GetCorrespondenceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a correspondence with attachments
+ */
+
+export function useGetCorrespondence<
+  TData = Awaited<ReturnType<typeof getCorrespondence>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCorrespondence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCorrespondenceQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a correspondence
+ */
+export const getUpdateCorrespondenceUrl = (id: number) => {
+  return `/api/correspondences/${id}`;
+};
+
+export const updateCorrespondence = async (
+  id: number,
+  createCorrespondenceBody: CreateCorrespondenceBody,
+  options?: RequestInit,
+): Promise<Correspondence> => {
+  return customFetch<Correspondence>(getUpdateCorrespondenceUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createCorrespondenceBody),
+  });
+};
+
+export const getUpdateCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCorrespondence>>,
+    TError,
+    { id: number; data: BodyType<CreateCorrespondenceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCorrespondence>>,
+  TError,
+  { id: number; data: BodyType<CreateCorrespondenceBody> },
+  TContext
+> => {
+  const mutationKey = ["updateCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCorrespondence>>,
+    { id: number; data: BodyType<CreateCorrespondenceBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateCorrespondence(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateCorrespondence>>
+>;
+export type UpdateCorrespondenceMutationBody =
+  BodyType<CreateCorrespondenceBody>;
+export type UpdateCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a correspondence
+ */
+export const useUpdateCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCorrespondence>>,
+    TError,
+    { id: number; data: BodyType<CreateCorrespondenceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCorrespondence>>,
+  TError,
+  { id: number; data: BodyType<CreateCorrespondenceBody> },
+  TContext
+> => {
+  return useMutation(getUpdateCorrespondenceMutationOptions(options));
+};
+
+/**
+ * @summary Delete a correspondence
+ */
+export const getDeleteCorrespondenceUrl = (id: number) => {
+  return `/api/correspondences/${id}`;
+};
+
+export const deleteCorrespondence = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeleteCorrespondenceUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCorrespondence>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteCorrespondence(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCorrespondence>>
+>;
+
+export type DeleteCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a correspondence
+ */
+export const useDeleteCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteCorrespondenceMutationOptions(options));
+};
+
+/**
+ * @summary Add an attachment to a correspondence
+ */
+export const getAddCorrespondenceAttachmentUrl = (id: number) => {
+  return `/api/correspondences/${id}/attachments`;
+};
+
+export const addCorrespondenceAttachment = async (
+  id: number,
+  createCorrespondenceAttachmentBody: CreateCorrespondenceAttachmentBody,
+  options?: RequestInit,
+): Promise<CorrespondenceAttachment> => {
+  return customFetch<CorrespondenceAttachment>(
+    getAddCorrespondenceAttachmentUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createCorrespondenceAttachmentBody),
+    },
+  );
+};
+
+export const getAddCorrespondenceAttachmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addCorrespondenceAttachment>>,
+    TError,
+    { id: number; data: BodyType<CreateCorrespondenceAttachmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof addCorrespondenceAttachment>>,
+  TError,
+  { id: number; data: BodyType<CreateCorrespondenceAttachmentBody> },
+  TContext
+> => {
+  const mutationKey = ["addCorrespondenceAttachment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof addCorrespondenceAttachment>>,
+    { id: number; data: BodyType<CreateCorrespondenceAttachmentBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return addCorrespondenceAttachment(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AddCorrespondenceAttachmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof addCorrespondenceAttachment>>
+>;
+export type AddCorrespondenceAttachmentMutationBody =
+  BodyType<CreateCorrespondenceAttachmentBody>;
+export type AddCorrespondenceAttachmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add an attachment to a correspondence
+ */
+export const useAddCorrespondenceAttachment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof addCorrespondenceAttachment>>,
+    TError,
+    { id: number; data: BodyType<CreateCorrespondenceAttachmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof addCorrespondenceAttachment>>,
+  TError,
+  { id: number; data: BodyType<CreateCorrespondenceAttachmentBody> },
+  TContext
+> => {
+  return useMutation(getAddCorrespondenceAttachmentMutationOptions(options));
+};
+
+/**
+ * @summary Delete an attachment
+ */
+export const getDeleteCorrespondenceAttachmentUrl = (
+  id: number,
+  attId: number,
+) => {
+  return `/api/correspondences/${id}/attachments/${attId}`;
+};
+
+export const deleteCorrespondenceAttachment = async (
+  id: number,
+  attId: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(
+    getDeleteCorrespondenceAttachmentUrl(id, attId),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteCorrespondenceAttachmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCorrespondenceAttachment>>,
+    TError,
+    { id: number; attId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCorrespondenceAttachment>>,
+  TError,
+  { id: number; attId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteCorrespondenceAttachment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCorrespondenceAttachment>>,
+    { id: number; attId: number }
+  > = (props) => {
+    const { id, attId } = props ?? {};
+
+    return deleteCorrespondenceAttachment(id, attId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCorrespondenceAttachmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCorrespondenceAttachment>>
+>;
+
+export type DeleteCorrespondenceAttachmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete an attachment
+ */
+export const useDeleteCorrespondenceAttachment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCorrespondenceAttachment>>,
+    TError,
+    { id: number; attId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCorrespondenceAttachment>>,
+  TError,
+  { id: number; attId: number },
+  TContext
+> => {
+  return useMutation(getDeleteCorrespondenceAttachmentMutationOptions(options));
+};
+
+/**
+ * @summary Update extracted text of an attachment
+ */
+export const getUpdateCorrespondenceAttachmentExtractedTextUrl = (
+  id: number,
+  attId: number,
+) => {
+  return `/api/correspondences/${id}/attachments/${attId}/extracted-text`;
+};
+
+export const updateCorrespondenceAttachmentExtractedText = async (
+  id: number,
+  attId: number,
+  updateCorrespondenceAttachmentExtractedTextBody: UpdateCorrespondenceAttachmentExtractedTextBody,
+  options?: RequestInit,
+): Promise<CorrespondenceAttachment> => {
+  return customFetch<CorrespondenceAttachment>(
+    getUpdateCorrespondenceAttachmentExtractedTextUrl(id, attId),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateCorrespondenceAttachmentExtractedTextBody),
+    },
+  );
+};
+
+export const getUpdateCorrespondenceAttachmentExtractedTextMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCorrespondenceAttachmentExtractedText>>,
+    TError,
+    {
+      id: number;
+      attId: number;
+      data: BodyType<UpdateCorrespondenceAttachmentExtractedTextBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateCorrespondenceAttachmentExtractedText>>,
+  TError,
+  {
+    id: number;
+    attId: number;
+    data: BodyType<UpdateCorrespondenceAttachmentExtractedTextBody>;
+  },
+  TContext
+> => {
+  const mutationKey = ["updateCorrespondenceAttachmentExtractedText"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateCorrespondenceAttachmentExtractedText>>,
+    {
+      id: number;
+      attId: number;
+      data: BodyType<UpdateCorrespondenceAttachmentExtractedTextBody>;
+    }
+  > = (props) => {
+    const { id, attId, data } = props ?? {};
+
+    return updateCorrespondenceAttachmentExtractedText(
+      id,
+      attId,
+      data,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateCorrespondenceAttachmentExtractedTextMutationResult =
+  NonNullable<
+    Awaited<ReturnType<typeof updateCorrespondenceAttachmentExtractedText>>
+  >;
+export type UpdateCorrespondenceAttachmentExtractedTextMutationBody =
+  BodyType<UpdateCorrespondenceAttachmentExtractedTextBody>;
+export type UpdateCorrespondenceAttachmentExtractedTextMutationError =
+  ErrorType<unknown>;
+
+/**
+ * @summary Update extracted text of an attachment
+ */
+export const useUpdateCorrespondenceAttachmentExtractedText = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateCorrespondenceAttachmentExtractedText>>,
+    TError,
+    {
+      id: number;
+      attId: number;
+      data: BodyType<UpdateCorrespondenceAttachmentExtractedTextBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateCorrespondenceAttachmentExtractedText>>,
+  TError,
+  {
+    id: number;
+    attId: number;
+    data: BodyType<UpdateCorrespondenceAttachmentExtractedTextBody>;
+  },
+  TContext
+> => {
+  return useMutation(
+    getUpdateCorrespondenceAttachmentExtractedTextMutationOptions(options),
+  );
+};

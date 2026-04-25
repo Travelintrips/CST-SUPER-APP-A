@@ -40,6 +40,7 @@ import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance
 import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
 import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
+import CorrespondencesPage from "@/pages/correspondences";
 
 const queryClient = new QueryClient();
 
@@ -182,6 +183,9 @@ function Router() {
       </Route>
       <Route path="/users">
         <ProtectedRoute component={UsersPage} />
+      </Route>
+      <Route path="/correspondences">
+        <ProtectedRoute component={CorrespondencesPage} />
       </Route>
 
       <Route path="/sales">

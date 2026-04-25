@@ -121,3 +121,13 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
   a single line: `export * from "./generated/api";`, then `pnpm -w run typecheck:libs`.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Correspondence Module
+
+- Route: `/correspondences` (admin role only)
+- DB tables: `correspondences` (kind enum: email/whatsapp/letter/other, direction: inbound/outbound) and `correspondence_attachments`
+- API: CRUD at `/api/correspondences` with full attachment management (`/api/correspondences/:id/attachments`)
+- Frontend: full list, filter by kind/direction/search, create/edit dialog, detail view with attachment upload, delete confirmation
+- Attachment upload via object storage (reuses `useUpload` hook); image attachments render inline in detail view
+- OCR (Google Cloud Vision) deferred — placeholder extractedText field on attachments for manual or future API input
+- Gmail OAuth deferred — manual entry for now
