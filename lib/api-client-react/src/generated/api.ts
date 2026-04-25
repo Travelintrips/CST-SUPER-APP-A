@@ -36,6 +36,7 @@ import type {
   CreateCorrespondenceBody,
   CreateCustomerBody,
   CreateEntryBody,
+  CreateFreightAttachmentBody,
   CreateFreightQuoteBody,
   CreateFreightRfqBody,
   CreateFreightShipmentBody,
@@ -52,6 +53,7 @@ import type {
   CreateTransactionBody,
   Customer,
   DashboardSummary,
+  FreightAttachment,
   FreightQuote,
   FreightRfq,
   FreightRfqWithQuotes,
@@ -2914,6 +2916,285 @@ export const useDeleteFreightShipment = <
   TContext
 > => {
   return useMutation(getDeleteFreightShipmentMutationOptions(options));
+};
+
+/**
+ * @summary List attachments for a freight shipment
+ */
+export const getListFreightAttachmentsUrl = (shipmentId: number) => {
+  return `/api/logistics/freight-shipments/${shipmentId}/attachments`;
+};
+
+export const listFreightAttachments = async (
+  shipmentId: number,
+  options?: RequestInit,
+): Promise<FreightAttachment[]> => {
+  return customFetch<FreightAttachment[]>(
+    getListFreightAttachmentsUrl(shipmentId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListFreightAttachmentsQueryKey = (shipmentId: number) => {
+  return [
+    `/api/logistics/freight-shipments/${shipmentId}/attachments`,
+  ] as const;
+};
+
+export const getListFreightAttachmentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFreightAttachments>>,
+  TError = ErrorType<unknown>,
+>(
+  shipmentId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightAttachments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListFreightAttachmentsQueryKey(shipmentId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listFreightAttachments>>
+  > = ({ signal }) =>
+    listFreightAttachments(shipmentId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!shipmentId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listFreightAttachments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListFreightAttachmentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFreightAttachments>>
+>;
+export type ListFreightAttachmentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List attachments for a freight shipment
+ */
+
+export function useListFreightAttachments<
+  TData = Awaited<ReturnType<typeof listFreightAttachments>>,
+  TError = ErrorType<unknown>,
+>(
+  shipmentId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightAttachments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFreightAttachmentsQueryOptions(
+    shipmentId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save attachment metadata after upload
+ */
+export const getCreateFreightAttachmentUrl = (shipmentId: number) => {
+  return `/api/logistics/freight-shipments/${shipmentId}/attachments`;
+};
+
+export const createFreightAttachment = async (
+  shipmentId: number,
+  createFreightAttachmentBody: CreateFreightAttachmentBody,
+  options?: RequestInit,
+): Promise<FreightAttachment> => {
+  return customFetch<FreightAttachment>(
+    getCreateFreightAttachmentUrl(shipmentId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createFreightAttachmentBody),
+    },
+  );
+};
+
+export const getCreateFreightAttachmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightAttachment>>,
+    TError,
+    { shipmentId: number; data: BodyType<CreateFreightAttachmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createFreightAttachment>>,
+  TError,
+  { shipmentId: number; data: BodyType<CreateFreightAttachmentBody> },
+  TContext
+> => {
+  const mutationKey = ["createFreightAttachment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createFreightAttachment>>,
+    { shipmentId: number; data: BodyType<CreateFreightAttachmentBody> }
+  > = (props) => {
+    const { shipmentId, data } = props ?? {};
+
+    return createFreightAttachment(shipmentId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateFreightAttachmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createFreightAttachment>>
+>;
+export type CreateFreightAttachmentMutationBody =
+  BodyType<CreateFreightAttachmentBody>;
+export type CreateFreightAttachmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Save attachment metadata after upload
+ */
+export const useCreateFreightAttachment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightAttachment>>,
+    TError,
+    { shipmentId: number; data: BodyType<CreateFreightAttachmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createFreightAttachment>>,
+  TError,
+  { shipmentId: number; data: BodyType<CreateFreightAttachmentBody> },
+  TContext
+> => {
+  return useMutation(getCreateFreightAttachmentMutationOptions(options));
+};
+
+/**
+ * @summary Delete a freight attachment
+ */
+export const getDeleteFreightAttachmentUrl = (
+  shipmentId: number,
+  attachmentId: number,
+) => {
+  return `/api/logistics/freight-shipments/${shipmentId}/attachments/${attachmentId}`;
+};
+
+export const deleteFreightAttachment = async (
+  shipmentId: number,
+  attachmentId: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(
+    getDeleteFreightAttachmentUrl(shipmentId, attachmentId),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteFreightAttachmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightAttachment>>,
+    TError,
+    { shipmentId: number; attachmentId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteFreightAttachment>>,
+  TError,
+  { shipmentId: number; attachmentId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteFreightAttachment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteFreightAttachment>>,
+    { shipmentId: number; attachmentId: number }
+  > = (props) => {
+    const { shipmentId, attachmentId } = props ?? {};
+
+    return deleteFreightAttachment(shipmentId, attachmentId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteFreightAttachmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteFreightAttachment>>
+>;
+
+export type DeleteFreightAttachmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a freight attachment
+ */
+export const useDeleteFreightAttachment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightAttachment>>,
+    TError,
+    { shipmentId: number; attachmentId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteFreightAttachment>>,
+  TError,
+  { shipmentId: number; attachmentId: number },
+  TContext
+> => {
+  return useMutation(getDeleteFreightAttachmentMutationOptions(options));
 };
 
 /**

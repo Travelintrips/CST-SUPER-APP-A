@@ -667,6 +667,52 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /logistics/freight-shipments/{shipmentId}/attachments:
+    parameters:
+      - { name: shipmentId, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: listFreightAttachments
+      tags: [logistics]
+      summary: List attachments for a freight shipment
+      responses:
+        "200":
+          description: Attachment list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FreightAttachment" }
+    post:
+      operationId: createFreightAttachment
+      tags: [logistics]
+      summary: Save attachment metadata after upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFreightAttachmentBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightAttachment" }
+
+  /logistics/freight-shipments/{shipmentId}/attachments/{attachmentId}:
+    parameters:
+      - { name: shipmentId, in: path, required: true, schema: { type: integer } }
+      - { name: attachmentId, in: path, required: true, schema: { type: integer } }
+    delete:
+      operationId: deleteFreightAttachment
+      tags: [logistics]
+      summary: Delete a freight attachment
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
   /logistics/freight-shipments/{shipmentId}/rfqs:
     parameters:
       - { name: shipmentId, in: path, required: true, schema: { type: integer } }
@@ -3428,6 +3474,30 @@ components:
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
       required: [id, shipmentNumber, shipperName, consigneeName, commodity, origin, destination, status, createdAt]
+
+    FreightAttachment:
+      type: object
+      properties:
+        id: { type: integer }
+        shipmentId: { type: integer }
+        objectPath: { type: string }
+        fileName: { type: string }
+        contentType: { type: string }
+        fileType: { type: string, enum: [photo, document] }
+        label: { type: string, nullable: true }
+        uploadedById: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, shipmentId, objectPath, fileName, contentType, fileType, createdAt]
+
+    CreateFreightAttachmentBody:
+      type: object
+      properties:
+        objectPath: { type: string }
+        fileName: { type: string }
+        contentType: { type: string }
+        fileType: { type: string, enum: [photo, document] }
+        label: { type: string }
+      required: [objectPath, fileName, contentType, fileType]
 
     FreightRfq:
       type: object

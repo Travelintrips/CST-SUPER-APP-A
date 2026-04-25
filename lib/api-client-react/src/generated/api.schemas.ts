@@ -1273,6 +1273,42 @@ export interface FreightShipment {
   createdAt: string;
 }
 
+export type FreightAttachmentFileType =
+  (typeof FreightAttachmentFileType)[keyof typeof FreightAttachmentFileType];
+
+export const FreightAttachmentFileType = {
+  photo: "photo",
+  document: "document",
+} as const;
+
+export interface FreightAttachment {
+  id: number;
+  shipmentId: number;
+  objectPath: string;
+  fileName: string;
+  contentType: string;
+  fileType: FreightAttachmentFileType;
+  label?: string | null;
+  uploadedById?: string | null;
+  createdAt: string;
+}
+
+export type CreateFreightAttachmentBodyFileType =
+  (typeof CreateFreightAttachmentBodyFileType)[keyof typeof CreateFreightAttachmentBodyFileType];
+
+export const CreateFreightAttachmentBodyFileType = {
+  photo: "photo",
+  document: "document",
+} as const;
+
+export interface CreateFreightAttachmentBody {
+  objectPath: string;
+  fileName: string;
+  contentType: string;
+  fileType: CreateFreightAttachmentBodyFileType;
+  label?: string;
+}
+
 export interface FreightRfq {
   id: number;
   rfqNumber: string;

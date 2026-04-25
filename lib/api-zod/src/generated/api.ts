@@ -767,6 +767,55 @@ export const DeleteFreightShipmentResponse = zod.object({
 });
 
 /**
+ * @summary List attachments for a freight shipment
+ */
+export const ListFreightAttachmentsParams = zod.object({
+  shipmentId: zod.coerce.number(),
+});
+
+export const ListFreightAttachmentsResponseItem = zod.object({
+  id: zod.number(),
+  shipmentId: zod.number(),
+  objectPath: zod.string(),
+  fileName: zod.string(),
+  contentType: zod.string(),
+  fileType: zod.enum(["photo", "document"]),
+  label: zod.string().nullish(),
+  uploadedById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListFreightAttachmentsResponse = zod.array(
+  ListFreightAttachmentsResponseItem,
+);
+
+/**
+ * @summary Save attachment metadata after upload
+ */
+export const CreateFreightAttachmentParams = zod.object({
+  shipmentId: zod.coerce.number(),
+});
+
+export const CreateFreightAttachmentBody = zod.object({
+  objectPath: zod.string(),
+  fileName: zod.string(),
+  contentType: zod.string(),
+  fileType: zod.enum(["photo", "document"]),
+  label: zod.string().optional(),
+});
+
+/**
+ * @summary Delete a freight attachment
+ */
+export const DeleteFreightAttachmentParams = zod.object({
+  shipmentId: zod.coerce.number(),
+  attachmentId: zod.coerce.number(),
+});
+
+export const DeleteFreightAttachmentResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
  * @summary Create an RFQ for a freight shipment
  */
 export const CreateFreightRfqParams = zod.object({

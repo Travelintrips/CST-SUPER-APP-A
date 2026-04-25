@@ -12,8 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown,
+  ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
 } from "lucide-react";
+import { FreightAttachmentsPanel } from "@/components/freight/FreightAttachmentsPanel";
 import { useToast } from "@/hooks/use-toast";
 import {
   useGetFreightShipment,
@@ -522,6 +523,27 @@ export default function LogisticsFreightDetailPage() {
             ))
           )}
         </div>
+
+        {/* Attachments Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Paperclip className="h-4 w-4" />
+              Foto, Dokumen &amp; Scan
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FreightAttachmentsPanel
+              shipmentId={id}
+              onBarcodeScanned={(value) => {
+                toast({
+                  title: "Barcode / QR berhasil discan",
+                  description: value,
+                });
+              }}
+            />
+          </CardContent>
+        </Card>
       </div>
 
       {/* RFQ Dialog */}

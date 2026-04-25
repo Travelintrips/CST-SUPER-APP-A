@@ -133,6 +133,7 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - Frontend: list page at `/logistics/freight`, full-page editor at `/logistics/freight/new` and `/logistics/freight/edit/:id`, detail page at `/logistics/freight/:id` (with RFQ management, quote comparison, approve button)
 - Print packing list via `window.print()` — a hidden print-only section in the detail page renders the packing list
 - AppShell: Logistics converted from flat nav item to group with sub-items (Pengiriman, Freight Forwarding)
+- Attachments: `freight_attachments` table (id, shipment_id, object_path, file_name, content_type, file_type enum (photo/document/barcode), label, created_at); API routes GET/POST/DELETE at `/api/logistics/freight-shipments/:id/attachments`; `FreightAttachmentsPanel` component with 3 tabs: Foto Kargo (camera upload), Dokumen (file upload), Scan Barcode/QR (ZXing); panel is integrated into the freight detail page (screen-only card, hidden on print)
 
 ## Correspondence Module
 

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable } from "@workspace/db";
 import { eq, desc, inArray } from "drizzle-orm";
 
 const router = Router();
@@ -286,6 +286,54 @@ router.post("/freight-quotes/:id/approve", async (req, res) => {
     return approvedQuote!;
   });
   return res.json(serializeQuote(approved));
+});
+
+// ─── Freight Attachments ────────────────────────────────────────────────────
+
+// GET /api/logistics/freight-shipments/:shipmentId/attachments
+router.get("/freight-shipments/:shipmentId/attachments", async (req, res) => {
+  const shipmentId = Number(req.params.shipmentId);
+  if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
+  const attachments = await db
+    .select()
+    .from(freightAttachmentsTable)
+    .where(eq(freightAttachmentsTable.shipmentId, shipmentId))
+    .orderBy(desc(freightAttachmentsTable.createdAt));
+  return res.json(attachments.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })));
+});
+
+// POST /api/logistics/freight-shipments/:shipmentId/attachments
+router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
+  const shipmentId = Number(req.params.shipmentId);
+  if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
+  const { objectPath, fileName, contentType, fileType, label } = req.body;
+  if (!objectPath || !fileName || !contentType || !fileType) {
+    return res.status(400).json({ message: "objectPath, fileName, contentType, fileType wajib diisi" });
+  }
+  if (!["photo", "document"].includes(fileType)) {
+    return res.status(400).json({ message: "fileType harus photo atau document" });
+  }
+  const [existing] = await db.select({ id: freightShipmentsTable.id }).from(freightShipmentsTable).where(eq(freightShipmentsTable.id, shipmentId));
+  if (!existing) return res.status(404).json({ message: "Shipment tidak ditemukan" });
+  const [attachment] = await db.insert(freightAttachmentsTable).values({
+    shipmentId, objectPath, fileName, contentType,
+    fileType: fileType as "photo" | "document",
+    label: label || null,
+  }).returning();
+  return res.status(201).json({ ...attachment!, createdAt: attachment!.createdAt.toISOString() });
+});
+
+// DELETE /api/logistics/freight-shipments/:shipmentId/attachments/:attachmentId
+router.delete("/freight-shipments/:shipmentId/attachments/:attachmentId", async (req, res) => {
+  const shipmentId = Number(req.params.shipmentId);
+  const attachmentId = Number(req.params.attachmentId);
+  if (!Number.isInteger(shipmentId) || !Number.isInteger(attachmentId)) return res.status(400).json({ message: "Invalid id" });
+  const [deleted] = await db
+    .delete(freightAttachmentsTable)
+    .where(eq(freightAttachmentsTable.id, attachmentId))
+    .returning();
+  if (!deleted) return res.status(404).json({ message: "Attachment tidak ditemukan" });
+  return res.json({ message: "Deleted" });
 });
 
 export default router;
