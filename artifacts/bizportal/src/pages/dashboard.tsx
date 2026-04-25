@@ -123,7 +123,6 @@ export default function DashboardPage() {
   const { data: rtEntries = [], refetch: refetchRt } = useQuery({
     queryKey: ["dashboard-response-times"],
     queryFn: fetchResponseTimeTrend,
-    refetchInterval: refetchInterval || false,
   });
 
   useEffect(() => {
