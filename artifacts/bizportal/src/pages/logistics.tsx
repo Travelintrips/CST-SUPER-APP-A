@@ -456,7 +456,12 @@ export default function LogisticsPage() {
                       className="cursor-pointer"
                       onClick={() => navigate(`/logistics/freight/${s.id}`)}
                     >
-                      <TableCell className="font-mono text-sm font-semibold">{s.shipmentNumber}</TableCell>
+                      <TableCell className="font-mono text-sm font-semibold">
+                        <div>{s.shipmentNumber}</div>
+                        <div className="md:hidden font-normal font-sans text-xs text-muted-foreground mt-0.5">
+                          {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        </div>
+                      </TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                         {s.origin} → {s.destination}
                       </TableCell>
