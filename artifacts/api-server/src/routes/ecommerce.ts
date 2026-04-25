@@ -47,7 +47,7 @@ router.post("/product-categories", async (req, res) => {
   if (!name) return res.status(400).json({ message: "Name is required" });
   try {
     const [category] = await db.insert(productCategoriesTable).values({ name }).returning();
-    return res.status(201).json({ ...category, createdAt: category.createdAt.toISOString() });
+    return res.status(201).json({ ...category, createdAt: category.createdAt.toISOString(), productCount: 0 });
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique constraint")) {
       return res.status(409).json({ message: "Category name already exists" });
@@ -73,7 +73,8 @@ router.put("/product-categories/:id", async (req, res) => {
       }
       return updated;
     });
-    return res.json({ ...category, createdAt: category.createdAt.toISOString() });
+    const [{ value: productCount }] = await db.select({ value: count() }).from(productsTable).where(eq(productsTable.category, category.name));
+    return res.json({ ...category, createdAt: category.createdAt.toISOString(), productCount });
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique constraint")) {
       return res.status(409).json({ message: "Category name already exists" });
