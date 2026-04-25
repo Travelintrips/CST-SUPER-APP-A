@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package } from "lucide-react";
+import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -51,17 +52,26 @@ export default function LogisticsPage() {
     cancelled: "bg-destructive/10 text-destructive border-destructive/20",
   };
 
+  const [freightStatusFilter, setFreightStatusFilter] = useState<string>("all");
+  const [freightSortOrder, setFreightSortOrder] = useState<"newest" | "oldest">("newest");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
   const activeFreight = freightShipments?.filter(
     (s) => s.status !== "cancelled" && s.status !== "completed"
   ) ?? [];
   const awaitingQuote = freightShipments?.filter((s) => s.status === "rfq_sent") ?? [];
   const inTransit = freightShipments?.filter((s) => s.status === "in_transit") ?? [];
 
-  const recentFreight = [...activeFreight]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
+  const recentFreightBase = freightStatusFilter === "all"
+    ? activeFreight
+    : activeFreight.filter((s) => s.status === freightStatusFilter);
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const recentFreight = [...recentFreightBase]
+    .sort((a, b) => {
+      const diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return freightSortOrder === "newest" ? diff : -diff;
+    })
+    .slice(0, 5);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -170,15 +180,37 @@ export default function LogisticsPage() {
         {/* Recent Active Freight Shipments */}
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Shipment Freight Terbaru</CardTitle>
-              <Button variant="ghost" size="sm" asChild>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-base shrink-0">Shipment Freight Terbaru</CardTitle>
+              <Button variant="ghost" size="sm" asChild className="shrink-0">
                 <Link href="/logistics/freight">
                   Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             </div>
-            <CardDescription>5 shipment aktif paling baru</CardDescription>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Select value={freightStatusFilter} onValueChange={setFreightStatusFilter}>
+                <SelectTrigger className="h-7 text-xs w-auto min-w-[130px]">
+                  <SelectValue placeholder="Semua Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Status</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="rfq_sent">RFQ Dikirim</SelectItem>
+                  <SelectItem value="confirmed">Dikonfirmasi</SelectItem>
+                  <SelectItem value="in_transit">Dalam Perjalanan</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs px-2 gap-1"
+                onClick={() => setFreightSortOrder((prev) => prev === "newest" ? "oldest" : "newest")}
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                {freightSortOrder === "newest" ? "Terbaru" : "Terlama"}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {freightLoading ? (
@@ -194,7 +226,11 @@ export default function LogisticsPage() {
             ) : recentFreight.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
                 <Package className="h-8 w-8 opacity-40" />
-                <p className="text-sm">Tidak ada shipment freight aktif.</p>
+                <p className="text-sm">
+                  {freightStatusFilter === "all"
+                    ? "Tidak ada shipment freight aktif."
+                    : `Tidak ada shipment dengan status "${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter}".`}
+                </p>
               </div>
             ) : (
               <Table>
