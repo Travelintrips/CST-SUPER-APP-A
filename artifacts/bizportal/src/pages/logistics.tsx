@@ -272,11 +272,21 @@ export default function LogisticsPage() {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setFreightStatusFilter("all")}
+                  className={`space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "all" ? "ring-2 ring-primary bg-muted/40" : ""}`}
+                  title="Tampilkan semua shipment aktif"
+                >
                   <p className="text-2xl font-bold">{activeFreight.length}</p>
                   <p className="text-xs text-muted-foreground">Shipment Aktif</p>
-                </div>
-                <div className="space-y-1">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreightStatusFilter(freightStatusFilter === "rfq_sent" ? "all" : "rfq_sent")}
+                  className={`space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "rfq_sent" ? "ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-950/20" : ""}`}
+                  title="Filter: Menunggu Persetujuan Quote"
+                >
                   <div className="flex items-center gap-1.5">
                     <p className="text-2xl font-bold text-amber-500">{awaitingQuote.length}</p>
                     {awaitingQuote.length > 0 && (
@@ -284,11 +294,16 @@ export default function LogisticsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">Menunggu Persetujuan Quote</p>
-                </div>
-                <div className="space-y-1">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreightStatusFilter(freightStatusFilter === "in_transit" ? "all" : "in_transit")}
+                  className={`space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "in_transit" ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950/20" : ""}`}
+                  title="Filter: Dalam Perjalanan"
+                >
                   <p className="text-2xl font-bold text-indigo-500">{inTransit.length}</p>
                   <p className="text-xs text-muted-foreground">Dalam Perjalanan</p>
-                </div>
+                </button>
               </div>
             )}
           </CardContent>
