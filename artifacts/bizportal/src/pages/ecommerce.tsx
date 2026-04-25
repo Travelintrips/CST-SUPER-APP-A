@@ -422,6 +422,7 @@ export default function EcommercePage() {
                       <TableHead>Kategori</TableHead>
                       <TableHead className="text-right">Harga</TableHead>
                       <TableHead className="text-right">Stok</TableHead>
+                      <TableHead>Pajak Default (Jual)</TableHead>
                       <TableHead className="text-right w-[120px]">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -435,12 +436,13 @@ export default function EcommercePage() {
                           <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-4 w-[80px] ml-auto" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-4 w-[40px] ml-auto" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-8 w-[80px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
                     ) : products?.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center">
+                        <TableCell colSpan={8} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
                             <p>Belum ada produk. Tambahkan produk pertama Anda.</p>
@@ -459,6 +461,11 @@ export default function EcommercePage() {
                           <TableCell className="text-right">{formatIDR(product.price)}</TableCell>
                           <TableCell className="text-right font-medium">
                             <span className={product.stock < 10 ? "text-destructive" : ""}>{product.stock}</span>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {product.defaultSalesTaxId
+                              ? (allTaxes.find((t) => t.id === product.defaultSalesTaxId)?.name ?? "—")
+                              : "—"}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
@@ -512,6 +519,14 @@ export default function EcommercePage() {
                         <p className="text-xs text-muted-foreground">Stok</p>
                         <p className={`text-sm font-medium ${product.stock < 10 ? "text-destructive" : ""}`}>{product.stock}</p>
                       </div>
+                    </div>
+                    <div className="pt-1">
+                      <p className="text-xs text-muted-foreground">Pajak Default (Jual)</p>
+                      <p className="text-sm">
+                        {product.defaultSalesTaxId
+                          ? (allTaxes.find((t) => t.id === product.defaultSalesTaxId)?.name ?? "—")
+                          : "—"}
+                      </p>
                     </div>
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditingProduct(product)} data-testid={`button-edit-product-mobile-${product.id}`}>
