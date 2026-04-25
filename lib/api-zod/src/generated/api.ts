@@ -175,6 +175,7 @@ export const ListProductCategoriesResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
   createdAt: zod.string(),
+  productCount: zod.number(),
 });
 export const ListProductCategoriesResponse = zod.array(
   ListProductCategoriesResponseItem,
@@ -202,6 +203,7 @@ export const UpdateProductCategoryResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   createdAt: zod.string(),
+  productCount: zod.number(),
 });
 
 /**

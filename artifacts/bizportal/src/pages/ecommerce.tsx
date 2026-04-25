@@ -952,6 +952,7 @@ export default function EcommercePage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nama Kategori</TableHead>
+                      <TableHead className="text-center w-[140px]">Jumlah Produk</TableHead>
                       <TableHead className="text-right w-[120px]">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -960,12 +961,13 @@ export default function EcommercePage() {
                       Array.from({ length: 4 }).map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><Skeleton className="h-4 w-[160px]" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-[60px] mx-auto" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[80px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
                     ) : productCategories.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={2} className="text-center py-10 text-muted-foreground">
+                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
                           Belum ada kategori. Tambahkan kategori pertama Anda.
                         </TableCell>
                       </TableRow>
@@ -973,6 +975,11 @@ export default function EcommercePage() {
                       productCategories.map((cat) => (
                         <TableRow key={cat.id} data-testid={`row-category-${cat.id}`}>
                           <TableCell className="font-medium">{cat.name}</TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant={cat.productCount === 0 ? "outline" : "secondary"} className={cat.productCount === 0 ? "text-muted-foreground" : ""}>
+                              {cat.productCount}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                               <Button size="icon" variant="ghost" onClick={() => { setEditingCategory(cat); setEditCategoryName(cat.name); }} data-testid={`button-edit-category-${cat.id}`} aria-label="Edit kategori">

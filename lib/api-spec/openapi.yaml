@@ -1803,7 +1803,9 @@ components:
           type: string
         createdAt:
           type: string
-      required: [id, name, createdAt]
+        productCount:
+          type: integer
+      required: [id, name, createdAt, productCount]
 
     CreateProductCategoryBody:
       type: object

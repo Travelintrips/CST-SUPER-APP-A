@@ -45,6 +45,7 @@ export interface ProductCategory {
   id: number;
   name: string;
   createdAt: string;
+  productCount: number;
 }
 
 export interface CreateProductCategoryBody {

@@ -27,7 +27,17 @@ function serializeProduct(p: typeof productsTable.$inferSelect) {
 
 // GET /api/ecommerce/product-categories
 router.get("/product-categories", async (_req, res) => {
-  const categories = await db.select().from(productCategoriesTable).orderBy(productCategoriesTable.name);
+  const categories = await db
+    .select({
+      id: productCategoriesTable.id,
+      name: productCategoriesTable.name,
+      createdAt: productCategoriesTable.createdAt,
+      productCount: count(productsTable.id),
+    })
+    .from(productCategoriesTable)
+    .leftJoin(productsTable, eq(productsTable.category, productCategoriesTable.name))
+    .groupBy(productCategoriesTable.id, productCategoriesTable.name, productCategoriesTable.createdAt)
+    .orderBy(productCategoriesTable.name);
   return res.json(categories.map((c) => ({ ...c, createdAt: c.createdAt.toISOString() })));
 });
 
