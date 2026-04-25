@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, RefreshCw, Ship, Trash2, Eye, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -36,6 +38,32 @@ const STATUS_COLORS: Record<string, string> = {
 
 const ACTIVE_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit"];
 
+const FREIGHT_REFRESH_INTERVALS = [
+  { label: "30 detik", value: "30" },
+  { label: "1 menit", value: "60" },
+  { label: "5 menit", value: "300" },
+  { label: "Mati", value: "off" },
+] as const;
+
+type FreightRefreshValue = "30" | "60" | "300" | "off";
+
+const FREIGHT_REFRESH_LS_KEY = "freight-refresh-interval";
+
+function getInitialRefreshInterval(): FreightRefreshValue {
+  try {
+    const stored = localStorage.getItem(FREIGHT_REFRESH_LS_KEY);
+    if (stored === "30" || stored === "60" || stored === "300" || stored === "off") {
+      return stored;
+    }
+  } catch {}
+  return "60";
+}
+
+function refetchIntervalMs(value: FreightRefreshValue): number | false {
+  if (value === "off") return false;
+  return parseInt(value, 10) * 1000;
+}
+
 const STATUS_FILTERS: { value: string | null; label: string }[] = [
   { value: null, label: "Semua" },
   { value: "active", label: "Aktif" },
@@ -64,7 +92,30 @@ export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
-  const { data: shipments, isLoading } = useListFreightShipments();
+  const [refreshInterval, setRefreshInterval] = useState<FreightRefreshValue>(getInitialRefreshInterval);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const wasFetchingRef = useRef(false);
+
+  const handleRefreshIntervalChange = (value: string) => {
+    const next = value as FreightRefreshValue;
+    setRefreshInterval(next);
+    try { localStorage.setItem(FREIGHT_REFRESH_LS_KEY, next); } catch {}
+  };
+
+  const {
+    data: shipments,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useListFreightShipments({ query: { refetchInterval: refetchIntervalMs(refreshInterval) } });
+
+  useEffect(() => {
+    if (wasFetchingRef.current && !isFetching) {
+      setLastRefreshed(new Date());
+    }
+    wasFetchingRef.current = isFetching;
+  }, [isFetching]);
+
   const deleteShipment = useDeleteFreightShipment();
 
   void location;
@@ -144,13 +195,29 @@ export default function LogisticsFreightPage() {
             <Ship className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Freight Forwarding</h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={refreshInterval} onValueChange={handleRefreshIntervalChange}>
+              <SelectTrigger className="h-8 text-xs w-auto min-w-[110px] gap-1" aria-label="Interval refresh">
+                <RefreshCw className={`h-3 w-3 shrink-0 ${isFetching ? "animate-spin" : ""}`} />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FREIGHT_REFRESH_INTERVALS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => queryClient.invalidateQueries({ queryKey: getListFreightShipmentsQueryKey() })}
+              className="h-8 w-8"
+              onClick={() => refetch()}
+              title="Refresh sekarang"
+              aria-label="Refresh daftar shipment freight"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
             </Button>
             <Link href="/logistics/freight/new">
               <Button>
@@ -160,6 +227,11 @@ export default function LogisticsFreightPage() {
             </Link>
           </div>
         </div>
+        {lastRefreshed && (
+          <p className="text-xs text-muted-foreground -mt-4">
+            Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {STATUS_FILTERS.map((f) => {
