@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown } from "lucide-react";
+import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -150,6 +150,19 @@ export default function LogisticsPage() {
     ? (() => { const [y, m, d] = customDateTo.split("-").map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999); })()
     : null;
   const isCustomRangeInvalid = !!(customFrom && customTo && customFrom > customTo);
+
+  const isAnyFilterActive =
+    freightStatusFilter !== "all" ||
+    freightSortOrder !== "newest" ||
+    freightDateFilter !== "all";
+
+  const clearFreightFilters = () => {
+    setFreightStatusFilter("all");
+    setFreightSortOrder("newest");
+    setFreightDateFilter("all");
+    setCustomDateFrom("");
+    setCustomDateTo("");
+  };
 
   const recentFreightBase = (() => {
     let list = freightStatusFilter === "all"
@@ -388,6 +401,17 @@ export default function LogisticsPage() {
                 <ArrowUpDown className="h-3 w-3" />
                 {freightSortOrder === "newest" ? "Terbaru" : "Terlama"}
               </Button>
+              {isAnyFilterActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs px-2 gap-1 text-muted-foreground hover:text-foreground"
+                  onClick={clearFreightFilters}
+                >
+                  <X className="h-3 w-3" />
+                  Hapus Filter
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="p-0">
