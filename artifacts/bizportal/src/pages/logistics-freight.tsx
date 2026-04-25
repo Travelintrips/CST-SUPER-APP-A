@@ -1,5 +1,5 @@
+import { useState, useEffect, useCallback, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, RefreshCw, Ship, Trash2, Eye, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, RefreshCw, Ship, Trash2, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
@@ -75,23 +74,33 @@ const STATUS_FILTERS: { value: string | null; label: string }[] = [
   { value: "cancelled", label: "Dibatalkan" },
 ];
 
-function buildUrl(params: Record<string, string | null>): string {
-  const sp = new URLSearchParams(window.location.search);
-  for (const [key, value] of Object.entries(params)) {
-    if (value === null || value === "") {
-      sp.delete(key);
-    } else {
-      sp.set(key, value);
-    }
+type DatePreset = "all" | "7days" | "30days" | "custom";
+
+const DATE_PRESETS: DatePreset[] = ["all", "7days", "30days", "custom"];
+
+function parseParamsFromSearch(search: string) {
+  const p = new URLSearchParams(search);
+  const rawDate = p.get("date") ?? "";
+  const from = p.get("from") ?? "";
+  const to = p.get("to") ?? "";
+  let preset: DatePreset = DATE_PRESETS.includes(rawDate as DatePreset)
+    ? (rawDate as DatePreset)
+    : "all";
+  if (preset === "all" && (from || to)) {
+    preset = "custom";
   }
-  const qs = sp.toString();
-  return qs ? `/logistics/freight?${qs}` : "/logistics/freight";
+  return {
+    status: p.get("status") ?? null,
+    preset,
+    from,
+    to,
+  };
 }
 
 export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [location, setLocation] = useLocation();
+  const [location, navigate] = useLocation();
   const [refreshInterval, setRefreshInterval] = useState<FreightRefreshValue>(getInitialRefreshInterval);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const wasFetchingRef = useRef(false);
@@ -119,24 +128,61 @@ export default function LogisticsFreightPage() {
   const deleteShipment = useDeleteFreightShipment();
 
   void location;
-  const searchParams = new URLSearchParams(window.location.search);
-  const statusFilter = searchParams.get("status") ?? null;
-  const fromFilter = searchParams.get("from") ?? "";
-  const toFilter = searchParams.get("to") ?? "";
+
+  const initial = parseParamsFromSearch(window.location.search);
+
+  const [statusFilter, setStatusFilterState] = useState<string | null>(initial.status);
+  const [datePreset, setDatePresetState] = useState<DatePreset>(initial.preset);
+  const [customDateFrom, setCustomDateFromState] = useState<string>(initial.from);
+  const [customDateTo, setCustomDateToState] = useState<string>(initial.to);
+
+  const syncStateFromUrl = useCallback(() => {
+    const parsed = parseParamsFromSearch(window.location.search);
+    setStatusFilterState(parsed.status);
+    setDatePresetState(parsed.preset);
+    setCustomDateFromState(parsed.from);
+    setCustomDateToState(parsed.to);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("popstate", syncStateFromUrl);
+    return () => window.removeEventListener("popstate", syncStateFromUrl);
+  }, [syncStateFromUrl]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (datePreset !== "all") params.set("date", datePreset);
+    if (datePreset === "custom" && customDateFrom) params.set("from", customDateFrom);
+    if (datePreset === "custom" && customDateTo) params.set("to", customDateTo);
+    const qs = params.toString();
+    const newUrl = qs ? `/logistics/freight?${qs}` : "/logistics/freight";
+    const currentSearch = window.location.search;
+    const currentFull = currentSearch ? `/logistics/freight${currentSearch}` : "/logistics/freight";
+    if (newUrl !== currentFull) {
+      navigate(newUrl, { replace: true });
+    }
+  }, [statusFilter, datePreset, customDateFrom, customDateTo]);
 
   const setStatusFilter = (value: string | null) => {
-    setLocation(buildUrl({ status: value }));
+    setStatusFilterState(value);
   };
 
-  const setDateFilter = (from: string, to: string) => {
-    setLocation(buildUrl({ from: from || null, to: to || null }));
+  const setDatePreset = (preset: DatePreset) => {
+    if (preset !== "custom") {
+      setCustomDateFromState("");
+      setCustomDateToState("");
+    }
+    setDatePresetState(preset);
   };
 
-  const clearDateFilter = () => {
-    setLocation(buildUrl({ from: null, to: null }));
-  };
-
-  const hasDateFilter = fromFilter !== "" || toFilter !== "";
+  const customFrom = customDateFrom
+    ? (() => { const [y, m, d] = customDateFrom.split("-").map(Number); return new Date(y, m - 1, d, 0, 0, 0, 0); })()
+    : null;
+  const customTo = customDateTo
+    ? (() => { const [y, m, d] = customDateTo.split("-").map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999); })()
+    : null;
+  const isCustomRangeInvalid = !!(customFrom && customTo && customFrom > customTo);
 
   const filteredShipments = (shipments ?? []).filter((s) => {
     if (statusFilter) {
@@ -147,18 +193,15 @@ export default function LogisticsFreightPage() {
       }
     }
 
-    if (hasDateFilter) {
-      const createdAt = new Date(s.createdAt);
-      if (fromFilter) {
-        const from = new Date(fromFilter);
-        from.setHours(0, 0, 0, 0);
-        if (createdAt < from) return false;
-      }
-      if (toFilter) {
-        const to = new Date(toFilter);
-        to.setHours(23, 59, 59, 999);
-        if (createdAt > to) return false;
-      }
+    if (datePreset === "7days" || datePreset === "30days") {
+      const days = datePreset === "7days" ? 7 : 30;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      cutoff.setHours(0, 0, 0, 0);
+      if (new Date(s.createdAt) < cutoff) return false;
+    } else if (datePreset === "custom" && !isCustomRangeInvalid) {
+      if (customFrom && new Date(s.createdAt) < customFrom) return false;
+      if (customTo && new Date(s.createdAt) > customTo) return false;
     }
 
     return true;
@@ -186,6 +229,8 @@ export default function LogisticsFreightPage() {
       }
     );
   };
+
+  const isFiltered = statusFilter !== null || datePreset !== "all";
 
   return (
     <AppShell>
@@ -254,41 +299,47 @@ export default function LogisticsFreightPage() {
           })}
         </div>
 
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex items-end gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Dari Tanggal</Label>
+        <div className="flex flex-wrap items-center gap-3">
+          <Select
+            value={datePreset}
+            onValueChange={(v) => setDatePreset(v as DatePreset)}
+          >
+            <SelectTrigger className="h-8 text-sm w-auto min-w-[160px]">
+              <SelectValue placeholder="Semua Waktu" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Waktu</SelectItem>
+              <SelectItem value="7days">7 Hari Terakhir</SelectItem>
+              <SelectItem value="30days">30 Hari Terakhir</SelectItem>
+              <SelectItem value="custom">Kustom</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {datePreset === "custom" && (
+            <>
               <Input
                 type="date"
-                value={fromFilter}
-                onChange={(e) => setDateFilter(e.target.value, toFilter)}
-                className="w-40 h-8 text-sm"
+                className={`h-8 text-sm w-auto px-2 ${isCustomRangeInvalid ? "border-destructive" : ""}`}
+                value={customDateFrom}
+                onChange={(e) => setCustomDateFromState(e.target.value)}
+                aria-label="Dari tanggal"
               />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Sampai Tanggal</Label>
+              <span className="text-sm text-muted-foreground">–</span>
               <Input
                 type="date"
-                value={toFilter}
-                min={fromFilter || undefined}
-                onChange={(e) => setDateFilter(fromFilter, e.target.value)}
-                className="w-40 h-8 text-sm"
+                className={`h-8 text-sm w-auto px-2 ${isCustomRangeInvalid ? "border-destructive" : ""}`}
+                value={customDateTo}
+                onChange={(e) => setCustomDateToState(e.target.value)}
+                aria-label="Sampai tanggal"
               />
-            </div>
-            {hasDateFilter && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearDateFilter}
-                className="h-8 gap-1 text-muted-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-                Reset Tanggal
-              </Button>
-            )}
-          </div>
-          {(statusFilter || hasDateFilter) && (
-            <p className="text-xs text-muted-foreground self-end pb-1">
+              {isCustomRangeInvalid && (
+                <span className="text-xs text-destructive">Tanggal awal harus sebelum tanggal akhir</span>
+              )}
+            </>
+          )}
+
+          {isFiltered && (
+            <p className="text-xs text-muted-foreground">
               Menampilkan {filteredShipments.length} shipment
             </p>
           )}
@@ -321,7 +372,7 @@ export default function LogisticsFreightPage() {
                 ) : !filteredShipments.length ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                      {statusFilter || hasDateFilter
+                      {isFiltered
                         ? "Tidak ada shipment dengan filter ini."
                         : "Belum ada freight shipment. Buat shipment pertama Anda."}
                     </TableCell>
