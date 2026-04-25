@@ -23,13 +23,45 @@ import {
   useListFreightShipments,
 } from "@workspace/api-client-react";
 
-const FREIGHT_REFETCH_INTERVAL_MS = 60_000;
+const FREIGHT_REFRESH_INTERVALS = [
+  { label: "30 detik", value: "30" },
+  { label: "1 menit", value: "60" },
+  { label: "5 menit", value: "300" },
+  { label: "Mati", value: "off" },
+] as const;
+
+type FreightRefreshValue = "30" | "60" | "300" | "off";
+
+const FREIGHT_REFRESH_LS_KEY = "freight-refresh-interval";
+
+function getInitialRefreshInterval(): FreightRefreshValue {
+  try {
+    const stored = localStorage.getItem(FREIGHT_REFRESH_LS_KEY);
+    if (stored === "30" || stored === "60" || stored === "300" || stored === "off") {
+      return stored;
+    }
+  } catch {}
+  return "60";
+}
+
+function refetchIntervalMs(value: FreightRefreshValue): number | false {
+  if (value === "off") return false;
+  return parseInt(value, 10) * 1000;
+}
 
 export default function LogisticsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [location, navigate] = useLocation();
   const searchString = useSearch();
+
+  const [freightRefreshInterval, setFreightRefreshInterval] = useState<FreightRefreshValue>(getInitialRefreshInterval);
+
+  const handleRefreshIntervalChange = (value: string) => {
+    const next = value as FreightRefreshValue;
+    setFreightRefreshInterval(next);
+    try { localStorage.setItem(FREIGHT_REFRESH_LS_KEY, next); } catch {}
+  };
 
   const { data: shipments, isLoading } = useListShipments();
   const createShipment = useCreateShipment();
@@ -40,7 +72,7 @@ export default function LogisticsPage() {
     isLoading: freightLoading,
     isFetching: freightFetching,
     refetch: refetchFreight,
-  } = useListFreightShipments({ query: { refetchInterval: FREIGHT_REFETCH_INTERVAL_MS } });
+  } = useListFreightShipments({ query: { refetchInterval: refetchIntervalMs(freightRefreshInterval) } });
 
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const wasFetchingRef = useRef(false);
@@ -255,13 +287,26 @@ export default function LogisticsPage() {
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-base shrink-0">Shipment Freight Terbaru</CardTitle>
               <div className="flex items-center gap-1 shrink-0">
+                <Select value={freightRefreshInterval} onValueChange={handleRefreshIntervalChange}>
+                  <SelectTrigger className="h-7 text-xs w-auto min-w-[110px] gap-1" aria-label="Interval refresh">
+                    <RefreshCw className={`h-3 w-3 shrink-0 ${freightFetching ? "animate-spin" : ""}`} />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    {FREIGHT_REFRESH_INTERVALS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
                   onClick={() => refetchFreight()}
                   disabled={freightFetching}
-                  title="Refresh"
+                  title="Refresh sekarang"
                   aria-label="Refresh daftar shipment freight"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${freightFetching ? "animate-spin" : ""}`} />
