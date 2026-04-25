@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, RefreshCw, Ship, Trash2, Eye, X } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
@@ -34,11 +34,16 @@ const STATUS_COLORS: Record<string, string> = {
 
 const ACTIVE_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit"];
 
-const FILTER_LABELS: Record<string, string> = {
-  active: "Shipment Aktif",
-  rfq_sent: "Menunggu Persetujuan Quote",
-  in_transit: "Dalam Perjalanan",
-};
+const STATUS_FILTERS: { value: string | null; label: string }[] = [
+  { value: null, label: "Semua" },
+  { value: "active", label: "Aktif" },
+  { value: "draft", label: "Draft" },
+  { value: "rfq_sent", label: "RFQ Dikirim" },
+  { value: "confirmed", label: "Dikonfirmasi" },
+  { value: "in_transit", label: "Dalam Perjalanan" },
+  { value: "completed", label: "Selesai" },
+  { value: "cancelled", label: "Dibatalkan" },
+];
 
 export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
@@ -50,6 +55,14 @@ export default function LogisticsFreightPage() {
   void location;
   const searchParams = new URLSearchParams(window.location.search);
   const statusFilter = searchParams.get("status") ?? null;
+
+  const setStatusFilter = (value: string | null) => {
+    if (value === null) {
+      setLocation("/logistics/freight");
+    } else {
+      setLocation(`/logistics/freight?status=${value}`);
+    }
+  };
 
   const filteredShipments = shipments?.filter((s) => {
     if (!statusFilter) return true;
@@ -80,18 +93,6 @@ export default function LogisticsFreightPage() {
           <div className="flex items-center gap-2">
             <Ship className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Freight Forwarding</h1>
-            {statusFilter && (
-              <Badge variant="secondary" className="flex items-center gap-1 ml-1">
-                {FILTER_LABELS[statusFilter] ?? statusFilter}
-                <button
-                  onClick={() => setLocation("/logistics/freight")}
-                  className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
-                  title="Hapus filter"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
           </div>
           <div className="flex gap-2">
             <Button
@@ -108,6 +109,22 @@ export default function LogisticsFreightPage() {
               </Button>
             </Link>
           </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {STATUS_FILTERS.map((f) => {
+            const isActive = statusFilter === f.value;
+            return (
+              <Button
+                key={f.value ?? "all"}
+                variant={isActive ? "default" : "outline"}
+                size="sm"
+                onClick={() => setStatusFilter(f.value)}
+              >
+                {f.label}
+              </Button>
+            );
+          })}
         </div>
 
         <Card>
