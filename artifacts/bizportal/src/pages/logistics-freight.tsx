@@ -233,7 +233,7 @@ export default function LogisticsFreightPage() {
                   <TableHead>Komoditi</TableHead>
                   <TableHead>Origin → Destination</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Tanggal</TableHead>
+                  <TableHead className="hidden md:table-cell">Tgl. Dibuat</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -271,8 +271,8 @@ export default function LogisticsFreightPage() {
                           {STATUS_LABELS[s.status] ?? s.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {new Date(s.createdAt).toLocaleDateString("id-ID")}
+                      <TableCell className="hidden md:table-cell text-muted-foreground text-sm whitespace-nowrap">
+                        {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1">
