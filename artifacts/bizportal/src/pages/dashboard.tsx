@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -44,6 +44,31 @@ export default function DashboardPage() {
   });
 
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
+
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (intervalValue === "off" || !dataUpdatedAt) {
+      setSecondsLeft(null);
+      return;
+    }
+    const intervalMs = Number(intervalValue);
+    const tick = () => {
+      const remaining = Math.round((dataUpdatedAt + intervalMs - Date.now()) / 1000);
+      setSecondsLeft(Math.max(0, remaining));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [dataUpdatedAt, intervalValue]);
+
+  const formatCountdown = (secs: number): string => {
+    if (secs <= 0) return "sebentar lagi";
+    if (secs < 60) return `${secs}d`;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return s > 0 ? `${m}m ${s}d` : `${m}m`;
+  };
 
   const handleRefresh = useCallback(async () => {
     await refetch();
@@ -118,8 +143,17 @@ export default function DashboardPage() {
               </Button>
             </div>
             {!isLoading && lastUpdated && (
-              <p className="text-xs text-muted-foreground">
-                Diperbarui: {formatLastUpdated(lastUpdated)}
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <span>Diperbarui: {formatLastUpdated(lastUpdated)}</span>
+                {secondsLeft !== null && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span className="flex items-center gap-0.5">
+                      <Clock className="h-3 w-3" />
+                      {formatCountdown(secondsLeft)}
+                    </span>
+                  </>
+                )}
               </p>
             )}
           </div>
