@@ -715,6 +715,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/FreightRfqWithQuotes" }
+    delete:
+      operationId: deleteFreightRfq
+      tags: [logistics]
+      summary: Delete a freight RFQ and its quotes
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
     put:
       operationId: updateFreightRfq
       tags: [logistics]

@@ -774,6 +774,17 @@ export const GetFreightRfqResponse = zod
   );
 
 /**
+ * @summary Delete a freight RFQ and its quotes
+ */
+export const DeleteFreightRfqParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteFreightRfqResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
  * @summary Update a freight RFQ
  */
 export const UpdateFreightRfqParams = zod.object({

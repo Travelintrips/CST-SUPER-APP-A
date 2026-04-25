@@ -3184,6 +3184,90 @@ export function useGetFreightRfq<
 }
 
 /**
+ * @summary Delete a freight RFQ and its quotes
+ */
+export const getDeleteFreightRfqUrl = (id: number) => {
+  return `/api/logistics/freight-rfqs/${id}`;
+};
+
+export const deleteFreightRfq = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeleteFreightRfqUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteFreightRfqMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightRfq>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteFreightRfq>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteFreightRfq"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteFreightRfq>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteFreightRfq(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteFreightRfqMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteFreightRfq>>
+>;
+
+export type DeleteFreightRfqMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a freight RFQ and its quotes
+ */
+export const useDeleteFreightRfq = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightRfq>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteFreightRfq>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteFreightRfqMutationOptions(options));
+};
+
+/**
  * @summary Update a freight RFQ
  */
 export const getUpdateFreightRfqUrl = (id: number) => {

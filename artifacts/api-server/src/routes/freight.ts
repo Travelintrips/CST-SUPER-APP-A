@@ -162,6 +162,17 @@ router.put("/freight-rfqs/:id", async (req, res) => {
   return res.json(serializeRfq(updated!));
 });
 
+// DELETE /api/logistics/freight-rfqs/:id
+router.delete("/freight-rfqs/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const [existing] = await db.select().from(freightRfqsTable).where(eq(freightRfqsTable.id, id));
+  if (!existing) return res.status(404).json({ message: "RFQ not found" });
+  await db.delete(freightQuotesTable).where(eq(freightQuotesTable.rfqId, id));
+  await db.delete(freightRfqsTable).where(eq(freightRfqsTable.id, id));
+  return res.json({ message: "Berhasil dihapus" });
+});
+
 // ─── FREIGHT QUOTES ──────────────────────────────────────────────────────────
 
 // GET /api/logistics/freight-quotes?rfqId=:rfqId
@@ -243,16 +254,19 @@ router.post("/freight-quotes/:id/approve", async (req, res) => {
   if (!quote) return res.status(404).json({ message: "Quote not found" });
   const [rfq] = await db.select().from(freightRfqsTable).where(eq(freightRfqsTable.id, quote.rfqId));
   if (!rfq) return res.status(404).json({ message: "RFQ not found" });
-  await db.update(freightQuotesTable)
-    .set({ status: "rejected" })
-    .where(eq(freightQuotesTable.rfqId, quote.rfqId));
-  const [approved] = await db.update(freightQuotesTable)
-    .set({ status: "approved" })
-    .where(eq(freightQuotesTable.id, id))
-    .returning();
-  await db.update(freightRfqsTable).set({ status: "closed" }).where(eq(freightRfqsTable.id, quote.rfqId));
-  await db.update(freightShipmentsTable).set({ status: "confirmed" }).where(eq(freightShipmentsTable.id, rfq.shipmentId));
-  return res.json(serializeQuote(approved!));
+  const approved = await db.transaction(async (tx) => {
+    await tx.update(freightQuotesTable)
+      .set({ status: "rejected" })
+      .where(eq(freightQuotesTable.rfqId, quote.rfqId));
+    const [approvedQuote] = await tx.update(freightQuotesTable)
+      .set({ status: "approved" })
+      .where(eq(freightQuotesTable.id, id))
+      .returning();
+    await tx.update(freightRfqsTable).set({ status: "closed" }).where(eq(freightRfqsTable.id, quote.rfqId));
+    await tx.update(freightShipmentsTable).set({ status: "confirmed" }).where(eq(freightShipmentsTable.id, rfq.shipmentId));
+    return approvedQuote!;
+  });
+  return res.json(serializeQuote(approved));
 });
 
 export default router;
