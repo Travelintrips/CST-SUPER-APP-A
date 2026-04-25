@@ -257,7 +257,12 @@ export default function LogisticsFreightPage() {
                 ) : (
                   filteredShipments.map((s) => (
                     <TableRow key={s.id}>
-                      <TableCell className="font-mono text-sm font-semibold">{s.shipmentNumber}</TableCell>
+                      <TableCell>
+                        <div className="font-mono text-sm font-semibold">{s.shipmentNumber}</div>
+                        <div className="md:hidden text-xs text-muted-foreground mt-0.5">
+                          {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        </div>
+                      </TableCell>
                       <TableCell>{s.shipperName}</TableCell>
                       <TableCell>{s.consigneeName}</TableCell>
                       <TableCell>{s.commodity}</TableCell>
