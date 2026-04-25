@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import {
   useListFreightShipments,
 } from "@workspace/api-client-react";
 
+const FREIGHT_REFETCH_INTERVAL_MS = 60_000;
+
 export default function LogisticsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -32,7 +34,21 @@ export default function LogisticsPage() {
   const createShipment = useCreateShipment();
   const updateStatus = useUpdateShipmentStatus();
 
-  const { data: freightShipments, isLoading: freightLoading } = useListFreightShipments();
+  const {
+    data: freightShipments,
+    isLoading: freightLoading,
+    isFetching: freightFetching,
+    refetch: refetchFreight,
+  } = useListFreightShipments({ query: { refetchInterval: FREIGHT_REFETCH_INTERVAL_MS } });
+
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const wasFetchingRef = useRef(false);
+  useEffect(() => {
+    if (wasFetchingRef.current && !freightFetching) {
+      setLastRefreshed(new Date());
+    }
+    wasFetchingRef.current = freightFetching;
+  }, [freightFetching]);
 
   const FREIGHT_STATUS_LABELS: Record<string, string> = {
     draft: "Draft",
@@ -182,12 +198,30 @@ export default function LogisticsPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-base shrink-0">Shipment Freight Terbaru</CardTitle>
-              <Button variant="ghost" size="sm" asChild className="shrink-0">
-                <Link href="/logistics/freight">
-                  Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Link>
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => refetchFreight()}
+                  disabled={freightFetching}
+                  title="Refresh"
+                  aria-label="Refresh daftar shipment freight"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${freightFetching ? "animate-spin" : ""}`} />
+                </Button>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/logistics/freight">
+                    Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              </div>
             </div>
+            {lastRefreshed && (
+              <p className="text-[11px] text-muted-foreground">
+                Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <Select value={freightStatusFilter} onValueChange={setFreightStatusFilter}>
                 <SelectTrigger className="h-7 text-xs w-auto min-w-[130px]">
