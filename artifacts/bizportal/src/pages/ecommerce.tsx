@@ -47,6 +47,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@workspace/object-storage-web";
 import { ImagePlus, ImageIcon, Loader2 } from "lucide-react";
@@ -140,8 +141,8 @@ export default function EcommercePage() {
   const [createProdPurchaseTaxId, setCreateProdPurchaseTaxId] = useState<number | null>(null);
   const [editProdSalesTaxId, setEditProdSalesTaxId] = useState<number | null>(null);
   const [editProdPurchaseTaxId, setEditProdPurchaseTaxId] = useState<number | null>(null);
-  const [createProdCategory, setCreateProdCategory] = useState<string>("");
-  const [editProdCategory, setEditProdCategory] = useState<string>("");
+  const [createProdCategories, setCreateProdCategories] = useState<string[]>([]);
+  const [editProdCategories, setEditProdCategories] = useState<string[]>([]);
 
   const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
@@ -169,7 +170,7 @@ export default function EcommercePage() {
         if (String(p.defaultPurchaseTaxId) !== filterPurchaseTaxId) return false;
       }
     }
-    if (filterCategory !== "__all__" && p.category !== filterCategory) return false;
+    if (filterCategory !== "__all__" && !(p.categories ?? []).includes(filterCategory)) return false;
     return true;
   });
 
@@ -221,7 +222,7 @@ export default function EcommercePage() {
         sku: formData.get("sku") as string,
         price: Number(formData.get("price")),
         stock: Number(formData.get("stock")),
-        category: createProdCategory,
+        categories: createProdCategories,
         imageUrl: createImageUrl,
         defaultSalesTaxId: createProdSalesTaxId,
         defaultPurchaseTaxId: createProdPurchaseTaxId,
@@ -233,7 +234,7 @@ export default function EcommercePage() {
         setCreateImageUrl(null);
         setCreateProdSalesTaxId(null);
         setCreateProdPurchaseTaxId(null);
-        setCreateProdCategory("");
+        setCreateProdCategories([]);
         toast({ title: "Produk berhasil dibuat" });
       },
       onError: () => toast({ title: "Gagal membuat produk", variant: "destructive" }),
@@ -251,7 +252,7 @@ export default function EcommercePage() {
         sku: formData.get("sku") as string,
         price: Number(formData.get("price")),
         stock: Number(formData.get("stock")),
-        category: editProdCategory,
+        categories: editProdCategories,
         imageUrl: editImageUrl,
         defaultSalesTaxId: editProdSalesTaxId,
         defaultPurchaseTaxId: editProdPurchaseTaxId,
@@ -274,7 +275,7 @@ export default function EcommercePage() {
     setEditImageUrl(editingProduct?.imageUrl ?? null);
     setEditProdSalesTaxId(editingProduct?.defaultSalesTaxId ?? null);
     setEditProdPurchaseTaxId(editingProduct?.defaultPurchaseTaxId ?? null);
-    setEditProdCategory(editingProduct?.category ?? "");
+    setEditProdCategories(editingProduct?.categories ?? []);
   }, [editingProduct]);
 
   const handleCreateCategory = (e: React.FormEvent<HTMLFormElement>) => {
@@ -473,13 +474,27 @@ export default function EcommercePage() {
                         <div className="grid gap-2"><Label htmlFor="stock">Stok</Label><Input id="stock" name="stock" type="number" min="0" required data-testid="input-product-stock" /></div>
                       </div>
                       <div className="grid gap-2">
-                        <Label>Kategori</Label>
-                        <Select value={createProdCategory} onValueChange={setCreateProdCategory} data-testid="select-create-product-category" required>
-                          <SelectTrigger data-testid="select-create-product-category-trigger"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
-                          <SelectContent>
-                            {productCategories.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <Label>Kategori <span className="text-muted-foreground text-xs">(pilih satu atau lebih)</span></Label>
+                        <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2" data-testid="create-product-categories">
+                          {productCategories.map((c) => (
+                            <div key={c.id} className="flex items-center gap-2">
+                              <Checkbox
+                                id={`create-cat-${c.id}`}
+                                checked={createProdCategories.includes(c.name)}
+                                onCheckedChange={(checked) => {
+                                  setCreateProdCategories((prev) =>
+                                    checked ? [...prev, c.name] : prev.filter((n) => n !== c.name)
+                                  );
+                                }}
+                                data-testid={`create-cat-checkbox-${c.id}`}
+                              />
+                              <label htmlFor={`create-cat-${c.id}`} className="text-sm cursor-pointer">{c.name}</label>
+                            </div>
+                          ))}
+                          {productCategories.length === 0 && (
+                            <p className="text-sm text-muted-foreground">Belum ada kategori. Buat kategori terlebih dahulu.</p>
+                          )}
+                        </div>
                       </div>
                       <ProductImageField
                         imageUrl={createImageUrl}
@@ -511,7 +526,7 @@ export default function EcommercePage() {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button type="submit" disabled={createProduct.isPending || createImageUploader.isUploading || !createProdCategory} data-testid="button-submit-product">
+                      <Button type="submit" disabled={createProduct.isPending || createImageUploader.isUploading || createProdCategories.length === 0} data-testid="button-submit-product">
                         {createProduct.isPending ? "Menyimpan..." : "Buat Produk"}
                       </Button>
                     </DialogFooter>
@@ -617,7 +632,14 @@ export default function EcommercePage() {
                           </TableCell>
                           <TableCell className="font-medium">{product.name}</TableCell>
                           <TableCell>{product.sku}</TableCell>
-                          <TableCell><Badge variant="outline">{product.category}</Badge></TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {(product.categories ?? []).length > 0
+                                ? (product.categories ?? []).map((cat) => <Badge key={cat} variant="outline">{cat}</Badge>)
+                                : <span className="text-muted-foreground text-xs">—</span>
+                              }
+                            </div>
+                          </TableCell>
                           <TableCell className="text-right">{formatIDR(product.price)}</TableCell>
                           <TableCell className="text-right font-medium">
                             <span className={product.stock < 10 ? "text-destructive" : ""}>{product.stock}</span>
@@ -673,7 +695,9 @@ export default function EcommercePage() {
                         <p className="font-medium truncate">{product.name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{product.sku}</p>
                       </div>
-                      <Badge variant="outline" className="shrink-0">{product.category}</Badge>
+                      <div className="flex flex-wrap gap-1 shrink-0">
+                        {(product.categories ?? []).map((cat) => <Badge key={cat} variant="outline">{cat}</Badge>)}
+                      </div>
                     </div>
                     <div className="flex justify-between items-end pt-1 border-t border-border">
                       <div>
@@ -1062,13 +1086,27 @@ export default function EcommercePage() {
                   <div className="grid gap-2"><Label htmlFor="edit-stock">Stok</Label><Input id="edit-stock" name="stock" type="number" min="0" defaultValue={editingProduct.stock} required data-testid="input-edit-product-stock" /></div>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Kategori</Label>
-                  <Select value={editProdCategory} onValueChange={setEditProdCategory} data-testid="select-edit-product-category">
-                    <SelectTrigger data-testid="select-edit-product-category-trigger"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
-                    <SelectContent>
-                      {productCategories.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Label>Kategori <span className="text-muted-foreground text-xs">(pilih satu atau lebih)</span></Label>
+                  <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2" data-testid="edit-product-categories">
+                    {productCategories.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`edit-cat-${c.id}`}
+                          checked={editProdCategories.includes(c.name)}
+                          onCheckedChange={(checked) => {
+                            setEditProdCategories((prev) =>
+                              checked ? [...prev, c.name] : prev.filter((n) => n !== c.name)
+                            );
+                          }}
+                          data-testid={`edit-cat-checkbox-${c.id}`}
+                        />
+                        <label htmlFor={`edit-cat-${c.id}`} className="text-sm cursor-pointer">{c.name}</label>
+                      </div>
+                    ))}
+                    {productCategories.length === 0 && (
+                      <p className="text-sm text-muted-foreground">Belum ada kategori. Buat kategori terlebih dahulu.</p>
+                    )}
+                  </div>
                 </div>
                 <ProductImageField
                   imageUrl={editImageUrl}
@@ -1101,7 +1139,7 @@ export default function EcommercePage() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>Batal</Button>
-                <Button type="submit" disabled={updateProduct.isPending || editImageUploader.isUploading || !editProdCategory} data-testid="button-save-product">
+                <Button type="submit" disabled={updateProduct.isPending || editImageUploader.isUploading || editProdCategories.length === 0} data-testid="button-save-product">
                   {updateProduct.isPending ? "Menyimpan..." : "Simpan Perubahan"}
                 </Button>
               </DialogFooter>

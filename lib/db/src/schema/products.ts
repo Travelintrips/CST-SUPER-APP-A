@@ -1,4 +1,4 @@
-import { pgTable, serial, text, numeric, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, numeric, integer, timestamp, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -18,7 +18,7 @@ export const productsTable = pgTable("products", {
   sku: text("sku").notNull().unique(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
   stock: integer("stock").notNull().default(0),
-  category: text("category").notNull(),
+  category: text("category"),
   description: text("description"),
   imageUrl: text("image_url"),
   defaultSalesTaxId: integer("default_sales_tax_id"),
@@ -29,3 +29,12 @@ export const productsTable = pgTable("products", {
 export const insertProductSchema = createInsertSchema(productsTable).omit({ id: true, createdAt: true });
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof productsTable.$inferSelect;
+
+export const productCategoryMapTable = pgTable("product_category_map", {
+  productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
+  categoryId: integer("category_id").notNull().references(() => productCategoriesTable.id, { onDelete: "cascade" }),
+}, (table) => [
+  primaryKey({ columns: [table.productId, table.categoryId] }),
+]);
+
+export type ProductCategoryMap = typeof productCategoryMapTable.$inferSelect;

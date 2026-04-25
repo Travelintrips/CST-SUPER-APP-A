@@ -107,7 +107,7 @@ export default function PosPage() {
     if (!products) return [];
     const q = search.trim().toLowerCase();
     if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+    return products.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categories ?? []).some((c) => c.toLowerCase().includes(q)));
   }, [products, search]);
 
   const addToCart = (p: Pick<Product, "id" | "name" | "price"> & { imageUrl?: string | null }) => {
@@ -243,9 +243,11 @@ export default function PosPage() {
                               ) : (
                                 <ImageIcon className="h-7 w-7 text-muted-foreground/60" />
                               )}
-                              <Badge variant="outline" className="absolute top-1 left-1 text-[10px] uppercase tracking-wide bg-background/90 backdrop-blur">
-                                {p.category}
-                              </Badge>
+                              {(p.categories ?? []).slice(0, 1).map((cat) => (
+                                <Badge key={cat} variant="outline" className="absolute top-1 left-1 text-[10px] uppercase tracking-wide bg-background/90 backdrop-blur">
+                                  {cat}
+                                </Badge>
+                              ))}
                             </div>
                             <p className="text-sm font-medium line-clamp-2 leading-snug min-h-[2.5rem] mt-1">{p.name}</p>
                             <p className="text-xs text-muted-foreground">{p.sku}</p>

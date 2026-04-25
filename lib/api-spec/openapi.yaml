@@ -2057,8 +2057,10 @@ components:
           type: number
         stock:
           type: integer
-        category:
-          type: string
+        categories:
+          type: array
+          items:
+            type: string
         description:
           type: string
         imageUrl:
@@ -2072,7 +2074,7 @@ components:
           nullable: true
         createdAt:
           type: string
-      required: [id, name, sku, price, stock, category, createdAt]
+      required: [id, name, sku, price, stock, categories, createdAt]
 
     CreateProductBody:
       type: object
@@ -2085,8 +2087,10 @@ components:
           type: number
         stock:
           type: integer
-        category:
-          type: string
+        categories:
+          type: array
+          items:
+            type: string
         description:
           type: string
         imageUrl:
@@ -2098,7 +2102,7 @@ components:
         defaultPurchaseTaxId:
           type: integer
           nullable: true
-      required: [name, sku, price, stock, category]
+      required: [name, sku, price, stock, categories]
 
     Order:
       type: object

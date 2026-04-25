@@ -58,7 +58,7 @@ export interface Product {
   sku: string;
   price: number;
   stock: number;
-  category: string;
+  categories: string[];
   description?: string;
   imageUrl?: string | null;
   defaultSalesTaxId?: number | null;
@@ -71,7 +71,7 @@ export interface CreateProductBody {
   sku: string;
   price: number;
   stock: number;
-  category: string;
+  categories: string[];
   description?: string;
   imageUrl?: string | null;
   defaultSalesTaxId?: number | null;

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, productsTable, ordersTable, productCategoriesTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import { db, productsTable, ordersTable, productCategoriesTable, productCategoryMapTable } from "@workspace/db";
+import { eq, count, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postEcommerceOrder } from "../lib/accounting.js";
 
@@ -17,11 +17,45 @@ function normalizeImage(value: unknown): string | null {
   }
 }
 
-function serializeProduct(p: typeof productsTable.$inferSelect) {
+async function getProductCategories(productIds: number[]): Promise<Map<number, string[]>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      productId: productCategoryMapTable.productId,
+      categoryName: productCategoriesTable.name,
+    })
+    .from(productCategoryMapTable)
+    .innerJoin(productCategoriesTable, eq(productCategoryMapTable.categoryId, productCategoriesTable.id))
+    .where(inArray(productCategoryMapTable.productId, productIds));
+
+  const map = new Map<number, string[]>();
+  for (const row of rows) {
+    if (!map.has(row.productId)) map.set(row.productId, []);
+    map.get(row.productId)!.push(row.categoryName);
+  }
+  return map;
+}
+
+function resolveCategories(
+  p: typeof productsTable.$inferSelect,
+  categoryMap: Map<number, string[]>
+): string[] {
+  const fromMap = categoryMap.get(p.id);
+  if (fromMap && fromMap.length > 0) return fromMap;
+  if (p.category) return [p.category];
+  return [];
+}
+
+function serializeProduct(
+  p: typeof productsTable.$inferSelect,
+  categories: string[]
+) {
+  const { category: _category, ...rest } = p;
   return {
-    ...p,
+    ...rest,
     price: Number(p.price),
     createdAt: p.createdAt.toISOString(),
+    categories,
   };
 }
 
@@ -32,10 +66,10 @@ router.get("/product-categories", async (_req, res) => {
       id: productCategoriesTable.id,
       name: productCategoriesTable.name,
       createdAt: productCategoriesTable.createdAt,
-      productCount: count(productsTable.id),
+      productCount: count(productCategoryMapTable.productId),
     })
     .from(productCategoriesTable)
-    .leftJoin(productsTable, eq(productsTable.category, productCategoriesTable.name))
+    .leftJoin(productCategoryMapTable, eq(productCategoryMapTable.categoryId, productCategoriesTable.id))
     .groupBy(productCategoriesTable.id, productCategoriesTable.name, productCategoriesTable.createdAt)
     .orderBy(productCategoriesTable.name);
   return res.json(categories.map((c) => ({ ...c, createdAt: c.createdAt.toISOString() })));
@@ -65,16 +99,12 @@ router.put("/product-categories/:id", async (req, res) => {
   try {
     const [existing] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.id, id));
     if (!existing) return res.status(404).json({ message: "Category not found" });
-    const oldName = existing.name;
-    const category = await db.transaction(async (tx) => {
-      const [updated] = await tx.update(productCategoriesTable).set({ name }).where(eq(productCategoriesTable.id, id)).returning();
-      if (oldName !== name) {
-        await tx.update(productsTable).set({ category: name }).where(eq(productsTable.category, oldName));
-      }
-      return updated;
-    });
-    const [{ value: productCount }] = await db.select({ value: count() }).from(productsTable).where(eq(productsTable.category, category.name));
-    return res.json({ ...category, createdAt: category.createdAt.toISOString(), productCount });
+    const [updated] = await db.update(productCategoriesTable).set({ name }).where(eq(productCategoriesTable.id, id)).returning();
+    const [{ value: productCount }] = await db
+      .select({ value: count() })
+      .from(productCategoryMapTable)
+      .where(eq(productCategoryMapTable.categoryId, updated.id));
+    return res.json({ ...updated, createdAt: updated.createdAt.toISOString(), productCount });
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("unique constraint")) {
       return res.status(409).json({ message: "Category name already exists" });
@@ -89,7 +119,10 @@ router.delete("/product-categories/:id", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid category id" });
   const [existing] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.id, id));
   if (!existing) return res.status(404).json({ message: "Category not found" });
-  const [{ value: usageCount }] = await db.select({ value: count() }).from(productsTable).where(eq(productsTable.category, existing.name));
+  const [{ value: usageCount }] = await db
+    .select({ value: count() })
+    .from(productCategoryMapTable)
+    .where(eq(productCategoryMapTable.categoryId, id));
   if (usageCount > 0) {
     return res.status(409).json({ message: `Kategori ini digunakan oleh ${usageCount} produk. Ubah kategori produk tersebut terlebih dahulu.` });
   }
@@ -100,23 +133,40 @@ router.delete("/product-categories/:id", async (req, res) => {
 // GET /api/ecommerce/products
 router.get("/products", async (_req, res) => {
   const products = await db.select().from(productsTable).orderBy(productsTable.createdAt);
-  return res.json(products.map(serializeProduct));
+  const categoryMap = await getProductCategories(products.map((p) => p.id));
+  return res.json(products.map((p) => serializeProduct(p, resolveCategories(p, categoryMap))));
 });
 
 // POST /api/ecommerce/products
 router.post("/products", async (req, res) => {
-  const { name, sku, price, stock, category, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
-  const categoryName = (category ?? "").toString().trim();
-  if (!categoryName) return res.status(400).json({ message: "Category is required" });
-  const [validCat] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.name, categoryName));
-  if (!validCat) return res.status(400).json({ message: "Category does not exist in the predefined list" });
-  const [product] = await db.insert(productsTable).values({
-    name, sku, price: String(price), stock: stock ?? 0, category: categoryName, description,
-    imageUrl: normalizeImage(imageUrl),
-    defaultSalesTaxId: defaultSalesTaxId ?? null,
-    defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
-  }).returning();
-  return res.status(201).json(serializeProduct(product));
+  const { name, sku, price, stock, categories, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
+  const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
+  if (categoryNames.length === 0) return res.status(400).json({ message: "At least one category is required" });
+
+  const validCats = await db
+    .select()
+    .from(productCategoriesTable)
+    .where(inArray(productCategoriesTable.name, categoryNames));
+  if (validCats.length !== categoryNames.length) {
+    return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
+  }
+
+  const product = await db.transaction(async (tx) => {
+    const [p] = await tx.insert(productsTable).values({
+      name, sku, price: String(price), stock: stock ?? 0,
+      category: categoryNames[0],
+      description,
+      imageUrl: normalizeImage(imageUrl),
+      defaultSalesTaxId: defaultSalesTaxId ?? null,
+      defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
+    }).returning();
+    await tx.insert(productCategoryMapTable).values(
+      validCats.map((c) => ({ productId: p.id, categoryId: c.id }))
+    );
+    return p;
+  });
+
+  return res.status(201).json(serializeProduct(product, categoryNames));
 });
 
 // GET /api/ecommerce/products/:id
@@ -124,25 +174,44 @@ router.get("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
   if (!product) return res.status(404).json({ message: "Product not found" });
-  return res.json(serializeProduct(product));
+  const categoryMap = await getProductCategories([id]);
+  return res.json(serializeProduct(product, resolveCategories(product, categoryMap)));
 });
 
 // PUT /api/ecommerce/products/:id
 router.put("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, sku, price, stock, category, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
-  const categoryName = (category ?? "").toString().trim();
-  if (!categoryName) return res.status(400).json({ message: "Category is required" });
-  const [validCat] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.name, categoryName));
-  if (!validCat) return res.status(400).json({ message: "Category does not exist in the predefined list" });
-  const [product] = await db.update(productsTable).set({
-    name, sku, price: String(price), stock, category: categoryName, description,
-    imageUrl: normalizeImage(imageUrl),
-    defaultSalesTaxId: defaultSalesTaxId ?? null,
-    defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
-  }).where(eq(productsTable.id, id)).returning();
+  const { name, sku, price, stock, categories, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
+  const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
+  if (categoryNames.length === 0) return res.status(400).json({ message: "At least one category is required" });
+
+  const validCats = await db
+    .select()
+    .from(productCategoriesTable)
+    .where(inArray(productCategoriesTable.name, categoryNames));
+  if (validCats.length !== categoryNames.length) {
+    return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
+  }
+
+  const product = await db.transaction(async (tx) => {
+    const [p] = await tx.update(productsTable).set({
+      name, sku, price: String(price), stock,
+      category: categoryNames[0],
+      description,
+      imageUrl: normalizeImage(imageUrl),
+      defaultSalesTaxId: defaultSalesTaxId ?? null,
+      defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
+    }).where(eq(productsTable.id, id)).returning();
+    if (!p) return null;
+    await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
+    await tx.insert(productCategoryMapTable).values(
+      validCats.map((c) => ({ productId: id, categoryId: c.id }))
+    );
+    return p;
+  });
+
   if (!product) return res.status(404).json({ message: "Product not found" });
-  return res.json(serializeProduct(product));
+  return res.json(serializeProduct(product, categoryNames));
 });
 
 // DELETE /api/ecommerce/products/:id
