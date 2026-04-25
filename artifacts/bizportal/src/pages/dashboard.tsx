@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
+import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,6 +44,14 @@ export default function DashboardPage() {
   });
 
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
+
+  const [responseTime, setResponseTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dataUpdatedAt) return;
+    const rt = getLastResponseTime("/api/dashboard/summary");
+    if (rt) setResponseTime(rt);
+  }, [dataUpdatedAt]);
 
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
@@ -151,6 +159,15 @@ export default function DashboardPage() {
                     <span className="flex items-center gap-0.5">
                       <Clock className="h-3 w-3" />
                       Refresh dalam {formatCountdown(secondsLeft)}
+                    </span>
+                  </>
+                )}
+                {responseTime && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span className="flex items-center gap-0.5" title="Waktu respons server">
+                      <Activity className="h-3 w-3" />
+                      {responseTime}
                     </span>
                   </>
                 )}

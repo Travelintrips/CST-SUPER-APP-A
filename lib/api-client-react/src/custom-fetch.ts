@@ -18,6 +18,23 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
 
+// ---------------------------------------------------------------------------
+// Response-time store — keyed by the resolved URL string
+// ---------------------------------------------------------------------------
+const _responseTimeStore = new Map<string, string>();
+
+/**
+ * Returns the last X-Response-Time header value seen for any request whose
+ * URL contains `pathFragment` (e.g. "/api/dashboard/summary").
+ * Returns null when no matching entry exists yet.
+ */
+export function getLastResponseTime(pathFragment: string): string | null {
+  for (const [url, time] of _responseTimeStore) {
+    if (url.includes(pathFragment)) return time;
+  }
+  return null;
+}
+
 /**
  * Set a base URL that is prepended to every relative request URL
  * (i.e. paths that start with `/`).
@@ -361,6 +378,11 @@ export async function customFetch<T = unknown>(
   const requestInfo = { method, url: resolveUrl(input) };
 
   const response = await fetch(input, { ...init, method, headers });
+
+  const xResponseTime = response.headers.get("X-Response-Time");
+  if (xResponseTime) {
+    _responseTimeStore.set(requestInfo.url, xResponseTime);
+  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
