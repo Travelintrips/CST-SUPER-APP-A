@@ -10,13 +10,19 @@ import {
   useDeleteOrder,
   useListTaxes,
   useGetAccountingSettings,
+  useListProductCategories,
+  useCreateProductCategory,
+  useUpdateProductCategory,
+  useDeleteProductCategory,
   getListProductsQueryKey,
   getListOrdersQueryKey,
+  getListProductCategoriesQueryKey,
   type Product,
   type Order,
   type AccountingTax,
+  type ProductCategory,
 } from "@workspace/api-client-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
@@ -57,13 +63,13 @@ export default function EcommercePage() {
   const initialTab = (() => {
     const params = new URLSearchParams(search);
     const t = params.get("tab");
-    return t === "orders" ? "orders" : "products";
+    return t === "orders" || t === "categories" ? t : "products";
   })();
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   useEffect(() => {
     const params = new URLSearchParams(search);
     const t = params.get("tab");
-    const next = t === "orders" || t === "products" ? t : "products";
+    const next = t === "orders" || t === "categories" || t === "products" ? t : "products";
     setActiveTab((prev) => (prev !== next ? next : prev));
   }, [search]);
 
@@ -71,6 +77,7 @@ export default function EcommercePage() {
     setActiveTab(value);
     const params = new URLSearchParams(search);
     if (value === "orders") params.set("tab", "orders");
+    else if (value === "categories") params.set("tab", "categories");
     else params.delete("tab");
     const qs = params.toString();
     setLocation(qs ? `/ecommerce?${qs}` : `/ecommerce`, { replace: true });
@@ -79,6 +86,20 @@ export default function EcommercePage() {
   const { data: products, isLoading: isLoadingProducts } = useListProducts({
     query: { queryKey: getListProductsQueryKey() }
   });
+
+  const { data: productCategories = [] as ProductCategory[], isLoading: isLoadingCategories } = useListProductCategories({
+    query: { queryKey: getListProductCategoriesQueryKey() }
+  });
+
+  const createProductCategory = useCreateProductCategory();
+  const updateProductCategory = useUpdateProductCategory();
+  const deleteProductCategory = useDeleteProductCategory();
+
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<ProductCategory | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<ProductCategory | null>(null);
+  const [createCategoryName, setCreateCategoryName] = useState("");
+  const [editCategoryName, setEditCategoryName] = useState("");
 
   const { data: orders, isLoading: isLoadingOrders } = useListOrders({
     query: { queryKey: getListOrdersQueryKey() }
@@ -119,16 +140,15 @@ export default function EcommercePage() {
   const [createProdPurchaseTaxId, setCreateProdPurchaseTaxId] = useState<number | null>(null);
   const [editProdSalesTaxId, setEditProdSalesTaxId] = useState<number | null>(null);
   const [editProdPurchaseTaxId, setEditProdPurchaseTaxId] = useState<number | null>(null);
+  const [createProdCategory, setCreateProdCategory] = useState<string>("");
+  const [editProdCategory, setEditProdCategory] = useState<string>("");
 
   const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("__all__");
   const [productSearch, setProductSearch] = useState<string>("");
 
-  const categories = useMemo(
-    () => [...new Set((products ?? []).map((p) => p.category))].sort(),
-    [products],
-  );
+  const categories = productCategories.map((c) => c.name);
 
   const filteredProducts = (products ?? []).filter((p) => {
     if (productSearch.trim()) {
@@ -201,7 +221,7 @@ export default function EcommercePage() {
         sku: formData.get("sku") as string,
         price: Number(formData.get("price")),
         stock: Number(formData.get("stock")),
-        category: formData.get("category") as string,
+        category: createProdCategory,
         imageUrl: createImageUrl,
         defaultSalesTaxId: createProdSalesTaxId,
         defaultPurchaseTaxId: createProdPurchaseTaxId,
@@ -213,6 +233,7 @@ export default function EcommercePage() {
         setCreateImageUrl(null);
         setCreateProdSalesTaxId(null);
         setCreateProdPurchaseTaxId(null);
+        setCreateProdCategory("");
         toast({ title: "Produk berhasil dibuat" });
       },
       onError: () => toast({ title: "Gagal membuat produk", variant: "destructive" }),
@@ -230,7 +251,7 @@ export default function EcommercePage() {
         sku: formData.get("sku") as string,
         price: Number(formData.get("price")),
         stock: Number(formData.get("stock")),
-        category: formData.get("category") as string,
+        category: editProdCategory,
         imageUrl: editImageUrl,
         defaultSalesTaxId: editProdSalesTaxId,
         defaultPurchaseTaxId: editProdPurchaseTaxId,
@@ -253,7 +274,53 @@ export default function EcommercePage() {
     setEditImageUrl(editingProduct?.imageUrl ?? null);
     setEditProdSalesTaxId(editingProduct?.defaultSalesTaxId ?? null);
     setEditProdPurchaseTaxId(editingProduct?.defaultPurchaseTaxId ?? null);
+    setEditProdCategory(editingProduct?.category ?? "");
   }, [editingProduct]);
+
+  const handleCreateCategory = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    createProductCategory.mutate({ data: { name: createCategoryName.trim() } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProductCategoriesQueryKey() });
+        setIsCategoryDialogOpen(false);
+        setCreateCategoryName("");
+        toast({ title: "Kategori berhasil dibuat" });
+      },
+      onError: () => toast({ title: "Gagal membuat kategori", variant: "destructive" }),
+    });
+  };
+
+  const handleEditCategory = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+    updateProductCategory.mutate({ id: editingCategory.id, data: { name: editCategoryName.trim() } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProductCategoriesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        setEditingCategory(null);
+        setEditCategoryName("");
+        toast({ title: "Kategori berhasil diperbarui" });
+      },
+      onError: () => toast({ title: "Gagal memperbarui kategori", variant: "destructive" }),
+    });
+  };
+
+  const handleConfirmDeleteCategory = () => {
+    if (!deletingCategory) return;
+    const id = deletingCategory.id;
+    deleteProductCategory.mutate({ id }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProductCategoriesQueryKey() });
+        setDeletingCategory(null);
+        toast({ title: "Kategori berhasil dihapus" });
+      },
+      onError: (err: unknown) => {
+        setDeletingCategory(null);
+        const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        toast({ title: msg ?? "Gagal menghapus kategori", variant: "destructive" });
+      },
+    });
+  };
 
   const handleConfirmDeleteProduct = () => {
     if (!deletingProduct) return;
@@ -381,6 +448,7 @@ export default function EcommercePage() {
           <TabsList className="w-full sm:w-auto">
             <TabsTrigger value="products" className="flex-1 sm:flex-none" data-testid="tab-products">Produk</TabsTrigger>
             <TabsTrigger value="orders" className="flex-1 sm:flex-none" data-testid="tab-orders">Order</TabsTrigger>
+            <TabsTrigger value="categories" className="flex-1 sm:flex-none" data-testid="tab-categories">Kategori</TabsTrigger>
           </TabsList>
 
           {/* PRODUCTS TAB */}
@@ -404,7 +472,15 @@ export default function EcommercePage() {
                         <div className="grid gap-2"><Label htmlFor="price">Harga (IDR)</Label><Input id="price" name="price" type="number" min="0" required data-testid="input-product-price" /></div>
                         <div className="grid gap-2"><Label htmlFor="stock">Stok</Label><Input id="stock" name="stock" type="number" min="0" required data-testid="input-product-stock" /></div>
                       </div>
-                      <div className="grid gap-2"><Label htmlFor="category">Kategori</Label><Input id="category" name="category" required data-testid="input-product-category" /></div>
+                      <div className="grid gap-2">
+                        <Label>Kategori</Label>
+                        <Select value={createProdCategory} onValueChange={setCreateProdCategory} data-testid="select-create-product-category" required>
+                          <SelectTrigger data-testid="select-create-product-category-trigger"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                          <SelectContent>
+                            {productCategories.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <ProductImageField
                         imageUrl={createImageUrl}
                         isUploading={createImageUploader.isUploading}
@@ -435,7 +511,7 @@ export default function EcommercePage() {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button type="submit" disabled={createProduct.isPending || createImageUploader.isUploading} data-testid="button-submit-product">
+                      <Button type="submit" disabled={createProduct.isPending || createImageUploader.isUploading || !createProdCategory} data-testid="button-submit-product">
                         {createProduct.isPending ? "Menyimpan..." : "Buat Produk"}
                       </Button>
                     </DialogFooter>
@@ -836,8 +912,131 @@ export default function EcommercePage() {
               )}
             </div>
           </TabsContent>
+
+          {/* CATEGORIES TAB */}
+          <TabsContent value="categories" className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Kategori Produk</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">Kelola daftar kategori yang tersedia untuk produk.</p>
+              </div>
+              <Dialog open={isCategoryDialogOpen} onOpenChange={(open) => { setIsCategoryDialogOpen(open); if (!open) setCreateCategoryName(""); }}>
+                <DialogTrigger asChild>
+                  <Button data-testid="button-add-category"><Plus className="mr-2 h-4 w-4" /> Tambah Kategori</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <form onSubmit={handleCreateCategory}>
+                    <DialogHeader>
+                      <DialogTitle>Tambah Kategori Baru</DialogTitle>
+                      <DialogDescription>Tambahkan kategori produk baru ke daftar.</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="category-name">Nama Kategori</Label>
+                        <Input id="category-name" value={createCategoryName} onChange={(e) => setCreateCategoryName(e.target.value)} required placeholder="cth: Elektronik" data-testid="input-category-name" />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button type="submit" disabled={createProductCategory.isPending || !createCategoryName.trim()} data-testid="button-submit-category">
+                        {createProductCategory.isPending ? "Menyimpan..." : "Buat Kategori"}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nama Kategori</TableHead>
+                      <TableHead className="text-right w-[120px]">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoadingCategories ? (
+                      Array.from({ length: 4 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell><Skeleton className="h-4 w-[160px]" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-[80px] ml-auto" /></TableCell>
+                        </TableRow>
+                      ))
+                    ) : productCategories.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-center py-10 text-muted-foreground">
+                          Belum ada kategori. Tambahkan kategori pertama Anda.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      productCategories.map((cat) => (
+                        <TableRow key={cat.id} data-testid={`row-category-${cat.id}`}>
+                          <TableCell className="font-medium">{cat.name}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => { setEditingCategory(cat); setEditCategoryName(cat.name); }} data-testid={`button-edit-category-${cat.id}`} aria-label="Edit kategori">
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => setDeletingCategory(cat)} data-testid={`button-delete-category-${cat.id}`} aria-label="Hapus kategori" className="text-destructive hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
+
+      {/* EDIT CATEGORY DIALOG */}
+      <Dialog open={!!editingCategory} onOpenChange={(open) => { if (!open) { setEditingCategory(null); setEditCategoryName(""); } }}>
+        <DialogContent>
+          {editingCategory && (
+            <form onSubmit={handleEditCategory}>
+              <DialogHeader>
+                <DialogTitle>Edit Kategori</DialogTitle>
+                <DialogDescription>Ganti nama kategori "{editingCategory.name}".</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-category-name">Nama Kategori</Label>
+                  <Input id="edit-category-name" value={editCategoryName} onChange={(e) => setEditCategoryName(e.target.value)} required data-testid="input-edit-category-name" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditingCategory(null)}>Batal</Button>
+                <Button type="submit" disabled={updateProductCategory.isPending || !editCategoryName.trim()} data-testid="button-save-category">
+                  {updateProductCategory.isPending ? "Menyimpan..." : "Simpan"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE CATEGORY CONFIRM */}
+      <AlertDialog open={!!deletingCategory} onOpenChange={(open) => !open && setDeletingCategory(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Kategori?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Kategori <strong>{deletingCategory?.name}</strong> akan dihapus permanen. Kategori yang masih digunakan produk tidak dapat dihapus — ubah kategori produk tersebut terlebih dahulu.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-category">Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteCategory} disabled={deleteProductCategory.isPending} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-delete-category">
+              {deleteProductCategory.isPending ? "Menghapus..." : "Hapus"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* EDIT PRODUCT DIALOG */}
       <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
@@ -855,7 +1054,15 @@ export default function EcommercePage() {
                   <div className="grid gap-2"><Label htmlFor="edit-price">Harga (IDR)</Label><Input id="edit-price" name="price" type="number" min="0" defaultValue={editingProduct.price} required data-testid="input-edit-product-price" /></div>
                   <div className="grid gap-2"><Label htmlFor="edit-stock">Stok</Label><Input id="edit-stock" name="stock" type="number" min="0" defaultValue={editingProduct.stock} required data-testid="input-edit-product-stock" /></div>
                 </div>
-                <div className="grid gap-2"><Label htmlFor="edit-category">Kategori</Label><Input id="edit-category" name="category" defaultValue={editingProduct.category} required data-testid="input-edit-product-category" /></div>
+                <div className="grid gap-2">
+                  <Label>Kategori</Label>
+                  <Select value={editProdCategory} onValueChange={setEditProdCategory} data-testid="select-edit-product-category">
+                    <SelectTrigger data-testid="select-edit-product-category-trigger"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                    <SelectContent>
+                      {productCategories.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <ProductImageField
                   imageUrl={editImageUrl}
                   isUploading={editImageUploader.isUploading}
@@ -887,7 +1094,7 @@ export default function EcommercePage() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>Batal</Button>
-                <Button type="submit" disabled={updateProduct.isPending || editImageUploader.isUploading} data-testid="button-save-product">
+                <Button type="submit" disabled={updateProduct.isPending || editImageUploader.isUploading || !editProdCategory} data-testid="button-save-product">
                   {updateProduct.isPending ? "Menyimpan..." : "Simpan Perubahan"}
                 </Button>
               </DialogFooter>

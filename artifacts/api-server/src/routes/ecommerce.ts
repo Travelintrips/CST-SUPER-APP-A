@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, productsTable, ordersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, productsTable, ordersTable, productCategoriesTable } from "@workspace/db";
+import { eq, count } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postEcommerceOrder } from "../lib/accounting.js";
 
@@ -25,6 +25,67 @@ function serializeProduct(p: typeof productsTable.$inferSelect) {
   };
 }
 
+// GET /api/ecommerce/product-categories
+router.get("/product-categories", async (_req, res) => {
+  const categories = await db.select().from(productCategoriesTable).orderBy(productCategoriesTable.name);
+  return res.json(categories.map((c) => ({ ...c, createdAt: c.createdAt.toISOString() })));
+});
+
+// POST /api/ecommerce/product-categories
+router.post("/product-categories", async (req, res) => {
+  const name = (req.body.name ?? "").toString().trim();
+  if (!name) return res.status(400).json({ message: "Name is required" });
+  try {
+    const [category] = await db.insert(productCategoriesTable).values({ name }).returning();
+    return res.status(201).json({ ...category, createdAt: category.createdAt.toISOString() });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("unique constraint")) {
+      return res.status(409).json({ message: "Category name already exists" });
+    }
+    throw err;
+  }
+});
+
+// PUT /api/ecommerce/product-categories/:id
+router.put("/product-categories/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid category id" });
+  const name = (req.body.name ?? "").toString().trim();
+  if (!name) return res.status(400).json({ message: "Name is required" });
+  try {
+    const [existing] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.id, id));
+    if (!existing) return res.status(404).json({ message: "Category not found" });
+    const oldName = existing.name;
+    const category = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(productCategoriesTable).set({ name }).where(eq(productCategoriesTable.id, id)).returning();
+      if (oldName !== name) {
+        await tx.update(productsTable).set({ category: name }).where(eq(productsTable.category, oldName));
+      }
+      return updated;
+    });
+    return res.json({ ...category, createdAt: category.createdAt.toISOString() });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("unique constraint")) {
+      return res.status(409).json({ message: "Category name already exists" });
+    }
+    throw err;
+  }
+});
+
+// DELETE /api/ecommerce/product-categories/:id
+router.delete("/product-categories/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid category id" });
+  const [existing] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.id, id));
+  if (!existing) return res.status(404).json({ message: "Category not found" });
+  const [{ value: usageCount }] = await db.select({ value: count() }).from(productsTable).where(eq(productsTable.category, existing.name));
+  if (usageCount > 0) {
+    return res.status(409).json({ message: `Kategori ini digunakan oleh ${usageCount} produk. Ubah kategori produk tersebut terlebih dahulu.` });
+  }
+  await db.delete(productCategoriesTable).where(eq(productCategoriesTable.id, id));
+  return res.json({ message: "Category deleted" });
+});
+
 // GET /api/ecommerce/products
 router.get("/products", async (_req, res) => {
   const products = await db.select().from(productsTable).orderBy(productsTable.createdAt);
@@ -34,8 +95,12 @@ router.get("/products", async (_req, res) => {
 // POST /api/ecommerce/products
 router.post("/products", async (req, res) => {
   const { name, sku, price, stock, category, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
+  const categoryName = (category ?? "").toString().trim();
+  if (!categoryName) return res.status(400).json({ message: "Category is required" });
+  const [validCat] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.name, categoryName));
+  if (!validCat) return res.status(400).json({ message: "Category does not exist in the predefined list" });
   const [product] = await db.insert(productsTable).values({
-    name, sku, price: String(price), stock: stock ?? 0, category, description,
+    name, sku, price: String(price), stock: stock ?? 0, category: categoryName, description,
     imageUrl: normalizeImage(imageUrl),
     defaultSalesTaxId: defaultSalesTaxId ?? null,
     defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
@@ -55,8 +120,12 @@ router.get("/products/:id", async (req, res) => {
 router.put("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   const { name, sku, price, stock, category, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
+  const categoryName = (category ?? "").toString().trim();
+  if (!categoryName) return res.status(400).json({ message: "Category is required" });
+  const [validCat] = await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.name, categoryName));
+  if (!validCat) return res.status(400).json({ message: "Category does not exist in the predefined list" });
   const [product] = await db.update(productsTable).set({
-    name, sku, price: String(price), stock, category, description,
+    name, sku, price: String(price), stock, category: categoryName, description,
     imageUrl: normalizeImage(imageUrl),
     defaultSalesTaxId: defaultSalesTaxId ?? null,
     defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,

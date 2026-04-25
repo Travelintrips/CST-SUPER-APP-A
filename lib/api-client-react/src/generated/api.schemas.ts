@@ -41,6 +41,16 @@ export interface DashboardSummary {
   lowStockCount: number;
 }
 
+export interface ProductCategory {
+  id: number;
+  name: string;
+  createdAt: string;
+}
+
+export interface CreateProductCategoryBody {
+  name: string;
+}
+
 export interface Product {
   id: number;
   name: string;

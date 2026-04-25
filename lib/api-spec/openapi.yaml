@@ -222,6 +222,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /ecommerce/product-categories:
+    get:
+      operationId: listProductCategories
+      tags: [ecommerce]
+      summary: List all product categories
+      responses:
+        "200":
+          description: Product category list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductCategory"
+    post:
+      operationId: createProductCategory
+      tags: [ecommerce]
+      summary: Create a product category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductCategoryBody"
+      responses:
+        "201":
+          description: Created product category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductCategory"
+
+  /ecommerce/product-categories/{id}:
+    put:
+      operationId: updateProductCategory
+      tags: [ecommerce]
+      summary: Rename a product category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductCategoryBody"
+      responses:
+        "200":
+          description: Updated product category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductCategory"
+    delete:
+      operationId: deleteProductCategory
+      tags: [ecommerce]
+      summary: Delete a product category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
   /ecommerce/orders:
     get:
       operationId: listOrders
@@ -1595,6 +1669,24 @@ components:
         lowStockCount:
           type: integer
       required: [totalOrders, totalRevenue, totalShipments, totalStockValue, todayTransactions, lowStockCount]
+
+    ProductCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, createdAt]
+
+    CreateProductCategoryBody:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
 
     Product:
       type: object

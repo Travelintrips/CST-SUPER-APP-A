@@ -169,6 +169,53 @@ export const DeleteProductResponse = zod.object({
 });
 
 /**
+ * @summary List all product categories
+ */
+export const ListProductCategoriesResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  createdAt: zod.string(),
+});
+export const ListProductCategoriesResponse = zod.array(
+  ListProductCategoriesResponseItem,
+);
+
+/**
+ * @summary Create a product category
+ */
+export const CreateProductCategoryBody = zod.object({
+  name: zod.string(),
+});
+
+/**
+ * @summary Rename a product category
+ */
+export const UpdateProductCategoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateProductCategoryBody = zod.object({
+  name: zod.string(),
+});
+
+export const UpdateProductCategoryResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a product category
+ */
+export const DeleteProductCategoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteProductCategoryResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
  * @summary List all orders
  */
 export const ListOrdersResponseItem = zod.object({

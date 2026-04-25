@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAccountingDefaults } from "./lib/accountingSeed";
+import { seedProductCategoriesFromExisting } from "./lib/productCategorySeed";
 
 const rawPort = process.env["PORT"];
 
@@ -27,5 +28,10 @@ app.listen(port, (err) => {
   // Run idempotent accounting seed (no-op if accounts already exist)
   seedAccountingDefaults().catch((seedErr) => {
     logger.error({ err: seedErr }, "Accounting seed failed");
+  });
+
+  // Backfill existing product category strings into product_categories table (idempotent)
+  seedProductCategoriesFromExisting().catch((seedErr) => {
+    logger.error({ err: seedErr }, "Product category backfill failed");
   });
 });
