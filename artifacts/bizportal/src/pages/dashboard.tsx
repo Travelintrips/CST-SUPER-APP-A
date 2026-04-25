@@ -1,17 +1,27 @@
+import { useCallback } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 
+const REFRESH_INTERVAL_MS = 60_000;
+
 export default function DashboardPage() {
-  const { data: summary, isLoading } = useGetDashboardSummary({
+  const { data: summary, isLoading, isFetching, refetch, dataUpdatedAt } = useGetDashboardSummary({
     query: {
       queryKey: getGetDashboardSummaryQueryKey(),
+      refetchInterval: REFRESH_INTERVAL_MS,
     }
   });
+
+  const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
+
+  const handleRefresh = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   const activeFreightCount = summary?.activeFreightCount ?? 0;
   const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
@@ -30,12 +40,36 @@ export default function DashboardPage() {
     return new Intl.NumberFormat('id-ID').format(value);
   };
 
+  const formatLastUpdated = (date: Date) => {
+    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin Overview</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Aggregated business metrics across all divisions.</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin Overview</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Aggregated business metrics across all divisions.</p>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isFetching}
+              data-testid="dashboard-refresh-btn"
+              className="gap-1.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+              {isFetching ? "Memuat..." : "Refresh"}
+            </Button>
+            {!isLoading && lastUpdated && (
+              <p className="text-xs text-muted-foreground">
+                Diperbarui: {formatLastUpdated(lastUpdated)}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
