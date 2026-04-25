@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer } from "lucide-react";
+import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -123,6 +123,7 @@ export default function EcommercePage() {
   const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("__all__");
+  const [productSearch, setProductSearch] = useState<string>("");
 
   const categories = useMemo(
     () => [...new Set((products ?? []).map((p) => p.category))].sort(),
@@ -130,6 +131,10 @@ export default function EcommercePage() {
   );
 
   const filteredProducts = (products ?? []).filter((p) => {
+    if (productSearch.trim()) {
+      const q = productSearch.trim().toLowerCase();
+      if (!p.name.toLowerCase().includes(q) && !(p.sku ?? "").toLowerCase().includes(q)) return false;
+    }
     if (filterSalesTaxId !== "all") {
       if (filterSalesTaxId === "none") {
         if (p.defaultSalesTaxId != null) return false;
@@ -439,6 +444,17 @@ export default function EcommercePage() {
               </Dialog>
             </div>
 
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="Cari nama produk atau SKU..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                data-testid="input-product-search"
+              />
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-2">
               <Select value={filterSalesTaxId} onValueChange={setFilterSalesTaxId} data-testid="filter-sales-tax">
                 <SelectTrigger className="sm:w-[220px]" data-testid="filter-sales-tax-trigger">
@@ -513,7 +529,7 @@ export default function EcommercePage() {
                         <TableCell colSpan={9} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
-                            <p>{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                            <p>{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -570,7 +586,7 @@ export default function EcommercePage() {
               ) : filteredProducts.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <PackageSearch className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                  <p className="text-sm text-muted-foreground">{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                 </CardContent></Card>
               ) : (
                 filteredProducts.map((product) => (
