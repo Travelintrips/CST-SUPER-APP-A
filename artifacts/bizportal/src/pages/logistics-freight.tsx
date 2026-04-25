@@ -70,6 +70,13 @@ export default function LogisticsFreightPage() {
     return s.status === statusFilter;
   }) ?? [];
 
+  const getFilterCount = (value: string | null): number => {
+    if (!shipments) return 0;
+    if (value === null) return shipments.length;
+    if (value === "active") return shipments.filter((s) => ACTIVE_STATUSES.includes(s.status)).length;
+    return shipments.filter((s) => s.status === value).length;
+  };
+
   const handleDelete = (id: number, shipmentNumber: string) => {
     if (!confirm(`Hapus shipment ${shipmentNumber}?`)) return;
     deleteShipment.mutate(
@@ -114,14 +121,19 @@ export default function LogisticsFreightPage() {
         <div className="flex flex-wrap gap-2">
           {STATUS_FILTERS.map((f) => {
             const isActive = statusFilter === f.value;
+            const count = getFilterCount(f.value);
             return (
               <Button
                 key={f.value ?? "all"}
                 variant={isActive ? "default" : "outline"}
                 size="sm"
                 onClick={() => setStatusFilter(f.value)}
+                className="gap-1.5"
               >
                 {f.label}
+                <span className={`inline-flex items-center justify-center rounded-full text-xs font-semibold min-w-[1.25rem] px-1 ${isActive ? "bg-white/20 text-inherit" : "bg-muted text-muted-foreground"}`}>
+                  {count}
+                </span>
               </Button>
             );
           })}
