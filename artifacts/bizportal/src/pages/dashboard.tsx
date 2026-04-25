@@ -150,7 +150,7 @@ export default function DashboardPage() {
                     <span className="text-muted-foreground/40">·</span>
                     <span className="flex items-center gap-0.5">
                       <Clock className="h-3 w-3" />
-                      {formatCountdown(secondsLeft)}
+                      Refresh dalam {formatCountdown(secondsLeft)}
                     </span>
                   </>
                 )}
