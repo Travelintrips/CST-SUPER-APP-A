@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, ScanLine } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { FreightScanDialog, type FreightFormFields } from "@/components/freight/FreightScanDialog";
 import {
   useCreateFreightShipment,
   useGetFreightShipment,
@@ -147,6 +148,13 @@ export default function LogisticsFreightEditorPage() {
 
   const isBusy = create.isPending || update.isPending;
 
+  const [showScanDialog, setShowScanDialog] = useState(false);
+
+  const applyScannedFields = (fields: FreightFormFields) => {
+    setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)) }));
+    toast({ title: "Data berhasil diisi dari scan" });
+  };
+
   return (
     <AppShell>
       <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -154,9 +162,18 @@ export default function LogisticsFreightEditorPage() {
           <Button variant="ghost" size="icon" onClick={() => navigate("/logistics/freight")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-bold">
+          <h1 className="text-2xl font-bold flex-1">
             {isEdit ? "Edit Freight Shipment" : "Buat Freight Shipment Baru"}
           </h1>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowScanDialog(true)}
+            className="gap-2"
+          >
+            <ScanLine className="h-4 w-4" />
+            Scan Dokumen
+          </Button>
         </div>
 
         {isEdit && loadingExisting ? (
@@ -318,6 +335,12 @@ export default function LogisticsFreightEditorPage() {
           </form>
         )}
       </div>
+
+      <FreightScanDialog
+        open={showScanDialog}
+        onOpenChange={setShowScanDialog}
+        onApply={applyScannedFields}
+      />
     </AppShell>
   );
 }
