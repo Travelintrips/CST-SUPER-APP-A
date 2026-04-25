@@ -420,6 +420,7 @@ export default function LogisticsPage() {
                   <TableRow>
                     <TableHead>No. Shipment</TableHead>
                     <TableHead className="hidden sm:table-cell">Rute</TableHead>
+                    <TableHead className="hidden md:table-cell whitespace-nowrap">Tgl. Dibuat</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right"></TableHead>
                   </TableRow>
@@ -434,6 +435,9 @@ export default function LogisticsPage() {
                       <TableCell className="font-mono text-sm font-semibold">{s.shipmentNumber}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                         {s.origin} → {s.destination}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground whitespace-nowrap">
+                        {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={FREIGHT_STATUS_COLORS[s.status] ?? ""}>
