@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   useListShipments,
@@ -28,7 +28,8 @@ const FREIGHT_REFETCH_INTERVAL_MS = 60_000;
 export default function LogisticsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  const searchString = useSearch();
 
   const { data: shipments, isLoading } = useListShipments();
   const createShipment = useCreateShipment();
@@ -68,11 +69,40 @@ export default function LogisticsPage() {
     cancelled: "bg-destructive/10 text-destructive border-destructive/20",
   };
 
-  const [freightStatusFilter, setFreightStatusFilter] = useState<string>("all");
-  const [freightSortOrder, setFreightSortOrder] = useState<"newest" | "oldest">("newest");
-  const [freightDateFilter, setFreightDateFilter] = useState<"all" | "7days" | "30days" | "custom">("all");
-  const [customDateFrom, setCustomDateFrom] = useState<string>("");
-  const [customDateTo, setCustomDateTo] = useState<string>("");
+  const rawSearch = searchString.startsWith("?") ? searchString.slice(1) : searchString;
+  const initialParams = new URLSearchParams(rawSearch);
+
+  const VALID_FREIGHT_STATUSES = ["all", "draft", "rfq_sent", "confirmed", "in_transit"];
+  const initialStatus = initialParams.get("status") ?? "all";
+  const [freightStatusFilter, setFreightStatusFilter] = useState<string>(
+    VALID_FREIGHT_STATUSES.includes(initialStatus) ? initialStatus : "all"
+  );
+  const [freightSortOrder, setFreightSortOrder] = useState<"newest" | "oldest">(
+    initialParams.get("sort") === "oldest" ? "oldest" : "newest"
+  );
+  const [freightDateFilter, setFreightDateFilter] = useState<"all" | "7days" | "30days" | "custom">(
+    (["all", "7days", "30days", "custom"].includes(initialParams.get("date") ?? "")
+      ? (initialParams.get("date") as "all" | "7days" | "30days" | "custom")
+      : "all")
+  );
+  const [customDateFrom, setCustomDateFrom] = useState<string>(initialParams.get("from") ?? "");
+  const [customDateTo, setCustomDateTo] = useState<string>(initialParams.get("to") ?? "");
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (freightStatusFilter !== "all") params.set("status", freightStatusFilter);
+    if (freightSortOrder !== "newest") params.set("sort", freightSortOrder);
+    if (freightDateFilter !== "all") params.set("date", freightDateFilter);
+    if (freightDateFilter === "custom" && customDateFrom) params.set("from", customDateFrom);
+    if (freightDateFilter === "custom" && customDateTo) params.set("to", customDateTo);
+    const qs = params.toString();
+    const newUrl = qs ? `${location}?${qs}` : location;
+    const currentFull = rawSearch ? `${location}?${rawSearch}` : location;
+    if (newUrl !== currentFull) {
+      navigate(newUrl, { replace: true });
+    }
+  }, [freightStatusFilter, freightSortOrder, freightDateFilter, customDateFrom, customDateTo]);
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const activeFreight = freightShipments?.filter(
