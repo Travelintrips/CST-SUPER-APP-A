@@ -15,6 +15,7 @@ import {
   useGetFreightShipment,
   useUpdateFreightShipment,
   getListFreightShipmentsQueryKey,
+  getGetFreightShipmentQueryKey,
 } from "@workspace/api-client-react";
 
 export default function LogisticsFreightEditorPage() {
@@ -25,8 +26,8 @@ export default function LogisticsFreightEditorPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: existing, isLoading: loadingExisting } = useGetFreightShipment(id!, {
-    query: { enabled: isEdit },
+  const { data: existing, isLoading: loadingExisting } = useGetFreightShipment(id ?? 0, {
+    query: { enabled: isEdit, queryKey: getGetFreightShipmentQueryKey(id ?? 0) },
   });
 
   const create = useCreateFreightShipment();

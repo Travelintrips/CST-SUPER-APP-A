@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  ArrowLeft, Pencil, Printer, Plus, CheckCircle, XCircle, Loader2, Ship, FileText,
+  ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -22,6 +22,8 @@ import {
   useApproveFreightQuote,
   useUpdateFreightShipment,
   getGetFreightShipmentQueryKey,
+  type FreightRfqWithQuotes,
+  type FreightQuote,
 } from "@workspace/api-client-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -161,7 +163,7 @@ export default function LogisticsFreightDetailPage() {
   const handleStatusChange = (status: string) => {
     if (!confirm(`Ubah status menjadi "${STATUS_LABELS[status]}"?`)) return;
     updateShipment.mutate(
-      { id, data: { status } as any },
+      { id, data: { shipperName: shipment!.shipperName, consigneeName: shipment!.consigneeName, commodity: shipment!.commodity, origin: shipment!.origin, destination: shipment!.destination, status } },
       {
         onSuccess: () => {
           invalidate();
@@ -171,8 +173,6 @@ export default function LogisticsFreightDetailPage() {
       }
     );
   };
-
-  const handlePrint = () => window.print();
 
   if (isLoading) {
     return (
@@ -193,7 +193,8 @@ export default function LogisticsFreightDetailPage() {
     );
   }
 
-  const rfqs = (shipment as any).rfqs ?? [];
+  const rfqs: FreightRfqWithQuotes[] = shipment.rfqs ?? [];
+  const printDate = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
   return (
     <AppShell>
@@ -218,7 +219,7 @@ export default function LogisticsFreightDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handlePrint}>
+            <Button variant="outline" onClick={() => window.print()}>
               <Printer className="h-4 w-4 mr-2" />
               Cetak Packing List
             </Button>
@@ -239,11 +240,12 @@ export default function LogisticsFreightDetailPage() {
           </div>
         </div>
 
-        {/* Packing List (printable) */}
-        <div className="hidden print:block mb-8">
+        {/* Packing List — print only */}
+        <div className="hidden print:block">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold uppercase tracking-widest">Packing List</h2>
             <p className="text-lg font-semibold mt-1">{shipment.shipmentNumber}</p>
+            <p className="text-sm mt-1">Tanggal: {printDate}</p>
           </div>
           <div className="grid grid-cols-2 gap-8 mb-6">
             <div>
@@ -281,14 +283,26 @@ export default function LogisticsFreightDetailPage() {
               </tr>
             </tbody>
           </table>
-          <div className="flex gap-8 text-sm">
+          <div className="flex gap-8 text-sm mb-4">
             <div><span className="font-bold">Asal: </span>{shipment.origin}</div>
             <div><span className="font-bold">Tujuan: </span>{shipment.destination}</div>
           </div>
-          {shipment.notes && <p className="mt-4 text-sm"><span className="font-bold">Catatan: </span>{shipment.notes}</p>}
+          {shipment.notes && (
+            <p className="text-sm mb-6"><span className="font-bold">Catatan: </span>{shipment.notes}</p>
+          )}
+          <div className="grid grid-cols-2 gap-8 mt-12">
+            <div className="text-center">
+              <p className="text-sm mb-16">Dibuat oleh,</p>
+              <div className="border-t border-gray-400 pt-2 text-sm">Shipper / Pengirim</div>
+            </div>
+            <div className="text-center">
+              <p className="text-sm mb-16">Mengetahui,</p>
+              <div className="border-t border-gray-400 pt-2 text-sm">Freight Forwarder</div>
+            </div>
+          </div>
         </div>
 
-        {/* Shipment Details Card */}
+        {/* Shipment Details Card — screen only */}
         <Card className="print:hidden">
           <CardHeader><CardTitle>Detail Shipment</CardTitle></CardHeader>
           <CardContent className="space-y-3">
@@ -332,7 +346,7 @@ export default function LogisticsFreightDetailPage() {
           </CardContent>
         </Card>
 
-        {/* RFQ Section */}
+        {/* RFQ Section — screen only */}
         <div className="print:hidden space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -354,7 +368,7 @@ export default function LogisticsFreightDetailPage() {
               </CardContent>
             </Card>
           ) : (
-            rfqs.map((rfq: any) => (
+            rfqs.map((rfq: FreightRfqWithQuotes) => (
               <Card key={rfq.id}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -378,7 +392,7 @@ export default function LogisticsFreightDetailPage() {
                 {rfq.quotes?.length > 0 && (
                   <CardContent>
                     <div className="space-y-3">
-                      {rfq.quotes.map((q: any) => (
+                      {rfq.quotes.map((q: FreightQuote) => (
                         <div
                           key={q.id}
                           className={`border rounded-lg p-4 space-y-2 ${q.status === "approved" ? "border-emerald-500/30 bg-emerald-500/5" : q.status === "rejected" ? "opacity-60" : ""}`}
@@ -419,7 +433,7 @@ export default function LogisticsFreightDetailPage() {
                               <p className="font-semibold text-primary">{fmt(q.totalCost)}</p>
                             </div>
                           </div>
-                          {q.estimatedDays && (
+                          {q.estimatedDays != null && (
                             <p className="text-xs text-muted-foreground">Estimasi: {q.estimatedDays} hari</p>
                           )}
                           {q.notes && <p className="text-xs text-muted-foreground">{q.notes}</p>}
@@ -478,7 +492,7 @@ export default function LogisticsFreightDetailPage() {
             <div className="grid grid-cols-2 gap-3">
               {(["truckingCost", "handlingCost", "freightCost", "otherCost"] as const).map((k) => (
                 <div key={k} className="space-y-2">
-                  <Label className="capitalize">
+                  <Label>
                     {{ truckingCost: "Trucking", handlingCost: "Handling", freightCost: "Freight", otherCost: "Lainnya" }[k]}
                   </Label>
                   <Input

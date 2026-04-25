@@ -111,6 +111,25 @@ router.delete("/freight-shipments/:id", async (req, res) => {
 
 // ─── FREIGHT RFQs ────────────────────────────────────────────────────────────
 
+// GET /api/logistics/freight-rfqs?shipmentId=:shipmentId
+router.get("/freight-rfqs", async (req, res) => {
+  const shipmentId = req.query.shipmentId ? Number(req.query.shipmentId) : undefined;
+  const rows = shipmentId
+    ? await db.select().from(freightRfqsTable).where(eq(freightRfqsTable.shipmentId, shipmentId)).orderBy(desc(freightRfqsTable.createdAt))
+    : await db.select().from(freightRfqsTable).orderBy(desc(freightRfqsTable.createdAt));
+  return res.json(rows.map(serializeRfq));
+});
+
+// GET /api/logistics/freight-rfqs/:id
+router.get("/freight-rfqs/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const [rfq] = await db.select().from(freightRfqsTable).where(eq(freightRfqsTable.id, id));
+  if (!rfq) return res.status(404).json({ message: "RFQ not found" });
+  const quotes = await db.select().from(freightQuotesTable).where(eq(freightQuotesTable.rfqId, id)).orderBy(desc(freightQuotesTable.createdAt));
+  return res.json({ ...serializeRfq(rfq), quotes: quotes.map(serializeQuote) });
+});
+
 // POST /api/logistics/freight-shipments/:shipmentId/rfqs
 router.post("/freight-shipments/:shipmentId/rfqs", async (req, res) => {
   const shipmentId = Number(req.params.shipmentId);
@@ -144,6 +163,24 @@ router.put("/freight-rfqs/:id", async (req, res) => {
 });
 
 // ─── FREIGHT QUOTES ──────────────────────────────────────────────────────────
+
+// GET /api/logistics/freight-quotes?rfqId=:rfqId
+router.get("/freight-quotes", async (req, res) => {
+  const rfqId = req.query.rfqId ? Number(req.query.rfqId) : undefined;
+  const rows = rfqId
+    ? await db.select().from(freightQuotesTable).where(eq(freightQuotesTable.rfqId, rfqId)).orderBy(desc(freightQuotesTable.createdAt))
+    : await db.select().from(freightQuotesTable).orderBy(desc(freightQuotesTable.createdAt));
+  return res.json(rows.map(serializeQuote));
+});
+
+// GET /api/logistics/freight-quotes/:id
+router.get("/freight-quotes/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const [quote] = await db.select().from(freightQuotesTable).where(eq(freightQuotesTable.id, id));
+  if (!quote) return res.status(404).json({ message: "Quote not found" });
+  return res.json(serializeQuote(quote));
+});
 
 // POST /api/logistics/freight-rfqs/:rfqId/quotes
 router.post("/freight-rfqs/:rfqId/quotes", async (req, res) => {
@@ -206,7 +243,6 @@ router.post("/freight-quotes/:id/approve", async (req, res) => {
   if (!quote) return res.status(404).json({ message: "Quote not found" });
   const [rfq] = await db.select().from(freightRfqsTable).where(eq(freightRfqsTable.id, quote.rfqId));
   if (!rfq) return res.status(404).json({ message: "RFQ not found" });
-  const allQuotes = await db.select().from(freightQuotesTable).where(eq(freightQuotesTable.rfqId, quote.rfqId));
   await db.update(freightQuotesTable)
     .set({ status: "rejected" })
     .where(eq(freightQuotesTable.rfqId, quote.rfqId));

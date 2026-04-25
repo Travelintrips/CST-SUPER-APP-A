@@ -686,9 +686,35 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/FreightRfq" }
 
+  /logistics/freight-rfqs:
+    get:
+      operationId: listFreightRfqs
+      tags: [logistics]
+      summary: List freight RFQs (optionally filtered by shipmentId)
+      parameters:
+        - { name: shipmentId, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: RFQ list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FreightRfq" }
+
   /logistics/freight-rfqs/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getFreightRfq
+      tags: [logistics]
+      summary: Get a single freight RFQ with its quotes
+      responses:
+        "200":
+          description: RFQ with quotes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightRfqWithQuotes" }
     put:
       operationId: updateFreightRfq
       tags: [logistics]
@@ -724,9 +750,35 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/FreightQuote" }
 
+  /logistics/freight-quotes:
+    get:
+      operationId: listFreightQuotes
+      tags: [logistics]
+      summary: List freight quotes (optionally filtered by rfqId)
+      parameters:
+        - { name: rfqId, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Quote list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FreightQuote" }
+
   /logistics/freight-quotes/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getFreightQuote
+      tags: [logistics]
+      summary: Get a single freight quote
+      responses:
+        "200":
+          description: Quote
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightQuote" }
     put:
       operationId: updateFreightQuote
       tags: [logistics]

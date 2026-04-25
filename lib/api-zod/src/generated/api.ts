@@ -717,6 +717,63 @@ export const CreateFreightRfqBody = zod.object({
 });
 
 /**
+ * @summary List freight RFQs (optionally filtered by shipmentId)
+ */
+export const ListFreightRfqsQueryParams = zod.object({
+  shipmentId: zod.coerce.number().optional(),
+});
+
+export const ListFreightRfqsResponseItem = zod.object({
+  id: zod.number(),
+  rfqNumber: zod.string(),
+  shipmentId: zod.number(),
+  vendorNames: zod.array(zod.string()),
+  notes: zod.string().nullish(),
+  status: zod.string(),
+  createdAt: zod.string(),
+});
+export const ListFreightRfqsResponse = zod.array(ListFreightRfqsResponseItem);
+
+/**
+ * @summary Get a single freight RFQ with its quotes
+ */
+export const GetFreightRfqParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetFreightRfqResponse = zod
+  .object({
+    id: zod.number(),
+    rfqNumber: zod.string(),
+    shipmentId: zod.number(),
+    vendorNames: zod.array(zod.string()),
+    notes: zod.string().nullish(),
+    status: zod.string(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      quotes: zod.array(
+        zod.object({
+          id: zod.number(),
+          rfqId: zod.number(),
+          shipmentId: zod.number(),
+          vendorName: zod.string(),
+          truckingCost: zod.string().nullish(),
+          handlingCost: zod.string().nullish(),
+          freightCost: zod.string().nullish(),
+          otherCost: zod.string().nullish(),
+          totalCost: zod.string().nullish(),
+          estimatedDays: zod.number().nullish(),
+          notes: zod.string().nullish(),
+          status: zod.enum(["pending", "approved", "rejected"]),
+          createdAt: zod.string(),
+        }),
+      ),
+    }),
+  );
+
+/**
  * @summary Update a freight RFQ
  */
 export const UpdateFreightRfqParams = zod.object({
@@ -754,6 +811,55 @@ export const CreateFreightQuoteBody = zod.object({
   otherCost: zod.number().nullish(),
   estimatedDays: zod.number().nullish(),
   notes: zod.string().nullish(),
+});
+
+/**
+ * @summary List freight quotes (optionally filtered by rfqId)
+ */
+export const ListFreightQuotesQueryParams = zod.object({
+  rfqId: zod.coerce.number().optional(),
+});
+
+export const ListFreightQuotesResponseItem = zod.object({
+  id: zod.number(),
+  rfqId: zod.number(),
+  shipmentId: zod.number(),
+  vendorName: zod.string(),
+  truckingCost: zod.string().nullish(),
+  handlingCost: zod.string().nullish(),
+  freightCost: zod.string().nullish(),
+  otherCost: zod.string().nullish(),
+  totalCost: zod.string().nullish(),
+  estimatedDays: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  status: zod.enum(["pending", "approved", "rejected"]),
+  createdAt: zod.string(),
+});
+export const ListFreightQuotesResponse = zod.array(
+  ListFreightQuotesResponseItem,
+);
+
+/**
+ * @summary Get a single freight quote
+ */
+export const GetFreightQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetFreightQuoteResponse = zod.object({
+  id: zod.number(),
+  rfqId: zod.number(),
+  shipmentId: zod.number(),
+  vendorName: zod.string(),
+  truckingCost: zod.string().nullish(),
+  handlingCost: zod.string().nullish(),
+  freightCost: zod.string().nullish(),
+  otherCost: zod.string().nullish(),
+  totalCost: zod.string().nullish(),
+  estimatedDays: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  status: zod.enum(["pending", "approved", "rejected"]),
+  createdAt: zod.string(),
 });
 
 /**

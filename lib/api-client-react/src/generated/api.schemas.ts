@@ -1335,6 +1335,14 @@ export interface CreateFreightQuoteBody {
   notes?: string | null;
 }
 
+export type ListFreightRfqsParams = {
+  shipmentId?: number;
+};
+
+export type ListFreightQuotesParams = {
+  rfqId?: number;
+};
+
 export type ListSalesDocumentsParams = {
   kind?: ListSalesDocumentsKind;
   invoiceStatus?: ListSalesDocumentsInvoiceStatus;

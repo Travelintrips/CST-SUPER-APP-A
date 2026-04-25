@@ -54,6 +54,7 @@ import type {
   DashboardSummary,
   FreightQuote,
   FreightRfq,
+  FreightRfqWithQuotes,
   FreightShipment,
   FreightShipmentDetail,
   GeneralLedgerReport,
@@ -67,6 +68,8 @@ import type {
   ListAccountingEntriesParams,
   ListAccountingPaymentsParams,
   ListCorrespondencesParams,
+  ListFreightQuotesParams,
+  ListFreightRfqsParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
   MessageResponse,
@@ -3000,6 +3003,187 @@ export const useCreateFreightRfq = <
 };
 
 /**
+ * @summary List freight RFQs (optionally filtered by shipmentId)
+ */
+export const getListFreightRfqsUrl = (params?: ListFreightRfqsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/logistics/freight-rfqs?${stringifiedParams}`
+    : `/api/logistics/freight-rfqs`;
+};
+
+export const listFreightRfqs = async (
+  params?: ListFreightRfqsParams,
+  options?: RequestInit,
+): Promise<FreightRfq[]> => {
+  return customFetch<FreightRfq[]>(getListFreightRfqsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListFreightRfqsQueryKey = (params?: ListFreightRfqsParams) => {
+  return [`/api/logistics/freight-rfqs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListFreightRfqsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFreightRfqs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListFreightRfqsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightRfqs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListFreightRfqsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listFreightRfqs>>> = ({
+    signal,
+  }) => listFreightRfqs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listFreightRfqs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListFreightRfqsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFreightRfqs>>
+>;
+export type ListFreightRfqsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List freight RFQs (optionally filtered by shipmentId)
+ */
+
+export function useListFreightRfqs<
+  TData = Awaited<ReturnType<typeof listFreightRfqs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListFreightRfqsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightRfqs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFreightRfqsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a single freight RFQ with its quotes
+ */
+export const getGetFreightRfqUrl = (id: number) => {
+  return `/api/logistics/freight-rfqs/${id}`;
+};
+
+export const getFreightRfq = async (
+  id: number,
+  options?: RequestInit,
+): Promise<FreightRfqWithQuotes> => {
+  return customFetch<FreightRfqWithQuotes>(getGetFreightRfqUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFreightRfqQueryKey = (id: number) => {
+  return [`/api/logistics/freight-rfqs/${id}`] as const;
+};
+
+export const getGetFreightRfqQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFreightRfq>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightRfq>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetFreightRfqQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFreightRfq>>> = ({
+    signal,
+  }) => getFreightRfq(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFreightRfq>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFreightRfqQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFreightRfq>>
+>;
+export type GetFreightRfqQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a single freight RFQ with its quotes
+ */
+
+export function useGetFreightRfq<
+  TData = Awaited<ReturnType<typeof getFreightRfq>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightRfq>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFreightRfqQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Update a freight RFQ
  */
 export const getUpdateFreightRfqUrl = (id: number) => {
@@ -3172,6 +3356,193 @@ export const useCreateFreightQuote = <
 > => {
   return useMutation(getCreateFreightQuoteMutationOptions(options));
 };
+
+/**
+ * @summary List freight quotes (optionally filtered by rfqId)
+ */
+export const getListFreightQuotesUrl = (params?: ListFreightQuotesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/logistics/freight-quotes?${stringifiedParams}`
+    : `/api/logistics/freight-quotes`;
+};
+
+export const listFreightQuotes = async (
+  params?: ListFreightQuotesParams,
+  options?: RequestInit,
+): Promise<FreightQuote[]> => {
+  return customFetch<FreightQuote[]>(getListFreightQuotesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListFreightQuotesQueryKey = (
+  params?: ListFreightQuotesParams,
+) => {
+  return [
+    `/api/logistics/freight-quotes`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListFreightQuotesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFreightQuotes>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListFreightQuotesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightQuotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListFreightQuotesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listFreightQuotes>>
+  > = ({ signal }) => listFreightQuotes(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listFreightQuotes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListFreightQuotesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFreightQuotes>>
+>;
+export type ListFreightQuotesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List freight quotes (optionally filtered by rfqId)
+ */
+
+export function useListFreightQuotes<
+  TData = Awaited<ReturnType<typeof listFreightQuotes>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListFreightQuotesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightQuotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFreightQuotesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a single freight quote
+ */
+export const getGetFreightQuoteUrl = (id: number) => {
+  return `/api/logistics/freight-quotes/${id}`;
+};
+
+export const getFreightQuote = async (
+  id: number,
+  options?: RequestInit,
+): Promise<FreightQuote> => {
+  return customFetch<FreightQuote>(getGetFreightQuoteUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFreightQuoteQueryKey = (id: number) => {
+  return [`/api/logistics/freight-quotes/${id}`] as const;
+};
+
+export const getGetFreightQuoteQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFreightQuote>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightQuote>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetFreightQuoteQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFreightQuote>>> = ({
+    signal,
+  }) => getFreightQuote(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFreightQuote>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFreightQuoteQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFreightQuote>>
+>;
+export type GetFreightQuoteQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a single freight quote
+ */
+
+export function useGetFreightQuote<
+  TData = Awaited<ReturnType<typeof getFreightQuote>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightQuote>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFreightQuoteQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Update a vendor quote
