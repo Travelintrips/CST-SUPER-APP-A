@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable } from "@workspace/db";
+import { sql, and, ne, eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -19,6 +19,15 @@ router.get("/summary", async (req, res) => {
   const [lowStock] = await db.select({ count: sql<number>`count(*)` }).from(productsTable)
     .where(sql`stock < 10`);
 
+  const [activeFreight] = await db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
+    .where(and(ne(freightShipmentsTable.status, "cancelled"), ne(freightShipmentsTable.status, "completed")));
+
+  const [awaitingQuote] = await db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
+    .where(eq(freightShipmentsTable.status, "rfq_sent"));
+
+  const [inTransit] = await db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
+    .where(eq(freightShipmentsTable.status, "in_transit"));
+
   return res.json({
     totalOrders: Number(orderCount.count),
     totalRevenue: Number(revenue.total),
@@ -26,6 +35,9 @@ router.get("/summary", async (req, res) => {
     totalStockValue: Number(stockValue.total),
     todayTransactions: Number(todayTx.count),
     lowStockCount: Number(lowStock.count),
+    activeFreightCount: Number(activeFreight.count),
+    awaitingQuoteCount: Number(awaitingQuote.count),
+    inTransitCount: Number(inTransit.count),
   });
 });
 

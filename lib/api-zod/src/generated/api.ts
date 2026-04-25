@@ -68,6 +68,9 @@ export const GetDashboardSummaryResponse = zod.object({
   totalStockValue: zod.number(),
   todayTransactions: zod.number(),
   lowStockCount: zod.number(),
+  activeFreightCount: zod.number(),
+  awaitingQuoteCount: zod.number(),
+  inTransitCount: zod.number(),
 });
 
 /**

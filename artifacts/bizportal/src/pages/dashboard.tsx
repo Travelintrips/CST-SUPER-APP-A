@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, useListFreightShipments } from "@workspace/api-client-react";
+import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,12 +13,9 @@ export default function DashboardPage() {
     }
   });
 
-  const { data: freightShipments, isLoading: freightLoading } = useListFreightShipments();
-  const activeFreight = freightShipments?.filter(
-    (s) => s.status !== "cancelled" && s.status !== "completed"
-  ) ?? [];
-  const awaitingQuote = freightShipments?.filter((s) => s.status === "rfq_sent") ?? [];
-  const inTransit = freightShipments?.filter((s) => s.status === "in_transit") ?? [];
+  const activeFreightCount = summary?.activeFreightCount ?? 0;
+  const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
+  const inTransitCount = summary?.inTransitCount ?? 0;
 
   const formatIDR = (value: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -116,7 +113,7 @@ export default function DashboardPage() {
             <CardDescription>Ringkasan pengiriman freight internasional aktif</CardDescription>
           </CardHeader>
           <CardContent>
-            {freightLoading ? (
+            {isLoading ? (
               <div className="grid grid-cols-3 gap-4">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="space-y-1">
@@ -128,20 +125,20 @@ export default function DashboardPage() {
             ) : (
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <p className="text-2xl font-bold">{activeFreight.length}</p>
+                  <p className="text-2xl font-bold">{activeFreightCount}</p>
                   <p className="text-xs text-muted-foreground">Shipment Aktif</p>
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-2xl font-bold text-amber-500">{awaitingQuote.length}</p>
-                    {awaitingQuote.length > 0 && (
+                    <p className="text-2xl font-bold text-amber-500">{awaitingQuoteCount}</p>
+                    {awaitingQuoteCount > 0 && (
                       <Clock className="h-4 w-4 text-amber-500 shrink-0" />
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">Menunggu Persetujuan Quote</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-2xl font-bold text-indigo-500">{inTransit.length}</p>
+                  <p className="text-2xl font-bold text-indigo-500">{inTransitCount}</p>
                   <p className="text-xs text-muted-foreground">Dalam Perjalanan</p>
                 </div>
               </div>

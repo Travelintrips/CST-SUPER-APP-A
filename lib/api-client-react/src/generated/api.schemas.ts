@@ -39,6 +39,9 @@ export interface DashboardSummary {
   totalStockValue: number;
   todayTransactions: number;
   lowStockCount: number;
+  activeFreightCount: number;
+  awaitingQuoteCount: number;
+  inTransitCount: number;
 }
 
 export interface ProductCategory {

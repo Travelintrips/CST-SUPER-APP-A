@@ -2022,7 +2022,13 @@ components:
           type: integer
         lowStockCount:
           type: integer
-      required: [totalOrders, totalRevenue, totalShipments, totalStockValue, todayTransactions, lowStockCount]
+        activeFreightCount:
+          type: integer
+        awaitingQuoteCount:
+          type: integer
+        inTransitCount:
+          type: integer
+      required: [totalOrders, totalRevenue, totalShipments, totalStockValue, todayTransactions, lowStockCount, activeFreightCount, awaitingQuoteCount, inTransitCount]
 
     ProductCategory:
       type: object
