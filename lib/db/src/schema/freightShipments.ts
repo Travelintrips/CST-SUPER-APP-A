@@ -1,4 +1,4 @@
-import { pgTable, serial, text, numeric, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, numeric, integer, timestamp, date, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -35,6 +35,11 @@ export const freightShipmentsTable = pgTable("freight_shipments", {
   measurement: text("measurement"),
   status: freightShipmentStatusEnum("status").default("draft").notNull(),
   notes: text("notes"),
+  actualCost: numeric("actual_cost", { precision: 14, scale: 2 }),
+  departureDate: date("departure_date"),
+  arrivalDate: date("arrival_date"),
+  trackingNumber: text("tracking_number"),
+  awbNumber: text("awb_number"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

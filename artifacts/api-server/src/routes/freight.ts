@@ -82,7 +82,8 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
-    portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, status, notes } = req.body;
+    portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, status, notes,
+    actualCost, departureDate, arrivalDate, trackingNumber, awbNumber } = req.body;
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
   const patch: Partial<typeof freightShipmentsTable.$inferInsert> = {};
@@ -108,6 +109,11 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (measurement !== undefined) patch.measurement = measurement || null;
   if (status !== undefined) patch.status = status;
   if (notes !== undefined) patch.notes = notes || null;
+  if (actualCost !== undefined) patch.actualCost = actualCost != null ? String(actualCost) : null;
+  if (departureDate !== undefined) patch.departureDate = departureDate || null;
+  if (arrivalDate !== undefined) patch.arrivalDate = arrivalDate || null;
+  if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber || null;
+  if (awbNumber !== undefined) patch.awbNumber = awbNumber || null;
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
   return res.json(serializeShipment(updated!));
 });

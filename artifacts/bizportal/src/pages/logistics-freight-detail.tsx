@@ -81,6 +81,12 @@ export default function LogisticsFreightDetailPage() {
   const [rfqVendors, setRfqVendors] = useState("");
   const [rfqNotes, setRfqNotes] = useState("");
 
+  const [showInTransitDialog, setShowInTransitDialog] = useState(false);
+  const [inTransitForm, setInTransitForm] = useState({ departureDate: "", trackingNumber: "", awbNumber: "" });
+
+  const [showCompletedDialog, setShowCompletedDialog] = useState(false);
+  const [completedForm, setCompletedForm] = useState({ arrivalDate: "", actualCost: "" });
+
   const [showQuoteDialog, setShowQuoteDialog] = useState(false);
   const [quoteRfqId, setQuoteRfqId] = useState<number | null>(null);
   const [quoteForm, setQuoteForm] = useState({
@@ -160,14 +166,63 @@ export default function LogisticsFreightDetailPage() {
     );
   };
 
-  const handleStatusChange = (status: string) => {
-    if (!confirm(`Ubah status menjadi "${STATUS_LABELS[status]}"?`)) return;
+  const handleMarkInTransit = () => {
+    if (!inTransitForm.departureDate) {
+      toast({ title: "Tanggal keberangkatan wajib diisi", variant: "destructive" });
+      return;
+    }
     updateShipment.mutate(
-      { id, data: { shipperName: shipment!.shipperName, consigneeName: shipment!.consigneeName, commodity: shipment!.commodity, origin: shipment!.origin, destination: shipment!.destination, status } },
+      {
+        id,
+        data: {
+          shipperName: shipment!.shipperName,
+          consigneeName: shipment!.consigneeName,
+          commodity: shipment!.commodity,
+          origin: shipment!.origin,
+          destination: shipment!.destination,
+          status: "in_transit",
+          departureDate: inTransitForm.departureDate,
+          trackingNumber: inTransitForm.trackingNumber || undefined,
+          awbNumber: inTransitForm.awbNumber || undefined,
+        },
+      },
       {
         onSuccess: () => {
           invalidate();
-          toast({ title: "Status diperbarui" });
+          setShowInTransitDialog(false);
+          setInTransitForm({ departureDate: "", trackingNumber: "", awbNumber: "" });
+          toast({ title: "Status diperbarui: Dalam Perjalanan" });
+        },
+        onError: () => toast({ title: "Gagal mengubah status", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleMarkCompleted = () => {
+    if (!completedForm.arrivalDate) {
+      toast({ title: "Tanggal tiba wajib diisi", variant: "destructive" });
+      return;
+    }
+    updateShipment.mutate(
+      {
+        id,
+        data: {
+          shipperName: shipment!.shipperName,
+          consigneeName: shipment!.consigneeName,
+          commodity: shipment!.commodity,
+          origin: shipment!.origin,
+          destination: shipment!.destination,
+          status: "completed",
+          arrivalDate: completedForm.arrivalDate,
+          actualCost: completedForm.actualCost ? Number(completedForm.actualCost) : undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          invalidate();
+          setShowCompletedDialog(false);
+          setCompletedForm({ arrivalDate: "", actualCost: "" });
+          toast({ title: "Status diperbarui: Selesai" });
         },
         onError: () => toast({ title: "Gagal mengubah status", variant: "destructive" }),
       }
@@ -234,12 +289,12 @@ export default function LogisticsFreightDetailPage() {
               Edit
             </Button>
             {shipment.status === "confirmed" && (
-              <Button onClick={() => handleStatusChange("in_transit")} disabled={updateShipment.isPending}>
+              <Button onClick={() => setShowInTransitDialog(true)} disabled={updateShipment.isPending}>
                 Tandai Dalam Perjalanan
               </Button>
             )}
             {shipment.status === "in_transit" && (
-              <Button onClick={() => handleStatusChange("completed")} disabled={updateShipment.isPending}>
+              <Button onClick={() => setShowCompletedDialog(true)} disabled={updateShipment.isPending}>
                 Tandai Selesai
               </Button>
             )}
@@ -340,6 +395,21 @@ export default function LogisticsFreightDetailPage() {
                 <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Rute</p>
                 <InfoRow label="Asal" value={shipment.origin} />
                 <InfoRow label="Tujuan" value={shipment.destination} />
+                {(shipment.departureDate || shipment.arrivalDate || shipment.trackingNumber || shipment.awbNumber || shipment.actualCost) && (
+                  <>
+                    <Separator className="my-2" />
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Pengiriman Aktual</p>
+                    {shipment.departureDate && (
+                      <InfoRow label="Tgl Berangkat" value={new Date(shipment.departureDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })} />
+                    )}
+                    {shipment.arrivalDate && (
+                      <InfoRow label="Tgl Tiba" value={new Date(shipment.arrivalDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })} />
+                    )}
+                    {shipment.trackingNumber && <InfoRow label="No. Tracking" value={shipment.trackingNumber} />}
+                    {shipment.awbNumber && <InfoRow label="No. AWB / BL" value={shipment.awbNumber} />}
+                    {shipment.actualCost && <InfoRow label="Biaya Aktual" value={fmt(shipment.actualCost)} />}
+                  </>
+                )}
                 {shipment.notes && (
                   <>
                     <Separator className="my-2" />
@@ -477,6 +547,79 @@ export default function LogisticsFreightDetailPage() {
             <Button onClick={handleCreateRfq} disabled={createRfq.isPending}>
               {createRfq.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Buat RFQ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* In Transit Dialog */}
+      <Dialog open={showInTransitDialog} onOpenChange={setShowInTransitDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Tandai Dalam Perjalanan</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Tanggal Keberangkatan <span className="text-destructive">*</span></Label>
+              <Input
+                type="date"
+                value={inTransitForm.departureDate}
+                onChange={(e) => setInTransitForm((f) => ({ ...f, departureDate: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>No. Tracking</Label>
+              <Input
+                value={inTransitForm.trackingNumber}
+                onChange={(e) => setInTransitForm((f) => ({ ...f, trackingNumber: e.target.value }))}
+                placeholder="Nomor tracking pengiriman"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>No. AWB / BL</Label>
+              <Input
+                value={inTransitForm.awbNumber}
+                onChange={(e) => setInTransitForm((f) => ({ ...f, awbNumber: e.target.value }))}
+                placeholder="Air Waybill atau Bill of Lading"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInTransitDialog(false)}>Batal</Button>
+            <Button onClick={handleMarkInTransit} disabled={updateShipment.isPending}>
+              {updateShipment.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Konfirmasi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Completed Dialog */}
+      <Dialog open={showCompletedDialog} onOpenChange={setShowCompletedDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Tandai Selesai</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Tanggal Tiba <span className="text-destructive">*</span></Label>
+              <Input
+                type="date"
+                value={completedForm.arrivalDate}
+                onChange={(e) => setCompletedForm((f) => ({ ...f, arrivalDate: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Biaya Aktual (IDR)</Label>
+              <Input
+                type="number"
+                value={completedForm.actualCost}
+                onChange={(e) => setCompletedForm((f) => ({ ...f, actualCost: e.target.value }))}
+                placeholder="0"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCompletedDialog(false)}>Batal</Button>
+            <Button onClick={handleMarkCompleted} disabled={updateShipment.isPending}>
+              {updateShipment.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Konfirmasi
             </Button>
           </DialogFooter>
         </DialogContent>

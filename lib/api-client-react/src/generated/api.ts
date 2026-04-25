@@ -101,6 +101,7 @@ import type {
   UpdateAccountBody,
   UpdateAccountingSettingsBody,
   UpdateCorrespondenceAttachmentExtractedTextBody,
+  UpdateFreightShipmentBody,
   UpdateJournalBody,
   UpdateOrderBody,
   UpdateShipmentStatusBody,
@@ -2752,14 +2753,14 @@ export const getUpdateFreightShipmentUrl = (id: number) => {
 
 export const updateFreightShipment = async (
   id: number,
-  createFreightShipmentBody: CreateFreightShipmentBody,
+  updateFreightShipmentBody: UpdateFreightShipmentBody,
   options?: RequestInit,
 ): Promise<FreightShipment> => {
   return customFetch<FreightShipment>(getUpdateFreightShipmentUrl(id), {
     ...options,
     method: "PUT",
     headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createFreightShipmentBody),
+    body: JSON.stringify(updateFreightShipmentBody),
   });
 };
 
@@ -2770,14 +2771,14 @@ export const getUpdateFreightShipmentMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof updateFreightShipment>>,
     TError,
-    { id: number; data: BodyType<CreateFreightShipmentBody> },
+    { id: number; data: BodyType<UpdateFreightShipmentBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof updateFreightShipment>>,
   TError,
-  { id: number; data: BodyType<CreateFreightShipmentBody> },
+  { id: number; data: BodyType<UpdateFreightShipmentBody> },
   TContext
 > => {
   const mutationKey = ["updateFreightShipment"];
@@ -2791,7 +2792,7 @@ export const getUpdateFreightShipmentMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof updateFreightShipment>>,
-    { id: number; data: BodyType<CreateFreightShipmentBody> }
+    { id: number; data: BodyType<UpdateFreightShipmentBody> }
   > = (props) => {
     const { id, data } = props ?? {};
 
@@ -2805,7 +2806,7 @@ export type UpdateFreightShipmentMutationResult = NonNullable<
   Awaited<ReturnType<typeof updateFreightShipment>>
 >;
 export type UpdateFreightShipmentMutationBody =
-  BodyType<CreateFreightShipmentBody>;
+  BodyType<UpdateFreightShipmentBody>;
 export type UpdateFreightShipmentMutationError = ErrorType<unknown>;
 
 /**
@@ -2818,14 +2819,14 @@ export const useUpdateFreightShipment = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof updateFreightShipment>>,
     TError,
-    { id: number; data: BodyType<CreateFreightShipmentBody> },
+    { id: number; data: BodyType<UpdateFreightShipmentBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof updateFreightShipment>>,
   TError,
-  { id: number; data: BodyType<CreateFreightShipmentBody> },
+  { id: number; data: BodyType<UpdateFreightShipmentBody> },
   TContext
 > => {
   return useMutation(getUpdateFreightShipmentMutationOptions(options));

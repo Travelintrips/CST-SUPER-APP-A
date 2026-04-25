@@ -1261,6 +1261,11 @@ export interface FreightShipment {
   measurement?: string | null;
   status: FreightShipmentStatus;
   notes?: string | null;
+  actualCost?: string | null;
+  departureDate?: string | null;
+  arrivalDate?: string | null;
+  trackingNumber?: string | null;
+  awbNumber?: string | null;
   createdById?: string | null;
   createdAt: string;
 }
@@ -1332,6 +1337,14 @@ export interface CreateFreightShipmentBody {
   status?: string | null;
   notes?: string | null;
 }
+
+export type UpdateFreightShipmentBody = CreateFreightShipmentBody & {
+  actualCost?: number | null;
+  departureDate?: string | null;
+  arrivalDate?: string | null;
+  trackingNumber?: string | null;
+  awbNumber?: string | null;
+};
 
 export interface CreateFreightRfqBody {
   vendorNames?: string[];

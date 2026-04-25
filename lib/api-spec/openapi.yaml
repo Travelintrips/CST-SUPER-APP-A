@@ -649,7 +649,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CreateFreightShipmentBody" }
+            schema: { $ref: "#/components/schemas/UpdateFreightShipmentBody" }
       responses:
         "200":
           description: Updated
@@ -3414,6 +3414,11 @@ components:
         measurement: { type: string, nullable: true }
         status: { type: string, enum: [draft, rfq_sent, confirmed, in_transit, completed, cancelled] }
         notes: { type: string, nullable: true }
+        actualCost: { type: string, nullable: true }
+        departureDate: { type: string, nullable: true }
+        arrivalDate: { type: string, nullable: true }
+        trackingNumber: { type: string, nullable: true }
+        awbNumber: { type: string, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
       required: [id, shipmentNumber, shipperName, consigneeName, commodity, origin, destination, status, createdAt]
@@ -3494,6 +3499,17 @@ components:
         status: { type: string, nullable: true }
         notes: { type: string, nullable: true }
       required: [shipperName, consigneeName, commodity, origin, destination]
+
+    UpdateFreightShipmentBody:
+      allOf:
+        - $ref: "#/components/schemas/CreateFreightShipmentBody"
+        - type: object
+          properties:
+            actualCost: { type: number, nullable: true }
+            departureDate: { type: string, nullable: true }
+            arrivalDate: { type: string, nullable: true }
+            trackingNumber: { type: string, nullable: true }
+            awbNumber: { type: string, nullable: true }
 
     CreateFreightRfqBody:
       type: object
