@@ -167,7 +167,7 @@ export default function DashboardPage() {
                     <span className="text-muted-foreground/40">·</span>
                     <span className="flex items-center gap-0.5" title="Waktu respons server">
                       <Activity className="h-3 w-3" />
-                      {responseTime}
+                      Muat dalam {responseTime}
                     </span>
                   </>
                 )}
