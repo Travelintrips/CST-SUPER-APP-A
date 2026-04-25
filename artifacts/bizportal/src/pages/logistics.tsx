@@ -70,6 +70,9 @@ export default function LogisticsPage() {
 
   const [freightStatusFilter, setFreightStatusFilter] = useState<string>("all");
   const [freightSortOrder, setFreightSortOrder] = useState<"newest" | "oldest">("newest");
+  const [freightDateFilter, setFreightDateFilter] = useState<"all" | "7days" | "30days" | "custom">("all");
+  const [customDateFrom, setCustomDateFrom] = useState<string>("");
+  const [customDateTo, setCustomDateTo] = useState<string>("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const activeFreight = freightShipments?.filter(
@@ -78,9 +81,32 @@ export default function LogisticsPage() {
   const awaitingQuote = freightShipments?.filter((s) => s.status === "rfq_sent") ?? [];
   const inTransit = freightShipments?.filter((s) => s.status === "in_transit") ?? [];
 
-  const recentFreightBase = freightStatusFilter === "all"
-    ? activeFreight
-    : activeFreight.filter((s) => s.status === freightStatusFilter);
+  const customFrom = customDateFrom
+    ? (() => { const [y, m, d] = customDateFrom.split("-").map(Number); return new Date(y, m - 1, d, 0, 0, 0, 0); })()
+    : null;
+  const customTo = customDateTo
+    ? (() => { const [y, m, d] = customDateTo.split("-").map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999); })()
+    : null;
+  const isCustomRangeInvalid = !!(customFrom && customTo && customFrom > customTo);
+
+  const recentFreightBase = (() => {
+    let list = freightStatusFilter === "all"
+      ? activeFreight
+      : activeFreight.filter((s) => s.status === freightStatusFilter);
+
+    if (freightDateFilter === "7days" || freightDateFilter === "30days") {
+      const days = freightDateFilter === "7days" ? 7 : 30;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      cutoff.setHours(0, 0, 0, 0);
+      list = list.filter((s) => new Date(s.createdAt) >= cutoff);
+    } else if (freightDateFilter === "custom" && !isCustomRangeInvalid) {
+      if (customFrom) list = list.filter((s) => new Date(s.createdAt) >= customFrom);
+      if (customTo) list = list.filter((s) => new Date(s.createdAt) <= customTo);
+    }
+
+    return list;
+  })();
 
   const recentFreight = [...recentFreightBase]
     .sort((a, b) => {
@@ -235,6 +261,49 @@ export default function LogisticsPage() {
                   <SelectItem value="in_transit">Dalam Perjalanan</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={freightDateFilter}
+                onValueChange={(v) => {
+                  const next = v as "all" | "7days" | "30days" | "custom";
+                  if (next !== "custom") {
+                    setCustomDateFrom("");
+                    setCustomDateTo("");
+                  }
+                  setFreightDateFilter(next);
+                }}
+              >
+                <SelectTrigger className="h-7 text-xs w-auto min-w-[140px]">
+                  <SelectValue placeholder="Semua Waktu" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Waktu</SelectItem>
+                  <SelectItem value="7days">7 Hari Terakhir</SelectItem>
+                  <SelectItem value="30days">30 Hari Terakhir</SelectItem>
+                  <SelectItem value="custom">Kustom</SelectItem>
+                </SelectContent>
+              </Select>
+              {freightDateFilter === "custom" && (
+                <>
+                  <Input
+                    type="date"
+                    className={`h-7 text-xs w-auto px-2 ${isCustomRangeInvalid ? "border-destructive" : ""}`}
+                    value={customDateFrom}
+                    onChange={(e) => setCustomDateFrom(e.target.value)}
+                    aria-label="Dari tanggal"
+                  />
+                  <span className="text-xs text-muted-foreground">–</span>
+                  <Input
+                    type="date"
+                    className={`h-7 text-xs w-auto px-2 ${isCustomRangeInvalid ? "border-destructive" : ""}`}
+                    value={customDateTo}
+                    onChange={(e) => setCustomDateTo(e.target.value)}
+                    aria-label="Sampai tanggal"
+                  />
+                  {isCustomRangeInvalid && (
+                    <span className="text-xs text-destructive">Tanggal awal harus sebelum tanggal akhir</span>
+                  )}
+                </>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -261,9 +330,13 @@ export default function LogisticsPage() {
               <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
                 <Package className="h-8 w-8 opacity-40" />
                 <p className="text-sm">
-                  {freightStatusFilter === "all"
-                    ? "Tidak ada shipment freight aktif."
-                    : `Tidak ada shipment dengan status "${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter}".`}
+                  {freightStatusFilter !== "all" && freightDateFilter !== "all"
+                    ? `Tidak ada shipment dengan status "${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter}" pada rentang waktu yang dipilih.`
+                    : freightStatusFilter !== "all"
+                    ? `Tidak ada shipment dengan status "${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter}".`
+                    : freightDateFilter !== "all"
+                    ? "Tidak ada shipment pada rentang waktu yang dipilih."
+                    : "Tidak ada shipment freight aktif."}
                 </p>
               </div>
             ) : (
