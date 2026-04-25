@@ -449,6 +449,13 @@ export default function LogisticsPage() {
                     <TableHead className="text-right"></TableHead>
                   </TableRow>
                 </TableHeader>
+                {/*
+                 * Tappable row pattern: add cursor-pointer + onClick on <TableRow> to navigate
+                 * to the detail page. If a row contains interactive elements (buttons, dropdowns),
+                 * add onClick={(e) => e.stopPropagation()} on their wrapping <TableCell> so
+                 * clicks don't bubble up and trigger row navigation unintentionally.
+                 * All shipment tables in this file should follow this pattern.
+                 */}
                 <TableBody>
                   {recentFreight.map((s) => (
                     <TableRow
