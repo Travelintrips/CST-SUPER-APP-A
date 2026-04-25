@@ -291,9 +291,13 @@ export default function LogisticsFreightPage() {
                 className="gap-1.5"
               >
                 {f.label}
-                <span className={`inline-flex items-center justify-center rounded-full text-xs font-semibold min-w-[1.25rem] px-1 ${isActive ? "bg-white/20 text-inherit" : "bg-muted text-muted-foreground"}`}>
-                  {count}
-                </span>
+                {isLoading ? (
+                  <Skeleton className="h-4 w-5 rounded-full" />
+                ) : (
+                  <span className={`inline-flex items-center justify-center rounded-full text-xs font-semibold min-w-[1.25rem] px-1 ${isActive ? "bg-white/20 text-inherit" : "bg-muted text-muted-foreground"}`}>
+                    {count}
+                  </span>
+                )}
               </Button>
             );
           })}
