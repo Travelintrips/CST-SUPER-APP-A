@@ -1,12 +1,40 @@
 import { useCallback, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
+
+interface ResponseTimeEntry {
+  timestamp: string;
+  path: string;
+  durationMs: number;
+}
+
+const SLOW_THRESHOLD_MS = 500;
+
+async function fetchResponseTimeTrend(): Promise<ResponseTimeEntry[]> {
+  const res = await fetch("/api/dashboard/response-times?path=dashboard/summary");
+  if (!res.ok) return [];
+  const data = (await res.json()) as { entries: ResponseTimeEntry[] };
+  return data.entries;
+}
+
+function rtColor(ms: number): string {
+  if (ms < 200) return "text-emerald-500";
+  if (ms < 500) return "text-amber-500";
+  return "text-destructive";
+}
+
+function rtBg(ms: number): string {
+  if (ms < 200) return "bg-emerald-500";
+  if (ms < 500) return "bg-amber-500";
+  return "bg-destructive";
+}
 
 const STORAGE_KEY = "dashboard_refresh_interval";
 
@@ -91,6 +119,16 @@ export default function DashboardPage() {
       /* ignore */
     }
   };
+
+  const { data: rtEntries = [], refetch: refetchRt } = useQuery({
+    queryKey: ["dashboard-response-times"],
+    queryFn: fetchResponseTimeTrend,
+    refetchInterval: refetchInterval || false,
+  });
+
+  useEffect(() => {
+    if (dataUpdatedAt) void refetchRt();
+  }, [dataUpdatedAt, refetchRt]);
 
   const activeFreightCount = summary?.activeFreightCount ?? 0;
   const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
@@ -289,6 +327,10 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {rtEntries.length > 0 && (
+          <ResponseTimeTrendCard entries={rtEntries} />
+        )}
       </div>
     </AppShell>
   );
@@ -325,5 +367,70 @@ function StatCard({ title, href, icon, isLoading, value, valueClassName, titleCl
         </CardContent>
       </Card>
     </Link>
+  );
+}
+
+function ResponseTimeTrendCard({ entries }: { entries: ResponseTimeEntry[] }) {
+  const last20 = entries.slice(-20);
+  const avg = last20.reduce((s, e) => s + e.durationMs, 0) / last20.length;
+  const firstHalf = last20.slice(0, Math.floor(last20.length / 2));
+  const secondHalf = last20.slice(Math.floor(last20.length / 2));
+  const avgFirst = firstHalf.length ? firstHalf.reduce((s, e) => s + e.durationMs, 0) / firstHalf.length : avg;
+  const avgSecond = secondHalf.length ? secondHalf.reduce((s, e) => s + e.durationMs, 0) / secondHalf.length : avg;
+  const trendDiff = avgSecond - avgFirst;
+  const TrendIcon = Math.abs(trendDiff) < 20 ? Minus : trendDiff > 0 ? TrendingUp : TrendingDown;
+  const trendColor = Math.abs(trendDiff) < 20 ? "text-muted-foreground" : trendDiff > 0 ? "text-destructive" : "text-emerald-500";
+  const maxMs = Math.max(...last20.map((e) => e.durationMs), 1);
+  const hasSlow = last20.some((e) => e.durationMs >= SLOW_THRESHOLD_MS);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Tren Waktu Respons API</CardTitle>
+          </div>
+          <div className={`flex items-center gap-1 text-xs font-medium ${trendColor}`}>
+            <TrendIcon className="h-3.5 w-3.5" />
+            {Math.abs(trendDiff) < 20 ? "Stabil" : trendDiff > 0 ? "Melambat" : "Membaik"}
+          </div>
+        </div>
+        <CardDescription className="text-xs">
+          {last20.length} permintaan terakhir · rata-rata{" "}
+          <span className={`font-medium ${rtColor(avg)}`}>{avg.toFixed(0)}ms</span>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {hasSlow && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            Ada respons yang melebihi {SLOW_THRESHOLD_MS}ms. Periksa performa server.
+          </div>
+        )}
+        <div className="flex items-end gap-0.5 h-12">
+          {last20.map((e, i) => (
+            <div
+              key={i}
+              className={`flex-1 rounded-sm opacity-80 hover:opacity-100 transition-opacity ${rtBg(e.durationMs)}`}
+              style={{ height: `${Math.max(4, (e.durationMs / maxMs) * 100)}%` }}
+              title={`${new Date(e.timestamp).toLocaleTimeString("id-ID")}: ${e.durationMs.toFixed(1)}ms`}
+            />
+          ))}
+        </div>
+        <div className="space-y-1 max-h-36 overflow-y-auto">
+          {[...last20].reverse().slice(0, 10).map((e, i) => (
+            <div key={i} className="flex items-center justify-between text-xs py-0.5">
+              <span className="text-muted-foreground tabular-nums">
+                {new Date(e.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+              <span className={`font-medium tabular-nums ${rtColor(e.durationMs)}`}>
+                {e.durationMs.toFixed(1)}ms
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
