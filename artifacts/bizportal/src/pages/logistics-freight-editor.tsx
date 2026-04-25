@@ -38,6 +38,7 @@ export default function LogisticsFreightEditorPage() {
     shipperAddress: "",
     consigneeName: "",
     consigneeAddress: "",
+    notifyParty: "",
     commodity: "",
     hsCode: "",
     grossWeight: "",
@@ -45,8 +46,14 @@ export default function LogisticsFreightEditorPage() {
     quantity: "",
     packingType: "",
     dimensions: "",
+    marksAndNumbers: "",
+    measurement: "",
     origin: "",
     destination: "",
+    portOfLoading: "",
+    portOfDischarge: "",
+    vessel: "",
+    voyage: "",
     notes: "",
   });
 
@@ -57,6 +64,7 @@ export default function LogisticsFreightEditorPage() {
         shipperAddress: existing.shipperAddress ?? "",
         consigneeName: existing.consigneeName ?? "",
         consigneeAddress: existing.consigneeAddress ?? "",
+        notifyParty: existing.notifyParty ?? "",
         commodity: existing.commodity ?? "",
         hsCode: existing.hsCode ?? "",
         grossWeight: existing.grossWeight ?? "",
@@ -64,8 +72,14 @@ export default function LogisticsFreightEditorPage() {
         quantity: existing.quantity != null ? String(existing.quantity) : "",
         packingType: existing.packingType ?? "",
         dimensions: existing.dimensions ?? "",
+        marksAndNumbers: existing.marksAndNumbers ?? "",
+        measurement: existing.measurement ?? "",
         origin: existing.origin ?? "",
         destination: existing.destination ?? "",
+        portOfLoading: existing.portOfLoading ?? "",
+        portOfDischarge: existing.portOfDischarge ?? "",
+        vessel: existing.vessel ?? "",
+        voyage: existing.voyage ?? "",
         notes: existing.notes ?? "",
       });
     }
@@ -85,6 +99,7 @@ export default function LogisticsFreightEditorPage() {
       shipperAddress: form.shipperAddress || undefined,
       consigneeName: form.consigneeName,
       consigneeAddress: form.consigneeAddress || undefined,
+      notifyParty: form.notifyParty || undefined,
       commodity: form.commodity,
       hsCode: form.hsCode || undefined,
       grossWeight: form.grossWeight || undefined,
@@ -92,8 +107,14 @@ export default function LogisticsFreightEditorPage() {
       quantity: form.quantity ? Number(form.quantity) : undefined,
       packingType: form.packingType || undefined,
       dimensions: form.dimensions || undefined,
+      marksAndNumbers: form.marksAndNumbers || undefined,
+      measurement: form.measurement || undefined,
       origin: form.origin,
       destination: form.destination,
+      portOfLoading: form.portOfLoading || undefined,
+      portOfDischarge: form.portOfDischarge || undefined,
+      vessel: form.vessel || undefined,
+      voyage: form.voyage || undefined,
       notes: form.notes || undefined,
     };
 
@@ -158,14 +179,20 @@ export default function LogisticsFreightEditorPage() {
 
             <Card>
               <CardHeader><CardTitle>Informasi Consignee</CardTitle></CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
-                  <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required />
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
+                    <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
+                    <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
-                  <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." />
+                  <Label htmlFor="notifyParty">Notify Party</Label>
+                  <Input id="notifyParty" value={form.notifyParty} onChange={set("notifyParty")} placeholder="Nama / alamat pihak yang diberitahu (jika berbeda dengan consignee)" />
                 </div>
               </CardContent>
             </Card>
@@ -210,14 +237,59 @@ export default function LogisticsFreightEditorPage() {
 
             <Card>
               <CardHeader><CardTitle>Rute Pengiriman</CardTitle></CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
-                  <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required />
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
+                    <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
+                    <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Informasi Bill of Lading</CardTitle>
+                <p className="text-sm text-muted-foreground">Data pengiriman laut untuk dokumen Bill of Lading</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="portOfLoading">Port of Loading</Label>
+                    <Input id="portOfLoading" value={form.portOfLoading} onChange={set("portOfLoading")} placeholder="Tanjung Priok, Jakarta" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="portOfDischarge">Port of Discharge</Label>
+                    <Input id="portOfDischarge" value={form.portOfDischarge} onChange={set("portOfDischarge")} placeholder="Port of Singapore" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="vessel">Vessel / Nama Kapal</Label>
+                    <Input id="vessel" value={form.vessel} onChange={set("vessel")} placeholder="MV. Contoh Kapal" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="voyage">Voyage No.</Label>
+                    <Input id="voyage" value={form.voyage} onChange={set("voyage")} placeholder="VY-001" />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
-                  <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required />
+                  <Label htmlFor="marksAndNumbers">Marks & Numbers</Label>
+                  <Textarea
+                    id="marksAndNumbers"
+                    value={form.marksAndNumbers}
+                    onChange={set("marksAndNumbers")}
+                    placeholder="Tanda / nomor pada kemasan..."
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="measurement">Measurement (CBM)</Label>
+                  <Input id="measurement" value={form.measurement} onChange={set("measurement")} placeholder="cth: 12.5 CBM" />
                 </div>
               </CardContent>
             </Card>

@@ -54,7 +54,8 @@ router.get("/freight-shipments/:id", async (req, res) => {
 // POST /api/logistics/freight-shipments
 router.post("/freight-shipments", async (req, res) => {
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
-    grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination, notes } = req.body;
+    grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
+    portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes } = req.body;
   if (!shipperName || !consigneeName || !commodity || !origin || !destination) {
     return res.status(400).json({ message: "shipperName, consigneeName, commodity, origin, destination wajib diisi" });
   }
@@ -66,7 +67,11 @@ router.post("/freight-shipments", async (req, res) => {
     netWeight: netWeight ? String(netWeight) : null,
     quantity: quantity ? Number(quantity) : null,
     packingType: packingType || null, dimensions: dimensions || null,
-    hsCode: hsCode || null, origin, destination, notes: notes || null,
+    hsCode: hsCode || null, origin, destination,
+    portOfLoading: portOfLoading || null, portOfDischarge: portOfDischarge || null,
+    vessel: vessel || null, voyage: voyage || null,
+    notifyParty: notifyParty || null, marksAndNumbers: marksAndNumbers || null,
+    measurement: measurement || null, notes: notes || null,
   }).returning();
   return res.status(201).json(serializeShipment(shipment!));
 });
@@ -76,7 +81,8 @@ router.put("/freight-shipments/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
-    grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination, status, notes } = req.body;
+    grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
+    portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, status, notes } = req.body;
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
   const patch: Partial<typeof freightShipmentsTable.$inferInsert> = {};
@@ -93,6 +99,13 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (hsCode !== undefined) patch.hsCode = hsCode || null;
   if (origin !== undefined) patch.origin = origin;
   if (destination !== undefined) patch.destination = destination;
+  if (portOfLoading !== undefined) patch.portOfLoading = portOfLoading || null;
+  if (portOfDischarge !== undefined) patch.portOfDischarge = portOfDischarge || null;
+  if (vessel !== undefined) patch.vessel = vessel || null;
+  if (voyage !== undefined) patch.voyage = voyage || null;
+  if (notifyParty !== undefined) patch.notifyParty = notifyParty || null;
+  if (marksAndNumbers !== undefined) patch.marksAndNumbers = marksAndNumbers || null;
+  if (measurement !== undefined) patch.measurement = measurement || null;
   if (status !== undefined) patch.status = status;
   if (notes !== undefined) patch.notes = notes || null;
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();

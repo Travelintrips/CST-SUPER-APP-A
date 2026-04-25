@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText,
+  ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -223,6 +223,12 @@ export default function LogisticsFreightDetailPage() {
               <Printer className="h-4 w-4 mr-2" />
               Cetak Packing List
             </Button>
+            {["confirmed", "in_transit", "completed"].includes(shipment.status) && (
+              <Button variant="outline" onClick={() => navigate(`/logistics/freight/${id}/bl`)}>
+                <FileDown className="h-4 w-4 mr-2" />
+                Cetak Bill of Lading
+              </Button>
+            )}
             <Button variant="outline" onClick={() => navigate(`/logistics/freight/edit/${id}`)}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit

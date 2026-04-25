@@ -3405,6 +3405,13 @@ components:
         hsCode: { type: string, nullable: true }
         origin: { type: string }
         destination: { type: string }
+        portOfLoading: { type: string, nullable: true }
+        portOfDischarge: { type: string, nullable: true }
+        vessel: { type: string, nullable: true }
+        voyage: { type: string, nullable: true }
+        notifyParty: { type: string, nullable: true }
+        marksAndNumbers: { type: string, nullable: true }
+        measurement: { type: string, nullable: true }
         status: { type: string, enum: [draft, rfq_sent, confirmed, in_transit, completed, cancelled] }
         notes: { type: string, nullable: true }
         createdById: { type: string, nullable: true }
@@ -3477,6 +3484,13 @@ components:
         hsCode: { type: string, nullable: true }
         origin: { type: string }
         destination: { type: string }
+        portOfLoading: { type: string, nullable: true }
+        portOfDischarge: { type: string, nullable: true }
+        vessel: { type: string, nullable: true }
+        voyage: { type: string, nullable: true }
+        notifyParty: { type: string, nullable: true }
+        marksAndNumbers: { type: string, nullable: true }
+        measurement: { type: string, nullable: true }
         status: { type: string, nullable: true }
         notes: { type: string, nullable: true }
       required: [shipperName, consigneeName, commodity, origin, destination]

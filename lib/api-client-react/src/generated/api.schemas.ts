@@ -1252,6 +1252,13 @@ export interface FreightShipment {
   hsCode?: string | null;
   origin: string;
   destination: string;
+  portOfLoading?: string | null;
+  portOfDischarge?: string | null;
+  vessel?: string | null;
+  voyage?: string | null;
+  notifyParty?: string | null;
+  marksAndNumbers?: string | null;
+  measurement?: string | null;
   status: FreightShipmentStatus;
   notes?: string | null;
   createdById?: string | null;
@@ -1315,6 +1322,13 @@ export interface CreateFreightShipmentBody {
   hsCode?: string | null;
   origin: string;
   destination: string;
+  portOfLoading?: string | null;
+  portOfDischarge?: string | null;
+  vessel?: string | null;
+  voyage?: string | null;
+  notifyParty?: string | null;
+  marksAndNumbers?: string | null;
+  measurement?: string | null;
   status?: string | null;
   notes?: string | null;
 }
