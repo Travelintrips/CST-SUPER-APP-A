@@ -6,17 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Navigation2, RefreshCw } from "lucide-react";
+import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
+import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   useListShipments,
   useCreateShipment,
   useUpdateShipmentStatus,
   getListShipmentsQueryKey,
+  useListFreightShipments,
 } from "@workspace/api-client-react";
 
 export default function LogisticsPage() {
@@ -26,6 +29,14 @@ export default function LogisticsPage() {
   const { data: shipments, isLoading } = useListShipments();
   const createShipment = useCreateShipment();
   const updateStatus = useUpdateShipmentStatus();
+
+  const { data: freightShipments, isLoading: freightLoading } = useListFreightShipments();
+
+  const activeFreight = freightShipments?.filter(
+    (s) => s.status !== "cancelled" && s.status !== "completed"
+  ) ?? [];
+  const awaitingQuote = freightShipments?.filter((s) => s.status === "rfq_sent") ?? [];
+  const inTransit = freightShipments?.filter((s) => s.status === "in_transit") ?? [];
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -82,6 +93,56 @@ export default function LogisticsPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Logistik</h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Lacak pengiriman dan kelola operasi armada.</p>
         </div>
+
+        {/* Freight Forwarding Summary Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Ship className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Freight Forwarding</CardTitle>
+              </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/logistics/freight">
+                  Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+            <CardDescription>Ringkasan pengiriman freight internasional aktif</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {freightLoading ? (
+              <div className="grid grid-cols-3 gap-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="space-y-1">
+                    <Skeleton className="h-7 w-10" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <p className="text-2xl font-bold">{activeFreight.length}</p>
+                  <p className="text-xs text-muted-foreground">Shipment Aktif</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-2xl font-bold text-amber-500">{awaitingQuote.length}</p>
+                    {awaitingQuote.length > 0 && (
+                      <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Menunggu Persetujuan Quote</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-2xl font-bold text-indigo-500">{inTransit.length}</p>
+                  <p className="text-xs text-muted-foreground">Dalam Perjalanan</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
           <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Daftar Pengiriman</h2>
