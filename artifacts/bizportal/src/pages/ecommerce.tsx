@@ -122,7 +122,7 @@ export default function EcommercePage() {
 
   const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
-  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("__all__");
 
   const categories = useMemo(
     () => [...new Set((products ?? []).map((p) => p.category))].sort(),
@@ -144,7 +144,7 @@ export default function EcommercePage() {
         if (String(p.defaultPurchaseTaxId) !== filterPurchaseTaxId) return false;
       }
     }
-    if (filterCategory !== "all" && p.category !== filterCategory) return false;
+    if (filterCategory !== "__all__" && p.category !== filterCategory) return false;
     return true;
   });
 
@@ -469,7 +469,7 @@ export default function EcommercePage() {
                   <SelectValue placeholder="Filter Kategori" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua Kategori</SelectItem>
+                  <SelectItem value="__all__">Semua Kategori</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
@@ -513,7 +513,7 @@ export default function EcommercePage() {
                         <TableCell colSpan={9} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
-                            <p>{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                            <p>{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -570,7 +570,7 @@ export default function EcommercePage() {
               ) : filteredProducts.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <PackageSearch className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                  <p className="text-sm text-muted-foreground">{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                 </CardContent></Card>
               ) : (
                 filteredProducts.map((product) => (
