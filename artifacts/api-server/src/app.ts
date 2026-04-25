@@ -8,6 +8,20 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Attach X-Response-Time header (milliseconds) to every response
+app.use((req, res, next) => {
+  const startNs = process.hrtime.bigint();
+  const originalEnd = res.end.bind(res) as typeof res.end;
+  res.end = ((...args: Parameters<typeof res.end>) => {
+    if (!res.headersSent) {
+      const elapsedMs = Number(process.hrtime.bigint() - startNs) / 1e6;
+      res.setHeader("X-Response-Time", `${elapsedMs.toFixed(2)}ms`);
+    }
+    return originalEnd(...args);
+  }) as typeof res.end;
+  next();
+});
+
 app.use(
   pinoHttp({
     logger,
