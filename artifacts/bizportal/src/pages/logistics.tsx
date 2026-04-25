@@ -458,6 +458,9 @@ export default function LogisticsPage() {
                     >
                       <TableCell className="font-mono text-sm font-semibold">
                         <div>{s.shipmentNumber}</div>
+                        <div className="sm:hidden font-normal font-sans text-xs text-muted-foreground mt-0.5">
+                          {s.origin} → {s.destination}
+                        </div>
                         <div className="md:hidden font-normal font-sans text-xs text-muted-foreground mt-0.5">
                           {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
                         </div>
