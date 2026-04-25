@@ -423,6 +423,7 @@ export default function EcommercePage() {
                       <TableHead className="text-right">Harga</TableHead>
                       <TableHead className="text-right">Stok</TableHead>
                       <TableHead>Pajak Default (Jual)</TableHead>
+                      <TableHead>Pajak Default (Beli)</TableHead>
                       <TableHead className="text-right w-[120px]">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -437,12 +438,13 @@ export default function EcommercePage() {
                           <TableCell className="text-right"><Skeleton className="h-4 w-[80px] ml-auto" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-4 w-[40px] ml-auto" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
                           <TableCell className="text-right"><Skeleton className="h-8 w-[80px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
                     ) : products?.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-24 text-center">
+                        <TableCell colSpan={9} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
                             <p>Belum ada produk. Tambahkan produk pertama Anda.</p>
@@ -465,6 +467,11 @@ export default function EcommercePage() {
                           <TableCell className="text-sm text-muted-foreground">
                             {product.defaultSalesTaxId
                               ? (allTaxes.find((t) => t.id === product.defaultSalesTaxId)?.name ?? "—")
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {product.defaultPurchaseTaxId
+                              ? (allTaxes.find((t) => t.id === product.defaultPurchaseTaxId)?.name ?? "—")
                               : "—"}
                           </TableCell>
                           <TableCell className="text-right">
@@ -525,6 +532,14 @@ export default function EcommercePage() {
                       <p className="text-sm">
                         {product.defaultSalesTaxId
                           ? (allTaxes.find((t) => t.id === product.defaultSalesTaxId)?.name ?? "—")
+                          : "—"}
+                      </p>
+                    </div>
+                    <div className="pt-1">
+                      <p className="text-xs text-muted-foreground">Pajak Default (Beli)</p>
+                      <p className="text-sm">
+                        {product.defaultPurchaseTaxId
+                          ? (allTaxes.find((t) => t.id === product.defaultPurchaseTaxId)?.name ?? "—")
                           : "—"}
                       </p>
                     </div>
