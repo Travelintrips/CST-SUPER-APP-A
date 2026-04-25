@@ -4,6 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Printer, ArrowLeft } from "lucide-react";
 import { useGetFreightShipment } from "@workspace/api-client-react";
 
+const BL_ALLOWED_STATUSES = ["confirmed", "in_transit", "completed"];
+
 function Cell({
   label,
   value,
@@ -28,8 +30,6 @@ function Cell({
   );
 }
 
-const CONFIRMED_STATUSES = ["confirmed", "in_transit", "completed"];
-
 export default function LogisticsFreightBLPage() {
   const params = useParams<{ id: string }>();
   const id = Number(params.id);
@@ -52,11 +52,21 @@ export default function LogisticsFreightBLPage() {
     );
   }
 
-  const blDate = new Date(shipment.createdAt).toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  if (!BL_ALLOWED_STATUSES.includes(shipment.status)) {
+    return (
+      <div className="p-8 max-w-lg mx-auto text-center space-y-4">
+        <p className="text-lg font-semibold">Bill of Lading belum tersedia</p>
+        <p className="text-muted-foreground">
+          Dokumen Bill of Lading hanya dapat dicetak setelah shipment dikonfirmasi.
+          Status saat ini: <strong>{shipment.status}</strong>.
+        </p>
+        <Button variant="outline" onClick={() => navigate(`/logistics/freight/${id}`)}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Kembali ke Detail
+        </Button>
+      </div>
+    );
+  }
 
   const issuedDate = new Date().toLocaleDateString("id-ID", {
     day: "numeric",
