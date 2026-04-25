@@ -599,6 +599,174 @@ paths:
               schema:
                 $ref: "#/components/schemas/Shipment"
 
+  /logistics/freight-shipments:
+    get:
+      operationId: listFreightShipments
+      tags: [logistics]
+      summary: List all freight shipments
+      responses:
+        "200":
+          description: Freight shipments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FreightShipment" }
+    post:
+      operationId: createFreightShipment
+      tags: [logistics]
+      summary: Create a freight shipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFreightShipmentBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightShipment" }
+
+  /logistics/freight-shipments/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getFreightShipment
+      tags: [logistics]
+      summary: Get a freight shipment with RFQs and quotes
+      responses:
+        "200":
+          description: Freight shipment detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightShipmentDetail" }
+    put:
+      operationId: updateFreightShipment
+      tags: [logistics]
+      summary: Update a freight shipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFreightShipmentBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightShipment" }
+    delete:
+      operationId: deleteFreightShipment
+      tags: [logistics]
+      summary: Delete a freight shipment
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /logistics/freight-shipments/{shipmentId}/rfqs:
+    parameters:
+      - { name: shipmentId, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: createFreightRfq
+      tags: [logistics]
+      summary: Create an RFQ for a freight shipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFreightRfqBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightRfq" }
+
+  /logistics/freight-rfqs/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: updateFreightRfq
+      tags: [logistics]
+      summary: Update a freight RFQ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFreightRfqBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightRfq" }
+
+  /logistics/freight-rfqs/{rfqId}/quotes:
+    parameters:
+      - { name: rfqId, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: createFreightQuote
+      tags: [logistics]
+      summary: Add a vendor quote to an RFQ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFreightQuoteBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightQuote" }
+
+  /logistics/freight-quotes/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: updateFreightQuote
+      tags: [logistics]
+      summary: Update a vendor quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFreightQuoteBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightQuote" }
+    delete:
+      operationId: deleteFreightQuote
+      tags: [logistics]
+      summary: Delete a vendor quote
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /logistics/freight-quotes/{id}/approve:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: approveFreightQuote
+      tags: [logistics]
+      summary: Approve a vendor quote (rejects others, confirms shipment)
+      responses:
+        "200":
+          description: Approved quote
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightQuote" }
+
   /pos/transactions:
     get:
       operationId: listTransactions
@@ -3152,3 +3320,117 @@ components:
         mimeType: { type: string, nullable: true }
         extractedText: { type: string, nullable: true }
       required: [objectPath]
+
+    FreightShipment:
+      type: object
+      properties:
+        id: { type: integer }
+        shipmentNumber: { type: string }
+        shipperName: { type: string }
+        shipperAddress: { type: string, nullable: true }
+        consigneeName: { type: string }
+        consigneeAddress: { type: string, nullable: true }
+        commodity: { type: string }
+        grossWeight: { type: string, nullable: true }
+        netWeight: { type: string, nullable: true }
+        quantity: { type: integer, nullable: true }
+        packingType: { type: string, nullable: true }
+        dimensions: { type: string, nullable: true }
+        hsCode: { type: string, nullable: true }
+        origin: { type: string }
+        destination: { type: string }
+        status: { type: string, enum: [draft, rfq_sent, confirmed, in_transit, completed, cancelled] }
+        notes: { type: string, nullable: true }
+        createdById: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, shipmentNumber, shipperName, consigneeName, commodity, origin, destination, status, createdAt]
+
+    FreightRfq:
+      type: object
+      properties:
+        id: { type: integer }
+        rfqNumber: { type: string }
+        shipmentId: { type: integer }
+        vendorNames: { type: array, items: { type: string } }
+        notes: { type: string, nullable: true }
+        status: { type: string }
+        createdAt: { type: string }
+      required: [id, rfqNumber, shipmentId, vendorNames, status, createdAt]
+
+    FreightQuote:
+      type: object
+      properties:
+        id: { type: integer }
+        rfqId: { type: integer }
+        shipmentId: { type: integer }
+        vendorName: { type: string }
+        truckingCost: { type: string, nullable: true }
+        handlingCost: { type: string, nullable: true }
+        freightCost: { type: string, nullable: true }
+        otherCost: { type: string, nullable: true }
+        totalCost: { type: string, nullable: true }
+        estimatedDays: { type: integer, nullable: true }
+        notes: { type: string, nullable: true }
+        status: { type: string, enum: [pending, approved, rejected] }
+        createdAt: { type: string }
+      required: [id, rfqId, shipmentId, vendorName, status, createdAt]
+
+    FreightRfqWithQuotes:
+      allOf:
+        - $ref: "#/components/schemas/FreightRfq"
+        - type: object
+          properties:
+            quotes:
+              type: array
+              items: { $ref: "#/components/schemas/FreightQuote" }
+          required: [quotes]
+
+    FreightShipmentDetail:
+      allOf:
+        - $ref: "#/components/schemas/FreightShipment"
+        - type: object
+          properties:
+            rfqs:
+              type: array
+              items: { $ref: "#/components/schemas/FreightRfqWithQuotes" }
+          required: [rfqs]
+
+    CreateFreightShipmentBody:
+      type: object
+      properties:
+        shipperName: { type: string }
+        shipperAddress: { type: string, nullable: true }
+        consigneeName: { type: string }
+        consigneeAddress: { type: string, nullable: true }
+        commodity: { type: string }
+        grossWeight: { type: string, nullable: true }
+        netWeight: { type: string, nullable: true }
+        quantity: { type: integer, nullable: true }
+        packingType: { type: string, nullable: true }
+        dimensions: { type: string, nullable: true }
+        hsCode: { type: string, nullable: true }
+        origin: { type: string }
+        destination: { type: string }
+        status: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+      required: [shipperName, consigneeName, commodity, origin, destination]
+
+    CreateFreightRfqBody:
+      type: object
+      properties:
+        vendorNames: { type: array, items: { type: string } }
+        notes: { type: string, nullable: true }
+        status: { type: string, nullable: true }
+      required: []
+
+    CreateFreightQuoteBody:
+      type: object
+      properties:
+        vendorName: { type: string }
+        truckingCost: { type: number, nullable: true }
+        handlingCost: { type: number, nullable: true }
+        freightCost: { type: number, nullable: true }
+        otherCost: { type: number, nullable: true }
+        estimatedDays: { type: integer, nullable: true }
+        notes: { type: string, nullable: true }
+      required: [vendorName]

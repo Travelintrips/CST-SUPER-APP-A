@@ -1224,6 +1224,117 @@ export interface CreateCorrespondenceAttachmentBody {
   extractedText?: string | null;
 }
 
+export type FreightShipmentStatus =
+  (typeof FreightShipmentStatus)[keyof typeof FreightShipmentStatus];
+
+export const FreightShipmentStatus = {
+  draft: "draft",
+  rfq_sent: "rfq_sent",
+  confirmed: "confirmed",
+  in_transit: "in_transit",
+  completed: "completed",
+  cancelled: "cancelled",
+} as const;
+
+export interface FreightShipment {
+  id: number;
+  shipmentNumber: string;
+  shipperName: string;
+  shipperAddress?: string | null;
+  consigneeName: string;
+  consigneeAddress?: string | null;
+  commodity: string;
+  grossWeight?: string | null;
+  netWeight?: string | null;
+  quantity?: number | null;
+  packingType?: string | null;
+  dimensions?: string | null;
+  hsCode?: string | null;
+  origin: string;
+  destination: string;
+  status: FreightShipmentStatus;
+  notes?: string | null;
+  createdById?: string | null;
+  createdAt: string;
+}
+
+export interface FreightRfq {
+  id: number;
+  rfqNumber: string;
+  shipmentId: number;
+  vendorNames: string[];
+  notes?: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export type FreightQuoteStatus =
+  (typeof FreightQuoteStatus)[keyof typeof FreightQuoteStatus];
+
+export const FreightQuoteStatus = {
+  pending: "pending",
+  approved: "approved",
+  rejected: "rejected",
+} as const;
+
+export interface FreightQuote {
+  id: number;
+  rfqId: number;
+  shipmentId: number;
+  vendorName: string;
+  truckingCost?: string | null;
+  handlingCost?: string | null;
+  freightCost?: string | null;
+  otherCost?: string | null;
+  totalCost?: string | null;
+  estimatedDays?: number | null;
+  notes?: string | null;
+  status: FreightQuoteStatus;
+  createdAt: string;
+}
+
+export type FreightRfqWithQuotes = FreightRfq & {
+  quotes: FreightQuote[];
+};
+
+export type FreightShipmentDetail = FreightShipment & {
+  rfqs: FreightRfqWithQuotes[];
+};
+
+export interface CreateFreightShipmentBody {
+  shipperName: string;
+  shipperAddress?: string | null;
+  consigneeName: string;
+  consigneeAddress?: string | null;
+  commodity: string;
+  grossWeight?: string | null;
+  netWeight?: string | null;
+  quantity?: number | null;
+  packingType?: string | null;
+  dimensions?: string | null;
+  hsCode?: string | null;
+  origin: string;
+  destination: string;
+  status?: string | null;
+  notes?: string | null;
+}
+
+export interface CreateFreightRfqBody {
+  vendorNames?: string[];
+  notes?: string | null;
+  status?: string | null;
+}
+
+export interface CreateFreightQuoteBody {
+  vendorName: string;
+  truckingCost?: number | null;
+  handlingCost?: number | null;
+  freightCost?: number | null;
+  otherCost?: number | null;
+  estimatedDays?: number | null;
+  notes?: string | null;
+}
+
 export type ListSalesDocumentsParams = {
   kind?: ListSalesDocumentsKind;
   invoiceStatus?: ListSalesDocumentsInvoiceStatus;

@@ -11,6 +11,9 @@ import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
 import LogisticsPage from "@/pages/logistics";
+import LogisticsFreightPage from "@/pages/logistics-freight";
+import LogisticsFreightEditorPage from "@/pages/logistics-freight-editor";
+import LogisticsFreightDetailPage from "@/pages/logistics-freight-detail";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
 import UsersPage from "@/pages/users";
@@ -174,6 +177,18 @@ function Router() {
       </Route>
       <Route path="/logistics">
         <ProtectedRoute component={LogisticsPage} />
+      </Route>
+      <Route path="/logistics/freight">
+        <ProtectedRoute component={LogisticsFreightPage} />
+      </Route>
+      <Route path="/logistics/freight/new">
+        <ProtectedRoute component={LogisticsFreightEditorPage} />
+      </Route>
+      <Route path="/logistics/freight/edit/:id">
+        <ProtectedRoute component={LogisticsFreightEditorPage} />
+      </Route>
+      <Route path="/logistics/freight/:id">
+        <ProtectedRoute component={LogisticsFreightDetailPage} />
       </Route>
       <Route path="/pos">
         <ProtectedRoute component={PosPage} />

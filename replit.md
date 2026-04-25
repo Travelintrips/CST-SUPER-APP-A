@@ -122,6 +122,18 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
 
+## Freight Forwarding Module
+
+- Route: `/logistics/freight` (admin, logistics roles)
+- DB tables: `freight_shipments`, `freight_rfqs`, `freight_quotes`
+- Enums: `freight_shipment_status` (draft→rfq_sent→confirmed→in_transit→completed/cancelled), `freight_quote_status` (pending/approved/rejected)
+- API routes (under `/api/logistics/`): `freight-shipments` (CRUD), `freight-shipments/:id/rfqs` (POST), `freight-rfqs/:id` (PUT), `freight-rfqs/:rfqId/quotes` (POST), `freight-quotes/:id` (PUT/DELETE), `freight-quotes/:id/approve` (POST)
+- Approving a quote → sets that quote to approved, all others in same RFQ to rejected, closes the RFQ, sets shipment status to confirmed
+- Shipment numbers auto-generated server-side: `FS/YYYY/nnnnnn`; RFQ numbers: `RFQ-F/YYYY/nnnnnn`
+- Frontend: list page at `/logistics/freight`, full-page editor at `/logistics/freight/new` and `/logistics/freight/edit/:id`, detail page at `/logistics/freight/:id` (with RFQ management, quote comparison, approve button)
+- Print packing list via `window.print()` — a hidden print-only section in the detail page renders the packing list
+- AppShell: Logistics converted from flat nav item to group with sub-items (Pengiriman, Freight Forwarding)
+
 ## Correspondence Module
 
 - Route: `/correspondences` (admin role only)

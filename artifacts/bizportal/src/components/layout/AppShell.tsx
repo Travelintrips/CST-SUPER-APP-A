@@ -25,6 +25,7 @@ import {
   FileSpreadsheet,
   Landmark,
   Mail,
+  Ship,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -152,7 +153,17 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
     { type: "flat", title: "Trading", href: "/trading", icon: Package, roles: ["admin", "trading"] },
-    { type: "flat", title: "Logistics", href: "/logistics", icon: Truck, roles: ["admin", "logistics"] },
+    {
+      type: "group",
+      title: "Logistics",
+      basePath: "/logistics",
+      icon: Truck,
+      roles: ["admin", "logistics"],
+      children: [
+        { title: "Pengiriman", href: "/logistics", icon: Truck },
+        { title: "Freight Forwarding", href: "/logistics/freight", icon: Ship },
+      ],
+    },
     { type: "flat", title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
     { type: "flat", title: "Korespondensi", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", title: "Pengguna", href: "/users", icon: Users, roles: ["admin"] },
@@ -179,8 +190,8 @@ export function AppShell({ children }: AppShellProps) {
 
   const isChildActive = (href: string) => {
     if (location === href) return true;
-    // Special-case: dashboards (/sales, /purchase) should only match exact, not nested
-    if (href === "/sales" || href === "/purchase") return false;
+    // Special-case: root pages should only match exact, not nested
+    if (href === "/sales" || href === "/purchase" || href === "/logistics") return false;
     return location.startsWith(`${href}/`) || location === href;
   };
 

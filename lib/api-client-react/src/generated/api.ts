@@ -36,6 +36,9 @@ import type {
   CreateCorrespondenceBody,
   CreateCustomerBody,
   CreateEntryBody,
+  CreateFreightQuoteBody,
+  CreateFreightRfqBody,
+  CreateFreightShipmentBody,
   CreateJournalBody,
   CreateOrderBody,
   CreateProductBody,
@@ -49,6 +52,10 @@ import type {
   CreateTransactionBody,
   Customer,
   DashboardSummary,
+  FreightQuote,
+  FreightRfq,
+  FreightShipment,
+  FreightShipmentDetail,
   GeneralLedgerReport,
   GetBalanceSheetParams,
   GetGeneralLedgerParams,
@@ -2482,6 +2489,943 @@ export const useUpdateShipmentStatus = <
   TContext
 > => {
   return useMutation(getUpdateShipmentStatusMutationOptions(options));
+};
+
+/**
+ * @summary List all freight shipments
+ */
+export const getListFreightShipmentsUrl = () => {
+  return `/api/logistics/freight-shipments`;
+};
+
+export const listFreightShipments = async (
+  options?: RequestInit,
+): Promise<FreightShipment[]> => {
+  return customFetch<FreightShipment[]>(getListFreightShipmentsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListFreightShipmentsQueryKey = () => {
+  return [`/api/logistics/freight-shipments`] as const;
+};
+
+export const getListFreightShipmentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFreightShipments>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listFreightShipments>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListFreightShipmentsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listFreightShipments>>
+  > = ({ signal }) => listFreightShipments({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listFreightShipments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListFreightShipmentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFreightShipments>>
+>;
+export type ListFreightShipmentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all freight shipments
+ */
+
+export function useListFreightShipments<
+  TData = Awaited<ReturnType<typeof listFreightShipments>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listFreightShipments>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFreightShipmentsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a freight shipment
+ */
+export const getCreateFreightShipmentUrl = () => {
+  return `/api/logistics/freight-shipments`;
+};
+
+export const createFreightShipment = async (
+  createFreightShipmentBody: CreateFreightShipmentBody,
+  options?: RequestInit,
+): Promise<FreightShipment> => {
+  return customFetch<FreightShipment>(getCreateFreightShipmentUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFreightShipmentBody),
+  });
+};
+
+export const getCreateFreightShipmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightShipment>>,
+    TError,
+    { data: BodyType<CreateFreightShipmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createFreightShipment>>,
+  TError,
+  { data: BodyType<CreateFreightShipmentBody> },
+  TContext
+> => {
+  const mutationKey = ["createFreightShipment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createFreightShipment>>,
+    { data: BodyType<CreateFreightShipmentBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createFreightShipment(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateFreightShipmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createFreightShipment>>
+>;
+export type CreateFreightShipmentMutationBody =
+  BodyType<CreateFreightShipmentBody>;
+export type CreateFreightShipmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a freight shipment
+ */
+export const useCreateFreightShipment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightShipment>>,
+    TError,
+    { data: BodyType<CreateFreightShipmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createFreightShipment>>,
+  TError,
+  { data: BodyType<CreateFreightShipmentBody> },
+  TContext
+> => {
+  return useMutation(getCreateFreightShipmentMutationOptions(options));
+};
+
+/**
+ * @summary Get a freight shipment with RFQs and quotes
+ */
+export const getGetFreightShipmentUrl = (id: number) => {
+  return `/api/logistics/freight-shipments/${id}`;
+};
+
+export const getFreightShipment = async (
+  id: number,
+  options?: RequestInit,
+): Promise<FreightShipmentDetail> => {
+  return customFetch<FreightShipmentDetail>(getGetFreightShipmentUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFreightShipmentQueryKey = (id: number) => {
+  return [`/api/logistics/freight-shipments/${id}`] as const;
+};
+
+export const getGetFreightShipmentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFreightShipment>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightShipment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetFreightShipmentQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFreightShipment>>
+  > = ({ signal }) => getFreightShipment(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFreightShipment>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFreightShipmentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFreightShipment>>
+>;
+export type GetFreightShipmentQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a freight shipment with RFQs and quotes
+ */
+
+export function useGetFreightShipment<
+  TData = Awaited<ReturnType<typeof getFreightShipment>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightShipment>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFreightShipmentQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a freight shipment
+ */
+export const getUpdateFreightShipmentUrl = (id: number) => {
+  return `/api/logistics/freight-shipments/${id}`;
+};
+
+export const updateFreightShipment = async (
+  id: number,
+  createFreightShipmentBody: CreateFreightShipmentBody,
+  options?: RequestInit,
+): Promise<FreightShipment> => {
+  return customFetch<FreightShipment>(getUpdateFreightShipmentUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFreightShipmentBody),
+  });
+};
+
+export const getUpdateFreightShipmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightShipment>>,
+    TError,
+    { id: number; data: BodyType<CreateFreightShipmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateFreightShipment>>,
+  TError,
+  { id: number; data: BodyType<CreateFreightShipmentBody> },
+  TContext
+> => {
+  const mutationKey = ["updateFreightShipment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateFreightShipment>>,
+    { id: number; data: BodyType<CreateFreightShipmentBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateFreightShipment(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateFreightShipmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateFreightShipment>>
+>;
+export type UpdateFreightShipmentMutationBody =
+  BodyType<CreateFreightShipmentBody>;
+export type UpdateFreightShipmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a freight shipment
+ */
+export const useUpdateFreightShipment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightShipment>>,
+    TError,
+    { id: number; data: BodyType<CreateFreightShipmentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateFreightShipment>>,
+  TError,
+  { id: number; data: BodyType<CreateFreightShipmentBody> },
+  TContext
+> => {
+  return useMutation(getUpdateFreightShipmentMutationOptions(options));
+};
+
+/**
+ * @summary Delete a freight shipment
+ */
+export const getDeleteFreightShipmentUrl = (id: number) => {
+  return `/api/logistics/freight-shipments/${id}`;
+};
+
+export const deleteFreightShipment = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeleteFreightShipmentUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteFreightShipmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightShipment>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteFreightShipment>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteFreightShipment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteFreightShipment>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteFreightShipment(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteFreightShipmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteFreightShipment>>
+>;
+
+export type DeleteFreightShipmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a freight shipment
+ */
+export const useDeleteFreightShipment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightShipment>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteFreightShipment>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteFreightShipmentMutationOptions(options));
+};
+
+/**
+ * @summary Create an RFQ for a freight shipment
+ */
+export const getCreateFreightRfqUrl = (shipmentId: number) => {
+  return `/api/logistics/freight-shipments/${shipmentId}/rfqs`;
+};
+
+export const createFreightRfq = async (
+  shipmentId: number,
+  createFreightRfqBody: CreateFreightRfqBody,
+  options?: RequestInit,
+): Promise<FreightRfq> => {
+  return customFetch<FreightRfq>(getCreateFreightRfqUrl(shipmentId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFreightRfqBody),
+  });
+};
+
+export const getCreateFreightRfqMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightRfq>>,
+    TError,
+    { shipmentId: number; data: BodyType<CreateFreightRfqBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createFreightRfq>>,
+  TError,
+  { shipmentId: number; data: BodyType<CreateFreightRfqBody> },
+  TContext
+> => {
+  const mutationKey = ["createFreightRfq"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createFreightRfq>>,
+    { shipmentId: number; data: BodyType<CreateFreightRfqBody> }
+  > = (props) => {
+    const { shipmentId, data } = props ?? {};
+
+    return createFreightRfq(shipmentId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateFreightRfqMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createFreightRfq>>
+>;
+export type CreateFreightRfqMutationBody = BodyType<CreateFreightRfqBody>;
+export type CreateFreightRfqMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create an RFQ for a freight shipment
+ */
+export const useCreateFreightRfq = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightRfq>>,
+    TError,
+    { shipmentId: number; data: BodyType<CreateFreightRfqBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createFreightRfq>>,
+  TError,
+  { shipmentId: number; data: BodyType<CreateFreightRfqBody> },
+  TContext
+> => {
+  return useMutation(getCreateFreightRfqMutationOptions(options));
+};
+
+/**
+ * @summary Update a freight RFQ
+ */
+export const getUpdateFreightRfqUrl = (id: number) => {
+  return `/api/logistics/freight-rfqs/${id}`;
+};
+
+export const updateFreightRfq = async (
+  id: number,
+  createFreightRfqBody: CreateFreightRfqBody,
+  options?: RequestInit,
+): Promise<FreightRfq> => {
+  return customFetch<FreightRfq>(getUpdateFreightRfqUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFreightRfqBody),
+  });
+};
+
+export const getUpdateFreightRfqMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightRfq>>,
+    TError,
+    { id: number; data: BodyType<CreateFreightRfqBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateFreightRfq>>,
+  TError,
+  { id: number; data: BodyType<CreateFreightRfqBody> },
+  TContext
+> => {
+  const mutationKey = ["updateFreightRfq"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateFreightRfq>>,
+    { id: number; data: BodyType<CreateFreightRfqBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateFreightRfq(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateFreightRfqMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateFreightRfq>>
+>;
+export type UpdateFreightRfqMutationBody = BodyType<CreateFreightRfqBody>;
+export type UpdateFreightRfqMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a freight RFQ
+ */
+export const useUpdateFreightRfq = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightRfq>>,
+    TError,
+    { id: number; data: BodyType<CreateFreightRfqBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateFreightRfq>>,
+  TError,
+  { id: number; data: BodyType<CreateFreightRfqBody> },
+  TContext
+> => {
+  return useMutation(getUpdateFreightRfqMutationOptions(options));
+};
+
+/**
+ * @summary Add a vendor quote to an RFQ
+ */
+export const getCreateFreightQuoteUrl = (rfqId: number) => {
+  return `/api/logistics/freight-rfqs/${rfqId}/quotes`;
+};
+
+export const createFreightQuote = async (
+  rfqId: number,
+  createFreightQuoteBody: CreateFreightQuoteBody,
+  options?: RequestInit,
+): Promise<FreightQuote> => {
+  return customFetch<FreightQuote>(getCreateFreightQuoteUrl(rfqId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFreightQuoteBody),
+  });
+};
+
+export const getCreateFreightQuoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightQuote>>,
+    TError,
+    { rfqId: number; data: BodyType<CreateFreightQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createFreightQuote>>,
+  TError,
+  { rfqId: number; data: BodyType<CreateFreightQuoteBody> },
+  TContext
+> => {
+  const mutationKey = ["createFreightQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createFreightQuote>>,
+    { rfqId: number; data: BodyType<CreateFreightQuoteBody> }
+  > = (props) => {
+    const { rfqId, data } = props ?? {};
+
+    return createFreightQuote(rfqId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateFreightQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createFreightQuote>>
+>;
+export type CreateFreightQuoteMutationBody = BodyType<CreateFreightQuoteBody>;
+export type CreateFreightQuoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add a vendor quote to an RFQ
+ */
+export const useCreateFreightQuote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createFreightQuote>>,
+    TError,
+    { rfqId: number; data: BodyType<CreateFreightQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createFreightQuote>>,
+  TError,
+  { rfqId: number; data: BodyType<CreateFreightQuoteBody> },
+  TContext
+> => {
+  return useMutation(getCreateFreightQuoteMutationOptions(options));
+};
+
+/**
+ * @summary Update a vendor quote
+ */
+export const getUpdateFreightQuoteUrl = (id: number) => {
+  return `/api/logistics/freight-quotes/${id}`;
+};
+
+export const updateFreightQuote = async (
+  id: number,
+  createFreightQuoteBody: CreateFreightQuoteBody,
+  options?: RequestInit,
+): Promise<FreightQuote> => {
+  return customFetch<FreightQuote>(getUpdateFreightQuoteUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createFreightQuoteBody),
+  });
+};
+
+export const getUpdateFreightQuoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightQuote>>,
+    TError,
+    { id: number; data: BodyType<CreateFreightQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateFreightQuote>>,
+  TError,
+  { id: number; data: BodyType<CreateFreightQuoteBody> },
+  TContext
+> => {
+  const mutationKey = ["updateFreightQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateFreightQuote>>,
+    { id: number; data: BodyType<CreateFreightQuoteBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateFreightQuote(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateFreightQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateFreightQuote>>
+>;
+export type UpdateFreightQuoteMutationBody = BodyType<CreateFreightQuoteBody>;
+export type UpdateFreightQuoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a vendor quote
+ */
+export const useUpdateFreightQuote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightQuote>>,
+    TError,
+    { id: number; data: BodyType<CreateFreightQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateFreightQuote>>,
+  TError,
+  { id: number; data: BodyType<CreateFreightQuoteBody> },
+  TContext
+> => {
+  return useMutation(getUpdateFreightQuoteMutationOptions(options));
+};
+
+/**
+ * @summary Delete a vendor quote
+ */
+export const getDeleteFreightQuoteUrl = (id: number) => {
+  return `/api/logistics/freight-quotes/${id}`;
+};
+
+export const deleteFreightQuote = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeleteFreightQuoteUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteFreightQuoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightQuote>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteFreightQuote>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteFreightQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteFreightQuote>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteFreightQuote(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteFreightQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteFreightQuote>>
+>;
+
+export type DeleteFreightQuoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a vendor quote
+ */
+export const useDeleteFreightQuote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteFreightQuote>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteFreightQuote>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteFreightQuoteMutationOptions(options));
+};
+
+/**
+ * @summary Approve a vendor quote (rejects others, confirms shipment)
+ */
+export const getApproveFreightQuoteUrl = (id: number) => {
+  return `/api/logistics/freight-quotes/${id}/approve`;
+};
+
+export const approveFreightQuote = async (
+  id: number,
+  options?: RequestInit,
+): Promise<FreightQuote> => {
+  return customFetch<FreightQuote>(getApproveFreightQuoteUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getApproveFreightQuoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveFreightQuote>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveFreightQuote>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["approveFreightQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveFreightQuote>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return approveFreightQuote(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveFreightQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveFreightQuote>>
+>;
+
+export type ApproveFreightQuoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Approve a vendor quote (rejects others, confirms shipment)
+ */
+export const useApproveFreightQuote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveFreightQuote>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveFreightQuote>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getApproveFreightQuoteMutationOptions(options));
 };
 
 /**

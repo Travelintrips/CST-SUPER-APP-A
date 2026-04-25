@@ -509,6 +509,321 @@ export const UpdateShipmentStatusResponse = zod.object({
 });
 
 /**
+ * @summary List all freight shipments
+ */
+export const ListFreightShipmentsResponseItem = zod.object({
+  id: zod.number(),
+  shipmentNumber: zod.string(),
+  shipperName: zod.string(),
+  shipperAddress: zod.string().nullish(),
+  consigneeName: zod.string(),
+  consigneeAddress: zod.string().nullish(),
+  commodity: zod.string(),
+  grossWeight: zod.string().nullish(),
+  netWeight: zod.string().nullish(),
+  quantity: zod.number().nullish(),
+  packingType: zod.string().nullish(),
+  dimensions: zod.string().nullish(),
+  hsCode: zod.string().nullish(),
+  origin: zod.string(),
+  destination: zod.string(),
+  status: zod.enum([
+    "draft",
+    "rfq_sent",
+    "confirmed",
+    "in_transit",
+    "completed",
+    "cancelled",
+  ]),
+  notes: zod.string().nullish(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListFreightShipmentsResponse = zod.array(
+  ListFreightShipmentsResponseItem,
+);
+
+/**
+ * @summary Create a freight shipment
+ */
+export const CreateFreightShipmentBody = zod.object({
+  shipperName: zod.string(),
+  shipperAddress: zod.string().nullish(),
+  consigneeName: zod.string(),
+  consigneeAddress: zod.string().nullish(),
+  commodity: zod.string(),
+  grossWeight: zod.string().nullish(),
+  netWeight: zod.string().nullish(),
+  quantity: zod.number().nullish(),
+  packingType: zod.string().nullish(),
+  dimensions: zod.string().nullish(),
+  hsCode: zod.string().nullish(),
+  origin: zod.string(),
+  destination: zod.string(),
+  status: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Get a freight shipment with RFQs and quotes
+ */
+export const GetFreightShipmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetFreightShipmentResponse = zod
+  .object({
+    id: zod.number(),
+    shipmentNumber: zod.string(),
+    shipperName: zod.string(),
+    shipperAddress: zod.string().nullish(),
+    consigneeName: zod.string(),
+    consigneeAddress: zod.string().nullish(),
+    commodity: zod.string(),
+    grossWeight: zod.string().nullish(),
+    netWeight: zod.string().nullish(),
+    quantity: zod.number().nullish(),
+    packingType: zod.string().nullish(),
+    dimensions: zod.string().nullish(),
+    hsCode: zod.string().nullish(),
+    origin: zod.string(),
+    destination: zod.string(),
+    status: zod.enum([
+      "draft",
+      "rfq_sent",
+      "confirmed",
+      "in_transit",
+      "completed",
+      "cancelled",
+    ]),
+    notes: zod.string().nullish(),
+    createdById: zod.string().nullish(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      rfqs: zod.array(
+        zod
+          .object({
+            id: zod.number(),
+            rfqNumber: zod.string(),
+            shipmentId: zod.number(),
+            vendorNames: zod.array(zod.string()),
+            notes: zod.string().nullish(),
+            status: zod.string(),
+            createdAt: zod.string(),
+          })
+          .and(
+            zod.object({
+              quotes: zod.array(
+                zod.object({
+                  id: zod.number(),
+                  rfqId: zod.number(),
+                  shipmentId: zod.number(),
+                  vendorName: zod.string(),
+                  truckingCost: zod.string().nullish(),
+                  handlingCost: zod.string().nullish(),
+                  freightCost: zod.string().nullish(),
+                  otherCost: zod.string().nullish(),
+                  totalCost: zod.string().nullish(),
+                  estimatedDays: zod.number().nullish(),
+                  notes: zod.string().nullish(),
+                  status: zod.enum(["pending", "approved", "rejected"]),
+                  createdAt: zod.string(),
+                }),
+              ),
+            }),
+          ),
+      ),
+    }),
+  );
+
+/**
+ * @summary Update a freight shipment
+ */
+export const UpdateFreightShipmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateFreightShipmentBody = zod.object({
+  shipperName: zod.string(),
+  shipperAddress: zod.string().nullish(),
+  consigneeName: zod.string(),
+  consigneeAddress: zod.string().nullish(),
+  commodity: zod.string(),
+  grossWeight: zod.string().nullish(),
+  netWeight: zod.string().nullish(),
+  quantity: zod.number().nullish(),
+  packingType: zod.string().nullish(),
+  dimensions: zod.string().nullish(),
+  hsCode: zod.string().nullish(),
+  origin: zod.string(),
+  destination: zod.string(),
+  status: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateFreightShipmentResponse = zod.object({
+  id: zod.number(),
+  shipmentNumber: zod.string(),
+  shipperName: zod.string(),
+  shipperAddress: zod.string().nullish(),
+  consigneeName: zod.string(),
+  consigneeAddress: zod.string().nullish(),
+  commodity: zod.string(),
+  grossWeight: zod.string().nullish(),
+  netWeight: zod.string().nullish(),
+  quantity: zod.number().nullish(),
+  packingType: zod.string().nullish(),
+  dimensions: zod.string().nullish(),
+  hsCode: zod.string().nullish(),
+  origin: zod.string(),
+  destination: zod.string(),
+  status: zod.enum([
+    "draft",
+    "rfq_sent",
+    "confirmed",
+    "in_transit",
+    "completed",
+    "cancelled",
+  ]),
+  notes: zod.string().nullish(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a freight shipment
+ */
+export const DeleteFreightShipmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteFreightShipmentResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Create an RFQ for a freight shipment
+ */
+export const CreateFreightRfqParams = zod.object({
+  shipmentId: zod.coerce.number(),
+});
+
+export const CreateFreightRfqBody = zod.object({
+  vendorNames: zod.array(zod.string()).optional(),
+  notes: zod.string().nullish(),
+  status: zod.string().nullish(),
+});
+
+/**
+ * @summary Update a freight RFQ
+ */
+export const UpdateFreightRfqParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateFreightRfqBody = zod.object({
+  vendorNames: zod.array(zod.string()).optional(),
+  notes: zod.string().nullish(),
+  status: zod.string().nullish(),
+});
+
+export const UpdateFreightRfqResponse = zod.object({
+  id: zod.number(),
+  rfqNumber: zod.string(),
+  shipmentId: zod.number(),
+  vendorNames: zod.array(zod.string()),
+  notes: zod.string().nullish(),
+  status: zod.string(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Add a vendor quote to an RFQ
+ */
+export const CreateFreightQuoteParams = zod.object({
+  rfqId: zod.coerce.number(),
+});
+
+export const CreateFreightQuoteBody = zod.object({
+  vendorName: zod.string(),
+  truckingCost: zod.number().nullish(),
+  handlingCost: zod.number().nullish(),
+  freightCost: zod.number().nullish(),
+  otherCost: zod.number().nullish(),
+  estimatedDays: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Update a vendor quote
+ */
+export const UpdateFreightQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateFreightQuoteBody = zod.object({
+  vendorName: zod.string(),
+  truckingCost: zod.number().nullish(),
+  handlingCost: zod.number().nullish(),
+  freightCost: zod.number().nullish(),
+  otherCost: zod.number().nullish(),
+  estimatedDays: zod.number().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateFreightQuoteResponse = zod.object({
+  id: zod.number(),
+  rfqId: zod.number(),
+  shipmentId: zod.number(),
+  vendorName: zod.string(),
+  truckingCost: zod.string().nullish(),
+  handlingCost: zod.string().nullish(),
+  freightCost: zod.string().nullish(),
+  otherCost: zod.string().nullish(),
+  totalCost: zod.string().nullish(),
+  estimatedDays: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  status: zod.enum(["pending", "approved", "rejected"]),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a vendor quote
+ */
+export const DeleteFreightQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteFreightQuoteResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Approve a vendor quote (rejects others, confirms shipment)
+ */
+export const ApproveFreightQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ApproveFreightQuoteResponse = zod.object({
+  id: zod.number(),
+  rfqId: zod.number(),
+  shipmentId: zod.number(),
+  vendorName: zod.string(),
+  truckingCost: zod.string().nullish(),
+  handlingCost: zod.string().nullish(),
+  freightCost: zod.string().nullish(),
+  otherCost: zod.string().nullish(),
+  totalCost: zod.string().nullish(),
+  estimatedDays: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  status: zod.enum(["pending", "approved", "rejected"]),
+  createdAt: zod.string(),
+});
+
+/**
  * @summary List all POS transactions
  */
 export const ListTransactionsResponseItem = zod.object({
