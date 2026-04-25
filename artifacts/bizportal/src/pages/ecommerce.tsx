@@ -120,6 +120,27 @@ export default function EcommercePage() {
   const [editProdSalesTaxId, setEditProdSalesTaxId] = useState<number | null>(null);
   const [editProdPurchaseTaxId, setEditProdPurchaseTaxId] = useState<number | null>(null);
 
+  const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
+  const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
+
+  const filteredProducts = (products ?? []).filter((p) => {
+    if (filterSalesTaxId !== "all") {
+      if (filterSalesTaxId === "none") {
+        if (p.defaultSalesTaxId != null) return false;
+      } else {
+        if (String(p.defaultSalesTaxId) !== filterSalesTaxId) return false;
+      }
+    }
+    if (filterPurchaseTaxId !== "all") {
+      if (filterPurchaseTaxId === "none") {
+        if (p.defaultPurchaseTaxId != null) return false;
+      } else {
+        if (String(p.defaultPurchaseTaxId) !== filterPurchaseTaxId) return false;
+      }
+    }
+    return true;
+  });
+
   const defaultSalesTaxIdRef = useRef<number | null | undefined>(undefined);
   defaultSalesTaxIdRef.current = accountingSettings?.defaultSalesTaxId;
 
@@ -411,6 +432,33 @@ export default function EcommercePage() {
               </Dialog>
             </div>
 
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select value={filterSalesTaxId} onValueChange={setFilterSalesTaxId} data-testid="filter-sales-tax">
+                <SelectTrigger className="sm:w-[220px]" data-testid="filter-sales-tax-trigger">
+                  <SelectValue placeholder="Filter Pajak Jual" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Pajak Jual</SelectItem>
+                  <SelectItem value="none">Tanpa Pajak Jual</SelectItem>
+                  {saleTaxes.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterPurchaseTaxId} onValueChange={setFilterPurchaseTaxId} data-testid="filter-purchase-tax">
+                <SelectTrigger className="sm:w-[220px]" data-testid="filter-purchase-tax-trigger">
+                  <SelectValue placeholder="Filter Pajak Beli" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Pajak Beli</SelectItem>
+                  <SelectItem value="none">Tanpa Pajak Beli</SelectItem>
+                  {purchaseTaxes.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
@@ -442,17 +490,17 @@ export default function EcommercePage() {
                           <TableCell className="text-right"><Skeleton className="h-8 w-[80px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
-                    ) : products?.length === 0 ? (
+                    ) : filteredProducts.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={9} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
-                            <p>Belum ada produk. Tambahkan produk pertama Anda.</p>
+                            <p>{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      products?.map((product) => (
+                      filteredProducts.map((product) => (
                         <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
                           <TableCell>
                             <ProductThumb src={resolveImage(product.imageUrl)} alt={product.name} />
@@ -501,13 +549,13 @@ export default function EcommercePage() {
                     <Skeleton className="h-4 w-1/3" />
                   </CardContent></Card>
                 ))
-              ) : products?.length === 0 ? (
+              ) : filteredProducts.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <PackageSearch className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Belum ada produk. Tambahkan produk pertama Anda.</p>
+                  <p className="text-sm text-muted-foreground">{(filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all") ? "Tidak ada produk yang cocok dengan filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                 </CardContent></Card>
               ) : (
-                products?.map((product) => (
+                filteredProducts.map((product) => (
                   <Card key={product.id} data-testid={`card-product-${product.id}`}><CardContent className="p-4 space-y-2">
                     <div className="flex items-start gap-3">
                       <ProductThumb src={resolveImage(product.imageUrl)} alt={product.name} size="md" />
