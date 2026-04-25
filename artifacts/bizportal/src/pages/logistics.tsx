@@ -557,7 +557,7 @@ export default function LogisticsPage() {
                   </TableRow>
                 ) : (
                   shipments.map((shipment) => (
-                    <TableRow key={shipment.id}>
+                    <TableRow key={shipment.id} className="cursor-pointer" onClick={() => navigate(`/logistics/freight/${shipment.id}`)}>
                       <TableCell className="font-mono text-sm font-medium">
                         <div>{shipment.trackingNumber}</div>
                         <div className="sm:hidden font-normal font-sans text-xs text-muted-foreground mt-0.5">
@@ -577,7 +577,7 @@ export default function LogisticsPage() {
                           {shipment.status.replace(/_/g, ' ')}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="outline" size="sm" className="h-8">
