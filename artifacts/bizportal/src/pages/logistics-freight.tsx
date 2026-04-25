@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Ship, Trash2, Eye } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
@@ -232,6 +232,25 @@ export default function LogisticsFreightPage() {
 
   const isFiltered = statusFilter !== null || datePreset !== "all";
 
+  const clearFilters = () => {
+    setStatusFilterState(null);
+    setDatePreset("all");
+  };
+
+  const activeFilterParts: string[] = [];
+  if (statusFilter) {
+    const label = STATUS_FILTERS.find((f) => f.value === statusFilter)?.label ?? statusFilter;
+    activeFilterParts.push(`Status: ${label}`);
+  }
+  if (datePreset === "7days") activeFilterParts.push("7 Hari Terakhir");
+  else if (datePreset === "30days") activeFilterParts.push("30 Hari Terakhir");
+  else if (datePreset === "custom") {
+    const parts: string[] = [];
+    if (customDateFrom) parts.push(customDateFrom.split("-").reverse().join("/"));
+    if (customDateTo) parts.push(customDateTo.split("-").reverse().join("/"));
+    if (parts.length) activeFilterParts.push(parts.join(" – "));
+  }
+
   return (
     <AppShell>
       <div className="p-6 space-y-6">
@@ -276,6 +295,22 @@ export default function LogisticsFreightPage() {
           <p className="text-xs text-muted-foreground -mt-4">
             Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </p>
+        )}
+
+        {isFiltered && (
+          <div className="flex items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-3 py-1.5 text-sm w-fit max-w-full flex-wrap">
+            <Filter className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="text-foreground font-medium">Filter aktif:</span>
+            <span className="text-muted-foreground">{activeFilterParts.join(" · ")}</span>
+            <button
+              onClick={clearFilters}
+              className="ml-auto flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              aria-label="Hapus semua filter"
+            >
+              <X className="h-3.5 w-3.5" />
+              Hapus filter
+            </button>
+          </div>
         )}
 
         <div className="flex flex-wrap gap-2">
