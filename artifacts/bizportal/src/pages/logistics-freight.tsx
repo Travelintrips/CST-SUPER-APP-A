@@ -248,7 +248,7 @@ export default function LogisticsFreightPage() {
     const parts: string[] = [];
     if (customDateFrom) parts.push(customDateFrom.split("-").reverse().join("/"));
     if (customDateTo) parts.push(customDateTo.split("-").reverse().join("/"));
-    if (parts.length) activeFilterParts.push(parts.join(" – "));
+    activeFilterParts.push(parts.length ? parts.join(" – ") : "Tanggal kustom");
   }
 
   return (
@@ -302,14 +302,16 @@ export default function LogisticsFreightPage() {
             <Filter className="h-3.5 w-3.5 text-primary shrink-0" />
             <span className="text-foreground font-medium">Filter aktif:</span>
             <span className="text-muted-foreground">{activeFilterParts.join(" · ")}</span>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={clearFilters}
-              className="ml-auto flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              className="ml-auto h-auto py-0 px-1 gap-1 text-xs text-muted-foreground hover:text-foreground shrink-0"
               aria-label="Hapus semua filter"
             >
               <X className="h-3.5 w-3.5" />
               Hapus filter
-            </button>
+            </Button>
           </div>
         )}
 
