@@ -2156,6 +2156,17 @@ components:
           nullable: true
       required: [name, sku, price, stock, categories]
 
+    LineItem:
+      type: object
+      properties:
+        name:
+          type: string
+        qty:
+          type: number
+        unitPrice:
+          type: number
+      required: [name, qty, unitPrice]
+
     Order:
       type: object
       properties:
@@ -2176,6 +2187,12 @@ components:
           type: number
         items:
           type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineItem"
+          nullable: true
         createdAt:
           type: string
       required: [id, customerName, customerEmail, status, totalAmount, taxAmount, grandTotal, createdAt]
@@ -2189,11 +2206,17 @@ components:
           type: string
         items:
           type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineItem"
+          nullable: true
         totalAmount:
           type: number
         taxAmount:
           type: number
-      required: [customerName, customerEmail, items, totalAmount]
+      required: [customerName, customerEmail, totalAmount]
 
     UpdateUserBody:
       type: object
@@ -2217,6 +2240,12 @@ components:
           type: string
         items:
           type: string
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineItem"
+          nullable: true
         totalAmount:
           type: number
         taxAmount:
@@ -2224,7 +2253,7 @@ components:
         status:
           type: string
           enum: [pending, processing, shipped, delivered, cancelled]
-      required: [customerName, customerEmail, items, totalAmount, status]
+      required: [customerName, customerEmail, totalAmount, status]
 
     StockItem:
       type: object

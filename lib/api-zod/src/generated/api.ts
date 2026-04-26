@@ -237,7 +237,16 @@ export const ListOrdersResponseItem = zod.object({
   totalAmount: zod.number(),
   taxAmount: zod.number(),
   grandTotal: zod.number(),
-  items: zod.string().optional(),
+  items: zod.string().nullish(),
+  lineItems: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        qty: zod.number(),
+        unitPrice: zod.number(),
+      }),
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
@@ -248,7 +257,16 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
 export const CreateOrderBody = zod.object({
   customerName: zod.string(),
   customerEmail: zod.string(),
-  items: zod.string(),
+  items: zod.string().nullish(),
+  lineItems: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        qty: zod.number(),
+        unitPrice: zod.number(),
+      }),
+    )
+    .nullish(),
   totalAmount: zod.number(),
   taxAmount: zod.number().optional(),
 });
@@ -263,7 +281,16 @@ export const UpdateOrderParams = zod.object({
 export const UpdateOrderBody = zod.object({
   customerName: zod.string(),
   customerEmail: zod.string(),
-  items: zod.string(),
+  items: zod.string().nullish(),
+  lineItems: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        qty: zod.number(),
+        unitPrice: zod.number(),
+      }),
+    )
+    .nullish(),
   totalAmount: zod.number(),
   taxAmount: zod.number().optional(),
   status: zod.enum([
@@ -289,7 +316,16 @@ export const UpdateOrderResponse = zod.object({
   totalAmount: zod.number(),
   taxAmount: zod.number(),
   grandTotal: zod.number(),
-  items: zod.string().optional(),
+  items: zod.string().nullish(),
+  lineItems: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        qty: zod.number(),
+        unitPrice: zod.number(),
+      }),
+    )
+    .nullish(),
   createdAt: zod.string(),
 });
 

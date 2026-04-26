@@ -81,6 +81,12 @@ export interface CreateProductBody {
   defaultPurchaseTaxId?: number | null;
 }
 
+export interface LineItem {
+  name: string;
+  qty: number;
+  unitPrice: number;
+}
+
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 
 export const OrderStatus = {
@@ -99,14 +105,16 @@ export interface Order {
   totalAmount: number;
   taxAmount: number;
   grandTotal: number;
-  items?: string;
+  items?: string | null;
+  lineItems?: LineItem[] | null;
   createdAt: string;
 }
 
 export interface CreateOrderBody {
   customerName: string;
   customerEmail: string;
-  items: string;
+  items?: string | null;
+  lineItems?: LineItem[] | null;
   totalAmount: number;
   taxAmount?: number;
 }
@@ -142,7 +150,8 @@ export const UpdateOrderBodyStatus = {
 export interface UpdateOrderBody {
   customerName: string;
   customerEmail: string;
-  items: string;
+  items?: string | null;
+  lineItems?: LineItem[] | null;
   totalAmount: number;
   taxAmount?: number;
   status: UpdateOrderBodyStatus;

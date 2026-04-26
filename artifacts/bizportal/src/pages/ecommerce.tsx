@@ -55,6 +55,7 @@ import { ImagePlus, ImageIcon, Loader2 } from "lucide-react";
 
 const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
 type OrderStatus = typeof ORDER_STATUSES[number];
+type LineItemRow = { id: string; name: string; qty: number; unitPrice: number };
 
 export default function EcommercePage() {
   const queryClient = useQueryClient();
@@ -125,7 +126,13 @@ export default function EcommercePage() {
   const [createImageUrl, setCreateImageUrl] = useState<string | null>(null);
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
 
-  const [createSubtotal, setCreateSubtotal] = useState(0);
+  const newLineItem = (): LineItemRow => ({ id: crypto.randomUUID(), name: "", qty: 1, unitPrice: 0 });
+
+  const [createLineItems, setCreateLineItems] = useState<LineItemRow[]>([newLineItem()]);
+  const [editLineItems, setEditLineItems] = useState<LineItemRow[]>([newLineItem()]);
+  const [editLineItemsTouched, setEditLineItemsTouched] = useState(false);
+
+  const createSubtotal = createLineItems.reduce((s, li) => s + li.qty * li.unitPrice, 0);
   const [createTaxRateId, setCreateTaxRateId] = useState<string>("");
   const [createTaxAmount, setCreateTaxAmount] = useState(0);
 
@@ -343,28 +350,35 @@ export default function EcommercePage() {
     return Math.round((subtotal * Number(tax.rate)) / 100);
   };
 
-  const handleCreateTaxRateChange = (val: string, subtotal: number) => {
+  const handleCreateTaxRateChange = (val: string) => {
     const rateId = val === "none" ? "" : val;
     setCreateTaxRateId(rateId);
-    setCreateTaxAmount(rateId ? computeTax(subtotal, rateId) : 0);
+    setCreateTaxAmount(rateId ? computeTax(createSubtotal, rateId) : 0);
   };
 
-  const handleEditTaxRateChange = (val: string, subtotal: number) => {
+  const handleEditTaxRateChange = (val: string) => {
     const rateId = val === "none" ? "" : val;
     setEditTaxRateId(rateId);
-    setEditTaxAmount(rateId ? computeTax(subtotal, rateId) : 0);
+    setEditTaxAmount(rateId ? computeTax(editSubtotal, rateId) : 0);
   };
 
   const handleCreateOrder = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const validLineItems = createLineItems.filter((li) => li.name.trim());
+    if (validLineItems.length === 0) {
+      toast({ title: "Tambahkan minimal satu item pesanan", variant: "destructive" });
+      return;
+    }
+    const validSubtotal = validLineItems.reduce((s, li) => s + li.qty * li.unitPrice, 0);
+    const validTax = createTaxRateId ? computeTax(validSubtotal, createTaxRateId) : createTaxAmount;
     createOrder.mutate({
       data: {
         customerName: formData.get("customerName") as string,
         customerEmail: formData.get("customerEmail") as string,
-        items: formData.get("items") as string,
-        totalAmount: createSubtotal,
-        taxAmount: createTaxAmount,
+        lineItems: validLineItems.map(({ name, qty, unitPrice }) => ({ name, qty, unitPrice })),
+        totalAmount: validSubtotal,
+        taxAmount: validTax,
       }
     }, {
       onSuccess: () => {
@@ -380,14 +394,20 @@ export default function EcommercePage() {
     e.preventDefault();
     if (!editingOrder) return;
     const formData = new FormData(e.currentTarget);
+    const validLineItems = editLineItems.filter((li) => li.name.trim());
+    const finalLineItems = validLineItems.map(({ name, qty, unitPrice }) => ({ name, qty, unitPrice }));
+    const finalSubtotal = finalLineItems.length > 0
+      ? finalLineItems.reduce((s, li) => s + li.qty * li.unitPrice, 0)
+      : editSubtotal;
+    const finalTax = editTaxRateId ? computeTax(finalSubtotal, editTaxRateId) : editTaxAmount;
     updateOrder.mutate({
       id: editingOrder.id,
       data: {
         customerName: formData.get("customerName") as string,
         customerEmail: formData.get("customerEmail") as string,
-        items: formData.get("items") as string,
-        totalAmount: editSubtotal,
-        taxAmount: editTaxAmount,
+        ...(finalLineItems.length > 0 ? { lineItems: finalLineItems } : {}),
+        totalAmount: finalSubtotal,
+        taxAmount: finalTax,
         status: editOrderStatus,
       }
     }, {
@@ -416,22 +436,47 @@ export default function EcommercePage() {
 
   useEffect(() => {
     if (!isOrderDialogOpen) {
-      setCreateSubtotal(0);
+      setCreateLineItems([newLineItem()]);
       setCreateTaxRateId("");
       setCreateTaxAmount(0);
     } else {
       const defaultId = defaultSalesTaxIdRef.current;
       const validDefault = defaultId && saleTaxes.some((t) => t.id === defaultId);
       setCreateTaxRateId(validDefault ? String(defaultId) : "");
-      setCreateSubtotal(0);
+      setCreateLineItems([newLineItem()]);
       setCreateTaxAmount(0);
     }
   }, [isOrderDialogOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (createTaxRateId) setCreateTaxAmount(computeTax(createSubtotal, createTaxRateId));
+  }, [createSubtotal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (editLineItemsTouched) {
+      const computed = editLineItems.reduce((s, li) => s + li.qty * li.unitPrice, 0);
+      setEditSubtotal(computed);
+      if (editTaxRateId) setEditTaxAmount(computeTax(computed, editTaxRateId));
+    }
+  }, [editLineItems, editLineItemsTouched]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!editLineItemsTouched && editTaxRateId) setEditTaxAmount(computeTax(editSubtotal, editTaxRateId));
+  }, [editSubtotal]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const openEditOrder = (order: Order) => {
     setEditingOrder(order);
     setEditOrderStatus((order.status as OrderStatus) ?? "pending");
-    setEditSubtotal(order.totalAmount);
+    const lis = order.lineItems;
+    if (lis && lis.length > 0) {
+      setEditLineItems(lis.map((li) => ({ id: crypto.randomUUID(), name: li.name, qty: li.qty, unitPrice: li.unitPrice })));
+      setEditSubtotal(lis.reduce((s, li) => s + li.qty * li.unitPrice, 0));
+      setEditLineItemsTouched(true);
+    } else {
+      setEditLineItems([newLineItem()]);
+      setEditSubtotal(order.totalAmount);
+      setEditLineItemsTouched(false);
+    }
     setEditTaxRateId("");
     setEditTaxAmount(order.taxAmount ?? 0);
   };
@@ -824,28 +869,81 @@ export default function EcommercePage() {
                     <div className="grid gap-4 py-4">
                       <div className="grid gap-2"><Label htmlFor="customerName">Nama Pelanggan</Label><Input id="customerName" name="customerName" required data-testid="input-order-customer-name" /></div>
                       <div className="grid gap-2"><Label htmlFor="customerEmail">Email Pelanggan</Label><Input id="customerEmail" name="customerEmail" type="email" required data-testid="input-order-customer-email" /></div>
-                      <div className="grid gap-2"><Label htmlFor="items">Ringkasan Item</Label><Input id="items" name="items" placeholder="cth. 2x T-Shirt, 1x Sepatu" required data-testid="input-order-items" /></div>
+                      <div className="grid gap-1">
+                        <Label>Item Pesanan</Label>
+                        <div className="border rounded-md overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted text-muted-foreground">
+                              <tr>
+                                <th className="text-left px-2 py-1.5 font-medium">Nama Item</th>
+                                <th className="text-center px-2 py-1.5 font-medium w-16">Qty</th>
+                                <th className="text-right px-2 py-1.5 font-medium w-28">Harga Satuan</th>
+                                <th className="w-8"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {createLineItems.map((li, idx) => (
+                                <tr key={li.id} className="border-t">
+                                  <td className="px-2 py-1">
+                                    <Input
+                                      value={li.name}
+                                      onChange={(e) => setCreateLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name: e.target.value } : r))}
+                                      placeholder="Nama produk"
+                                      className="h-7 text-sm border-0 shadow-none px-0 focus-visible:ring-0"
+                                      data-testid={`input-order-item-name-${idx}`}
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1">
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      value={li.qty}
+                                      onChange={(e) => setCreateLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, qty: Math.max(1, Number(e.target.value) || 1) } : r))}
+                                      className="h-7 text-sm text-center border-0 shadow-none px-0 focus-visible:ring-0 w-14"
+                                      data-testid={`input-order-item-qty-${idx}`}
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={li.unitPrice || ""}
+                                      onChange={(e) => setCreateLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, unitPrice: Number(e.target.value) || 0 } : r))}
+                                      placeholder="0"
+                                      className="h-7 text-sm text-right border-0 shadow-none px-0 focus-visible:ring-0"
+                                      data-testid={`input-order-item-price-${idx}`}
+                                    />
+                                  </td>
+                                  <td className="px-1 py-1 text-center">
+                                    {createLineItems.length > 1 && (
+                                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => setCreateLineItems((prev) => prev.filter((r) => r.id !== li.id))}>
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" className="mt-1 w-full" onClick={() => setCreateLineItems((prev) => [...prev, newLineItem()])} data-testid="button-add-line-item">
+                          <Plus className="h-3.5 w-3.5 mr-1.5" /> Tambah Item
+                        </Button>
+                      </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="totalAmount">Subtotal (IDR)</Label>
+                        <Label>Subtotal (IDR)</Label>
                         <Input
-                          id="totalAmount"
-                          name="totalAmount"
                           type="number"
-                          min="0"
-                          required
-                          value={createSubtotal || ""}
-                          onChange={(e) => {
-                            const sub = Number(e.target.value) || 0;
-                            setCreateSubtotal(sub);
-                            if (createTaxRateId) setCreateTaxAmount(computeTax(sub, createTaxRateId));
-                          }}
+                          value={createSubtotal}
+                          readOnly
+                          className="bg-muted text-muted-foreground cursor-not-allowed"
                           data-testid="input-order-total"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="grid gap-2">
                           <Label htmlFor="create-tax-rate">Tarif PPN</Label>
-                          <Select value={createTaxRateId} onValueChange={(v) => handleCreateTaxRateChange(v === "none" ? "" : v, createSubtotal)} data-testid="select-create-tax-rate">
+                          <Select value={createTaxRateId} onValueChange={handleCreateTaxRateChange} data-testid="select-create-tax-rate">
                             <SelectTrigger id="create-tax-rate" data-testid="select-trigger-create-tax-rate"><SelectValue placeholder="Tidak ada PPN" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Tidak ada PPN</SelectItem>
@@ -1228,27 +1326,83 @@ export default function EcommercePage() {
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2"><Label htmlFor="edit-customer-name">Nama Pelanggan</Label><Input id="edit-customer-name" name="customerName" defaultValue={editingOrder.customerName} required data-testid="input-edit-order-customer-name" /></div>
                 <div className="grid gap-2"><Label htmlFor="edit-customer-email">Email Pelanggan</Label><Input id="edit-customer-email" name="customerEmail" type="email" defaultValue={editingOrder.customerEmail} required data-testid="input-edit-order-customer-email" /></div>
-                <div className="grid gap-2"><Label htmlFor="edit-items">Ringkasan Item</Label><Input id="edit-items" name="items" defaultValue={editingOrder.items ?? ""} required data-testid="input-edit-order-items" /></div>
+                <div className="grid gap-1">
+                  <Label>Item Pesanan</Label>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted text-muted-foreground">
+                        <tr>
+                          <th className="text-left px-2 py-1.5 font-medium">Nama Item</th>
+                          <th className="text-center px-2 py-1.5 font-medium w-16">Qty</th>
+                          <th className="text-right px-2 py-1.5 font-medium w-28">Harga Satuan</th>
+                          <th className="w-8"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editLineItems.map((li, idx) => (
+                          <tr key={li.id} className="border-t">
+                            <td className="px-2 py-1">
+                              <Input
+                                value={li.name}
+                                onChange={(e) => { setEditLineItemsTouched(true); setEditLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name: e.target.value } : r)); }}
+                                placeholder="Nama produk"
+                                className="h-7 text-sm border-0 shadow-none px-0 focus-visible:ring-0"
+                                data-testid={`input-edit-order-item-name-${idx}`}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <Input
+                                type="number"
+                                min="1"
+                                value={li.qty}
+                                onChange={(e) => { setEditLineItemsTouched(true); setEditLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, qty: Math.max(1, Number(e.target.value) || 1) } : r)); }}
+                                className="h-7 text-sm text-center border-0 shadow-none px-0 focus-visible:ring-0 w-14"
+                                data-testid={`input-edit-order-item-qty-${idx}`}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                value={li.unitPrice || ""}
+                                onChange={(e) => { setEditLineItemsTouched(true); setEditLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, unitPrice: Number(e.target.value) || 0 } : r)); }}
+                                placeholder="0"
+                                className="h-7 text-sm text-right border-0 shadow-none px-0 focus-visible:ring-0"
+                                data-testid={`input-edit-order-item-price-${idx}`}
+                              />
+                            </td>
+                            <td className="px-1 py-1 text-center">
+                              {editLineItems.length > 1 && (
+                                <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => { setEditLineItemsTouched(true); setEditLineItems((prev) => prev.filter((r) => r.id !== li.id)); }}>
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="mt-1 w-full" onClick={() => { setEditLineItemsTouched(true); setEditLineItems((prev) => [...prev, newLineItem()]); }} data-testid="button-edit-add-line-item">
+                    <Plus className="h-3.5 w-3.5 mr-1.5" /> Tambah Item
+                  </Button>
+                </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="edit-total">Subtotal (IDR)</Label>
+                  <Label>Subtotal (IDR)</Label>
                   <Input
                     id="edit-total"
                     type="number"
-                    min="0"
-                    required
-                    value={editSubtotal || ""}
-                    onChange={(e) => {
-                      const sub = Number(e.target.value) || 0;
-                      setEditSubtotal(sub);
-                      if (editTaxRateId) setEditTaxAmount(computeTax(sub, editTaxRateId));
-                    }}
+                    value={editSubtotal}
+                    readOnly={editLineItemsTouched}
+                    onChange={(e) => !editLineItemsTouched && setEditSubtotal(Number(e.target.value) || 0)}
+                    className={editLineItemsTouched ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
                     data-testid="input-edit-order-total"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="edit-tax-rate">Tarif PPN</Label>
-                    <Select value={editTaxRateId} onValueChange={(v) => handleEditTaxRateChange(v === "none" ? "" : v, editSubtotal)} data-testid="select-edit-tax-rate">
+                    <Select value={editTaxRateId} onValueChange={handleEditTaxRateChange} data-testid="select-edit-tax-rate">
                       <SelectTrigger id="edit-tax-rate" data-testid="select-trigger-edit-tax-rate"><SelectValue placeholder="Tidak ada PPN" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Tidak ada PPN</SelectItem>
@@ -1358,6 +1512,7 @@ function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogPro
   const date = new Date(order.createdAt).toLocaleDateString('id-ID', {
     day: 'numeric', month: 'long', year: 'numeric',
   });
+  const lineItems = order.lineItems ?? null;
   const subtotal = order.totalAmount;
   const tax = order.taxAmount ?? 0;
   const grand = order.grandTotal ?? (subtotal + tax);
@@ -1393,12 +1548,33 @@ function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogPro
             <p style={{ margin: 0, color: '#555' }}>{date}</p>
           </div>
         </div>
-        {order.items && (
+        {lineItems && lineItems.length > 0 ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 24 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #000' }}>
+                <th style={{ textAlign: 'left', padding: '6px 8px 6px 0', fontSize: 13 }}>Item</th>
+                <th style={{ textAlign: 'center', padding: '6px 8px', fontSize: 13, width: 48 }}>Qty</th>
+                <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: 13, width: 120 }}>Harga Satuan</th>
+                <th style={{ textAlign: 'right', padding: '6px 0 6px 8px', fontSize: 13, width: 120 }}>Jumlah</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lineItems.map((li, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                  <td style={{ padding: '6px 8px 6px 0', fontSize: 13 }}>{li.name}</td>
+                  <td style={{ textAlign: 'center', padding: '6px 8px', fontSize: 13 }}>{li.qty}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 8px', fontSize: 13 }}>{formatIDR(li.unitPrice)}</td>
+                  <td style={{ textAlign: 'right', padding: '6px 0 6px 8px', fontSize: 13 }}>{formatIDR(li.qty * li.unitPrice)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : order.items ? (
           <div style={{ marginBottom: 24 }}>
             <p style={{ fontWeight: 600, margin: '0 0 8px' }}>Item:</p>
             <p style={{ margin: 0, color: '#333', whiteSpace: 'pre-wrap' }}>{order.items}</p>
           </div>
-        )}
+        ) : null}
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
           <tbody>
             <tr>
@@ -1451,12 +1627,35 @@ function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogPro
               </div>
             </div>
 
-            {order.items && (
+            {lineItems && lineItems.length > 0 ? (
+              <div data-testid="invoice-line-items">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-1.5 font-medium text-xs text-muted-foreground uppercase tracking-wide">Item</th>
+                      <th className="text-center py-1.5 font-medium text-xs text-muted-foreground uppercase tracking-wide w-12">Qty</th>
+                      <th className="text-right py-1.5 font-medium text-xs text-muted-foreground uppercase tracking-wide w-28">Harga Satuan</th>
+                      <th className="text-right py-1.5 font-medium text-xs text-muted-foreground uppercase tracking-wide w-28">Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineItems.map((li, i) => (
+                      <tr key={i} className="border-b last:border-b-0">
+                        <td className="py-1.5">{li.name}</td>
+                        <td className="py-1.5 text-center">{li.qty}</td>
+                        <td className="py-1.5 text-right">{formatIDR(li.unitPrice)}</td>
+                        <td className="py-1.5 text-right font-medium">{formatIDR(li.qty * li.unitPrice)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : order.items ? (
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Item</p>
                 <p className="text-sm">{order.items}</p>
               </div>
-            )}
+            ) : null}
 
             <div className="border-t pt-4 space-y-2">
               <div className="flex justify-between text-sm" data-testid="invoice-subtotal">

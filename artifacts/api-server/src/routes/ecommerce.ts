@@ -230,6 +230,7 @@ function serializeOrder(o: typeof ordersTable.$inferSelect) {
     totalAmount,
     taxAmount,
     grandTotal,
+    lineItems: o.lineItems ?? null,
     createdAt: o.createdAt.toISOString(),
   };
 }
@@ -242,12 +243,20 @@ router.get("/orders", async (_req, res) => {
 
 // POST /api/ecommerce/orders
 router.post("/orders", async (req, res) => {
-  const { customerName, customerEmail, items, totalAmount, taxAmount: rawTax } = req.body;
-  const subtotal = Number(totalAmount);
+  const { customerName, customerEmail, items, lineItems, totalAmount, taxAmount: rawTax } = req.body;
+  const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
+    Array.isArray(lineItems) && lineItems.length > 0 ? lineItems : null;
+  const computedSubtotal = parsedLineItems
+    ? parsedLineItems.reduce((sum, li) => sum + li.qty * li.unitPrice, 0)
+    : Number(totalAmount);
+  const subtotal = computedSubtotal;
   const tax = Number(rawTax ?? 0);
   const grand = subtotal + tax;
+  const legacyItems: string | null = items ?? null;
   const [order] = await db.insert(ordersTable).values({
-    customerName, customerEmail, items,
+    customerName, customerEmail,
+    items: legacyItems,
+    lineItems: parsedLineItems,
     totalAmount: String(subtotal),
     taxAmount: String(tax),
     grandTotal: String(grand),
@@ -261,12 +270,21 @@ router.put("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
   if (!existing) return res.status(404).json({ message: "Order not found" });
-  const { customerName, customerEmail, items, totalAmount, taxAmount: rawTax, status } = req.body;
-  const subtotal = Number(totalAmount);
+  const { customerName, customerEmail, items, lineItems, totalAmount, taxAmount: rawTax, status } = req.body;
+  const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
+    Array.isArray(lineItems) && lineItems.length > 0 ? lineItems : null;
+  const computedSubtotal = parsedLineItems
+    ? parsedLineItems.reduce((sum, li) => sum + li.qty * li.unitPrice, 0)
+    : Number(totalAmount);
+  const subtotal = computedSubtotal;
   const tax = Number(rawTax ?? existing.taxAmount ?? 0);
   const grand = subtotal + tax;
+  const itemsUpdate = 'items' in req.body ? (items ?? null) : undefined;
+  const lineItemsUpdate = 'lineItems' in req.body ? parsedLineItems : undefined;
   const [order] = await db.update(ordersTable).set({
-    customerName, customerEmail, items,
+    customerName, customerEmail,
+    ...(itemsUpdate !== undefined ? { items: itemsUpdate } : {}),
+    ...(lineItemsUpdate !== undefined ? { lineItems: lineItemsUpdate } : {}),
     totalAmount: String(subtotal),
     taxAmount: String(tax),
     grandTotal: String(grand),
