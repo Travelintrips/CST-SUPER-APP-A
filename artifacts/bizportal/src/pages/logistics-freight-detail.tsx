@@ -253,7 +253,10 @@ export default function LogisticsFreightDetailPage() {
   const rfqs: FreightRfqWithQuotes[] = shipment.rfqs ?? [];
   const printDate = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
-  const approvedQuote = rfqs.flatMap((r) => r.quotes ?? []).find((q) => q.status === "approved");
+  const allApprovedQuotes = rfqs.flatMap((r) => r.quotes ?? []).filter((q) => q.status === "approved");
+  const approvedQuote = allApprovedQuotes.length > 0
+    ? allApprovedQuotes.reduce((latest, q) => q.id > latest.id ? q : latest)
+    : undefined;
   const quotedCost = approvedQuote?.totalCost ? Number(approvedQuote.totalCost) : null;
   const actualCost = shipment.actualCost ? Number(shipment.actualCost) : null;
   const hasCostComparison = quotedCost !== null && actualCost !== null;
