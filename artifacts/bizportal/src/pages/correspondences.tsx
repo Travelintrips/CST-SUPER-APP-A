@@ -446,36 +446,33 @@ export default function CorrespondencesPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
-              <div className="flex items-center justify-between gap-2">
-                <DialogTitle>{editingId ? "Edit Korespondensi" : "Tambah Korespondensi"}</DialogTitle>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 gap-1.5"
-                  disabled={scanLoading}
-                  onClick={() => scanFileInputRef.current?.click()}
-                  data-testid="button-scan-document"
-                >
-                  {scanLoading
-                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Memproses...</>
-                    : <><ScanLine className="h-3.5 w-3.5" />Scan Dokumen</>}
-                </Button>
-                <input
-                  ref={scanFileInputRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleScanFile(file);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-              <DialogDescription>Catat email, surat, atau penawaran sebagai arsip. Gunakan "Scan Dokumen" untuk isi otomatis dari gambar atau PDF.</DialogDescription>
+              <DialogTitle>{editingId ? "Edit Korespondensi" : "Tambah Korespondensi"}</DialogTitle>
+              <DialogDescription>Catat email, surat, atau penawaran sebagai arsip.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2 border-dashed"
+                disabled={scanLoading}
+                onClick={() => scanFileInputRef.current?.click()}
+                data-testid="button-scan-document"
+              >
+                {scanLoading
+                  ? <><Loader2 className="h-4 w-4 animate-spin" />Sedang mengekstrak data dokumen...</>
+                  : <><ScanLine className="h-4 w-4" />Scan Dokumen — isi form otomatis dari gambar atau PDF</>}
+              </Button>
+              <input
+                ref={scanFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleScanFile(file);
+                  e.target.value = "";
+                }}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Jenis</Label>
