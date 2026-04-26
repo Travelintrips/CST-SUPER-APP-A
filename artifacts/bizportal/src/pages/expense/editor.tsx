@@ -37,6 +37,10 @@ function getServeUrl(objectPath: string) {
   return objectPath;
 }
 
+function errMsg(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : (e as { message?: string })?.message ?? fallback;
+}
+
 function AttachmentItem({
   att,
   onDelete,
@@ -251,8 +255,8 @@ export default function ExpenseEditorPage() {
           setUploading(false);
           qc.invalidateQueries({ queryKey: getGetExpenseQueryKey(expId) });
         },
-        onError: (e: any) => {
-          toast({ title: e?.message ?? "Gagal menyimpan lampiran", variant: "destructive" });
+        onError: (e: unknown) => {
+          toast({ title: errMsg(e, "Gagal menyimpan lampiran"), variant: "destructive" });
           setUploading(false);
         },
       },
@@ -268,8 +272,8 @@ export default function ExpenseEditorPage() {
           toast({ title: "Lampiran dihapus" });
           qc.invalidateQueries({ queryKey: getGetExpenseQueryKey(expId) });
         },
-        onError: (e: any) => {
-          toast({ title: e?.message ?? "Gagal hapus", variant: "destructive" });
+        onError: (e: unknown) => {
+          toast({ title: errMsg(e, "Gagal hapus lampiran"), variant: "destructive" });
         },
         onSettled: () => setDeletingAttId(null),
       },
@@ -539,7 +543,12 @@ export default function ExpenseEditorPage() {
           </div>
         </div>
 
-        {/* Attachment panel — only shown for saved expenses */}
+        {/*
+          Attachment panel — only shown for saved expenses.
+          Upload/delete are intentionally allowed in all statuses including posted/paid:
+          Finance staff may need to add documents retroactively, and the backend does
+          not restrict attachment mutations by status.
+        */}
         {!isNew && (() => {
           const attachments = expense?.attachments ?? [];
           const selectedCat = cats.find((c) => c.id === form.categoryId);
