@@ -386,7 +386,8 @@ export default function LogisticsFreightPage() {
           )}
         </div>
 
-        <Card>
+        {/* Desktop table — hidden on mobile */}
+        <Card className="hidden md:block">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -397,7 +398,7 @@ export default function LogisticsFreightPage() {
                   <TableHead>Komoditi</TableHead>
                   <TableHead>Origin → Destination</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Tgl. Dibuat</TableHead>
+                  <TableHead>Tgl. Dibuat</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -423,9 +424,6 @@ export default function LogisticsFreightPage() {
                     <TableRow key={s.id}>
                       <TableCell>
                         <div className="font-mono text-sm font-semibold">{s.shipmentNumber}</div>
-                        <div className="md:hidden text-xs text-muted-foreground mt-0.5">
-                          {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-                        </div>
                       </TableCell>
                       <TableCell>{s.shipperName}</TableCell>
                       <TableCell>{s.consigneeName}</TableCell>
@@ -440,7 +438,7 @@ export default function LogisticsFreightPage() {
                           {STATUS_LABELS[s.status] ?? s.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground text-sm whitespace-nowrap">
+                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                         {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
                       </TableCell>
                       <TableCell>
@@ -468,6 +466,87 @@ export default function LogisticsFreightPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Mobile card list — hidden on md+ */}
+        <div className="md:hidden space-y-3">
+          {isLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <Skeleton className="h-5 w-2/5" />
+                    <Skeleton className="h-5 w-1/4 rounded-full" />
+                  </div>
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </CardContent>
+              </Card>
+            ))
+          ) : !filteredShipments.length ? (
+            <Card>
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <Ship className="h-8 w-8 mb-2 opacity-50 mx-auto" />
+                <p className="text-sm">
+                  {isFiltered
+                    ? "Tidak ada shipment dengan filter ini."
+                    : "Belum ada freight shipment."}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredShipments.map((s) => (
+              <Card key={s.id} data-testid={`card-shipment-${s.id}`}>
+                <CardContent className="p-4 space-y-2">
+                  {/* Header: shipment number + status */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-sm font-semibold truncate">{s.shipmentNumber}</span>
+                    <Badge variant="outline" className={`shrink-0 ${STATUS_COLORS[s.status] ?? ""}`}>
+                      {STATUS_LABELS[s.status] ?? s.status}
+                    </Badge>
+                  </div>
+
+                  {/* Shipper → Consignee */}
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">{s.shipperName}</span>
+                    <span className="mx-1.5 text-muted-foreground">→</span>
+                    <span>{s.consigneeName}</span>
+                  </div>
+
+                  {/* Commodity + route */}
+                  <div className="text-xs text-muted-foreground">
+                    <span>{s.commodity}</span>
+                    <span className="mx-1.5">·</span>
+                    <span>{s.origin} → {s.destination}</span>
+                  </div>
+
+                  {/* Date + actions */}
+                  <div className="flex items-center justify-between pt-1 border-t border-border">
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                    </span>
+                    <div className="flex gap-1">
+                      <Link href={`/logistics/freight/${s.id}`}>
+                        <Button variant="ghost" size="icon" title="Detail" data-testid={`button-view-shipment-${s.id}`}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Hapus"
+                        onClick={() => handleDelete(s.id, s.shipmentNumber)}
+                        disabled={deleteShipment.isPending}
+                        data-testid={`button-delete-shipment-${s.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
       </div>
     </AppShell>
   );
