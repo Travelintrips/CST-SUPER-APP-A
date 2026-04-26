@@ -666,6 +666,27 @@ export default function SalesDocumentEditorPage() {
                   </TableBody>
                 </Table>
               )}
+              {doc?.kind === "order" && (
+                <div className="mt-4 pt-3 border-t border-slate-700/50 space-y-1.5 text-sm" data-testid="payment-summary">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Total Tagihan</span>
+                    <span className="font-mono tabular-nums" data-testid="summary-grand-total">{idr(Number(doc.grandTotal))}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Total Dibayar</span>
+                    <span className="font-mono tabular-nums text-emerald-400" data-testid="summary-amount-paid">{idr(Number(doc.amountPaid ?? 0))}</span>
+                  </div>
+                  <div className="flex items-center justify-between font-semibold border-t border-slate-700/30 pt-1.5">
+                    <span className="text-slate-200">Sisa</span>
+                    <span
+                      className={`font-mono tabular-nums ${Math.max(0, Number(doc.grandTotal) - Number(doc.amountPaid ?? 0)) > 0.005 ? "text-amber-400" : "text-emerald-400"}`}
+                      data-testid="summary-balance-due"
+                    >
+                      {idr(Math.max(0, Number(doc.grandTotal) - Number(doc.amountPaid ?? 0)))}
+                    </span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
