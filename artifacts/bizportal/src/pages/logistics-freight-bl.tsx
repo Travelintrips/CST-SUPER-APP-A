@@ -1,7 +1,8 @@
 import { useParams, useLocation } from "wouter";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Printer, ArrowLeft } from "lucide-react";
+import { Printer, ArrowLeft, Download, Loader2 } from "lucide-react";
 import { useGetFreightShipment } from "@workspace/api-client-react";
 
 const BL_ALLOWED_STATUSES = ["confirmed", "in_transit", "completed"];
@@ -34,8 +35,35 @@ export default function LogisticsFreightBLPage() {
   const params = useParams<{ id: string }>();
   const id = Number(params.id);
   const [, navigate] = useLocation();
+  const blRef = useRef<HTMLDivElement>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
+
+  const handleDownloadPDF = async () => {
+    if (!blRef.current || !shipment) return;
+    setIsGeneratingPDF(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const canvas = await html2canvas(blRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`BL-${shipment.shipmentNumber}.pdf`);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -82,14 +110,30 @@ export default function LogisticsFreightBLPage() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Kembali ke Detail
         </Button>
-        <Button onClick={() => window.print()}>
-          <Printer className="h-4 w-4 mr-2" />
-          Cetak Bill of Lading
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleDownloadPDF}
+            disabled={isGeneratingPDF}
+            data-testid="button-download-pdf"
+          >
+            {isGeneratingPDF ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {isGeneratingPDF ? "Membuat PDF..." : "Unduh PDF"}
+          </Button>
+          <Button onClick={() => window.print()} data-testid="button-print-bl">
+            <Printer className="h-4 w-4 mr-2" />
+            Cetak Bill of Lading
+          </Button>
+        </div>
       </div>
 
       {/* BL Document */}
       <div
+        ref={blRef}
         className="bg-white mx-auto my-6 print:my-0 print:mx-0 shadow-lg print:shadow-none"
         style={{ maxWidth: "210mm", fontFamily: "Times New Roman, serif" }}
       >
