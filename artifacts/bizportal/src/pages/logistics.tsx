@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown, X } from "lucide-react";
+import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown, X, Filter } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -155,6 +155,18 @@ export default function LogisticsPage() {
     freightStatusFilter !== "all" ||
     freightSortOrder !== "newest" ||
     freightDateFilter !== "all";
+
+  const isFreightFiltered = freightStatusFilter !== "all" || freightDateFilter !== "all";
+
+  const DATE_FILTER_LABELS: Record<string, string> = {
+    "7days": "7 Hari Terakhir",
+    "30days": "30 Hari Terakhir",
+    "custom": customDateFrom && customDateTo ? `${customDateFrom} – ${customDateTo}` : "Kustom",
+  };
+
+  const activeFreightFilterParts: string[] = [];
+  if (freightStatusFilter !== "all") activeFreightFilterParts.push(FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter);
+  if (freightDateFilter !== "all") activeFreightFilterParts.push(DATE_FILTER_LABELS[freightDateFilter] ?? freightDateFilter);
 
   const clearFreightFilters = () => {
     setFreightStatusFilter("all");
@@ -360,6 +372,23 @@ export default function LogisticsPage() {
               <p className="text-[11px] text-muted-foreground">
                 Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </p>
+            )}
+            {isFreightFiltered && (
+              <div className="flex items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-3 py-1.5 text-sm w-fit max-w-full flex-wrap">
+                <Filter className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-foreground font-medium">Filter aktif:</span>
+                <span className="text-muted-foreground">{activeFreightFilterParts.join(" · ")}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFreightFilters}
+                  className="ml-auto h-auto py-0 px-1 gap-1 text-xs text-muted-foreground hover:text-foreground shrink-0"
+                  aria-label="Hapus semua filter"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Hapus filter
+                </Button>
+              </div>
             )}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <Select value={freightStatusFilter} onValueChange={setFreightStatusFilter}>
