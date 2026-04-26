@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable } from "@workspace/db";
 import { sql, and, ne, eq } from "drizzle-orm";
-import { getRecentResponseTimes } from "../lib/responseTimeLog";
+import { getRecentResponseTimesFromDb } from "../lib/responseTimeLog";
 
 const router = Router();
 
@@ -52,9 +52,9 @@ router.get("/summary", async (req, res) => {
 
 // GET /api/dashboard/response-times?path=<path-fragment>
 // Returns the rolling log of response times, optionally filtered by path.
-router.get("/response-times", (req, res) => {
+router.get("/response-times", async (req, res) => {
   const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
-  const entries = getRecentResponseTimes(pathFilter);
+  const entries = await getRecentResponseTimesFromDb(pathFilter);
   return res.json({ entries });
 });
 
