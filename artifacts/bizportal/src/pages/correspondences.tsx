@@ -320,6 +320,11 @@ export default function CorrespondencesPage() {
                   fileName: fileToAttach.name,
                   mimeType: fileToAttach.type || null,
                 },
+              }, {
+                onSuccess: () => {
+                  queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+                },
+                onError: () => toast({ title: "Gagal menyimpan lampiran scan", variant: "destructive" }),
               });
             }
           }
