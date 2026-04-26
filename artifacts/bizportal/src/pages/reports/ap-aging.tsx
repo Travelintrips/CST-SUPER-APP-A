@@ -3,7 +3,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText } from "lucide-react";
+import { Link } from "wouter";
+import { FileText, Package } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -67,7 +68,14 @@ export default function ApAgingPage() {
                       <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Tidak ada hutang</TableCell></TableRow>
                     ) : data.items.map((it) => (
                       <TableRow key={it.id}>
-                        <TableCell className="font-mono text-sm">{it.docNumber}</TableCell>
+                        <TableCell>
+                          <Link href={`/purchase/orders/${it.id}`}>
+                            <span className="inline-flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline font-mono">
+                              <Package size={10} />
+                              {it.docNumber}
+                            </span>
+                          </Link>
+                        </TableCell>
                         <TableCell>{it.supplierName ?? "-"}</TableCell>
                         <TableCell>{new Date(it.confirmedAt).toLocaleDateString("id-ID")}</TableCell>
                         <TableCell className="text-right">

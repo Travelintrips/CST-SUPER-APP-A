@@ -9,12 +9,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
   useDeleteFreightShipment,
   getListFreightShipmentsQueryKey,
+  useListSalesDocuments,
   type FreightShipment,
 } from "@workspace/api-client-react";
 
@@ -176,6 +177,8 @@ export default function LogisticsFreightPage() {
   };
 
   const deleteShipment = useDeleteFreightShipment();
+  const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
+  const soMap = Object.fromEntries(salesDocs.map((sd) => [sd.id, sd.docNumber]));
 
   void location;
 
@@ -497,6 +500,14 @@ export default function LogisticsFreightPage() {
                     <TableRow key={s.id}>
                       <TableCell>
                         <div className="font-mono text-sm font-semibold">{s.shipmentNumber}</div>
+                        {s.salesDocId && (
+                          <Link href={`/sales/orders/${s.salesDocId}`}>
+                            <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono mt-0.5">
+                              <ShoppingCart size={10} />
+                              {soMap[s.salesDocId] ?? `SO #${s.salesDocId}`}
+                            </span>
+                          </Link>
+                        )}
                         {hasBLData(s) && (
                           <div className="flex items-center gap-0.5 mt-0.5 text-xs text-sky-600 dark:text-sky-400 font-medium">
                             <Ship className="h-3 w-3" />
@@ -605,6 +616,16 @@ export default function LogisticsFreightPage() {
                     <span className="mx-1.5">·</span>
                     <span>{s.origin} → {s.destination}</span>
                   </div>
+
+                  {/* SO ref badge */}
+                  {s.salesDocId && (
+                    <Link href={`/sales/orders/${s.salesDocId}`}>
+                      <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
+                        <ShoppingCart size={10} />
+                        {soMap[s.salesDocId] ?? `SO #${s.salesDocId}`}
+                      </span>
+                    </Link>
+                  )}
 
                   {/* Date + actions */}
                   <div className="flex items-center justify-between pt-1 border-t border-border">
