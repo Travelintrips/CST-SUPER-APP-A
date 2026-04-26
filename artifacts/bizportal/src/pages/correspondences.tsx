@@ -527,9 +527,14 @@ export default function CorrespondencesPage() {
                       Abaikan
                     </Button>
                   </div>
-                  {scanPending.previewUrl && (
+                  {scanPending.previewUrl ? (
                     <div className="rounded-md border overflow-hidden bg-muted">
                       <img src={scanPending.previewUrl} alt="Preview dokumen" className="w-full max-h-40 object-contain" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                      <FileText className="h-4 w-4 shrink-0" />
+                      {scanPending.file.name}
                     </div>
                   )}
                   <div className="grid gap-2">
@@ -675,6 +680,21 @@ export default function CorrespondencesPage() {
                   e.target.value = "";
                 }}
               />
+              {scannedFile && !editingId && !scanPending && (
+                <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                  <Checkbox
+                    id="save-scanned-attachment-post"
+                    checked={saveScannedAsAttachment}
+                    onCheckedChange={(v) => setSaveScannedAsAttachment(Boolean(v))}
+                  />
+                  <Label htmlFor="save-scanned-attachment-post" className="cursor-pointer text-sm font-normal">
+                    Simpan file ini sebagai lampiran
+                  </Label>
+                  <span className="ml-auto max-w-[160px] truncate text-xs text-muted-foreground">
+                    {scannedFile.name}
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Jenis</Label>
