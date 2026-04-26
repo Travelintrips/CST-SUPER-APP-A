@@ -265,11 +265,18 @@ router.post("/entries", async (req, res) => {
 });
 
 // ============ Payments & Receipts ============
-function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
+function parseVoidReason(description: string | null | undefined): string | null {
+  if (!description) return null;
+  const match = description.match(/—\s*Alasan:\s*(.+)/);
+  return match ? match[1]!.trim() : null;
+}
+
+function serializePayment(p: typeof accountingPaymentsTable.$inferSelect, voidDescription?: string | null) {
   return {
     ...p,
     amount: Number(p.amount),
     createdAt: p.createdAt.toISOString(),
+    voidReason: parseVoidReason(voidDescription) ?? null,
   };
 }
 
@@ -292,12 +299,13 @@ router.get("/payments", async (req, res) => {
     conds.push(eq(accountingPaymentsTable.sourceDocId, sourceDocIdFilter));
   }
   const rows = await db
-    .select()
+    .select({ payment: accountingPaymentsTable, voidDescription: accountingEntriesTable.description })
     .from(accountingPaymentsTable)
+    .leftJoin(accountingEntriesTable, eq(accountingPaymentsTable.voidEntryId, accountingEntriesTable.id))
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(accountingPaymentsTable.date), desc(accountingPaymentsTable.id))
     .limit(500);
-  return res.json(rows.map(serializePayment));
+  return res.json(rows.map(({ payment, voidDescription }) => serializePayment(payment, voidDescription)));
 });
 
 router.get("/payments/:id", async (req, res) => {
@@ -313,7 +321,12 @@ router.get("/payments/:id", async (req, res) => {
       entry = { ...serializeEntry(e), lines: lines.map(serializeEntryLine) };
     }
   }
-  return res.json({ ...serializePayment(payment), entry });
+  let voidDesc: string | null = null;
+  if (payment.voidEntryId) {
+    const [ve] = await db.select({ description: accountingEntriesTable.description }).from(accountingEntriesTable).where(eq(accountingEntriesTable.id, payment.voidEntryId));
+    voidDesc = ve?.description ?? null;
+  }
+  return res.json({ ...serializePayment(payment, voidDesc), entry });
 });
 
 router.post("/payments", async (req, res) => {

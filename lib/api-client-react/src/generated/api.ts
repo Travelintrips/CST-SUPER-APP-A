@@ -8181,14 +8181,11 @@ export const getVoidAccountingPaymentUrl = (id: number) => {
 
 export const voidAccountingPayment = async (
   id: number,
-  voidAccountingPaymentBody?: { reason?: string },
   options?: RequestInit,
 ): Promise<AccountingPaymentDetail> => {
   return customFetch<AccountingPaymentDetail>(getVoidAccountingPaymentUrl(id), {
     ...options,
     method: "POST",
-    body: JSON.stringify(voidAccountingPaymentBody ?? {}),
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
   });
 };
 
@@ -8199,14 +8196,14 @@ export const getVoidAccountingPaymentMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof voidAccountingPayment>>,
     TError,
-    { id: number; data?: { reason?: string } },
+    { id: number },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof voidAccountingPayment>>,
   TError,
-  { id: number; data?: { reason?: string } },
+  { id: number },
   TContext
 > => {
   const mutationKey = ["voidAccountingPayment"];
@@ -8220,11 +8217,11 @@ export const getVoidAccountingPaymentMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof voidAccountingPayment>>,
-    { id: number; data?: { reason?: string } }
+    { id: number }
   > = (props) => {
-    const { id, data } = props ?? {};
+    const { id } = props ?? {};
 
-    return voidAccountingPayment(id, data, requestOptions);
+    return voidAccountingPayment(id, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -8246,14 +8243,14 @@ export const useVoidAccountingPayment = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof voidAccountingPayment>>,
     TError,
-    { id: number; data?: { reason?: string } },
+    { id: number },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof voidAccountingPayment>>,
   TError,
-  { id: number; data?: { reason?: string } },
+  { id: number },
   TContext
 > => {
   return useMutation(getVoidAccountingPaymentMutationOptions(options));

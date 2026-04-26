@@ -3182,6 +3182,7 @@ components:
         memo: { type: string, nullable: true }
         entryId: { type: integer, nullable: true }
         voidEntryId: { type: integer, nullable: true }
+        voidReason: { type: string, nullable: true }
         sourceType: { type: string, nullable: true }
         sourceDocId: { type: integer, nullable: true }
         createdById: { type: string, nullable: true }

@@ -975,6 +975,7 @@ export interface AccountingPayment {
   memo?: string | null;
   entryId?: number | null;
   voidEntryId?: number | null;
+  voidReason?: string | null;
   sourceType?: string | null;
   sourceDocId?: number | null;
   createdById?: string | null;

@@ -824,9 +824,16 @@ export default function PaymentsPage() {
                         </TableCell>
                         <TableCell>
                           {isVoided ? (
-                            <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-xs gap-1">
-                              <Ban className="h-3 w-3" /> Dibatalkan
-                            </Badge>
+                            <div className="space-y-0.5">
+                              <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-xs gap-1">
+                                <Ban className="h-3 w-3" /> Dibatalkan
+                              </Badge>
+                              {p.voidReason && (
+                                <p className="text-xs text-slate-500 italic max-w-[160px] truncate" title={p.voidReason}>
+                                  {p.voidReason}
+                                </p>
+                              )}
+                            </div>
                           ) : (
                             <Badge className="bg-green-900/40 text-green-300 border-green-700 text-xs">
                               Diposting
