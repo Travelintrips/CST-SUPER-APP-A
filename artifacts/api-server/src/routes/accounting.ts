@@ -641,7 +641,7 @@ router.post("/payments/:id/void", async (req, res) => {
     const [updated] = await db.select().from(accountingPaymentsTable).where(eq(accountingPaymentsTable.id, id));
     const voidLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, voidEntry.id));
     return res.json({
-      ...serializePayment(updated!),
+      ...serializePayment(updated!, voidDescription),
       entry: { ...serializeEntry(voidEntry), lines: voidLines.map(serializeEntryLine) },
     });
   } catch (err) {
