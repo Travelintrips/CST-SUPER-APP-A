@@ -20,8 +20,9 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
-  TrendingDown, TrendingUp, Receipt, ExternalLink,
+  TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare,
 } from "lucide-react";
+import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -1095,6 +1096,19 @@ export default function LogisticsFreightDetailPage() {
             />
           </CardContent>
         </Card>
+
+        {id && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <MessageSquare className="h-4 w-4" /> Korespondensi Email
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CorrespondenceTab linkedType="shipment" linkedId={id} />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* RFQ Dialog */}

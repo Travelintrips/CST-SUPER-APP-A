@@ -37,7 +37,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { useToast } from "@/hooks/use-toast";
 import {
   Mail, Search, RefreshCw, Loader2, ShieldCheck, XCircle, Archive,
-  Link2, Paperclip, CheckCircle2, Trash2, Eye, Download, FileImage,
+  Link2, Paperclip, CheckCircle2, Trash2, Download, FileImage, Filter, CalendarDays,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -293,6 +293,13 @@ export default function EmailInboxPage() {
 
   const [searchQ, setSearchQ] = useState("");
   const [filterStatus, setFilterStatus] = useState("__all__");
+  const [filterFrom, setFilterFrom] = useState("");
+  const [filterSubject, setFilterSubject] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterLinkedType, setFilterLinkedType] = useState("__all__");
+  const [filterIsValidated, setFilterIsValidated] = useState("__all__");
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -308,7 +315,13 @@ export default function EmailInboxPage() {
   const queryParams = useMemo(() => ({
     ...(searchQ.trim() ? { q: searchQ.trim() } : {}),
     ...(filterStatus !== "__all__" ? { status: filterStatus as any } : {}),
-  }), [searchQ, filterStatus]);
+    ...(filterFrom.trim() ? { from: filterFrom.trim() } : {}),
+    ...(filterSubject.trim() ? { subject: filterSubject.trim() } : {}),
+    ...(filterDateFrom ? { dateFrom: filterDateFrom } : {}),
+    ...(filterDateTo ? { dateTo: filterDateTo } : {}),
+    ...(filterLinkedType !== "__all__" ? { linkedType: filterLinkedType } : {}),
+    ...(filterIsValidated !== "__all__" ? { isValidated: filterIsValidated as any } : {}),
+  }), [searchQ, filterStatus, filterFrom, filterSubject, filterDateFrom, filterDateTo, filterLinkedType, filterIsValidated]);
 
   const { data: emails = [], isLoading } = useListEmailCorrespondences(queryParams, {
     query: { queryKey: getListEmailCorrespondencesQueryKey(queryParams) },
@@ -440,28 +453,123 @@ export default function EmailInboxPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              className="pl-9"
-              placeholder="Cari subjek, pengirim, isi..."
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              data-testid="input-email-search"
-            />
+        <div className="space-y-2">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="Cari subjek, pengirim, isi..."
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                data-testid="input-email-search"
+              />
+            </div>
+            <Select value={filterStatus} onValueChange={setFilterStatus} data-testid="filter-email-status">
+              <SelectTrigger className="sm:w-[160px]"><SelectValue placeholder="Semua Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Semua Status</SelectItem>
+                <SelectItem value="new">Baru</SelectItem>
+                <SelectItem value="linked">Ditautkan</SelectItem>
+                <SelectItem value="validated">Divalidasi</SelectItem>
+                <SelectItem value="rejected">Ditolak</SelectItem>
+                <SelectItem value="archived">Diarsipkan</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 shrink-0"
+              onClick={() => setShowMoreFilters((v) => !v)}
+            >
+              <Filter className="h-4 w-4" />
+              <span className="hidden sm:inline">{showMoreFilters ? "Sembunyikan Filter" : "Filter Lanjut"}</span>
+            </Button>
           </div>
-          <Select value={filterStatus} onValueChange={setFilterStatus} data-testid="filter-email-status">
-            <SelectTrigger className="sm:w-[160px]"><SelectValue placeholder="Semua Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Semua Status</SelectItem>
-              <SelectItem value="new">Baru</SelectItem>
-              <SelectItem value="linked">Ditautkan</SelectItem>
-              <SelectItem value="validated">Divalidasi</SelectItem>
-              <SelectItem value="rejected">Ditolak</SelectItem>
-              <SelectItem value="archived">Diarsipkan</SelectItem>
-            </SelectContent>
-          </Select>
+
+          {showMoreFilters && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-3 border rounded-lg bg-muted/20">
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Dari (From)</Label>
+                <Input
+                  className="h-8 text-sm"
+                  placeholder="email@domain.com"
+                  value={filterFrom}
+                  onChange={(e) => setFilterFrom(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Subjek</Label>
+                <Input
+                  className="h-8 text-sm"
+                  placeholder="Kata kunci subjek..."
+                  value={filterSubject}
+                  onChange={(e) => setFilterSubject(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Jenis Tautan</Label>
+                <Select value={filterLinkedType} onValueChange={setFilterLinkedType}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua Jenis" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Semua Jenis</SelectItem>
+                    <SelectItem value="sales_order">Sales Order</SelectItem>
+                    <SelectItem value="purchase_order">Purchase Order</SelectItem>
+                    <SelectItem value="invoice">Invoice</SelectItem>
+                    <SelectItem value="expense">Biaya (Expense)</SelectItem>
+                    <SelectItem value="payment">Pembayaran</SelectItem>
+                    <SelectItem value="shipment">Pengiriman / Job</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Tanggal Dari</Label>
+                <Input
+                  type="date"
+                  className="h-8 text-sm"
+                  value={filterDateFrom}
+                  onChange={(e) => setFilterDateFrom(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Tanggal Sampai</Label>
+                <Input
+                  type="date"
+                  className="h-8 text-sm"
+                  value={filterDateTo}
+                  onChange={(e) => setFilterDateTo(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Status Validasi</Label>
+                <Select value={filterIsValidated} onValueChange={setFilterIsValidated}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Semua</SelectItem>
+                    <SelectItem value="true">Sudah Divalidasi</SelectItem>
+                    <SelectItem value="false">Belum Divalidasi</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="sm:col-span-2 lg:col-span-3 flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground"
+                  onClick={() => {
+                    setFilterFrom("");
+                    setFilterSubject("");
+                    setFilterDateFrom("");
+                    setFilterDateTo("");
+                    setFilterLinkedType("__all__");
+                    setFilterIsValidated("__all__");
+                  }}
+                >
+                  Reset Filter
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Email List */}
@@ -666,7 +774,12 @@ export default function EmailInboxPage() {
                   variant="outline"
                   className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
                   onClick={() => handleStatusUpdate("validated")}
-                  disabled={validateStatus.isPending || detail.status === "validated"}
+                  disabled={
+                    validateStatus.isPending ||
+                    detail.status === "validated" ||
+                    (detail.links as EmailLink[]).length === 0
+                  }
+                  title={(detail.links as EmailLink[]).length === 0 ? "Tautkan ke transaksi terlebih dahulu sebelum memvalidasi" : undefined}
                   data-testid="button-validate-email"
                 >
                   <ShieldCheck className="h-3.5 w-3.5" /> Validasi

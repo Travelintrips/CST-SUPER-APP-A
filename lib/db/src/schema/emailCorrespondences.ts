@@ -10,6 +10,8 @@ export const emailCorrespondencesTable = pgTable("email_correspondences", {
   body: text("body"),
   receivedAt: timestamp("received_at").notNull().defaultNow(),
   status: text("status").notNull().default("new"),
+  validatedBy: text("validated_by"),
+  validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

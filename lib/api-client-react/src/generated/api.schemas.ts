@@ -1867,6 +1867,8 @@ export interface EmailCorrespondence {
   body?: string | null;
   receivedAt: string;
   status: EmailCorrespondenceStatus;
+  validatedBy?: string | null;
+  validatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1927,6 +1929,12 @@ export interface CreateEmailLinkBody {
   linkedId: number;
   linkReason?: string | null;
   notes?: string | null;
+}
+
+export interface TransactionEmailCorrespondence {
+  link: EmailLink;
+  email?: EmailCorrespondence | null;
+  attachments: EmailAttachment[];
 }
 
 export type ListProductsParams = {
@@ -2121,6 +2129,12 @@ export type SeedExpenseCategories200 = {
 export type ListEmailCorrespondencesParams = {
   q?: string;
   status?: ListEmailCorrespondencesStatus;
+  from?: string;
+  subject?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  linkedType?: string;
+  isValidated?: ListEmailCorrespondencesIsValidated;
 };
 
 export type ListEmailCorrespondencesStatus =
@@ -2133,6 +2147,19 @@ export const ListEmailCorrespondencesStatus = {
   rejected: "rejected",
   archived: "archived",
 } as const;
+
+export type ListEmailCorrespondencesIsValidated =
+  (typeof ListEmailCorrespondencesIsValidated)[keyof typeof ListEmailCorrespondencesIsValidated];
+
+export const ListEmailCorrespondencesIsValidated = {
+  true: true,
+  false: false,
+} as const;
+
+export type ListEmailCorrespondencesByTransactionParams = {
+  linkedType: string;
+  linkedId: number;
+};
 
 export type ValidateEmailCorrespondenceStatusBodyStatus =
   (typeof ValidateEmailCorrespondenceStatusBodyStatus)[keyof typeof ValidateEmailCorrespondenceStatusBodyStatus];

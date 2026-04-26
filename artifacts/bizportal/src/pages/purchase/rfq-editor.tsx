@@ -52,7 +52,8 @@ import {
 } from "@workspace/api-client-react";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail, MessageSquare } from "lucide-react";
+import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -660,6 +661,19 @@ export default function PurchaseDocumentEditorPage() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {!isNew && id && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <MessageSquare className="h-4 w-4" /> Korespondensi Email
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CorrespondenceTab linkedType="purchase_order" linkedId={id} />
             </CardContent>
           </Card>
         )}

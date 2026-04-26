@@ -3307,6 +3307,12 @@ export const ListEmailCorrespondencesQueryParams = zod.object({
   status: zod
     .enum(["new", "linked", "validated", "rejected", "archived"])
     .optional(),
+  from: zod.coerce.string().optional(),
+  subject: zod.coerce.string().optional(),
+  dateFrom: zod.coerce.string().optional(),
+  dateTo: zod.coerce.string().optional(),
+  linkedType: zod.coerce.string().optional(),
+  isValidated: zod.union([zod.literal(true), zod.literal(false)]).optional(),
 });
 
 export const ListEmailCorrespondencesResponseItem = zod.object({
@@ -3319,11 +3325,73 @@ export const ListEmailCorrespondencesResponseItem = zod.object({
   body: zod.string().nullish(),
   receivedAt: zod.string(),
   status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  validatedBy: zod.string().nullish(),
+  validatedAt: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
 export const ListEmailCorrespondencesResponse = zod.array(
   ListEmailCorrespondencesResponseItem,
+);
+
+/**
+ * @summary List email correspondences linked to a specific transaction
+ */
+export const ListEmailCorrespondencesByTransactionQueryParams = zod.object({
+  linkedType: zod.coerce.string(),
+  linkedId: zod.coerce.number(),
+});
+
+export const ListEmailCorrespondencesByTransactionResponseItem = zod.object({
+  link: zod.object({
+    id: zod.number(),
+    emailCorrespondenceId: zod.number(),
+    linkedType: zod.enum([
+      "sales_order",
+      "purchase_order",
+      "expense",
+      "shipment",
+      "payment",
+      "invoice",
+    ]),
+    linkedId: zod.number(),
+    linkReason: zod.string().nullish(),
+    isValidated: zod.boolean(),
+    validatedBy: zod.string().nullish(),
+    validatedAt: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    createdAt: zod.string(),
+  }),
+  email: zod
+    .object({
+      id: zod.number(),
+      emailMessageId: zod.string().nullish(),
+      fromEmail: zod.string().nullish(),
+      toEmail: zod.string().nullish(),
+      ccEmail: zod.string().nullish(),
+      subject: zod.string(),
+      body: zod.string().nullish(),
+      receivedAt: zod.string(),
+      status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+      validatedBy: zod.string().nullish(),
+      validatedAt: zod.string().nullish(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    })
+    .nullish(),
+  attachments: zod.array(
+    zod.object({
+      id: zod.number(),
+      emailCorrespondenceId: zod.number(),
+      fileName: zod.string(),
+      fileUrl: zod.string(),
+      mimeType: zod.string().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+export const ListEmailCorrespondencesByTransactionResponse = zod.array(
+  ListEmailCorrespondencesByTransactionResponseItem,
 );
 
 /**
@@ -3344,6 +3412,8 @@ export const GetEmailCorrespondenceResponse = zod
     body: zod.string().nullish(),
     receivedAt: zod.string(),
     status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+    validatedBy: zod.string().nullish(),
+    validatedAt: zod.string().nullish(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -3404,6 +3474,8 @@ export const ValidateEmailCorrespondenceStatusResponse = zod.object({
   body: zod.string().nullish(),
   receivedAt: zod.string(),
   status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  validatedBy: zod.string().nullish(),
+  validatedAt: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });

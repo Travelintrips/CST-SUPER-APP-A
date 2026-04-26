@@ -5,8 +5,7 @@ import {
   emailAttachmentsTable,
   emailLinksTable,
 } from "@workspace/db";
-import { eq, desc, ilike, or, and } from "drizzle-orm";
-import { requireAdmin } from "../lib/requireAdmin.js";
+import { eq, desc, ilike, or, and, inArray, gte, lte } from "drizzle-orm";
 import { auth } from "@clerk/express";
 
 const router = Router();
@@ -15,6 +14,7 @@ function serializeCorrespondence(c: typeof emailCorrespondencesTable.$inferSelec
   return {
     ...c,
     receivedAt: c.receivedAt.toISOString(),
+    validatedAt: c.validatedAt ? c.validatedAt.toISOString() : null,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -37,9 +37,11 @@ function serializeLink(l: typeof emailLinksTable.$inferSelect) {
 
 // GET /api/email-correspondences
 router.get("/", async (req, res) => {
-  const { q, status } = req.query;
+  const { q, status, from, subject, dateFrom, dateTo, linkedType, isValidated } = req.query;
   const conditions = [];
+
   if (status) conditions.push(eq(emailCorrespondencesTable.status, status as string));
+
   if (q) {
     const like = `%${q}%`;
     conditions.push(
@@ -52,6 +54,34 @@ router.get("/", async (req, res) => {
     );
   }
 
+  if (from) conditions.push(ilike(emailCorrespondencesTable.fromEmail, `%${from}%`));
+  if (subject) conditions.push(ilike(emailCorrespondencesTable.subject, `%${subject}%`));
+  if (dateFrom) conditions.push(gte(emailCorrespondencesTable.receivedAt, new Date(dateFrom as string)));
+  if (dateTo) {
+    const end = new Date(dateTo as string);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(lte(emailCorrespondencesTable.receivedAt, end));
+  }
+
+  // Filter by linkedType or isValidated — requires join via subquery on email_links
+  if (linkedType || isValidated !== undefined) {
+    const linkConditions = [];
+    if (linkedType) linkConditions.push(eq(emailLinksTable.linkedType, linkedType as string));
+    if (isValidated === "true") linkConditions.push(eq(emailLinksTable.isValidated, true));
+    if (isValidated === "false") linkConditions.push(eq(emailLinksTable.isValidated, false));
+
+    const linkedEmailIds = await db
+      .selectDistinct({ id: emailLinksTable.emailCorrespondenceId })
+      .from(emailLinksTable)
+      .where(linkConditions.length > 0 ? and(...linkConditions) : undefined);
+
+    const ids = linkedEmailIds.map((r) => r.id);
+    if (ids.length === 0) {
+      return res.json([]);
+    }
+    conditions.push(inArray(emailCorrespondencesTable.id, ids));
+  }
+
   const rows = await db
     .select()
     .from(emailCorrespondencesTable)
@@ -60,6 +90,58 @@ router.get("/", async (req, res) => {
     .limit(200);
 
   return res.json(rows.map(serializeCorrespondence));
+});
+
+// GET /api/email-correspondences/by-transaction
+router.get("/by-transaction", async (req, res) => {
+  const { linkedType, linkedId } = req.query;
+  if (!linkedType || !linkedId) {
+    return res.status(400).json({ message: "linkedType dan linkedId wajib diisi" });
+  }
+
+  const links = await db
+    .select()
+    .from(emailLinksTable)
+    .where(
+      and(
+        eq(emailLinksTable.linkedType, linkedType as string),
+        eq(emailLinksTable.linkedId, Number(linkedId)),
+      ),
+    )
+    .orderBy(desc(emailLinksTable.createdAt));
+
+  if (links.length === 0) return res.json([]);
+
+  const emailIds = links.map((l) => l.emailCorrespondenceId);
+  const emails = await db
+    .select()
+    .from(emailCorrespondencesTable)
+    .where(inArray(emailCorrespondencesTable.id, emailIds));
+
+  const attachments = await db
+    .select()
+    .from(emailAttachmentsTable)
+    .where(inArray(emailAttachmentsTable.emailCorrespondenceId, emailIds))
+    .orderBy(emailAttachmentsTable.id);
+
+  const emailMap = new Map(emails.map((e) => [e.id, e]));
+  const attMap = new Map<number, (typeof emailAttachmentsTable.$inferSelect)[]>();
+  for (const att of attachments) {
+    const list = attMap.get(att.emailCorrespondenceId) ?? [];
+    list.push(att);
+    attMap.set(att.emailCorrespondenceId, list);
+  }
+
+  const result = links.map((link) => {
+    const email = emailMap.get(link.emailCorrespondenceId);
+    return {
+      link: serializeLink(link),
+      email: email ? serializeCorrespondence(email) : null,
+      attachments: (attMap.get(link.emailCorrespondenceId) ?? []).map(serializeAttachment),
+    };
+  });
+
+  return res.json(result);
 });
 
 // GET /api/email-correspondences/:id
@@ -95,16 +177,36 @@ router.get("/:id", async (req, res) => {
 router.post("/:id/validate-status", async (req, res) => {
   const id = Number(req.params.id);
   const { status } = req.body;
-  const validStatuses = ["new", "validated", "rejected", "archived"];
+  const validStatuses = ["new", "linked", "validated", "rejected", "archived"];
   if (!status || !validStatuses.includes(status)) {
     return res.status(400).json({ message: `status harus salah satu dari: ${validStatuses.join(", ")}` });
   }
+
+  const clerkAuth = auth()(req, res, () => {}) as unknown as { userId: string | null };
+  const userId = clerkAuth?.userId ?? null;
+
+  const updateData = status === "validated"
+    ? { status, updatedAt: new Date(), validatedBy: userId, validatedAt: new Date() }
+    : { status, updatedAt: new Date() };
+
   const [row] = await db
     .update(emailCorrespondencesTable)
-    .set({ status, updatedAt: new Date() })
+    .set(updateData)
     .where(eq(emailCorrespondencesTable.id, id))
     .returning();
   if (!row) return res.status(404).json({ message: "Email tidak ditemukan" });
+
+  // When validating, also mark all links as validated
+  if (status === "validated") {
+    await db
+      .update(emailLinksTable)
+      .set({ isValidated: true, validatedBy: userId, validatedAt: new Date() })
+      .where(and(
+        eq(emailLinksTable.emailCorrespondenceId, id),
+        eq(emailLinksTable.isValidated, false),
+      ));
+  }
+
   return res.json(serializeCorrespondence(row));
 });
 
@@ -150,7 +252,6 @@ router.post("/:id/links", async (req, res) => {
     })
     .returning();
 
-  // Also update status to "linked"
   await db
     .update(emailCorrespondencesTable)
     .set({ status: "linked", updatedAt: new Date() })
@@ -163,13 +264,14 @@ router.post("/:id/links", async (req, res) => {
 router.put("/:id/links/:linkId/validate", async (req, res) => {
   const linkId = Number(req.params.linkId);
   const { notes } = req.body;
-  const { userId } = auth()(req, res, () => {}) as unknown as { userId: string | null };
+  const clerkAuth = auth()(req, res, () => {}) as unknown as { userId: string | null };
+  const userId = clerkAuth?.userId ?? null;
 
   const [link] = await db
     .update(emailLinksTable)
     .set({
       isValidated: true,
-      validatedBy: userId ?? null,
+      validatedBy: userId,
       validatedAt: new Date(),
       notes: notes ?? null,
     })

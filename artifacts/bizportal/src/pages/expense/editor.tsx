@@ -28,8 +28,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Save, Send, CheckCircle, XCircle, FileText, Banknote,
   RotateCcw, Info, Paperclip, Upload, Trash2, Loader2, AlertTriangle, X,
-  ChevronsUpDown, Check, ExternalLink,
+  ChevronsUpDown, Check, ExternalLink, MessageSquare,
 } from "lucide-react";
+import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
@@ -796,6 +797,19 @@ export default function ExpenseEditorPage() {
             </Card>
           );
         })()}
+
+        {!isNew && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <MessageSquare className="h-4 w-4" /> Korespondensi Email
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CorrespondenceTab linkedType="expense" linkedId={expId} />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Reject dialog */}

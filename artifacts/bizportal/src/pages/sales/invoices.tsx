@@ -37,7 +37,8 @@ import {
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { CreditCard } from "lucide-react";
+import { CreditCard, MessageSquare } from "lucide-react";
+import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -68,6 +69,8 @@ export default function SalesInvoicesPage() {
     if (filter === "all") return d.invoiceStatus !== "none";
     return d.invoiceStatus === filter;
   });
+
+  const [corrDocId, setCorrDocId] = useState<number | null>(null);
 
   const createMut = useCreateAccountingPayment();
   const [payDoc, setPayDoc] = useState<PayDoc | null>(null);
@@ -193,23 +196,33 @@ export default function SalesInvoicesPage() {
                       </TableCell>
                       <TableCell className="text-right text-sm text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("id-ID")}</TableCell>
                       <TableCell>
-                        {canPay && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {canPay && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 h-7 text-xs"
+                              data-testid={`pay-btn-${d.id}`}
+                              onClick={() => openPayDialog({
+                                id: d.id,
+                                docNumber: d.docNumber,
+                                customerName: d.customerName,
+                                grandTotal: Number(d.grandTotal ?? d.totalAmount),
+                                amountPaid: Number(d.amountPaid ?? 0),
+                              })}
+                            >
+                              <CreditCard className="h-3 w-3" /> Bayar
+                            </Button>
+                          )}
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="gap-1 h-7 text-xs"
-                            data-testid={`pay-btn-${d.id}`}
-                            onClick={() => openPayDialog({
-                              id: d.id,
-                              docNumber: d.docNumber,
-                              customerName: d.customerName,
-                              grandTotal: Number(d.grandTotal ?? d.totalAmount),
-                              amountPaid: Number(d.amountPaid ?? 0),
-                            })}
+                            variant="ghost"
+                            className="gap-1 h-7 text-xs text-muted-foreground"
+                            onClick={() => setCorrDocId(d.id)}
                           >
-                            <CreditCard className="h-3 w-3" /> Bayar
+                            <MessageSquare className="h-3 w-3" /> Korespondensi
                           </Button>
-                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -299,6 +312,22 @@ export default function SalesInvoicesPage() {
               <Button onClick={submitPayment} disabled={createMut.isPending}>
                 {createMut.isPending ? "Menyimpan..." : "Konfirmasi Pembayaran"}
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={corrDocId !== null} onOpenChange={(v) => { if (!v) setCorrDocId(null); }}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" /> Korespondensi Email — Invoice
+              </DialogTitle>
+            </DialogHeader>
+            {corrDocId !== null && (
+              <CorrespondenceTab linkedType="invoice" linkedId={corrDocId} />
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCorrDocId(null)}>Tutup</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -18,7 +18,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban } from "lucide-react";
+import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare } from "lucide-react";
+import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
   useListAccountingPayments,
   getListAccountingPaymentsQueryKey,
@@ -196,6 +197,7 @@ export default function PaymentsPage() {
   const bankCashJournals = journals.filter((j) => j.type === "bank" || j.type === "cash");
 
   const { data: partnerBalances } = useGetPartnerBalances();
+  const [corrPaymentId, setCorrPaymentId] = useState<number | null>(null);
   const [balancesOpen, setBalancesOpen] = useState(false);
   const [expandedArPartners, setExpandedArPartners] = useState<Set<string>>(new Set());
   const [expandedApPartners, setExpandedApPartners] = useState<Set<string>>(new Set());
@@ -869,9 +871,19 @@ export default function PaymentsPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {!isVoided && (
-                            <VoidDialog payment={p} onVoided={handleVoided} />
-                          )}
+                          <div className="flex items-center gap-1">
+                            {!isVoided && (
+                              <VoidDialog payment={p} onVoided={handleVoided} />
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs gap-1 text-muted-foreground px-2"
+                              onClick={() => setCorrPaymentId(p.id)}
+                            >
+                              <MessageSquare className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -882,6 +894,22 @@ export default function PaymentsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={corrPaymentId !== null} onOpenChange={(v) => { if (!v) setCorrPaymentId(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" /> Korespondensi Email — Payment
+            </DialogTitle>
+          </DialogHeader>
+          {corrPaymentId !== null && (
+            <CorrespondenceTab linkedType="payment" linkedId={corrPaymentId} />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCorrPaymentId(null)}>Tutup</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

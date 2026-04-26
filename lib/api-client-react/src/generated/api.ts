@@ -86,6 +86,7 @@ import type {
   ListAccountingEntriesParams,
   ListAccountingPaymentsParams,
   ListCorrespondencesParams,
+  ListEmailCorrespondencesByTransactionParams,
   ListEmailCorrespondencesParams,
   ListExpensesParams,
   ListFreightQuotesParams,
@@ -122,6 +123,7 @@ import type {
   Supplier,
   SyncCorrespondencesImap200,
   Transaction,
+  TransactionEmailCorrespondence,
   TrialBalanceReport,
   UpdateAccountBody,
   UpdateAccountingSettingsBody,
@@ -11039,6 +11041,120 @@ export function useListEmailCorrespondences<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListEmailCorrespondencesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List email correspondences linked to a specific transaction
+ */
+export const getListEmailCorrespondencesByTransactionUrl = (
+  params: ListEmailCorrespondencesByTransactionParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/email-correspondences/by-transaction?${stringifiedParams}`
+    : `/api/email-correspondences/by-transaction`;
+};
+
+export const listEmailCorrespondencesByTransaction = async (
+  params: ListEmailCorrespondencesByTransactionParams,
+  options?: RequestInit,
+): Promise<TransactionEmailCorrespondence[]> => {
+  return customFetch<TransactionEmailCorrespondence[]>(
+    getListEmailCorrespondencesByTransactionUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEmailCorrespondencesByTransactionQueryKey = (
+  params?: ListEmailCorrespondencesByTransactionParams,
+) => {
+  return [
+    `/api/email-correspondences/by-transaction`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListEmailCorrespondencesByTransactionQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEmailCorrespondencesByTransaction>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListEmailCorrespondencesByTransactionParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEmailCorrespondencesByTransaction>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListEmailCorrespondencesByTransactionQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEmailCorrespondencesByTransaction>>
+  > = ({ signal }) =>
+    listEmailCorrespondencesByTransaction(params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEmailCorrespondencesByTransaction>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEmailCorrespondencesByTransactionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEmailCorrespondencesByTransaction>>
+>;
+export type ListEmailCorrespondencesByTransactionQueryError =
+  ErrorType<unknown>;
+
+/**
+ * @summary List email correspondences linked to a specific transaction
+ */
+
+export function useListEmailCorrespondencesByTransaction<
+  TData = Awaited<ReturnType<typeof listEmailCorrespondencesByTransaction>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListEmailCorrespondencesByTransactionParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEmailCorrespondencesByTransaction>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEmailCorrespondencesByTransactionQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -58,7 +58,8 @@ import {
   type Product,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare } from "lucide-react";
+import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -1024,6 +1025,19 @@ export default function SalesDocumentEditorPage() {
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {!isNew && id && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <MessageSquare className="h-4 w-4" /> Korespondensi Email
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CorrespondenceTab linkedType="sales_order" linkedId={id} />
             </CardContent>
           </Card>
         )}

@@ -2268,6 +2268,12 @@ paths:
       parameters:
         - { name: q, in: query, schema: { type: string } }
         - { name: status, in: query, schema: { type: string, enum: [new, linked, validated, rejected, archived] } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: subject, in: query, schema: { type: string } }
+        - { name: dateFrom, in: query, schema: { type: string } }
+        - { name: dateTo, in: query, schema: { type: string } }
+        - { name: linkedType, in: query, schema: { type: string } }
+        - { name: isValidated, in: query, schema: { type: string, enum: [true, false] } }
       responses:
         "200":
           description: List
@@ -2276,6 +2282,22 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/EmailCorrespondence" }
+
+  /email-correspondences/by-transaction:
+    get:
+      operationId: listEmailCorrespondencesByTransaction
+      summary: List email correspondences linked to a specific transaction
+      parameters:
+        - { name: linkedType, in: query, required: true, schema: { type: string } }
+        - { name: linkedId, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TransactionEmailCorrespondence" }
 
   /email-correspondences/{id}:
     parameters:
@@ -4430,6 +4452,8 @@ components:
         body: { type: string, nullable: true }
         receivedAt: { type: string }
         status: { type: string, enum: [new, linked, validated, rejected, archived] }
+        validatedBy: { type: string, nullable: true }
+        validatedAt: { type: string, nullable: true }
         createdAt: { type: string }
         updatedAt: { type: string }
       required: [id, subject, receivedAt, status, createdAt, updatedAt]
@@ -4483,3 +4507,13 @@ components:
         linkReason: { type: string, nullable: true }
         notes: { type: string, nullable: true }
       required: [linkedType, linkedId]
+
+    TransactionEmailCorrespondence:
+      type: object
+      properties:
+        link: { $ref: "#/components/schemas/EmailLink" }
+        email: { $ref: "#/components/schemas/EmailCorrespondence", nullable: true }
+        attachments:
+          type: array
+          items: { $ref: "#/components/schemas/EmailAttachment" }
+      required: [link, attachments]
