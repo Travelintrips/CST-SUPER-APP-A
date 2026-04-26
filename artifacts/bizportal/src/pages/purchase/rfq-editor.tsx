@@ -166,6 +166,7 @@ export default function PurchaseDocumentEditorPage() {
   ]);
   const [taxRateId, setTaxRateId] = useState<number | null>(null);
   const [taxApplied, setTaxApplied] = useState(false);
+  const [taxAutoFilledFrom, setTaxAutoFilledFrom] = useState<"vendor" | "settings" | null>(null);
 
   useEffect(() => {
     if (doc) {
@@ -193,6 +194,7 @@ export default function PurchaseDocumentEditorPage() {
     if (isNew && !taxApplied && acctSettings?.defaultPurchaseTaxId) {
       setTaxRateId(acctSettings.defaultPurchaseTaxId);
       setTaxApplied(true);
+      setTaxAutoFilledFrom("settings");
     }
   }, [isNew, taxApplied, acctSettings]);
 
@@ -229,6 +231,7 @@ export default function PurchaseDocumentEditorPage() {
         ?? acctSettings?.defaultPurchaseTaxId
         ?? null
       );
+      setTaxAutoFilledFrom(null);
     }
   };
 
@@ -244,6 +247,7 @@ export default function PurchaseDocumentEditorPage() {
       setSupplierName(v.name);
       if (isNew || taxRateId === null) {
         setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
+        setTaxAutoFilledFrom(v.defaultPurchaseTaxId ? "vendor" : "settings");
       }
     }
   };
@@ -550,7 +554,11 @@ export default function PurchaseDocumentEditorPage() {
             <div className="flex justify-between mt-4 gap-6">
               <div className="w-64">
                 <Label>Pajak (PPN)</Label>
-                <Select value={taxRateId ? String(taxRateId) : "none"} onValueChange={(v) => setTaxRateId(v === "none" ? null : parseInt(v))} disabled={!isEditable}>
+                <Select
+                  value={taxRateId ? String(taxRateId) : "none"}
+                  onValueChange={(v) => { setTaxRateId(v === "none" ? null : parseInt(v)); setTaxAutoFilledFrom(null); }}
+                  disabled={!isEditable}
+                >
                   <SelectTrigger data-testid="select-doc-tax"><SelectValue placeholder="Tanpa pajak" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">— Tanpa pajak —</SelectItem>
@@ -559,6 +567,11 @@ export default function PurchaseDocumentEditorPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {taxAutoFilledFrom && taxRateId && (
+                  <p className="text-xs text-muted-foreground mt-1" data-testid="text-tax-autofill-hint">
+                    {taxAutoFilledFrom === "vendor" ? "(default dari vendor)" : "(default dari pengaturan)"}
+                  </p>
+                )}
               </div>
               <div className="text-right space-y-1">
                 <div className="text-sm text-muted-foreground">Subtotal: <span className="font-mono ml-2" data-testid="text-subtotal">{idr(subtotal)}</span></div>
