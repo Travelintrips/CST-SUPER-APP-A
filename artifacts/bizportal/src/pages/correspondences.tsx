@@ -326,11 +326,31 @@ export default function CorrespondencesPage() {
     if (!form.subject.trim()) return;
     const payload = buildPayload(form);
     if (editingId !== null) {
+      const fileToAttach = saveScannedAsAttachment && scannedFile ? scannedFile : null;
       updateCorrespondence.mutate({ id: editingId, data: payload }, {
-        onSuccess: () => {
+        onSuccess: async () => {
           queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
           setIsFormOpen(false);
+          setScannedFile(null);
           toast({ title: "Korespondensi berhasil diperbarui" });
+          if (fileToAttach) {
+            const uploadRes = await uploadScannedFile(fileToAttach);
+            if (uploadRes) {
+              addAttachment.mutate({
+                id: editingId,
+                data: {
+                  objectPath: uploadRes.objectPath,
+                  fileName: fileToAttach.name,
+                  mimeType: fileToAttach.type || null,
+                },
+              }, {
+                onSuccess: () => {
+                  queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+                },
+                onError: () => toast({ title: "Gagal menyimpan lampiran scan", variant: "destructive" }),
+              });
+            }
+          }
         },
         onError: () => toast({ title: "Gagal memperbarui", variant: "destructive" }),
       });
@@ -608,21 +628,19 @@ export default function CorrespondencesPage() {
                       </div>
                     )}
                   </div>
-                  {!editingId && (
-                    <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
-                      <Checkbox
-                        id="save-scanned-attachment"
-                        checked={saveScannedAsAttachment}
-                        onCheckedChange={(v) => setSaveScannedAsAttachment(Boolean(v))}
-                      />
-                      <Label htmlFor="save-scanned-attachment" className="cursor-pointer text-sm font-normal">
-                        Simpan file ini sebagai lampiran
-                      </Label>
-                      <span className="ml-auto max-w-[160px] truncate text-xs text-muted-foreground">
-                        {scanPending.file.name}
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                    <Checkbox
+                      id="save-scanned-attachment"
+                      checked={saveScannedAsAttachment}
+                      onCheckedChange={(v) => setSaveScannedAsAttachment(Boolean(v))}
+                    />
+                    <Label htmlFor="save-scanned-attachment" className="cursor-pointer text-sm font-normal">
+                      Simpan file ini sebagai lampiran
+                    </Label>
+                    <span className="ml-auto max-w-[160px] truncate text-xs text-muted-foreground">
+                      {scanPending.file.name}
+                    </span>
+                  </div>
                   <Button type="button" className="w-full" size="sm" onClick={applyScanPending} data-testid="button-apply-scan">
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                     Terapkan
@@ -680,7 +698,7 @@ export default function CorrespondencesPage() {
                   e.target.value = "";
                 }}
               />
-              {scannedFile && !editingId && !scanPending && (
+              {scannedFile && !scanPending && (
                 <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
                   <Checkbox
                     id="save-scanned-attachment-post"
