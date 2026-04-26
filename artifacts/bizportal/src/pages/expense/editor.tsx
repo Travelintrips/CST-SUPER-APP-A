@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,18 +16,65 @@ import {
 } from "@/components/ui/dialog";
 import {
   useGetExpense, useCreateExpense, useUpdateExpense, useExpenseAction,
+  useAddExpenseAttachment, useDeleteExpenseAttachment,
   useListExpenseCategories, useListAccounts, useListTaxes,
   getListExpensesQueryKey, getGetExpenseQueryKey,
+  type ExpenseAttachment,
 } from "@workspace/api-client-react";
+import { useUpload } from "@workspace/object-storage-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Save, Send, CheckCircle, XCircle, FileText, Banknote,
-  RotateCcw, Info,
+  RotateCcw, Info, Paperclip, Upload, Trash2, Loader2, AlertTriangle, X,
 } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+
+function getServeUrl(objectPath: string) {
+  if (objectPath.startsWith("/objects/")) return `/api/storage${objectPath}`;
+  return objectPath;
+}
+
+function AttachmentItem({
+  att,
+  onDelete,
+  deleting,
+}: {
+  att: ExpenseAttachment;
+  onDelete: (id: number) => void;
+  deleting: boolean;
+}) {
+  const url = getServeUrl(att.objectPath);
+  const isImage = (att.contentType ?? "").startsWith("image/");
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3 hover:bg-muted/30 transition-colors">
+      <a href={url} target="_blank" rel="noreferrer" className="shrink-0">
+        {isImage ? (
+          <img src={url} alt={att.fileName} className="h-12 w-12 rounded border object-cover" />
+        ) : (
+          <div className="flex h-12 w-12 items-center justify-center rounded border bg-muted">
+            <FileText className="h-5 w-5 text-muted-foreground" />
+          </div>
+        )}
+      </a>
+      <div className="min-w-0 flex-1">
+        <a href={url} target="_blank" rel="noreferrer"
+          className="block truncate text-sm font-medium hover:underline text-foreground">
+          {att.fileName}
+        </a>
+        <p className="text-xs text-muted-foreground">
+          {new Date(att.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+        </p>
+      </div>
+      <Button variant="ghost" size="icon" className="shrink-0 text-destructive hover:text-destructive h-8 w-8"
+        onClick={() => onDelete(att.id)} disabled={deleting}>
+        {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+      </Button>
+    </div>
+  );
+}
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -81,10 +128,23 @@ export default function ExpenseEditorPage() {
   const createMut = useCreateExpense();
   const updateMut = useUpdateExpense();
   const actionMut = useExpenseAction();
+  const addAttachmentMut = useAddExpenseAttachment();
+  const deleteAttachmentMut = useDeleteExpenseAttachment();
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [deletingAttId, setDeletingAttId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { uploadFile } = useUpload({
+    onError: (err) => {
+      toast({ title: `Upload gagal: ${err.message}`, variant: "destructive" });
+      setUploading(false);
+    },
+  });
 
   useEffect(() => {
     if (expense && !isNew) {
@@ -168,6 +228,52 @@ export default function ExpenseEditorPage() {
     } catch (e: any) {
       toast({ title: e?.message ?? "Gagal", variant: "destructive" });
     }
+  };
+
+  const handleUpload = async () => {
+    if (!pendingFile || isNew) return;
+    setUploading(true);
+    const result = await uploadFile(pendingFile);
+    if (!result) return;
+    addAttachmentMut.mutate(
+      {
+        id: expId,
+        data: {
+          objectPath: result.objectPath,
+          fileName: pendingFile.name,
+          contentType: pendingFile.type || "application/octet-stream",
+        },
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "Lampiran berhasil diunggah" });
+          setPendingFile(null);
+          setUploading(false);
+          qc.invalidateQueries({ queryKey: getGetExpenseQueryKey(expId) });
+        },
+        onError: (e: any) => {
+          toast({ title: e?.message ?? "Gagal menyimpan lampiran", variant: "destructive" });
+          setUploading(false);
+        },
+      },
+    );
+  };
+
+  const handleDeleteAttachment = async (attId: number) => {
+    setDeletingAttId(attId);
+    deleteAttachmentMut.mutate(
+      { id: expId, attId },
+      {
+        onSuccess: () => {
+          toast({ title: "Lampiran dihapus" });
+          qc.invalidateQueries({ queryKey: getGetExpenseQueryKey(expId) });
+        },
+        onError: (e: any) => {
+          toast({ title: e?.message ?? "Gagal hapus", variant: "destructive" });
+        },
+        onSettled: () => setDeletingAttId(null),
+      },
+    );
   };
 
   if (!isNew && isLoading) {
@@ -432,6 +538,89 @@ export default function ExpenseEditorPage() {
             )}
           </div>
         </div>
+
+        {/* Attachment panel — only shown for saved expenses */}
+        {!isNew && (() => {
+          const attachments = expense?.attachments ?? [];
+          const selectedCat = cats.find((c) => c.id === form.categoryId);
+          const attachmentRequired = selectedCat?.requiresAttachment === true;
+          const missingRequired = attachmentRequired && attachments.length === 0;
+
+          return (
+            <Card className={missingRequired ? "border-amber-600" : undefined}>
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <Paperclip size={14} className="text-muted-foreground" />
+                  <CardTitle className="text-sm">
+                    Lampiran
+                    {attachmentRequired && (
+                      <Badge variant="outline" className="ml-2 text-amber-400 border-amber-500 text-xs">Wajib</Badge>
+                    )}
+                  </CardTitle>
+                  <span className="ml-auto text-xs text-muted-foreground">{attachments.length} file</span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {missingRequired && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-300">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span>Kategori <strong>{selectedCat?.name}</strong> mewajibkan lampiran bukti. Harap unggah dokumen pendukung sebelum mengajukan expense.</span>
+                  </div>
+                )}
+
+                {/* Existing attachments */}
+                {attachments.length > 0 && (
+                  <div className="space-y-2">
+                    {attachments.map((att) => (
+                      <AttachmentItem
+                        key={att.id}
+                        att={att}
+                        onDelete={handleDeleteAttachment}
+                        deleting={deletingAttId === att.id}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload zone */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) setPendingFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                {pendingFile ? (
+                  <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <FileText size={14} className="text-primary shrink-0" />
+                      <span className="flex-1 truncate text-sm">{pendingFile.name}</span>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0"
+                        onClick={() => setPendingFile(null)} disabled={uploading}>
+                        <X size={12} />
+                      </Button>
+                    </div>
+                    <Button size="sm" onClick={handleUpload} disabled={uploading} className="w-full">
+                      {uploading
+                        ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Mengunggah...</>
+                        : <><Upload size={13} className="mr-1.5" />Upload Lampiran</>}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="outline" size="sm" className="w-full"
+                    onClick={() => fileInputRef.current?.click()}>
+                    <Upload size={13} className="mr-1.5" />
+                    Pilih File (Gambar / PDF / Dokumen)
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
       </div>
 
       {/* Reject dialog */}
