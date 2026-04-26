@@ -1,10 +1,103 @@
 import { Router } from "express";
+import multer from "multer";
+import OpenAI from "openai";
 import { db, correspondencesTable, correspondenceAttachmentsTable, customersTable, suppliersTable } from "@workspace/db";
 import { eq, desc, ilike, or, and } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+const CORRESPONDENCE_SCAN_PROMPT = `Kamu adalah asisten ekstraksi data korespondensi bisnis.
+Baca dokumen yang diberikan (bisa berupa screenshot email, foto surat, atau PDF) dan ekstrak informasi korespondensi.
+Balas HANYA dengan JSON valid, tanpa markdown, tanpa blok kode, tanpa teks penjelasan.
+
+Format JSON:
+{
+  "subject": string | null,
+  "senderName": string | null,
+  "senderEmail": string | null,
+  "receiverName": string | null,
+  "receiverEmail": string | null,
+  "correspondedAt": string | null,
+  "body": string | null
+}
+
+Aturan:
+- subject: subjek atau judul email/surat (contoh: "Penawaran Harga Freight April 2025")
+- senderName: nama lengkap pengirim jika ada
+- senderEmail: alamat email pengirim jika ada (format: user@domain.com)
+- receiverName: nama lengkap penerima jika ada
+- receiverEmail: alamat email penerima jika ada
+- correspondedAt: tanggal/waktu korespondensi dalam format ISO 8601 (contoh: "2025-04-15T09:30:00") atau null jika tidak ditemukan
+- body: isi utama pesan/surat, ringkas jika panjang (maks 2000 karakter)
+- Jika suatu field tidak ditemukan atau tidak yakin, isi dengan null
+- Gunakan nilai persis seperti yang tertulis di dokumen (bahasa Indonesia atau Inggris)`;
+
+// POST /api/correspondences/scan
+router.post("/scan", async (req, res, next) => {
+  if (!(await requireAdmin(req, res))) return;
+  next();
+}, upload.single("file"), async (req, res): Promise<void> => {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ message: "File wajib dilampirkan" });
+    return;
+  }
+
+  const mimeType = file.mimetype;
+  const isImage = mimeType.startsWith("image/");
+  const isPdf = mimeType === "application/pdf";
+
+  if (!isImage && !isPdf) {
+    res.status(400).json({ message: "Hanya file gambar (JPG, PNG, WEBP) dan PDF yang didukung" });
+    return;
+  }
+
+  try {
+    const base64Data = file.buffer.toString("base64");
+    const dataUrl = `data:${mimeType};base64,${base64Data}`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 2048,
+      messages: [
+        { role: "system", content: CORRESPONDENCE_SCAN_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Ekstrak data korespondensi dari dokumen ini dan kembalikan sebagai JSON saja." },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      res.status(422).json({ message: "Gagal memproses hasil ekstraksi", raw: cleaned });
+      return;
+    }
+
+    res.json({ data: parsed });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ message: "Ekstraksi dokumen gagal", error: msg });
+  }
+});
 
 function serializeCorrespondence(c: typeof correspondencesTable.$inferSelect) {
   return {

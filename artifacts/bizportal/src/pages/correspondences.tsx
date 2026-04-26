@@ -13,7 +13,7 @@ import {
   type CorrespondenceDetail,
   type CorrespondenceAttachment,
 } from "@workspace/api-client-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +31,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import {
   Plus, Search, Mail, MessageCircle, FileText, MoreHorizontal,
   Paperclip, Trash2, Eye, Pencil, Download, FileImage, ArrowDownLeft, ArrowUpRight,
+  ScanLine, Loader2,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -140,6 +141,8 @@ export default function CorrespondencesPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [viewingDetail, setViewingDetail] = useState<CorrespondenceDetail | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const scanFileInputRef = useRef<HTMLInputElement>(null);
 
   const uploader = useUpload({
     onSuccess: async (res) => {
@@ -214,6 +217,57 @@ export default function CorrespondencesPage() {
       tags: f.tags ? f.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
       correspondedAt: f.correspondedAt ? new Date(f.correspondedAt).toISOString() : null,
     };
+  }
+
+  async function handleScanFile(file: File) {
+    setScanLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const resp = await fetch("/api/correspondences/scan", { method: "POST", body: fd });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err as { message?: string })?.message ?? `Error ${resp.status}`);
+      }
+      const json = await resp.json() as {
+        data: {
+          subject?: string | null;
+          senderName?: string | null;
+          senderEmail?: string | null;
+          receiverName?: string | null;
+          receiverEmail?: string | null;
+          correspondedAt?: string | null;
+          body?: string | null;
+        }
+      };
+      const d = json.data;
+      const filled: string[] = [];
+      setForm((prev) => {
+        const next = { ...prev };
+        if (d.subject) { next.subject = d.subject; filled.push("Subjek"); }
+        if (d.senderName) { next.senderName = d.senderName; filled.push("Nama Pengirim"); }
+        if (d.senderEmail) { next.senderEmail = d.senderEmail; filled.push("Email Pengirim"); }
+        if (d.receiverName) { next.receiverName = d.receiverName; filled.push("Nama Penerima"); }
+        if (d.receiverEmail) { next.receiverEmail = d.receiverEmail; filled.push("Email Penerima"); }
+        if (d.correspondedAt) {
+          try {
+            next.correspondedAt = new Date(d.correspondedAt).toISOString().slice(0, 16);
+            filled.push("Tanggal");
+          } catch {}
+        }
+        if (d.body) { next.body = d.body; filled.push("Isi"); }
+        return next;
+      });
+      if (filled.length > 0) {
+        toast({ title: `Berhasil mengisi: ${filled.join(", ")}` });
+      } else {
+        toast({ title: "Dokumen diproses, tidak ada data yang terdeteksi", variant: "destructive" });
+      }
+    } catch (err: unknown) {
+      toast({ title: err instanceof Error ? err.message : "Gagal memproses dokumen", variant: "destructive" });
+    } finally {
+      setScanLoading(false);
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -387,8 +441,34 @@ export default function CorrespondencesPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
-              <DialogTitle>{editingId ? "Edit Korespondensi" : "Tambah Korespondensi"}</DialogTitle>
-              <DialogDescription>Catat email, surat, atau penawaran sebagai arsip.</DialogDescription>
+              <div className="flex items-center justify-between gap-2">
+                <DialogTitle>{editingId ? "Edit Korespondensi" : "Tambah Korespondensi"}</DialogTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5"
+                  disabled={scanLoading}
+                  onClick={() => scanFileInputRef.current?.click()}
+                  data-testid="button-scan-document"
+                >
+                  {scanLoading
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Memproses...</>
+                    : <><ScanLine className="h-3.5 w-3.5" />Scan Dokumen</>}
+                </Button>
+                <input
+                  ref={scanFileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleScanFile(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+              <DialogDescription>Catat email, surat, atau penawaran sebagai arsip. Gunakan "Scan Dokumen" untuk isi otomatis dari gambar atau PDF.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
