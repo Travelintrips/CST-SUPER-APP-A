@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
-  TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart,
+  TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart, Package,
 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -31,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   useGetFreightShipment,
   useGetSalesDocument,
+  useGetPurchaseDocument,
   useCreateFreightRfq,
   useCreateFreightQuote,
   useApproveFreightQuote,
@@ -40,6 +41,7 @@ import {
   useGetFreightShipmentProfitability,
   getGetFreightShipmentQueryKey,
   getGetSalesDocumentQueryKey,
+  getGetPurchaseDocumentQueryKey,
   getGetFreightShipmentProfitabilityQueryKey,
   type FreightRfqWithQuotes,
   type FreightQuote,
@@ -94,7 +96,9 @@ export default function LogisticsFreightDetailPage() {
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
   const salesDocId = (shipment as any)?.salesDocId as number | null | undefined;
+  const purchaseDocId = (shipment as any)?.purchaseDocId as number | null | undefined;
   const { data: linkedSalesDoc } = useGetSalesDocument(salesDocId ?? 0, { query: { queryKey: getGetSalesDocumentQueryKey(salesDocId ?? 0), enabled: !!salesDocId } });
+  const { data: linkedPurchaseDoc } = useGetPurchaseDocument(purchaseDocId ?? 0, { query: { queryKey: getGetPurchaseDocumentQueryKey(purchaseDocId ?? 0), enabled: !!purchaseDocId } });
   const { data: expenses = [], isLoading: expensesLoading } = useListExpenses({ shipmentId: id });
   const { data: profitability } = useGetFreightShipmentProfitability(id, { query: { queryKey: getGetFreightShipmentProfitabilityQueryKey(id), enabled: !!id } });
   const idr = (n: number) =>
@@ -564,17 +568,27 @@ export default function LogisticsFreightDetailPage() {
                     <p className="text-sm">{shipment.notes}</p>
                   </>
                 )}
-                {salesDocId && (
+                {(salesDocId || purchaseDocId) && (
                   <>
                     <Separator className="my-2" />
                     <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Tautan</p>
                     <div className="flex flex-wrap gap-2">
-                      <Link href={`/sales/orders/${salesDocId}`}>
-                        <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
-                          <ShoppingCart size={10} />
-                          {linkedSalesDoc?.docNumber ?? `SO #${salesDocId}`}
-                        </span>
-                      </Link>
+                      {salesDocId && (
+                        <Link href={`/sales/orders/${salesDocId}`}>
+                          <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
+                            <ShoppingCart size={10} />
+                            {linkedSalesDoc?.docNumber ?? `SO #${salesDocId}`}
+                          </span>
+                        </Link>
+                      )}
+                      {purchaseDocId && (
+                        <Link href={`/purchase/orders/${purchaseDocId}`}>
+                          <span className="inline-flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline font-mono">
+                            <Package size={10} />
+                            {linkedPurchaseDoc?.docNumber ?? `PO #${purchaseDocId}`}
+                          </span>
+                        </Link>
+                      )}
                     </div>
                   </>
                 )}

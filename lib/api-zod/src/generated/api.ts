@@ -622,6 +622,7 @@ export const ListFreightShipmentsResponseItem = zod.object({
   cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
   containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
+  purchaseDocId: zod.number().nullish(),
   approvedVendorName: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
@@ -660,6 +661,7 @@ export const CreateFreightShipmentBody = zod.object({
   cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
   containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
+  purchaseDocId: zod.number().nullish(),
 });
 
 /**
@@ -711,6 +713,7 @@ export const GetFreightShipmentResponse = zod
     cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
     containerNo: zod.string().nullish(),
     salesDocId: zod.number().nullish(),
+    purchaseDocId: zod.number().nullish(),
     approvedVendorName: zod.string().nullish(),
     createdById: zod.string().nullish(),
     createdAt: zod.string(),
@@ -800,6 +803,7 @@ export const UpdateFreightShipmentBody = zod
     cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
     containerNo: zod.string().nullish(),
     salesDocId: zod.number().nullish(),
+    purchaseDocId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -852,6 +856,7 @@ export const UpdateFreightShipmentResponse = zod.object({
   cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
   containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
+  purchaseDocId: zod.number().nullish(),
   approvedVendorName: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),

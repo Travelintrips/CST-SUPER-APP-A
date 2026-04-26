@@ -4093,6 +4093,7 @@ components:
         cargoType: { type: string, enum: [FCL, LCL, Air], nullable: true }
         containerNo: { type: string, nullable: true }
         salesDocId: { type: integer, nullable: true }
+        purchaseDocId: { type: integer, nullable: true }
         approvedVendorName: { type: string, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
@@ -4257,6 +4258,7 @@ components:
         cargoType: { type: string, enum: [FCL, LCL, Air], nullable: true }
         containerNo: { type: string, nullable: true }
         salesDocId: { type: integer, nullable: true }
+        purchaseDocId: { type: integer, nullable: true }
       required: [shipperName, consigneeName, commodity, origin, destination]
 
     UpdateFreightShipmentBody:

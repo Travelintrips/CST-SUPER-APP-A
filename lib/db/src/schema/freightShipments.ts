@@ -2,6 +2,7 @@ import { pgTable, serial, text, numeric, integer, timestamp, date, pgEnum } from
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { salesDocumentsTable } from "./salesDocuments";
+import { purchaseDocumentsTable } from "./purchaseDocuments";
 
 export const freightShipmentStatusEnum = pgEnum("freight_shipment_status", [
   "draft", "rfq_sent", "confirmed", "in_transit", "completed", "cancelled",
@@ -45,6 +46,7 @@ export const freightShipmentsTable = pgTable("freight_shipments", {
   cargoType: text("cargo_type"),
   containerNo: text("container_no"),
   salesDocId: integer("sales_doc_id").references(() => salesDocumentsTable.id, { onDelete: "set null" }),
+  purchaseDocId: integer("purchase_doc_id").references(() => purchaseDocumentsTable.id, { onDelete: "set null" }),
   approvedVendorName: text("approved_vendor_name"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

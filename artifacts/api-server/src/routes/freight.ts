@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, expensesTable } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable } from "@workspace/db";
 import { eq, desc, inArray, sum } from "drizzle-orm";
 
 const router = Router();
@@ -64,13 +64,17 @@ router.post("/freight-shipments", async (req, res) => {
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes,
-    transportMode, cargoType, containerNo, salesDocId } = req.body;
+    transportMode, cargoType, containerNo, salesDocId, purchaseDocId } = req.body;
   if (!salesDocId) {
     return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
   }
   const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
   if (!linkedDoc) {
     return res.status(400).json({ message: "Sales Order tidak ditemukan." });
+  }
+  if (purchaseDocId) {
+    const [linkedPO] = await db.select({ id: purchaseDocumentsTable.id }).from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, Number(purchaseDocId))).limit(1);
+    if (!linkedPO) return res.status(400).json({ message: "Purchase Order tidak ditemukan." });
   }
   if (!shipperName || !consigneeName || !commodity || !origin || !destination) {
     return res.status(400).json({ message: "shipperName, consigneeName, commodity, origin, destination wajib diisi" });
@@ -92,6 +96,7 @@ router.post("/freight-shipments", async (req, res) => {
     cargoType: cargoType || null,
     containerNo: containerNo || null,
     salesDocId: salesDocId ? Number(salesDocId) : null,
+    purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
   }).returning();
   return res.status(201).json(serializeShipment(shipment!));
 });
@@ -104,7 +109,7 @@ router.put("/freight-shipments/:id", async (req, res) => {
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, status, notes,
     actualCost, departureDate, arrivalDate, trackingNumber, awbNumber,
-    transportMode, cargoType, containerNo, salesDocId } = req.body;
+    transportMode, cargoType, containerNo, salesDocId, purchaseDocId } = req.body;
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
   const patch: Partial<typeof freightShipmentsTable.$inferInsert> = {};
@@ -139,6 +144,7 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (cargoType !== undefined) patch.cargoType = cargoType || null;
   if (containerNo !== undefined) patch.containerNo = containerNo || null;
   if (salesDocId !== undefined) patch.salesDocId = salesDocId ? Number(salesDocId) : null;
+  if (purchaseDocId !== undefined) patch.purchaseDocId = purchaseDocId ? Number(purchaseDocId) : null;
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
   return res.json(serializeShipment(updated!));
 });

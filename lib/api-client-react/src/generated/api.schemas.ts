@@ -1385,6 +1385,7 @@ export interface FreightShipment {
   cargoType?: FreightShipmentCargoType;
   containerNo?: string | null;
   salesDocId?: number | null;
+  purchaseDocId?: number | null;
   approvedVendorName?: string | null;
   createdById?: string | null;
   createdAt: string;
@@ -1675,6 +1676,7 @@ export interface CreateFreightShipmentBody {
   cargoType?: CreateFreightShipmentBodyCargoType;
   containerNo?: string | null;
   salesDocId?: number | null;
+  purchaseDocId?: number | null;
 }
 
 export type UpdateFreightShipmentBody = CreateFreightShipmentBody & {
