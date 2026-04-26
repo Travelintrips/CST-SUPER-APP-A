@@ -18,7 +18,6 @@ export const productsTable = pgTable("products", {
   sku: text("sku").notNull().unique(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
   stock: integer("stock").notNull().default(0),
-  category: text("category"),
   description: text("description"),
   imageUrl: text("image_url"),
   defaultSalesTaxId: integer("default_sales_tax_id"),

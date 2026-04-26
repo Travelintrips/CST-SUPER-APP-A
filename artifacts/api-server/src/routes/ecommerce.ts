@@ -40,19 +40,15 @@ function resolveCategories(
   p: typeof productsTable.$inferSelect,
   categoryMap: Map<number, string[]>
 ): string[] {
-  const fromMap = categoryMap.get(p.id);
-  if (fromMap && fromMap.length > 0) return fromMap;
-  if (p.category) return [p.category];
-  return [];
+  return categoryMap.get(p.id) ?? [];
 }
 
 function serializeProduct(
   p: typeof productsTable.$inferSelect,
   categories: string[]
 ) {
-  const { category: _category, ...rest } = p;
   return {
-    ...rest,
+    ...p,
     price: Number(p.price),
     createdAt: p.createdAt.toISOString(),
     categories,
@@ -154,7 +150,6 @@ router.post("/products", async (req, res) => {
   const product = await db.transaction(async (tx) => {
     const [p] = await tx.insert(productsTable).values({
       name, sku, price: String(price), stock: stock ?? 0,
-      category: categoryNames[0],
       description,
       imageUrl: normalizeImage(imageUrl),
       defaultSalesTaxId: defaultSalesTaxId ?? null,
@@ -196,7 +191,6 @@ router.put("/products/:id", async (req, res) => {
   const product = await db.transaction(async (tx) => {
     const [p] = await tx.update(productsTable).set({
       name, sku, price: String(price), stock,
-      category: categoryNames[0],
       description,
       imageUrl: normalizeImage(imageUrl),
       defaultSalesTaxId: defaultSalesTaxId ?? null,
