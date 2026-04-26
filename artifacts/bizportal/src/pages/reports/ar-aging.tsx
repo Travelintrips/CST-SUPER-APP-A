@@ -25,7 +25,7 @@ export default function ArAgingPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Receipt className="h-6 w-6" /> Piutang (Accounts Receivable)
           </h1>
-          <p className="text-sm text-muted-foreground">Daftar tagihan penjualan yang belum dibayar pelanggan</p>
+          <p className="text-sm text-muted-foreground">Daftar tagihan penjualan yang belum lunas — menampilkan sisa tagihan setelah pembayaran (tidak termasuk yang dibatalkan)</p>
         </div>
 
         {error ? (
@@ -59,7 +59,7 @@ export default function ArAgingPage() {
                       <TableHead>Pelanggan</TableHead>
                       <TableHead>Sejak</TableHead>
                       <TableHead className="text-right">Umur</TableHead>
-                      <TableHead className="text-right">Nilai</TableHead>
+                      <TableHead className="text-right">Sisa Tagihan</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

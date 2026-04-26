@@ -165,24 +165,32 @@ router.get("/ar-aging", async (_req, res) => {
   const docs = await db
     .select()
     .from(salesDocumentsTable)
-    .where(and(eq(salesDocumentsTable.kind, "order"), eq(salesDocumentsTable.invoiceStatus, "to_invoice")));
+    .where(and(
+      eq(salesDocumentsTable.kind, "order"),
+      eq(salesDocumentsTable.invoiceStatus, "to_invoice"),
+    ));
   const now = Date.now();
   const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 } as Record<string, number>;
-  const items = docs.map((d) => {
-    const baseDate = d.confirmedAt ?? d.createdAt;
-    const daysOld = Math.floor((now - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-    const bucket = bucketDays(daysOld);
-    buckets[bucket] += Number(d.totalAmount);
-    return {
-      id: d.id,
-      docNumber: d.docNumber,
-      customerName: d.customerName,
-      amount: Number(d.totalAmount),
-      daysOld,
-      bucket,
-      confirmedAt: d.confirmedAt?.toISOString() ?? d.createdAt.toISOString(),
-    };
-  });
+  const items = docs
+    .map((d) => {
+      const outstanding = Math.max(0, Number(d.grandTotal) - Number(d.amountPaid));
+      const baseDate = d.confirmedAt ?? d.createdAt;
+      const daysOld = Math.floor((now - baseDate.getTime()) / (1000 * 60 * 60 * 24));
+      const bucket = bucketDays(daysOld);
+      return {
+        id: d.id,
+        docNumber: d.docNumber,
+        customerName: d.customerName,
+        grandTotal: Number(d.grandTotal),
+        amountPaid: Number(d.amountPaid),
+        amount: outstanding,
+        daysOld,
+        bucket,
+        confirmedAt: d.confirmedAt?.toISOString() ?? d.createdAt.toISOString(),
+      };
+    })
+    .filter((item) => item.amount > 0.005);
+  items.forEach((item) => { buckets[item.bucket] += item.amount; });
   const total = items.reduce((s, i) => s + i.amount, 0);
   return res.json({ total, buckets, items: items.sort((a, b) => b.daysOld - a.daysOld) });
 });
@@ -191,24 +199,32 @@ router.get("/ap-aging", async (_req, res) => {
   const docs = await db
     .select()
     .from(purchaseDocumentsTable)
-    .where(and(eq(purchaseDocumentsTable.kind, "order"), eq(purchaseDocumentsTable.billStatus, "to_bill")));
+    .where(and(
+      eq(purchaseDocumentsTable.kind, "order"),
+      eq(purchaseDocumentsTable.billStatus, "to_bill"),
+    ));
   const now = Date.now();
   const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 } as Record<string, number>;
-  const items = docs.map((d) => {
-    const baseDate = d.confirmedAt ?? d.createdAt;
-    const daysOld = Math.floor((now - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-    const bucket = bucketDays(daysOld);
-    buckets[bucket] += Number(d.totalAmount);
-    return {
-      id: d.id,
-      docNumber: d.docNumber,
-      supplierName: d.supplierName,
-      amount: Number(d.totalAmount),
-      daysOld,
-      bucket,
-      confirmedAt: d.confirmedAt?.toISOString() ?? d.createdAt.toISOString(),
-    };
-  });
+  const items = docs
+    .map((d) => {
+      const outstanding = Math.max(0, Number(d.grandTotal) - Number(d.amountPaid));
+      const baseDate = d.confirmedAt ?? d.createdAt;
+      const daysOld = Math.floor((now - baseDate.getTime()) / (1000 * 60 * 60 * 24));
+      const bucket = bucketDays(daysOld);
+      return {
+        id: d.id,
+        docNumber: d.docNumber,
+        supplierName: d.supplierName,
+        grandTotal: Number(d.grandTotal),
+        amountPaid: Number(d.amountPaid),
+        amount: outstanding,
+        daysOld,
+        bucket,
+        confirmedAt: d.confirmedAt?.toISOString() ?? d.createdAt.toISOString(),
+      };
+    })
+    .filter((item) => item.amount > 0.005);
+  items.forEach((item) => { buckets[item.bucket] += item.amount; });
   const total = items.reduce((s, i) => s + i.amount, 0);
   return res.json({ total, buckets, items: items.sort((a, b) => b.daysOld - a.daysOld) });
 });

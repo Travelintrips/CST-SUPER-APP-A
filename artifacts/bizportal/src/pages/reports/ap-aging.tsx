@@ -25,7 +25,7 @@ export default function ApAgingPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <FileText className="h-6 w-6" /> Hutang (Accounts Payable)
           </h1>
-          <p className="text-sm text-muted-foreground">Daftar tagihan pembelian yang belum dibayar ke vendor</p>
+          <p className="text-sm text-muted-foreground">Daftar tagihan pembelian yang belum lunas — menampilkan sisa hutang setelah pembayaran (tidak termasuk yang dibatalkan)</p>
         </div>
 
         {error ? (
@@ -59,7 +59,7 @@ export default function ApAgingPage() {
                       <TableHead>Vendor</TableHead>
                       <TableHead>Sejak</TableHead>
                       <TableHead className="text-right">Umur</TableHead>
-                      <TableHead className="text-right">Nilai</TableHead>
+                      <TableHead className="text-right">Sisa Hutang</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
