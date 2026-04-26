@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
-  TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare,
+  TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart,
 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -562,6 +562,20 @@ export default function LogisticsFreightDetailPage() {
                     <Separator className="my-2" />
                     <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Catatan</p>
                     <p className="text-sm">{shipment.notes}</p>
+                  </>
+                )}
+                {salesDocId && (
+                  <>
+                    <Separator className="my-2" />
+                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Tautan</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Link href={`/sales/orders/${salesDocId}`}>
+                        <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
+                          <ShoppingCart size={10} />
+                          {linkedSalesDoc?.docNumber ?? `SO #${salesDocId}`}
+                        </span>
+                      </Link>
+                    </div>
                   </>
                 )}
               </div>
