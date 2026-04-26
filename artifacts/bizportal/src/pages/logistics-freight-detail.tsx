@@ -1015,12 +1015,63 @@ export default function LogisticsFreightDetailPage() {
                 </TableBody>
               </Table>
             )}
-            {expenses.length > 0 && (
-              <div className="flex justify-end mt-3 pt-3 border-t border-slate-700/50 text-sm font-semibold">
-                <span className="text-muted-foreground mr-4">Total Biaya</span>
-                <span>{idr(expenses.reduce((s, e) => s + e.total, 0))}</span>
-              </div>
-            )}
+            {expenses.length > 0 && (() => {
+              const totalExpenses = expenses.reduce((s, e) => s + e.total, 0);
+              const expVsQuoted = quotedCost !== null ? totalExpenses - quotedCost : null;
+              const expVsActual = actualCost !== null ? totalExpenses - actualCost : null;
+              const hasComparison = quotedCost !== null || actualCost !== null;
+              return (
+                <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-1.5">
+                  <div className="flex justify-between text-sm font-semibold">
+                    <span className="text-muted-foreground">Total Biaya Operasional</span>
+                    <span>{idr(totalExpenses)}</span>
+                  </div>
+                  {hasComparison && (
+                    <div className="rounded-md bg-muted/40 border px-3 py-2 mt-2 space-y-1.5">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Perbandingan Biaya</p>
+                      {quotedCost !== null && (
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-muted-foreground">Estimasi (Quote Disetujui)</span>
+                          <span className="font-medium">{idr(quotedCost)}</span>
+                        </div>
+                      )}
+                      {actualCost !== null && (
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-muted-foreground">Biaya Aktual Shipment</span>
+                          <span className="font-medium">{idr(actualCost)}</span>
+                        </div>
+                      )}
+                      {expVsActual !== null && (
+                        <div className="flex justify-between items-center text-sm pt-1 border-t border-border/50">
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            {expVsActual > 0
+                              ? <TrendingUp className="h-3.5 w-3.5 text-destructive" />
+                              : <TrendingDown className="h-3.5 w-3.5 text-emerald-500" />}
+                            Selisih vs. Aktual
+                          </span>
+                          <span className={`font-semibold ${expVsActual > 0 ? "text-destructive" : "text-emerald-500"}`}>
+                            {expVsActual > 0 ? "+" : ""}{idr(expVsActual)}
+                          </span>
+                        </div>
+                      )}
+                      {expVsQuoted !== null && expVsActual === null && (
+                        <div className="flex justify-between items-center text-sm pt-1 border-t border-border/50">
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            {expVsQuoted > 0
+                              ? <TrendingUp className="h-3.5 w-3.5 text-destructive" />
+                              : <TrendingDown className="h-3.5 w-3.5 text-emerald-500" />}
+                            Selisih vs. Estimasi
+                          </span>
+                          <span className={`font-semibold ${expVsQuoted > 0 ? "text-destructive" : "text-emerald-500"}`}>
+                            {expVsQuoted > 0 ? "+" : ""}{idr(expVsQuoted)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
 
