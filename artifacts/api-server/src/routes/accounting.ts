@@ -468,6 +468,8 @@ router.get("/partner-balances", async (_req, res) => {
         partnerName: salesDocumentsTable.customerName,
         grandTotal: salesDocumentsTable.grandTotal,
         amountPaid: salesDocumentsTable.amountPaid,
+        confirmedAt: salesDocumentsTable.confirmedAt,
+        createdAt: salesDocumentsTable.createdAt,
       })
       .from(salesDocumentsTable)
       .where(
@@ -484,6 +486,8 @@ router.get("/partner-balances", async (_req, res) => {
         partnerName: purchaseDocumentsTable.supplierName,
         grandTotal: purchaseDocumentsTable.grandTotal,
         amountPaid: purchaseDocumentsTable.amountPaid,
+        confirmedAt: purchaseDocumentsTable.confirmedAt,
+        createdAt: purchaseDocumentsTable.createdAt,
       })
       .from(purchaseDocumentsTable)
       .where(
@@ -502,6 +506,7 @@ router.get("/partner-balances", async (_req, res) => {
       docNumber: d.docNumber,
       sourceType: "sales_order",
       sourceDocId: d.id,
+      date: (d.confirmedAt ?? d.createdAt).toISOString(),
     }))
     .filter((e) => e.balance > THRESHOLD)
     .sort((a, b) => b.balance - a.balance);
@@ -513,6 +518,7 @@ router.get("/partner-balances", async (_req, res) => {
       docNumber: d.docNumber,
       sourceType: "purchase_order",
       sourceDocId: d.id,
+      date: (d.confirmedAt ?? d.createdAt).toISOString(),
     }))
     .filter((e) => e.balance > THRESHOLD)
     .sort((a, b) => b.balance - a.balance);

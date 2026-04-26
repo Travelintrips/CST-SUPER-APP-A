@@ -41,6 +41,9 @@ const idr = (n: number) =>
 const formatDate = (s: string) =>
   new Date(s + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
+const formatIsoDate = (s: string) =>
+  new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+
 function LinkedDocBadge({ sourceType, sourceDocId }: { sourceType?: string | null; sourceDocId?: number | null }) {
   if (!sourceType || !sourceDocId) return <span className="text-slate-600 text-xs">-</span>;
   const href = sourceType === "sales_order" ? `/sales/orders/${sourceDocId}` : `/purchase/orders/${sourceDocId}`;
@@ -181,6 +184,36 @@ export default function PaymentsPage() {
 
   const { data: partnerBalances } = useGetPartnerBalances();
   const [balancesOpen, setBalancesOpen] = useState(false);
+  const [expandedArPartners, setExpandedArPartners] = useState<Set<string>>(new Set());
+  const [expandedApPartners, setExpandedApPartners] = useState<Set<string>>(new Set());
+
+  const arGroups = useMemo(() => {
+    if (!partnerBalances) return [];
+    const map = new Map<string, { entries: typeof partnerBalances.ar; total: number }>();
+    for (const e of partnerBalances.ar) {
+      const g = map.get(e.partnerName) ?? { entries: [], total: 0 };
+      g.entries.push(e);
+      g.total += e.balance;
+      map.set(e.partnerName, g);
+    }
+    return [...map.entries()]
+      .map(([name, g]) => ({ name, entries: g.entries, total: g.total }))
+      .sort((a, b) => b.total - a.total);
+  }, [partnerBalances]);
+
+  const apGroups = useMemo(() => {
+    if (!partnerBalances) return [];
+    const map = new Map<string, { entries: typeof partnerBalances.ap; total: number }>();
+    for (const e of partnerBalances.ap) {
+      const g = map.get(e.partnerName) ?? { entries: [], total: 0 };
+      g.entries.push(e);
+      g.total += e.balance;
+      map.set(e.partnerName, g);
+    }
+    return [...map.entries()]
+      .map(([name, g]) => ({ name, entries: g.entries, total: g.total }))
+      .sort((a, b) => b.total - a.total);
+  }, [partnerBalances]);
 
   const createMut = useCreateAccountingPayment();
   const [open, setOpen] = useState(false);
@@ -468,108 +501,178 @@ export default function PaymentsPage() {
                       <TabsTrigger value="ar" className="gap-1.5 text-xs">
                         <ArrowDownLeft className="h-3 w-3 text-emerald-400" />
                         Piutang (AR)
-                        {partnerBalances.ar.length > 0 && (
+                        {arGroups.length > 0 && (
                           <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700 text-xs ml-1">
-                            {partnerBalances.ar.length}
+                            {arGroups.length}
                           </Badge>
                         )}
                       </TabsTrigger>
                       <TabsTrigger value="ap" className="gap-1.5 text-xs">
                         <ArrowUpRight className="h-3 w-3 text-red-400" />
                         Hutang (AP)
-                        {partnerBalances.ap.length > 0 && (
+                        {apGroups.length > 0 && (
                           <Badge className="bg-red-900/50 text-red-300 border-red-700 text-xs ml-1">
-                            {partnerBalances.ap.length}
+                            {apGroups.length}
                           </Badge>
                         )}
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="ar">
-                      {partnerBalances.ar.length === 0 ? (
+                      {arGroups.length === 0 ? (
                         <p className="text-slate-500 text-sm py-3 text-center">Tidak ada piutang terbuka.</p>
                       ) : (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>No. Dokumen</TableHead>
-                              <TableHead>Pelanggan</TableHead>
-                              <TableHead className="text-right">Sisa Tagihan (IDR)</TableHead>
-                              <TableHead className="text-right">Aksi</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {partnerBalances.ar.map((entry) => (
-                              <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/40">
-                                <TableCell>
-                                  <Link href={`/sales/orders/${entry.sourceDocId}`}>
-                                    <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
-                                      <FileText className="h-3 w-3" /> {entry.docNumber}
+                        <div className="space-y-1">
+                          {arGroups.map((group) => {
+                            const isOpen = expandedArPartners.has(group.name);
+                            const toggle = () => setExpandedArPartners((prev) => {
+                              const next = new Set(prev);
+                              isOpen ? next.delete(group.name) : next.add(group.name);
+                              return next;
+                            });
+                            return (
+                              <div key={group.name} className="rounded-md border border-slate-700/60 overflow-hidden">
+                                <button
+                                  type="button"
+                                  onClick={toggle}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 bg-slate-800/60 hover:bg-slate-800 transition-colors text-left"
+                                  data-testid={`group-ar-${group.name}`}
+                                >
+                                  {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-slate-400 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                  <span className="flex-1 text-sm font-medium text-slate-200 truncate">{group.name}</span>
+                                  {group.entries.length > 1 && (
+                                    <Badge className="bg-emerald-900/40 text-emerald-400 border-emerald-800 text-xs shrink-0">
+                                      {group.entries.length} faktur
                                     </Badge>
-                                  </Link>
-                                </TableCell>
-                                <TableCell className="text-slate-200 text-sm">{entry.partnerName}</TableCell>
-                                <TableCell className="text-right font-mono text-emerald-400 tabular-nums text-sm">
-                                  {idr(entry.balance)}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs gap-1 border-emerald-700/50 text-emerald-300 hover:bg-emerald-900/30"
-                                    onClick={() => prefillFromPartner(entry, "inbound")}
-                                    data-testid={`btn-collect-ar-${entry.partnerName}`}
-                                  >
-                                    <ArrowDownLeft className="h-3 w-3" /> Terima Bayar
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                                  )}
+                                  <span className="font-mono text-emerald-400 text-sm tabular-nums shrink-0">{idr(group.total)}</span>
+                                </button>
+                                {isOpen && (
+                                  <div className="border-t border-slate-700/40">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow className="bg-slate-900/40">
+                                          <TableHead className="pl-8 text-xs">No. Faktur</TableHead>
+                                          <TableHead className="text-xs">Tanggal</TableHead>
+                                          <TableHead className="text-right text-xs">Sisa Tagihan (IDR)</TableHead>
+                                          <TableHead className="text-right text-xs">Aksi</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {group.entries.map((entry) => (
+                                          <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/30">
+                                            <TableCell className="pl-8">
+                                              <Link href={`/sales/orders/${entry.sourceDocId}`}>
+                                                <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
+                                                  <FileText className="h-3 w-3" /> {entry.docNumber}
+                                                </Badge>
+                                              </Link>
+                                            </TableCell>
+                                            <TableCell className="text-slate-400 text-xs">
+                                              {entry.date ? formatIsoDate(entry.date) : "—"}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-emerald-400 tabular-nums text-sm">
+                                              {idr(entry.balance)}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-7 text-xs gap-1 border-emerald-700/50 text-emerald-300 hover:bg-emerald-900/30"
+                                                onClick={() => prefillFromPartner(entry, "inbound")}
+                                                data-testid={`btn-collect-ar-${entry.sourceDocId}`}
+                                              >
+                                                <ArrowDownLeft className="h-3 w-3" /> Terima Bayar
+                                              </Button>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </TabsContent>
                     <TabsContent value="ap">
-                      {partnerBalances.ap.length === 0 ? (
+                      {apGroups.length === 0 ? (
                         <p className="text-slate-500 text-sm py-3 text-center">Tidak ada hutang terbuka.</p>
                       ) : (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>No. Dokumen</TableHead>
-                              <TableHead>Pemasok</TableHead>
-                              <TableHead className="text-right">Sisa Hutang (IDR)</TableHead>
-                              <TableHead className="text-right">Aksi</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {partnerBalances.ap.map((entry) => (
-                              <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/40">
-                                <TableCell>
-                                  <Link href={`/purchase/orders/${entry.sourceDocId}`}>
-                                    <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
-                                      <FileText className="h-3 w-3" /> {entry.docNumber}
+                        <div className="space-y-1">
+                          {apGroups.map((group) => {
+                            const isOpen = expandedApPartners.has(group.name);
+                            const toggle = () => setExpandedApPartners((prev) => {
+                              const next = new Set(prev);
+                              isOpen ? next.delete(group.name) : next.add(group.name);
+                              return next;
+                            });
+                            return (
+                              <div key={group.name} className="rounded-md border border-slate-700/60 overflow-hidden">
+                                <button
+                                  type="button"
+                                  onClick={toggle}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 bg-slate-800/60 hover:bg-slate-800 transition-colors text-left"
+                                  data-testid={`group-ap-${group.name}`}
+                                >
+                                  {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-slate-400 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                  <span className="flex-1 text-sm font-medium text-slate-200 truncate">{group.name}</span>
+                                  {group.entries.length > 1 && (
+                                    <Badge className="bg-red-900/40 text-red-400 border-red-800 text-xs shrink-0">
+                                      {group.entries.length} tagihan
                                     </Badge>
-                                  </Link>
-                                </TableCell>
-                                <TableCell className="text-slate-200 text-sm">{entry.partnerName}</TableCell>
-                                <TableCell className="text-right font-mono text-red-400 tabular-nums text-sm">
-                                  {idr(entry.balance)}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs gap-1 border-red-700/50 text-red-300 hover:bg-red-900/30"
-                                    onClick={() => prefillFromPartner(entry, "outbound")}
-                                    data-testid={`btn-pay-ap-${entry.partnerName}`}
-                                  >
-                                    <ArrowUpRight className="h-3 w-3" /> Bayar
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                                  )}
+                                  <span className="font-mono text-red-400 text-sm tabular-nums shrink-0">{idr(group.total)}</span>
+                                </button>
+                                {isOpen && (
+                                  <div className="border-t border-slate-700/40">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow className="bg-slate-900/40">
+                                          <TableHead className="pl-8 text-xs">No. Tagihan</TableHead>
+                                          <TableHead className="text-xs">Tanggal</TableHead>
+                                          <TableHead className="text-right text-xs">Sisa Hutang (IDR)</TableHead>
+                                          <TableHead className="text-right text-xs">Aksi</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {group.entries.map((entry) => (
+                                          <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/30">
+                                            <TableCell className="pl-8">
+                                              <Link href={`/purchase/orders/${entry.sourceDocId}`}>
+                                                <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
+                                                  <FileText className="h-3 w-3" /> {entry.docNumber}
+                                                </Badge>
+                                              </Link>
+                                            </TableCell>
+                                            <TableCell className="text-slate-400 text-xs">
+                                              {entry.date ? formatIsoDate(entry.date) : "—"}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-red-400 tabular-nums text-sm">
+                                              {idr(entry.balance)}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-7 text-xs gap-1 border-red-700/50 text-red-300 hover:bg-red-900/30"
+                                                onClick={() => prefillFromPartner(entry, "outbound")}
+                                                data-testid={`btn-pay-ap-${entry.sourceDocId}`}
+                                              >
+                                                <ArrowUpRight className="h-3 w-3" /> Bayar
+                                              </Button>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </TabsContent>
                   </Tabs>

@@ -2433,6 +2433,7 @@ export const GetPartnerBalancesResponse = zod.object({
       docNumber: zod.string(),
       sourceType: zod.string(),
       sourceDocId: zod.number(),
+      date: zod.string().nullish(),
     }),
   ),
   ap: zod.array(
@@ -2442,6 +2443,7 @@ export const GetPartnerBalancesResponse = zod.object({
       docNumber: zod.string(),
       sourceType: zod.string(),
       sourceDocId: zod.number(),
+      date: zod.string().nullish(),
     }),
   ),
   totalAr: zod.number(),

@@ -3357,6 +3357,7 @@ components:
         docNumber: { type: string }
         sourceType: { type: string }
         sourceDocId: { type: integer }
+        date: { type: string, nullable: true }
       required: [partnerName, balance, docNumber, sourceType, sourceDocId]
 
     PartnerBalances:

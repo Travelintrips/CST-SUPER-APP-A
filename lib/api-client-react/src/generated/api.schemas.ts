@@ -1129,6 +1129,7 @@ export interface PartnerBalanceEntry {
   docNumber: string;
   sourceType: string;
   sourceDocId: number;
+  date?: string | null;
 }
 
 export interface PartnerBalances {
