@@ -601,23 +601,24 @@ export default function EcommercePage() {
                       </span>
                       Semua Kategori
                     </button>
-                    {categories.map((cat) => (
+                    {productCategories.map((pc) => (
                       <label
-                        key={cat}
-                        className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent cursor-pointer"
-                        data-testid={`filter-category-option-${cat}`}
+                        key={pc.name}
+                        className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent cursor-pointer ${pc.productCount === 0 ? "opacity-50" : ""}`}
+                        data-testid={`filter-category-option-${pc.name}`}
                       >
                         <Checkbox
-                          checked={filterCategories.includes(cat)}
+                          checked={filterCategories.includes(pc.name)}
                           onCheckedChange={(checked) =>
                             setFilterCategories((prev) =>
                               checked === true
-                                ? prev.includes(cat) ? prev : [...prev, cat]
-                                : prev.filter((c) => c !== cat)
+                                ? prev.includes(pc.name) ? prev : [...prev, pc.name]
+                                : prev.filter((c) => c !== pc.name)
                             )
                           }
                         />
-                        {cat}
+                        <span className="flex-1">{pc.name}</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{pc.productCount}</span>
                       </label>
                     ))}
                   </div>
