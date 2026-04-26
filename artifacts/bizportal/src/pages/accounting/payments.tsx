@@ -18,7 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare } from "lucide-react";
+import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare, ShoppingCart } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
   useListAccountingPayments,
@@ -47,12 +47,19 @@ const formatIsoDate = (s: string) =>
 
 function LinkedDocBadge({ sourceType, sourceDocId }: { sourceType?: string | null; sourceDocId?: number | null }) {
   if (!sourceType || !sourceDocId) return <span className="text-slate-600 text-xs">-</span>;
-  const href = sourceType === "sales_order" ? `/sales/orders/${sourceDocId}` : `/purchase/orders/${sourceDocId}`;
-  const label = sourceType === "sales_order" ? "SO" : "PO";
+  if (sourceType === "sales_order") {
+    return (
+      <Link href={`/sales/orders/${sourceDocId}`}>
+        <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1 cursor-pointer hover:bg-indigo-900/60">
+          <ShoppingCart className="h-3 w-3" /> SO #{sourceDocId}
+        </Badge>
+      </Link>
+    );
+  }
   return (
-    <Link href={href}>
-      <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1 cursor-pointer hover:bg-indigo-900/60">
-        <FileText className="h-3 w-3" /> {label} #{sourceDocId}
+    <Link href={`/purchase/orders/${sourceDocId}`}>
+      <Badge className="bg-violet-900/40 text-violet-300 border-violet-700 text-xs gap-1 cursor-pointer hover:bg-violet-900/60">
+        <FileText className="h-3 w-3" /> PO #{sourceDocId}
       </Badge>
     </Link>
   );
@@ -577,8 +584,8 @@ export default function PaymentsPage() {
                                           <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/30">
                                             <TableCell className="pl-8">
                                               <Link href={`/sales/orders/${entry.sourceDocId}`}>
-                                                <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
-                                                  <FileText className="h-3 w-3" /> {entry.docNumber}
+                                                <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1 cursor-pointer hover:bg-indigo-900/60 font-mono">
+                                                  <ShoppingCart className="h-3 w-3" /> {entry.docNumber}
                                                 </Badge>
                                               </Link>
                                             </TableCell>
@@ -656,7 +663,7 @@ export default function PaymentsPage() {
                                           <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/30">
                                             <TableCell className="pl-8">
                                               <Link href={`/purchase/orders/${entry.sourceDocId}`}>
-                                                <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
+                                                <Badge className="bg-violet-900/40 text-violet-300 border-violet-700 text-xs gap-1 cursor-pointer hover:bg-violet-900/60 font-mono">
                                                   <FileText className="h-3 w-3" /> {entry.docNumber}
                                                 </Badge>
                                               </Link>

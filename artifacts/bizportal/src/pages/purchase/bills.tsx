@@ -37,7 +37,7 @@ import {
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { CreditCard } from "lucide-react";
+import { CreditCard, FileText } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -165,8 +165,12 @@ export default function PurchaseBillsPage() {
                   const canPay = d.billStatus === "billed" && effectivePayStatus !== "paid";
                   return (
                     <TableRow key={d.id} data-testid={`row-bill-${d.id}`}>
-                      <TableCell className="font-medium">
-                        <Link href={`/purchase/orders/${d.id}`} className="hover:underline">{d.docNumber}</Link>
+                      <TableCell>
+                        <Link href={`/purchase/orders/${d.id}`}>
+                          <Badge className="bg-violet-900/40 text-violet-300 border-violet-700 text-xs gap-1 cursor-pointer hover:bg-violet-900/60 font-mono">
+                            <FileText className="h-3 w-3" /> {d.docNumber}
+                          </Badge>
+                        </Link>
                       </TableCell>
                       <TableCell>{d.supplierName}</TableCell>
                       <TableCell>

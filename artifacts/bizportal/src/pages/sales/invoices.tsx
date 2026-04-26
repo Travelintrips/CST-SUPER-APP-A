@@ -37,7 +37,7 @@ import {
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { CreditCard, MessageSquare } from "lucide-react";
+import { CreditCard, MessageSquare, ShoppingCart } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 
 const idr = (n: number) =>
@@ -168,8 +168,12 @@ export default function SalesInvoicesPage() {
                   const canPay = d.invoiceStatus === "invoiced" && effectivePayStatus !== "paid";
                   return (
                     <TableRow key={d.id} data-testid={`row-invoice-${d.id}`}>
-                      <TableCell className="font-medium">
-                        <Link href={`/sales/orders/${d.id}`} className="hover:underline">{d.docNumber}</Link>
+                      <TableCell>
+                        <Link href={`/sales/orders/${d.id}`}>
+                          <Badge className="bg-indigo-900/40 text-indigo-300 border-indigo-700 text-xs gap-1 cursor-pointer hover:bg-indigo-900/60 font-mono">
+                            <ShoppingCart className="h-3 w-3" /> {d.docNumber}
+                          </Badge>
+                        </Link>
                       </TableCell>
                       <TableCell>{d.customerName}</TableCell>
                       <TableCell>
