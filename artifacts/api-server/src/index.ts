@@ -39,7 +39,7 @@ app.listen(port, (err) => {
       logger.error({ err: seedErr }, "Logistics/demo seed failed");
     });
 
-  // Start IMAP email poller (polls every 5 minutes when IMAP credentials are configured)
-  startImapPoller();
+  // Start IMAP email poller (polls every 3 minutes when IMAP credentials are configured)
+  startImapPoller(3 * 60 * 1000);
 
 });

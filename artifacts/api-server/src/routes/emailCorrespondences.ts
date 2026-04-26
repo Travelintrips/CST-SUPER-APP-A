@@ -6,7 +6,7 @@ import {
   emailLinksTable,
 } from "@workspace/db";
 import { eq, desc, ilike, or, and, inArray, gte, lte } from "drizzle-orm";
-import { auth } from "@clerk/express";
+import { getAuth } from "@clerk/express";
 
 const router = Router();
 
@@ -173,6 +173,11 @@ router.get("/:id", async (req, res) => {
   });
 });
 
+// POLICY: Email correspondences are EVIDENCE ONLY.
+// Validating or linking an email NEVER changes the status of a Sales Order,
+// Purchase Order, Payment, or Expense. Transaction status changes must be
+// performed explicitly by an authorized user through the respective transaction endpoints.
+
 // POST /api/email-correspondences/:id/validate-status
 router.post("/:id/validate-status", async (req, res) => {
   const id = Number(req.params.id);
@@ -182,8 +187,7 @@ router.post("/:id/validate-status", async (req, res) => {
     return res.status(400).json({ message: `status harus salah satu dari: ${validStatuses.join(", ")}` });
   }
 
-  const clerkAuth = auth()(req, res, () => {}) as unknown as { userId: string | null };
-  const userId = clerkAuth?.userId ?? null;
+  const { userId } = getAuth(req);
 
   const updateData = status === "validated"
     ? { status, updatedAt: new Date(), validatedBy: userId, validatedAt: new Date() }
@@ -221,6 +225,8 @@ router.get("/:id/links", async (req, res) => {
   return res.json(links.map(serializeLink));
 });
 
+// NOTE: Creating a link only updates the email's own status to "linked".
+// It does NOT modify any Sales Order, Purchase Order, Payment, or Expense status.
 // POST /api/email-correspondences/:id/links
 router.post("/:id/links", async (req, res) => {
   const emailCorrespondenceId = Number(req.params.id);
@@ -264,8 +270,7 @@ router.post("/:id/links", async (req, res) => {
 router.put("/:id/links/:linkId/validate", async (req, res) => {
   const linkId = Number(req.params.linkId);
   const { notes } = req.body;
-  const clerkAuth = auth()(req, res, () => {}) as unknown as { userId: string | null };
-  const userId = clerkAuth?.userId ?? null;
+  const { userId } = getAuth(req);
 
   const [link] = await db
     .update(emailLinksTable)
