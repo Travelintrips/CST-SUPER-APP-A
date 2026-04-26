@@ -154,6 +154,10 @@ router.get("/purchase", async (req, res) => {
   });
 });
 
+// Rounding threshold: exclude items whose outstanding balance rounds to zero
+// (avoids floating-point noise after partial payments)
+const OUTSTANDING_THRESHOLD = 0.005;
+
 function bucketDays(daysOld: number): "0-30" | "31-60" | "61-90" | "90+" {
   if (daysOld <= 30) return "0-30";
   if (daysOld <= 60) return "31-60";
@@ -189,7 +193,8 @@ router.get("/ar-aging", async (_req, res) => {
         confirmedAt: d.confirmedAt?.toISOString() ?? d.createdAt.toISOString(),
       };
     })
-    .filter((item) => item.amount > 0.005);
+    // amountPaid is void-safe: the void handler recalculates it excluding voided payments
+    .filter((item) => item.amount > OUTSTANDING_THRESHOLD);
   items.forEach((item) => { buckets[item.bucket] += item.amount; });
   const total = items.reduce((s, i) => s + i.amount, 0);
   return res.json({ total, buckets, items: items.sort((a, b) => b.daysOld - a.daysOld) });
@@ -223,7 +228,8 @@ router.get("/ap-aging", async (_req, res) => {
         confirmedAt: d.confirmedAt?.toISOString() ?? d.createdAt.toISOString(),
       };
     })
-    .filter((item) => item.amount > 0.005);
+    // amountPaid is void-safe: the void handler recalculates it excluding voided payments
+    .filter((item) => item.amount > OUTSTANDING_THRESHOLD);
   items.forEach((item) => { buckets[item.bucket] += item.amount; });
   const total = items.reduce((s, i) => s + i.amount, 0);
   return res.json({ total, buckets, items: items.sort((a, b) => b.daysOld - a.daysOld) });
