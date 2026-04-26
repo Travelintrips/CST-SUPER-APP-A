@@ -1,5 +1,5 @@
 import { db, apiResponseTimesTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 const MAX_ROWS_PER_PATH = 500;
 
