@@ -55,6 +55,14 @@ export interface CreateProductCategoryBody {
   name: string;
 }
 
+export type ProductItemType =
+  (typeof ProductItemType)[keyof typeof ProductItemType];
+
+export const ProductItemType = {
+  barang: "barang",
+  jasa: "jasa",
+} as const;
+
 export interface Product {
   id: number;
   name: string;
@@ -62,23 +70,39 @@ export interface Product {
   price: number;
   stock: number;
   categories: string[];
-  description?: string;
+  description?: string | null;
   imageUrl?: string | null;
   defaultSalesTaxId?: number | null;
   defaultPurchaseTaxId?: number | null;
+  itemType: ProductItemType;
+  unit: string;
+  subcategory?: string | null;
+  isActive: boolean;
   createdAt: string;
 }
+
+export type CreateProductBodyItemType =
+  (typeof CreateProductBodyItemType)[keyof typeof CreateProductBodyItemType];
+
+export const CreateProductBodyItemType = {
+  barang: "barang",
+  jasa: "jasa",
+} as const;
 
 export interface CreateProductBody {
   name: string;
   sku: string;
   price: number;
-  stock: number;
-  categories: string[];
-  description?: string;
+  stock?: number;
+  categories?: string[];
+  description?: string | null;
   imageUrl?: string | null;
   defaultSalesTaxId?: number | null;
   defaultPurchaseTaxId?: number | null;
+  itemType: CreateProductBodyItemType;
+  unit: string;
+  subcategory?: string | null;
+  isActive?: boolean;
 }
 
 export interface LineItem {
@@ -1420,6 +1444,13 @@ export interface CreateFreightQuoteBody {
   estimatedDays?: number | null;
   notes?: string | null;
 }
+
+export type ListProductsParams = {
+  search?: string;
+  itemType?: string;
+  subcategory?: string;
+  isActive?: string;
+};
 
 export type ListFreightRfqsParams = {
   shipmentId?: number;

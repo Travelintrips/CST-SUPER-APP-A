@@ -26,6 +26,7 @@ import {
   Landmark,
   Mail,
   Ship,
+  Boxes,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -100,6 +101,7 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin"],
       children: [
         { title: "Dashboard", href: "/sales", icon: LayoutDashboard },
+        { title: "Master Item", href: "/sales/items", icon: Boxes },
         { title: "Quotations", href: "/sales/quotations", icon: FileText },
         { title: "Sales Orders", href: "/sales/orders", icon: ShoppingBag },
         { title: "Customers", href: "/sales/customers", icon: UserCircle },

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, productsTable, ordersTable, productCategoriesTable, productCategoryMapTable } from "@workspace/db";
-import { eq, count, inArray } from "drizzle-orm";
+import { eq, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postEcommerceOrder } from "../lib/accounting.js";
 
@@ -52,6 +52,10 @@ function serializeProduct(
     price: Number(p.price),
     createdAt: p.createdAt.toISOString(),
     categories,
+    itemType: p.itemType,
+    unit: p.unit,
+    subcategory: p.subcategory ?? null,
+    isActive: p.isActive,
   };
 }
 
@@ -127,37 +131,65 @@ router.delete("/product-categories/:id", async (req, res) => {
 });
 
 // GET /api/ecommerce/products
-router.get("/products", async (_req, res) => {
-  const products = await db.select().from(productsTable).orderBy(productsTable.createdAt);
+router.get("/products", async (req, res) => {
+  const conds: SQL<unknown>[] = [];
+  const search = typeof req.query["search"] === "string" ? req.query["search"].trim() : null;
+  if (search) conds.push(or(ilike(productsTable.name, `%${search}%`), ilike(productsTable.sku, `%${search}%`))!);
+  const itemType = typeof req.query["itemType"] === "string" ? req.query["itemType"] : null;
+  if (itemType) conds.push(eq(productsTable.itemType, itemType));
+  const subcategory = typeof req.query["subcategory"] === "string" ? req.query["subcategory"] : null;
+  if (subcategory) conds.push(eq(productsTable.subcategory, subcategory));
+  const activeFilter = req.query["isActive"];
+  if (activeFilter === "true") conds.push(eq(productsTable.isActive, true));
+  if (activeFilter === "false") conds.push(eq(productsTable.isActive, false));
+
+  const products = await db
+    .select()
+    .from(productsTable)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(productsTable.name);
   const categoryMap = await getProductCategories(products.map((p) => p.id));
   return res.json(products.map((p) => serializeProduct(p, resolveCategories(p, categoryMap))));
 });
 
 // POST /api/ecommerce/products
 router.post("/products", async (req, res) => {
-  const { name, sku, price, stock, categories, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
+  const {
+    name, sku, price, stock, categories, description, imageUrl,
+    defaultSalesTaxId, defaultPurchaseTaxId,
+    itemType, unit, subcategory, isActive,
+  } = req.body;
+  if (!name || !sku || price == null) return res.status(400).json({ message: "name, sku, price are required" });
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
-  if (categoryNames.length === 0) return res.status(400).json({ message: "At least one category is required" });
 
-  const validCats = await db
-    .select()
-    .from(productCategoriesTable)
-    .where(inArray(productCategoriesTable.name, categoryNames));
-  if (validCats.length !== categoryNames.length) {
-    return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
+  let validCats: { id: number; name: string; createdAt: Date }[] = [];
+  if (categoryNames.length > 0) {
+    validCats = await db
+      .select()
+      .from(productCategoriesTable)
+      .where(inArray(productCategoriesTable.name, categoryNames));
+    if (validCats.length !== categoryNames.length) {
+      return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
+    }
   }
 
   const product = await db.transaction(async (tx) => {
     const [p] = await tx.insert(productsTable).values({
       name, sku, price: String(price), stock: stock ?? 0,
-      description,
+      description: description ?? null,
       imageUrl: normalizeImage(imageUrl),
       defaultSalesTaxId: defaultSalesTaxId ?? null,
       defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
+      itemType: itemType ?? "barang",
+      unit: unit ?? "pcs",
+      subcategory: subcategory ?? null,
+      isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).returning();
-    await tx.insert(productCategoryMapTable).values(
-      validCats.map((c) => ({ productId: p.id, categoryId: c.id }))
-    );
+    if (validCats.length > 0) {
+      await tx.insert(productCategoryMapTable).values(
+        validCats.map((c) => ({ productId: p.id, categoryId: c.id }))
+      );
+    }
     return p;
   });
 
@@ -176,31 +208,43 @@ router.get("/products/:id", async (req, res) => {
 // PUT /api/ecommerce/products/:id
 router.put("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, sku, price, stock, categories, description, imageUrl, defaultSalesTaxId, defaultPurchaseTaxId } = req.body;
+  const {
+    name, sku, price, stock, categories, description, imageUrl,
+    defaultSalesTaxId, defaultPurchaseTaxId,
+    itemType, unit, subcategory, isActive,
+  } = req.body;
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
-  if (categoryNames.length === 0) return res.status(400).json({ message: "At least one category is required" });
 
-  const validCats = await db
-    .select()
-    .from(productCategoriesTable)
-    .where(inArray(productCategoriesTable.name, categoryNames));
-  if (validCats.length !== categoryNames.length) {
-    return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
+  let validCats: { id: number; name: string; createdAt: Date }[] = [];
+  if (categoryNames.length > 0) {
+    validCats = await db
+      .select()
+      .from(productCategoriesTable)
+      .where(inArray(productCategoriesTable.name, categoryNames));
+    if (validCats.length !== categoryNames.length) {
+      return res.status(400).json({ message: "One or more categories do not exist in the predefined list" });
+    }
   }
 
   const product = await db.transaction(async (tx) => {
     const [p] = await tx.update(productsTable).set({
-      name, sku, price: String(price), stock,
-      description,
+      name, sku, price: String(price), stock: stock ?? 0,
+      description: description ?? null,
       imageUrl: normalizeImage(imageUrl),
       defaultSalesTaxId: defaultSalesTaxId ?? null,
       defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
+      itemType: itemType ?? "barang",
+      unit: unit ?? "pcs",
+      subcategory: subcategory ?? null,
+      isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
     if (!p) return null;
     await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
-    await tx.insert(productCategoryMapTable).values(
-      validCats.map((c) => ({ productId: id, categoryId: c.id }))
-    );
+    if (validCats.length > 0) {
+      await tx.insert(productCategoryMapTable).values(
+        validCats.map((c) => ({ productId: id, categoryId: c.id }))
+      );
+    }
     return p;
   });
 
@@ -213,6 +257,62 @@ router.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(productsTable).where(eq(productsTable.id, id));
   return res.json({ message: "Product deleted" });
+});
+
+// POST /api/ecommerce/seed-items — seed initial logistics service items (idempotent)
+router.post("/seed-items", async (_req, res) => {
+  const LOGISTICS_CATEGORIES = [
+    "Udara", "Laut", "Darat", "Pabean", "Handling",
+    "Trucking", "Container", "Freight Forwarding", "Lainnya",
+  ];
+
+  const seedItems = [
+    { name: "Urus Dokumen Pabean", sku: "SVC-PABEAN-001", itemType: "jasa", subcategory: "Pabean", unit: "dokumen", price: "0" },
+    { name: "Handling Cargo Udara", sku: "SVC-UDARA-001", itemType: "jasa", subcategory: "Udara", unit: "kg", price: "0" },
+    { name: "Handling Cargo Laut", sku: "SVC-LAUT-001", itemType: "jasa", subcategory: "Laut", unit: "cbm", price: "0" },
+    { name: "Trucking Dalam Kota", sku: "SVC-TRUCK-001", itemType: "jasa", subcategory: "Trucking", unit: "trip", price: "0" },
+    { name: "Sewa Container 20FT", sku: "SVC-CONT-001", itemType: "jasa", subcategory: "Container", unit: "container", price: "0" },
+    { name: "Sewa Container 40FT", sku: "SVC-CONT-002", itemType: "jasa", subcategory: "Container", unit: "container", price: "0" },
+    { name: "Freight Laut LCL", sku: "SVC-LAUT-002", itemType: "jasa", subcategory: "Laut", unit: "cbm", price: "0" },
+    { name: "Freight Laut FCL 20FT", sku: "SVC-LAUT-003", itemType: "jasa", subcategory: "Laut", unit: "container", price: "0" },
+    { name: "Freight Udara", sku: "SVC-UDARA-002", itemType: "jasa", subcategory: "Udara", unit: "kg", price: "0" },
+    { name: "Biaya Storage", sku: "SVC-HAND-001", itemType: "jasa", subcategory: "Handling", unit: "hari", price: "0" },
+  ];
+
+  // Ensure logistics categories exist
+  const existingCats = await db.select().from(productCategoriesTable);
+  const existingNames = new Set(existingCats.map((c) => c.name));
+  for (const catName of LOGISTICS_CATEGORIES) {
+    if (!existingNames.has(catName)) {
+      await db.insert(productCategoriesTable).values({ name: catName });
+    }
+  }
+  const allCats = await db.select().from(productCategoriesTable);
+  const catMap = new Map(allCats.map((c) => [c.name, c.id]));
+
+  const seeded: string[] = [];
+  for (const item of seedItems) {
+    const existing = await db.select().from(productsTable).where(eq(productsTable.sku, item.sku));
+    if (existing.length > 0) continue;
+    await db.transaction(async (tx) => {
+      const [p] = await tx.insert(productsTable).values({
+        name: item.name,
+        sku: item.sku,
+        price: item.price,
+        stock: 0,
+        itemType: item.itemType,
+        unit: item.unit,
+        subcategory: item.subcategory,
+        isActive: true,
+      }).returning();
+      const catId = catMap.get(item.subcategory);
+      if (catId) {
+        await tx.insert(productCategoryMapTable).values({ productId: p.id, categoryId: catId });
+      }
+    });
+    seeded.push(item.name);
+  }
+  return res.json({ message: "Seeded", seeded });
 });
 
 function serializeOrder(o: typeof ordersTable.$inferSelect) {

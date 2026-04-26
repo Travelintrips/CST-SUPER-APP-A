@@ -24,6 +24,7 @@ import SalesDocumentsListPage from "@/pages/sales/documents-list";
 import SalesDocumentEditorPage from "@/pages/sales/quotation-editor";
 import CustomersPage from "@/pages/sales/customers";
 import SalesInvoicesPage from "@/pages/sales/invoices";
+import SalesItemsPage from "@/pages/sales/items";
 import PurchaseDashboardPage from "@/pages/purchase/dashboard";
 import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
@@ -207,6 +208,9 @@ function Router() {
         <ProtectedRoute component={CorrespondencesPage} />
       </Route>
 
+      <Route path="/sales/items">
+        <ProtectedRoute component={SalesItemsPage} />
+      </Route>
       <Route path="/sales">
         <ProtectedRoute component={SalesDashboardPage} />
       </Route>

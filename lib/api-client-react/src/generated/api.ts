@@ -72,6 +72,7 @@ import type {
   ListCorrespondencesParams,
   ListFreightQuotesParams,
   ListFreightRfqsParams,
+  ListProductsParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
   MessageResponse,
@@ -503,43 +504,59 @@ export function useGetDashboardSummary<
 }
 
 /**
- * @summary List all products
+ * @summary List all products / master items
  */
-export const getListProductsUrl = () => {
-  return `/api/ecommerce/products`;
+export const getListProductsUrl = (params?: ListProductsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ecommerce/products?${stringifiedParams}`
+    : `/api/ecommerce/products`;
 };
 
 export const listProducts = async (
+  params?: ListProductsParams,
   options?: RequestInit,
 ): Promise<Product[]> => {
-  return customFetch<Product[]>(getListProductsUrl(), {
+  return customFetch<Product[]>(getListProductsUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListProductsQueryKey = () => {
-  return [`/api/ecommerce/products`] as const;
+export const getListProductsQueryKey = (params?: ListProductsParams) => {
+  return [`/api/ecommerce/products`, ...(params ? [params] : [])] as const;
 };
 
 export const getListProductsQueryOptions = <
   TData = Awaited<ReturnType<typeof listProducts>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listProducts>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListProductsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listProducts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListProductsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListProductsQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listProducts>>> = ({
     signal,
-  }) => listProducts({ signal, ...requestOptions });
+  }) => listProducts(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listProducts>>,
@@ -554,21 +571,24 @@ export type ListProductsQueryResult = NonNullable<
 export type ListProductsQueryError = ErrorType<unknown>;
 
 /**
- * @summary List all products
+ * @summary List all products / master items
  */
 
 export function useListProducts<
   TData = Awaited<ReturnType<typeof listProducts>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listProducts>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListProductsQueryOptions(options);
+>(
+  params?: ListProductsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listProducts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListProductsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

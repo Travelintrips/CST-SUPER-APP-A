@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { ScanDocumentDialog, type ScannedDocumentData } from "@/components/ScanDocumentDialog";
@@ -49,10 +49,148 @@ import {
   getGetSalesDocumentQueryKey,
   getListSalesDocumentsQueryKey,
   getListAccountingPaymentsQueryKey,
+  getListProductsQueryKey,
+  type Product,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink } from "lucide-react";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+const LOGISTICS_SUBCATEGORIES = [
+  "Udara", "Laut", "Darat", "Pabean", "Handling",
+  "Trucking", "Container", "Freight Forwarding", "Lainnya",
+];
+
+interface ItemPickerProps {
+  products: Product[];
+  onSelect: (p: Product | null) => void;
+  onAddNew: () => void;
+  disabled?: boolean;
+  currentName?: string;
+}
+
+function ItemPicker({ products, onSelect, onAddNew, disabled, currentName }: ItemPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "barang" | "jasa">("all");
+  const [filterSubcat, setFilterSubcat] = useState("all");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(() => {
+    return products.filter((p) => {
+      if (!p.isActive) return false;
+      if (filterType !== "all" && p.itemType !== filterType) return false;
+      if (filterSubcat !== "all" && p.subcategory !== filterSubcat) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [products, filterType, filterSubcat, search]);
+
+  return (
+    <Popover open={open && !disabled} onOpenChange={(o) => { setOpen(o); if (o) setTimeout(() => searchRef.current?.focus(), 50); }}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          className="w-full justify-start text-left font-normal text-slate-300 border-slate-600 bg-slate-800/50 hover:bg-slate-700/50 truncate"
+          data-testid="button-item-picker"
+        >
+          <Search className="h-3.5 w-3.5 mr-1.5 shrink-0 text-slate-400" />
+          <span className="truncate">{currentName ? currentName : "Pilih dari master item…"}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[360px] p-0 bg-slate-900 border-slate-700" align="start">
+        <div className="p-2 border-b border-slate-700 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari nama atau SKU…"
+              className="w-full pl-7 pr-3 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded text-slate-200 placeholder:text-slate-500 outline-none focus:border-blue-500"
+            />
+          </div>
+          <div className="flex gap-1.5">
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+              className="flex-1 text-xs bg-slate-800 border border-slate-600 rounded px-2 py-1 text-slate-300 outline-none"
+            >
+              <option value="all">Semua Jenis</option>
+              <option value="barang">Barang</option>
+              <option value="jasa">Jasa</option>
+            </select>
+            <select
+              value={filterSubcat}
+              onChange={(e) => setFilterSubcat(e.target.value)}
+              className="flex-1 text-xs bg-slate-800 border border-slate-600 rounded px-2 py-1 text-slate-300 outline-none"
+            >
+              <option value="all">Semua Sub-Kat</option>
+              {LOGISTICS_SUBCATEGORIES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="max-h-[240px] overflow-y-auto">
+          <button
+            onClick={() => { onSelect(null); setOpen(false); setSearch(""); }}
+            className="w-full text-left px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 border-b border-slate-700/50"
+          >
+            — Custom / isi manual —
+          </button>
+          {filtered.length === 0 ? (
+            <p className="text-center text-xs text-slate-500 py-6">Tidak ada item ditemukan</p>
+          ) : (
+            filtered.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => { onSelect(p); setOpen(false); setSearch(""); }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-800 transition-colors border-b border-slate-700/30 last:border-0"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {p.itemType === "jasa"
+                      ? <Wrench className="h-3 w-3 text-blue-400 shrink-0" />
+                      : <Package className="h-3 w-3 text-amber-400 shrink-0" />
+                    }
+                    <span className="text-sm text-slate-200 truncate">{p.name}</span>
+                  </div>
+                  <span className="text-xs text-slate-400 shrink-0">{p.unit}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 pl-5">
+                  <span className="text-xs text-slate-500 font-mono">{p.sku}</span>
+                  {p.subcategory && <span className="text-xs text-slate-500">· {p.subcategory}</span>}
+                  {p.price > 0 && (
+                    <span className="text-xs text-emerald-400 ml-auto">
+                      {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(p.price)}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="p-2 border-t border-slate-700">
+          <button
+            onClick={() => { setOpen(false); onAddNew(); }}
+            className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs text-blue-400 hover:text-blue-300 hover:bg-slate-800 rounded transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Tambah Item Baru ke Master
+            <ExternalLink className="h-3 w-3 ml-auto" />
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -257,28 +395,24 @@ export default function SalesDocumentEditorPage() {
   const addLine = () => setLines((arr) => [...arr, { name: "", quantity: 1, unitPrice: 0 }]);
   const removeLine = (idx: number) => setLines((arr) => arr.filter((_, i) => i !== idx));
 
-  const onProductChange = (idx: number, productIdStr: string) => {
-    if (productIdStr === "__custom") {
+  const onItemSelect = (idx: number, product: Product | null) => {
+    if (!product) {
       setLine(idx, { productId: null });
       return;
     }
-    const pid = Number(productIdStr);
-    const product = (products ?? []).find((p) => p.id === pid);
-    if (product) {
-      setLine(idx, {
-        productId: pid,
-        name: product.name,
-        unitPrice: Number(product.price),
-      });
-      const currentCustomer = (customers ?? []).find((c) => c.id === customerId);
-      setTaxRateId(
-        product.defaultSalesTaxId
-        ?? currentCustomer?.defaultSalesTaxId
-        ?? acctSettings?.defaultSalesTaxId
-        ?? null
-      );
-      setTaxAutoFilledFrom(null);
-    }
+    setLine(idx, {
+      productId: product.id,
+      name: product.name,
+      unitPrice: Number(product.price),
+    });
+    const currentCustomer = (customers ?? []).find((c) => c.id === customerId);
+    setTaxRateId(
+      product.defaultSalesTaxId
+      ?? currentCustomer?.defaultSalesTaxId
+      ?? acctSettings?.defaultSalesTaxId
+      ?? null
+    );
+    setTaxAutoFilledFrom(null);
   };
 
   const onCustomerChange = (val: string) => {
@@ -524,21 +658,15 @@ export default function SalesDocumentEditorPage() {
                 {lines.map((l, idx) => (
                   <TableRow key={idx} data-testid={`row-line-${idx}`}>
                     <TableCell>
-                      <Select
-                        value={l.productId !== null && l.productId !== undefined ? String(l.productId) : "__custom"}
-                        onValueChange={(v) => onProductChange(idx, v)}
+                      <ItemPicker
+                        products={products ?? []}
+                        onSelect={(p) => onItemSelect(idx, p)}
+                        onAddNew={() => navigate("/sales/items")}
                         disabled={!isEditable}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Pilih atau ketik" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__custom">— Custom —</SelectItem>
-                          {(products ?? []).map((p) => (
-                            <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        currentName={l.productId ? l.name : undefined}
+                      />
                       <Input
-                        className="mt-2"
+                        className="mt-1.5"
                         placeholder="Nama item"
                         value={l.name}
                         onChange={(e) => setLine(idx, { name: e.target.value })}

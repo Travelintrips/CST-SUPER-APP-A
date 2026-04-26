@@ -135,7 +135,20 @@ paths:
     get:
       operationId: listProducts
       tags: [ecommerce]
-      summary: List all products
+      summary: List all products / master items
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: itemType
+          schema: { type: string }
+        - in: query
+          name: subcategory
+          schema: { type: string }
+        - in: query
+          name: isActive
+          schema: { type: string }
       responses:
         "200":
           description: Product list
@@ -2123,6 +2136,7 @@ components:
             type: string
         description:
           type: string
+          nullable: true
         imageUrl:
           type: string
           nullable: true
@@ -2132,9 +2146,19 @@ components:
         defaultPurchaseTaxId:
           type: integer
           nullable: true
+        itemType:
+          type: string
+          enum: [barang, jasa]
+        unit:
+          type: string
+        subcategory:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
         createdAt:
           type: string
-      required: [id, name, sku, price, stock, categories, createdAt]
+      required: [id, name, sku, price, stock, categories, itemType, unit, isActive, createdAt]
 
     CreateProductBody:
       type: object
@@ -2153,6 +2177,7 @@ components:
             type: string
         description:
           type: string
+          nullable: true
         imageUrl:
           type: string
           nullable: true
@@ -2162,7 +2187,17 @@ components:
         defaultPurchaseTaxId:
           type: integer
           nullable: true
-      required: [name, sku, price, stock, categories]
+        itemType:
+          type: string
+          enum: [barang, jasa]
+        unit:
+          type: string
+        subcategory:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+      required: [name, sku, price, itemType, unit]
 
     LineItem:
       type: object

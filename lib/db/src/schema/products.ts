@@ -1,4 +1,4 @@
-import { pgTable, serial, text, numeric, integer, timestamp, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, numeric, integer, timestamp, boolean, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -22,6 +22,10 @@ export const productsTable = pgTable("products", {
   imageUrl: text("image_url"),
   defaultSalesTaxId: integer("default_sales_tax_id"),
   defaultPurchaseTaxId: integer("default_purchase_tax_id"),
+  itemType: text("item_type").notNull().default("barang"),
+  unit: text("unit").notNull().default("pcs"),
+  subcategory: text("subcategory"),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

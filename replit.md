@@ -59,18 +59,38 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - Frontend helper: `@workspace/object-storage-web` provides `useUpload` and
   `ObjectUploader` (Uppy-based dashboard) for uploads from React.
 
+## Master Item Penjualan
+
+- Products table extended with 4 new columns (added via ALTER TABLE):
+  `item_type` (text: "barang"|"jasa", default "barang"), `unit` (text, default "pcs"),
+  `subcategory` (text, nullable), `is_active` (boolean, default true).
+- Schema file: `lib/db/src/schema/products.ts`.
+- API: `GET /api/ecommerce/products` supports query params `search`, `itemType`,
+  `subcategory`, `isActive`; `POST/PUT` accept all new fields.
+- Seed endpoint: `POST /api/ecommerce/seed-items` — idempotent, creates 10 logistics
+  service items across sub-categories (Udara, Laut, Darat, Pabean, etc.).
+- Frontend page: `artifacts/bizportal/src/pages/sales/items.tsx` at `/sales/items`
+  (linked from Sales sidebar "Master Item" with Boxes icon).
+- LOGISTICS_SUBCATEGORIES: `["Udara","Laut","Darat","Pabean","Handling","Trucking",
+  "Container","Freight Forwarding","Lainnya"]`
+- UNITS: `["pcs","kg","cbm","container","shipment","dokumen","trip","ton","hari"]`
+
 ## Sales & Purchase Modules
 
 - BizPortal includes Odoo-style Sales and Purchase modules (admin role only).
 - Sales: quotations (SQ/YYYY/00001) → confirm → sales orders (SO) with invoice
   (`none|to_invoice|invoiced`) and delivery (`none|to_deliver|delivered`)
-  sub-statuses. Customers managed at `/sales/customers`.
+  sub-statuses. Customers managed at `/sales/customers`. Master items at `/sales/items`.
 - Purchase: RFQs (RFQ/YYYY/00001) → confirm → purchase orders (PO) with receive
   and bill sub-statuses. Vendors are the existing `suppliers` table from Trading.
 - Both editors expose a `taxRateId` (PPN) selector. Sales/Purchase document rows
   store `taxRateId`, `taxAmount`, and `grandTotal` (subtotal + taxAmount).
   New documents auto-fill from `accountingSettings.defaultSalesTaxId` /
   `defaultPurchaseTaxId`.
+- Sales Quotation/Order editor item picker: Popover-based `ItemPicker` component
+  with live search (name/SKU), filter by jenis (barang/jasa) and sub-kategori,
+  per-item unit/price display, "Custom" option, and "Tambah Item Baru ke Master" link.
+  Selecting an item auto-fills name, unit price, and default sales tax.
 - Backend routes (`/api/sales`, `/api/purchase`) are gated by `requireAdmin`
   middleware (`artifacts/api-server/src/lib/requireAdmin.ts`). All endpoints
   return 401 without auth and 403 for non-admin users.

@@ -74,8 +74,15 @@ export const GetDashboardSummaryResponse = zod.object({
 });
 
 /**
- * @summary List all products
+ * @summary List all products / master items
  */
+export const ListProductsQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  itemType: zod.coerce.string().optional(),
+  subcategory: zod.coerce.string().optional(),
+  isActive: zod.coerce.string().optional(),
+});
+
 export const ListProductsResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -83,10 +90,14 @@ export const ListProductsResponseItem = zod.object({
   price: zod.number(),
   stock: zod.number(),
   categories: zod.array(zod.string()),
-  description: zod.string().optional(),
+  description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  itemType: zod.enum(["barang", "jasa"]),
+  unit: zod.string(),
+  subcategory: zod.string().nullish(),
+  isActive: zod.boolean(),
   createdAt: zod.string(),
 });
 export const ListProductsResponse = zod.array(ListProductsResponseItem);
@@ -98,12 +109,16 @@ export const CreateProductBody = zod.object({
   name: zod.string(),
   sku: zod.string(),
   price: zod.number(),
-  stock: zod.number(),
-  categories: zod.array(zod.string()),
-  description: zod.string().optional(),
+  stock: zod.number().optional(),
+  categories: zod.array(zod.string()).optional(),
+  description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  itemType: zod.enum(["barang", "jasa"]),
+  unit: zod.string(),
+  subcategory: zod.string().nullish(),
+  isActive: zod.boolean().optional(),
 });
 
 /**
@@ -120,10 +135,14 @@ export const GetProductResponse = zod.object({
   price: zod.number(),
   stock: zod.number(),
   categories: zod.array(zod.string()),
-  description: zod.string().optional(),
+  description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  itemType: zod.enum(["barang", "jasa"]),
+  unit: zod.string(),
+  subcategory: zod.string().nullish(),
+  isActive: zod.boolean(),
   createdAt: zod.string(),
 });
 
@@ -138,12 +157,16 @@ export const UpdateProductBody = zod.object({
   name: zod.string(),
   sku: zod.string(),
   price: zod.number(),
-  stock: zod.number(),
-  categories: zod.array(zod.string()),
-  description: zod.string().optional(),
+  stock: zod.number().optional(),
+  categories: zod.array(zod.string()).optional(),
+  description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  itemType: zod.enum(["barang", "jasa"]),
+  unit: zod.string(),
+  subcategory: zod.string().nullish(),
+  isActive: zod.boolean().optional(),
 });
 
 export const UpdateProductResponse = zod.object({
@@ -153,10 +176,14 @@ export const UpdateProductResponse = zod.object({
   price: zod.number(),
   stock: zod.number(),
   categories: zod.array(zod.string()),
-  description: zod.string().optional(),
+  description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  itemType: zod.enum(["barang", "jasa"]),
+  unit: zod.string(),
+  subcategory: zod.string().nullish(),
+  isActive: zod.boolean(),
   createdAt: zod.string(),
 });
 

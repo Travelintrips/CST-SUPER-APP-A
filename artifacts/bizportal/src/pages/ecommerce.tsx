@@ -121,7 +121,7 @@ export default function EcommercePage() {
     syncUrl({ tab: value });
   };
 
-  const { data: products, isLoading: isLoadingProducts } = useListProducts({
+  const { data: products, isLoading: isLoadingProducts } = useListProducts(undefined, {
     query: { queryKey: getListProductsQueryKey() }
   });
 
@@ -282,6 +282,8 @@ export default function EcommercePage() {
         imageUrl: createImageUrl,
         defaultSalesTaxId: createProdSalesTaxId,
         defaultPurchaseTaxId: createProdPurchaseTaxId,
+        itemType: "barang",
+        unit: "pcs",
       }
     }, {
       onSuccess: () => {
@@ -312,6 +314,8 @@ export default function EcommercePage() {
         imageUrl: editImageUrl,
         defaultSalesTaxId: editProdSalesTaxId,
         defaultPurchaseTaxId: editProdPurchaseTaxId,
+        itemType: editingProduct.itemType ?? "barang",
+        unit: editingProduct.unit ?? "pcs",
       }
     }, {
       onSuccess: () => {
