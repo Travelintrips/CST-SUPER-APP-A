@@ -69,12 +69,18 @@ export default function ExpenseListPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [catFilter, setCatFilter] = useState("all");
-  const [salesDocFilter, setSalesDocFilter] = useState(
-    () => localStorage.getItem(LS_SALES_DOC_FILTER) ?? "all"
-  );
-  const [shipmentFilter, setShipmentFilter] = useState(
-    () => localStorage.getItem(LS_SHIPMENT_FILTER) ?? "all"
-  );
+  const [salesDocFilter, setSalesDocFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_SALES_DOC_FILTER);
+      return v && (v === "all" || /^\d+$/.test(v)) ? v : "all";
+    } catch { return "all"; }
+  });
+  const [shipmentFilter, setShipmentFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_SHIPMENT_FILTER);
+      return v && (v === "all" || /^\d+$/.test(v)) ? v : "all";
+    } catch { return "all"; }
+  });
 
   const { data: expenses = [], isLoading } = useListExpenses({
     status: statusFilter !== "all" ? statusFilter : undefined,
