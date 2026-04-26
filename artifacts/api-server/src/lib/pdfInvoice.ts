@@ -45,28 +45,7 @@ const fmtDate = (d?: string | null) => {
   }
 };
 
-export function streamInvoicePdf(res: Response, data: InvoiceData): void {
-  const filename = `${data.docNumber.replace(/[\\/]/g, "-")}.pdf`;
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
-
-  const doc = new PDFDocument({ size: "A4", margin: 48 });
-  doc.on("error", (err) => {
-    // Best-effort: end response if not already sent.
-    if (!res.headersSent) {
-      res.status(500).json({ message: "PDF generation error", error: String(err?.message ?? err) });
-    } else {
-      res.end();
-    }
-  });
-  res.on("close", () => {
-    // Client disconnected — abort PDF document so we don't keep writing.
-    if (!res.writableEnded) {
-      try { doc.end(); } catch { /* ignore */ }
-    }
-  });
-  doc.pipe(res);
-
+function _renderInvoiceDoc(doc: InstanceType<typeof PDFDocument>, data: InvoiceData): void {
   doc
     .fontSize(20)
     .fillColor("#0f172a")
@@ -203,6 +182,39 @@ export function streamInvoicePdf(res: Response, data: InvoiceData): void {
       780,
       { width: 499, align: "center" },
     );
+}
 
+export function buildInvoicePdfBuffer(data: InvoiceData): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 48 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    _renderInvoiceDoc(doc, data);
+    doc.end();
+  });
+}
+
+export function streamInvoicePdf(res: Response, data: InvoiceData): void {
+  const filename = `${data.docNumber.replace(/[\\/]/g, "-")}.pdf`;
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+
+  const doc = new PDFDocument({ size: "A4", margin: 48 });
+  doc.on("error", (err) => {
+    if (!res.headersSent) {
+      res.status(500).json({ message: "PDF generation error", error: String(err?.message ?? err) });
+    } else {
+      res.end();
+    }
+  });
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      try { doc.end(); } catch { /* ignore */ }
+    }
+  });
+  doc.pipe(res);
+  _renderInvoiceDoc(doc, data);
   doc.end();
 }

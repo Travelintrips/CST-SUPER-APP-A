@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
+import { ScanDocumentDialog, type ScannedDocumentData } from "@/components/ScanDocumentDialog";
+import { SendEmailDialog } from "@/components/SendEmailDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +52,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -320,6 +322,23 @@ export default function PurchaseDocumentEditorPage() {
     }
   };
 
+  const [scanOpen, setScanOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+
+  const handleScannedData = (data: ScannedDocumentData) => {
+    if (data.partyName) setSupplierName(data.partyName);
+    if (data.docDate) setExpectedDate(data.docDate.slice(0, 10));
+    if (data.notes) setNotes(data.notes);
+    if (data.lines && data.lines.length > 0) {
+      setLines(data.lines.map((l) => ({
+        name: l.name,
+        description: l.description ?? null,
+        quantity: l.quantity,
+        unitCost: l.unitPrice,
+      })));
+    }
+  };
+
   const isOrderView = !!paramsOrder;
   const backHref = isOrderView ? "/purchase/orders" : "/purchase/rfq";
 
@@ -353,6 +372,11 @@ export default function PurchaseDocumentEditorPage() {
           </div>
           <div className="flex gap-2 flex-wrap">
             {isEditable && (
+              <Button variant="outline" onClick={() => setScanOpen(true)} data-testid="button-scan">
+                <ScanLine className="mr-2 h-4 w-4" /> Scan Dokumen
+              </Button>
+            )}
+            {isEditable && (
               <Button onClick={save} disabled={createMut.isPending || updateMut.isPending} data-testid="button-save">
                 <Save className="mr-2 h-4 w-4" /> Simpan
               </Button>
@@ -381,6 +405,11 @@ export default function PurchaseDocumentEditorPage() {
             {!isNew && doc && id && (
               <Button variant="outline" onClick={() => window.open(`/api/purchase/documents/${id}/pdf`, "_blank")} data-testid="button-download-pdf">
                 <Printer className="mr-2 h-4 w-4" /> Cetak PDF
+              </Button>
+            )}
+            {!isNew && doc && (
+              <Button variant="outline" onClick={() => setEmailOpen(true)} data-testid="button-send-email">
+                <Mail className="mr-2 h-4 w-4" /> Kirim Email
               </Button>
             )}
           </div>
@@ -635,6 +664,25 @@ export default function PurchaseDocumentEditorPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ScanDocumentDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        onDataExtracted={handleScannedData}
+        title="Scan Dokumen Pembelian"
+      />
+
+      {!isNew && doc && id && (
+        <SendEmailDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          docId={id}
+          docNumber={doc.docNumber}
+          docTitle={doc.kind === "order" ? "Purchase Order" : "Request for Quotation"}
+          defaultTo={(() => { const v = (vendors ?? []).find((x) => x.id === doc.supplierId); return v?.contactEmail ?? ""; })()}
+          module="purchase"
+        />
+      )}
     </AppShell>
   );
 }

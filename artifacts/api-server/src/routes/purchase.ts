@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { streamInvoicePdf } from "../lib/pdfInvoice.js";
+import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill } from "../lib/accounting.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import {
   db,
   suppliersTable,
@@ -358,6 +359,73 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     receiveStatus: detail.receiveStatus,
     billStatus: detail.billStatus,
   });
+});
+
+router.post("/documents/:id/email", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
+
+  if (!isSmtpConfigured()) {
+    res.status(503).json({ message: "Email belum dikonfigurasi. Hubungi administrator untuk mengatur SMTP." });
+    return;
+  }
+
+  const { to, subject, body } = req.body as { to?: string; subject?: string; body?: string };
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    res.status(400).json({ message: "Alamat email tujuan tidak valid" });
+    return;
+  }
+
+  const detail = await loadDocWithLines(id);
+  if (!detail) { res.status(404).json({ message: "Document not found" }); return; }
+
+  let supplier: typeof suppliersTable.$inferSelect | null = null;
+  if (detail.supplierId) {
+    const rows = await db.select().from(suppliersTable).where(eq(suppliersTable.id, detail.supplierId)).limit(1);
+    supplier = rows[0] ?? null;
+  }
+
+  const titleMap: Record<string, string> = { rfq: "REQUEST FOR QUOTATION", order: "PURCHASE ORDER" };
+  const pdfData = {
+    title: titleMap[detail.kind] ?? "DOKUMEN PEMBELIAN",
+    docNumber: detail.docNumber,
+    status: detail.status,
+    kind: detail.kind,
+    partyLabel: "Vendor",
+    partyName: detail.supplierName,
+    partyEmail: supplier?.contactEmail ?? null,
+    partyAddress: supplier?.country ?? null,
+    validUntil: null,
+    expectedDate: detail.expectedDate,
+    confirmedAt: detail.confirmedAt,
+    createdAt: detail.createdAt,
+    notes: detail.notes,
+    lines: detail.lines.map((l: any) => ({
+      name: l.name,
+      description: l.description,
+      quantity: Number(l.quantity),
+      unitPrice: Number(l.unitCost ?? l.unitPrice ?? 0),
+      subtotal: Number(l.subtotal),
+    })),
+    totalAmount: Number(detail.totalAmount),
+    receiveStatus: detail.receiveStatus,
+    billStatus: detail.billStatus,
+  };
+
+  const pdfBuffer = await buildInvoicePdfBuffer(pdfData);
+  const filename = `${detail.docNumber.replace(/[\\/]/g, "-")}.pdf`;
+  const emailSubject = subject?.trim() || `${pdfData.title} ${detail.docNumber}`;
+  const emailBody = body?.trim() || `Terlampir ${pdfData.title} ${detail.docNumber} dari BizPortal.`;
+
+  await sendMail({
+    to,
+    subject: emailSubject,
+    text: emailBody,
+    html: `<p>${emailBody.replace(/\n/g, "<br>")}</p>`,
+    attachments: [{ filename, content: pdfBuffer, contentType: "application/pdf" }],
+  });
+
+  res.json({ message: "Email berhasil dikirim", to, filename });
 });
 
 export default router;

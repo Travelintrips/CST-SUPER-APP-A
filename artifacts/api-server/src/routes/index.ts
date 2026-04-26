@@ -14,6 +14,7 @@ import paymentsRouter from "./payments";
 import accountingRouter from "./accounting";
 import storageRouter from "./storage";
 import correspondencesRouter from "./correspondences";
+import scanDocumentRouter from "./scanDocument";
 
 const router: IRouter = Router();
 
@@ -31,6 +32,7 @@ router.use("/reports", reportsRouter);
 router.use("/payments", paymentsRouter);
 router.use("/accounting", accountingRouter);
 router.use("/correspondences", correspondencesRouter);
+router.use("/scan-document", scanDocumentRouter);
 router.use(storageRouter);
 
 export default router;

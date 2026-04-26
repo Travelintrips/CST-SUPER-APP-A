@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
+import { ScanDocumentDialog, type ScannedDocumentData } from "@/components/ScanDocumentDialog";
+import { SendEmailDialog } from "@/components/SendEmailDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +51,7 @@ import {
   getListAccountingPaymentsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail } from "lucide-react";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 
 const idr = (n: number) =>
@@ -146,6 +148,24 @@ export default function SalesDocumentEditorPage() {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
       toast({ title: "Gagal mencatat pembayaran", description: msg, variant: "destructive" });
+    }
+  };
+
+  const [scanOpen, setScanOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+
+  const handleScannedData = (data: ScannedDocumentData) => {
+    if (data.partyName) setCustomerName(data.partyName);
+    if (data.dueDate) setValidUntil(data.dueDate.slice(0, 10));
+    if (data.docDate) setExpectedDate(data.docDate.slice(0, 10));
+    if (data.notes) setNotes(data.notes);
+    if (data.lines && data.lines.length > 0) {
+      setLines(data.lines.map((l) => ({
+        name: l.name,
+        description: l.description ?? null,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      })));
     }
   };
 
@@ -384,6 +404,11 @@ export default function SalesDocumentEditorPage() {
           </div>
           <div className="flex gap-2 flex-wrap">
             {isEditable && (
+              <Button variant="outline" onClick={() => setScanOpen(true)} data-testid="button-scan">
+                <ScanLine className="mr-2 h-4 w-4" /> Scan Dokumen
+              </Button>
+            )}
+            {isEditable && (
               <Button onClick={save} disabled={createMut.isPending || updateMut.isPending} data-testid="button-save">
                 <Save className="mr-2 h-4 w-4" /> Simpan
               </Button>
@@ -412,6 +437,11 @@ export default function SalesDocumentEditorPage() {
             {!isNew && doc && (
               <Button variant="outline" onClick={downloadPdf} data-testid="button-download-pdf">
                 <Printer className="mr-2 h-4 w-4" /> Cetak PDF
+              </Button>
+            )}
+            {!isNew && doc && (
+              <Button variant="outline" onClick={() => setEmailOpen(true)} data-testid="button-send-email">
+                <Mail className="mr-2 h-4 w-4" /> Kirim Email
               </Button>
             )}
             {!isNew && doc?.kind === "order" && doc?.status === "confirmed" && doc?.invoiceStatus === "to_invoice" && (
@@ -674,6 +704,25 @@ export default function SalesDocumentEditorPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ScanDocumentDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        onDataExtracted={handleScannedData}
+        title="Scan Dokumen Penjualan"
+      />
+
+      {!isNew && doc && id && (
+        <SendEmailDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          docId={id}
+          docNumber={doc.docNumber}
+          docTitle={doc.kind === "order" ? "Sales Order" : "Quotation"}
+          defaultTo={(() => { const c = (customers ?? []).find((x) => x.id === doc.customerId); return c?.email ?? ""; })()}
+          module="sales"
+        />
+      )}
     </AppShell>
   );
 }

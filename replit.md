@@ -24,6 +24,25 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
+## AI Document Scan
+
+- Endpoint `POST /api/scan-document` accepts multipart form upload (field `file`) of image (JPG, PNG, WEBP) or PDF.
+- Uses OpenAI GPT Vision (via Replit AI Integrations proxy) to extract structured JSON data from the document.
+- Extracts: partyName, partyEmail, docDate, dueDate, notes, line items (name, qty, unitPrice), shipment fields.
+- Frontend component: `artifacts/bizportal/src/components/ScanDocumentDialog.tsx` — shows scan button, handles upload, displays preview, calls `/api/scan-document`, returns `ScannedDocumentData`.
+- Integrated into Sales Quotation Editor (`Scan Dokumen` button) and Purchase RFQ Editor.
+- Env vars: `AI_INTEGRATIONS_OPENAI_BASE_URL` and `AI_INTEGRATIONS_OPENAI_API_KEY` (auto-provisioned by Replit AI Integrations).
+
+## Email with PDF Attachment
+
+- Endpoints `POST /api/sales/documents/:id/email` and `POST /api/purchase/documents/:id/email`.
+- Accepts `{ to, subject?, body? }` in request body. Generates PDF from the document, attaches it, and sends via SMTP.
+- Email library: `nodemailer` (externalized in esbuild config). SMTP helper: `artifacts/api-server/src/lib/mailer.ts`.
+- Required env vars (must be set by user): `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`.
+- If SMTP not configured, endpoints return HTTP 503 with Indonesian error message.
+- Frontend component: `artifacts/bizportal/src/components/SendEmailDialog.tsx` — dialog with To/Subject/Body + PDF attachment badge.
+- Integrated into Sales Quotation Editor and Purchase RFQ Editor (`Kirim Email` button, visible when document exists).
+
 ## Object Storage
 
 - Replit Object Storage backs product images (e-commerce) and per-transaction
