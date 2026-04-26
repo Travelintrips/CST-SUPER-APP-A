@@ -32,7 +32,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import {
   Plus, Search, Mail, MessageCircle, FileText, MoreHorizontal,
   Paperclip, Trash2, Eye, Pencil, Download, FileImage, ArrowDownLeft, ArrowUpRight,
-  Loader2, Camera, Upload,
+  Loader2, Camera, Upload, CheckCircle2,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -94,6 +94,22 @@ type FormState = {
   correspondedAt: string;
 };
 
+type ScanPendingFields = {
+  subject: string;
+  senderName: string;
+  senderEmail: string;
+  receiverName: string;
+  receiverEmail: string;
+  correspondedAt: string;
+  body: string;
+};
+
+type ScanPendingState = {
+  fields: ScanPendingFields;
+  file: File;
+  previewUrl: string | null;
+};
+
 const emptyForm = (): FormState => ({
   kind: "email",
   direction: "inbound",
@@ -143,6 +159,7 @@ export default function CorrespondencesPage() {
   const [viewingDetail, setViewingDetail] = useState<CorrespondenceDetail | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [scanPending, setScanPending] = useState<ScanPendingState | null>(null);
   const [scannedFile, setScannedFile] = useState<File | null>(null);
   const [saveScannedAsAttachment, setSaveScannedAsAttachment] = useState(true);
   const scanFileInputRef = useRef<HTMLInputElement>(null);
@@ -185,12 +202,14 @@ export default function CorrespondencesPage() {
     setForm(emptyForm());
     setScannedFile(null);
     setSaveScannedAsAttachment(true);
+    setScanPending(null);
     setIsFormOpen(true);
   }
 
   function openEdit(c: Correspondence) {
     setScannedFile(null);
     setSaveScannedAsAttachment(true);
+    setScanPending(null);
     setEditingId(c.id);
     setForm({
       kind: c.kind,
@@ -253,40 +272,53 @@ export default function CorrespondencesPage() {
         }
       };
       const d = json.data;
-      const filled: string[] = [];
-      let parsedDate: string | undefined;
+      let parsedDate = "";
       if (d.correspondedAt) {
         try { parsedDate = new Date(d.correspondedAt).toISOString().slice(0, 16); } catch {}
       }
-      if (d.subject) filled.push("Subjek");
-      if (d.senderName) filled.push("Nama Pengirim");
-      if (d.senderEmail) filled.push("Email Pengirim");
-      if (d.receiverName) filled.push("Nama Penerima");
-      if (d.receiverEmail) filled.push("Email Penerima");
-      if (parsedDate) filled.push("Tanggal");
-      if (d.body) filled.push("Isi");
-      setForm((prev) => ({
-        ...prev,
-        ...(d.subject ? { subject: d.subject } : {}),
-        ...(d.senderName ? { senderName: d.senderName } : {}),
-        ...(d.senderEmail ? { senderEmail: d.senderEmail } : {}),
-        ...(d.receiverName ? { receiverName: d.receiverName } : {}),
-        ...(d.receiverEmail ? { receiverEmail: d.receiverEmail } : {}),
-        ...(parsedDate ? { correspondedAt: parsedDate } : {}),
-        ...(d.body ? { body: d.body } : {}),
-      }));
-      setScannedFile(file);
+      const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+      setScanPending({
+        fields: {
+          subject: d.subject ?? "",
+          senderName: d.senderName ?? "",
+          senderEmail: d.senderEmail ?? "",
+          receiverName: d.receiverName ?? "",
+          receiverEmail: d.receiverEmail ?? "",
+          correspondedAt: parsedDate,
+          body: d.body ?? "",
+        },
+        file,
+        previewUrl,
+      });
       setSaveScannedAsAttachment(true);
-      if (filled.length > 0) {
-        toast({ title: `Berhasil mengisi: ${filled.join(", ")}` });
-      } else {
-        toast({ title: "Dokumen diproses, tidak ada data yang terdeteksi", variant: "destructive" });
-      }
     } catch (err: unknown) {
       toast({ title: err instanceof Error ? err.message : "Gagal memproses dokumen", variant: "destructive" });
     } finally {
       setScanLoading(false);
     }
+  }
+
+  function applyScanPending() {
+    if (!scanPending) return;
+    const { fields, file, previewUrl } = scanPending;
+    setForm((prev) => ({
+      ...prev,
+      ...(fields.subject ? { subject: fields.subject } : {}),
+      ...(fields.senderName ? { senderName: fields.senderName } : {}),
+      ...(fields.senderEmail ? { senderEmail: fields.senderEmail } : {}),
+      ...(fields.receiverName ? { receiverName: fields.receiverName } : {}),
+      ...(fields.receiverEmail ? { receiverEmail: fields.receiverEmail } : {}),
+      ...(fields.correspondedAt ? { correspondedAt: fields.correspondedAt } : {}),
+      ...(fields.body ? { body: fields.body } : {}),
+    }));
+    setScannedFile(file);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setScanPending(null);
+  }
+
+  function dismissScanPending() {
+    if (scanPending?.previewUrl) URL.revokeObjectURL(scanPending.previewUrl);
+    setScanPending(null);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -476,7 +508,7 @@ export default function CorrespondencesPage() {
       </div>
 
       {/* CREATE / EDIT DIALOG */}
-      <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) { setIsFormOpen(false); setScannedFile(null); setSaveScannedAsAttachment(true); } }}>
+      <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) { setIsFormOpen(false); setScannedFile(null); setSaveScannedAsAttachment(true); dismissScanPending(); } }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
@@ -484,7 +516,114 @@ export default function CorrespondencesPage() {
               <DialogDescription>Catat email, surat, atau penawaran sebagai arsip.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              {scanLoading ? (
+              {scanPending ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      Dokumen diekstrak — periksa &amp; edit sebelum diterapkan
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={dismissScanPending}>
+                      Abaikan
+                    </Button>
+                  </div>
+                  {scanPending.previewUrl && (
+                    <div className="rounded-md border overflow-hidden bg-muted">
+                      <img src={scanPending.previewUrl} alt="Preview dokumen" className="w-full max-h-40 object-contain" />
+                    </div>
+                  )}
+                  <div className="grid gap-2">
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Subjek</Label>
+                      <Input
+                        value={scanPending.fields.subject}
+                        onChange={(e) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, subject: e.target.value } } : null)}
+                        placeholder="Subjek / Judul"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-1">
+                        <Label className="text-xs">Nama Pengirim</Label>
+                        <Input
+                          value={scanPending.fields.senderName}
+                          onChange={(e) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, senderName: e.target.value } } : null)}
+                          placeholder="Nama"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <Label className="text-xs">Email Pengirim</Label>
+                        <Input
+                          value={scanPending.fields.senderEmail}
+                          onChange={(e) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, senderEmail: e.target.value } } : null)}
+                          placeholder="email@domain.com"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-1">
+                        <Label className="text-xs">Nama Penerima</Label>
+                        <Input
+                          value={scanPending.fields.receiverName}
+                          onChange={(e) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, receiverName: e.target.value } } : null)}
+                          placeholder="Nama"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="grid gap-1">
+                        <Label className="text-xs">Email Penerima</Label>
+                        <Input
+                          value={scanPending.fields.receiverEmail}
+                          onChange={(e) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, receiverEmail: e.target.value } } : null)}
+                          placeholder="email@domain.com"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Tanggal</Label>
+                      <Input
+                        type="datetime-local"
+                        value={scanPending.fields.correspondedAt}
+                        onChange={(e) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, correspondedAt: e.target.value } } : null)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    {scanPending.fields.body && (
+                      <div className="grid gap-1">
+                        <Label className="text-xs">Isi Dokumen</Label>
+                        <Textarea
+                          value={scanPending.fields.body}
+                          onChange={(e) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, body: e.target.value } } : null)}
+                          rows={3}
+                          className="text-sm resize-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {!editingId && (
+                    <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                      <Checkbox
+                        id="save-scanned-attachment"
+                        checked={saveScannedAsAttachment}
+                        onCheckedChange={(v) => setSaveScannedAsAttachment(Boolean(v))}
+                      />
+                      <Label htmlFor="save-scanned-attachment" className="cursor-pointer text-sm font-normal">
+                        Simpan file ini sebagai lampiran
+                      </Label>
+                      <span className="ml-auto max-w-[160px] truncate text-xs text-muted-foreground">
+                        {scanPending.file.name}
+                      </span>
+                    </div>
+                  )}
+                  <Button type="button" className="w-full" size="sm" onClick={applyScanPending} data-testid="button-apply-scan">
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Terapkan
+                  </Button>
+                </div>
+              ) : scanLoading ? (
                 <div className="flex items-center justify-center gap-2 rounded-md border border-dashed px-4 py-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Sedang mengekstrak data dokumen...
@@ -536,21 +675,6 @@ export default function CorrespondencesPage() {
                   e.target.value = "";
                 }}
               />
-              {scannedFile && !editingId && (
-                <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
-                  <Checkbox
-                    id="save-scanned-attachment"
-                    checked={saveScannedAsAttachment}
-                    onCheckedChange={(v) => setSaveScannedAsAttachment(Boolean(v))}
-                  />
-                  <Label htmlFor="save-scanned-attachment" className="cursor-pointer text-sm font-normal">
-                    Simpan file ini sebagai lampiran
-                  </Label>
-                  <span className="ml-auto max-w-[180px] truncate text-xs text-muted-foreground">
-                    {scannedFile.name}
-                  </span>
-                </div>
-              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Jenis</Label>
