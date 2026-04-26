@@ -46,6 +46,9 @@ import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledg
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
 import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
 import CorrespondencesPage from "@/pages/correspondences";
+import ExpenseListPage from "@/pages/expense/index";
+import ExpenseEditorPage from "@/pages/expense/editor";
+import ExpenseCategoriesPage from "@/pages/expense/categories";
 
 const queryClient = new QueryClient();
 
@@ -306,6 +309,19 @@ function Router() {
       </Route>
       <Route path="/accounting/reports/balance-sheet">
         <ProtectedRoute component={AccountingBalanceSheetPage} />
+      </Route>
+
+      <Route path="/expense/categories">
+        <ProtectedRoute component={ExpenseCategoriesPage} />
+      </Route>
+      <Route path="/expense/new">
+        <ProtectedRoute component={ExpenseEditorPage} />
+      </Route>
+      <Route path="/expense/:id">
+        <ProtectedRoute component={ExpenseEditorPage} />
+      </Route>
+      <Route path="/expense">
+        <ProtectedRoute component={ExpenseListPage} />
       </Route>
 
       <Route component={NotFound} />

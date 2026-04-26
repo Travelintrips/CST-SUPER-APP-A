@@ -2861,3 +2861,380 @@ export const UpdateCorrespondenceAttachmentExtractedTextResponse = zod.object({
   extractedText: zod.string().nullish(),
   createdAt: zod.string(),
 });
+
+/**
+ * @summary List expense categories
+ */
+export const ListExpenseCategoriesResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+  requiresAttachment: zod.boolean(),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const ListExpenseCategoriesResponse = zod.array(
+  ListExpenseCategoriesResponseItem,
+);
+
+/**
+ * @summary Create expense category
+ */
+export const CreateExpenseCategoryBody = zod.object({
+  name: zod.string(),
+  code: zod.string(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+  requiresAttachment: zod.boolean().optional(),
+  isActive: zod.boolean().optional(),
+});
+
+/**
+ * @summary Seed default expense categories
+ */
+export const SeedExpenseCategoriesResponse = zod.object({
+  seeded: zod.number(),
+  categories: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      code: zod.string(),
+      expenseAccountId: zod.number().nullish(),
+      payableAccountId: zod.number().nullish(),
+      requiresAttachment: zod.boolean(),
+      isActive: zod.boolean(),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Update expense category
+ */
+export const UpdateExpenseCategoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateExpenseCategoryBody = zod.object({
+  name: zod.string(),
+  code: zod.string(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+  requiresAttachment: zod.boolean().optional(),
+  isActive: zod.boolean().optional(),
+});
+
+export const UpdateExpenseCategoryResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  code: zod.string(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+  requiresAttachment: zod.boolean(),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete expense category
+ */
+export const DeleteExpenseCategoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteExpenseCategoryResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary List expenses
+ */
+export const ListExpensesQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  categoryId: zod.coerce.number().optional(),
+  expenseType: zod.coerce.string().optional(),
+  salesDocId: zod.coerce.number().optional(),
+  shipmentId: zod.coerce.number().optional(),
+  search: zod.coerce.string().optional(),
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+});
+
+export const ListExpensesResponseItem = zod.object({
+  id: zod.number(),
+  expenseNumber: zod.string(),
+  date: zod.string(),
+  vendorEmployee: zod.string().nullish(),
+  expenseType: zod.enum(["vendor_bill", "reimbursement", "internal"]),
+  salesDocId: zod.number().nullish(),
+  shipmentId: zod.number().nullish(),
+  categoryId: zod.number().nullish(),
+  description: zod.string().nullish(),
+  qty: zod.number(),
+  unit: zod.string().nullish(),
+  unitPrice: zod.number(),
+  subtotal: zod.number(),
+  taxRateId: zod.number().nullish(),
+  taxAmount: zod.number(),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "draft",
+    "submitted",
+    "approved",
+    "posted",
+    "paid",
+    "rejected",
+  ]),
+  notes: zod.string().nullish(),
+  entryId: zod.number().nullish(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+  rejectionReason: zod.string().nullish(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListExpensesResponse = zod.array(ListExpensesResponseItem);
+
+/**
+ * @summary Create expense
+ */
+export const CreateExpenseBody = zod.object({
+  date: zod.string(),
+  vendorEmployee: zod.string().nullish(),
+  expenseType: zod
+    .enum(["vendor_bill", "reimbursement", "internal"])
+    .optional(),
+  salesDocId: zod.number().nullish(),
+  shipmentId: zod.number().nullish(),
+  categoryId: zod.number().nullish(),
+  description: zod.string().nullish(),
+  qty: zod.number().optional(),
+  unit: zod.string().nullish(),
+  unitPrice: zod.number().optional(),
+  taxRateId: zod.number().nullish(),
+  currency: zod.string().optional(),
+  notes: zod.string().nullish(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+});
+
+/**
+ * @summary Get expense detail
+ */
+export const GetExpenseParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetExpenseResponse = zod
+  .object({
+    id: zod.number(),
+    expenseNumber: zod.string(),
+    date: zod.string(),
+    vendorEmployee: zod.string().nullish(),
+    expenseType: zod.enum(["vendor_bill", "reimbursement", "internal"]),
+    salesDocId: zod.number().nullish(),
+    shipmentId: zod.number().nullish(),
+    categoryId: zod.number().nullish(),
+    description: zod.string().nullish(),
+    qty: zod.number(),
+    unit: zod.string().nullish(),
+    unitPrice: zod.number(),
+    subtotal: zod.number(),
+    taxRateId: zod.number().nullish(),
+    taxAmount: zod.number(),
+    total: zod.number(),
+    currency: zod.string(),
+    status: zod.enum([
+      "draft",
+      "submitted",
+      "approved",
+      "posted",
+      "paid",
+      "rejected",
+    ]),
+    notes: zod.string().nullish(),
+    entryId: zod.number().nullish(),
+    expenseAccountId: zod.number().nullish(),
+    payableAccountId: zod.number().nullish(),
+    rejectionReason: zod.string().nullish(),
+    createdById: zod.string().nullish(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      attachments: zod.array(
+        zod.object({
+          id: zod.number(),
+          expenseId: zod.number(),
+          objectPath: zod.string(),
+          fileName: zod.string(),
+          contentType: zod.string().nullish(),
+          createdAt: zod.string(),
+        }),
+      ),
+      category: zod
+        .object({
+          id: zod.number(),
+          name: zod.string(),
+          code: zod.string(),
+          expenseAccountId: zod.number().nullish(),
+          payableAccountId: zod.number().nullish(),
+          requiresAttachment: zod.boolean(),
+          isActive: zod.boolean(),
+          createdAt: zod.string(),
+        })
+        .nullish(),
+    }),
+  );
+
+/**
+ * @summary Update expense
+ */
+export const UpdateExpenseParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateExpenseBody = zod.object({
+  date: zod.string(),
+  vendorEmployee: zod.string().nullish(),
+  expenseType: zod
+    .enum(["vendor_bill", "reimbursement", "internal"])
+    .optional(),
+  salesDocId: zod.number().nullish(),
+  shipmentId: zod.number().nullish(),
+  categoryId: zod.number().nullish(),
+  description: zod.string().nullish(),
+  qty: zod.number().optional(),
+  unit: zod.string().nullish(),
+  unitPrice: zod.number().optional(),
+  taxRateId: zod.number().nullish(),
+  currency: zod.string().optional(),
+  notes: zod.string().nullish(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+});
+
+export const UpdateExpenseResponse = zod.object({
+  id: zod.number(),
+  expenseNumber: zod.string(),
+  date: zod.string(),
+  vendorEmployee: zod.string().nullish(),
+  expenseType: zod.enum(["vendor_bill", "reimbursement", "internal"]),
+  salesDocId: zod.number().nullish(),
+  shipmentId: zod.number().nullish(),
+  categoryId: zod.number().nullish(),
+  description: zod.string().nullish(),
+  qty: zod.number(),
+  unit: zod.string().nullish(),
+  unitPrice: zod.number(),
+  subtotal: zod.number(),
+  taxRateId: zod.number().nullish(),
+  taxAmount: zod.number(),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "draft",
+    "submitted",
+    "approved",
+    "posted",
+    "paid",
+    "rejected",
+  ]),
+  notes: zod.string().nullish(),
+  entryId: zod.number().nullish(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+  rejectionReason: zod.string().nullish(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Delete expense
+ */
+export const DeleteExpenseParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteExpenseResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Perform action on expense
+ */
+export const ExpenseActionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ExpenseActionBody = zod.object({
+  action: zod.enum(["submit", "approve", "reject", "post", "pay", "reset"]),
+  reason: zod.string().nullish(),
+});
+
+export const ExpenseActionResponse = zod.object({
+  id: zod.number(),
+  expenseNumber: zod.string(),
+  date: zod.string(),
+  vendorEmployee: zod.string().nullish(),
+  expenseType: zod.enum(["vendor_bill", "reimbursement", "internal"]),
+  salesDocId: zod.number().nullish(),
+  shipmentId: zod.number().nullish(),
+  categoryId: zod.number().nullish(),
+  description: zod.string().nullish(),
+  qty: zod.number(),
+  unit: zod.string().nullish(),
+  unitPrice: zod.number(),
+  subtotal: zod.number(),
+  taxRateId: zod.number().nullish(),
+  taxAmount: zod.number(),
+  total: zod.number(),
+  currency: zod.string(),
+  status: zod.enum([
+    "draft",
+    "submitted",
+    "approved",
+    "posted",
+    "paid",
+    "rejected",
+  ]),
+  notes: zod.string().nullish(),
+  entryId: zod.number().nullish(),
+  expenseAccountId: zod.number().nullish(),
+  payableAccountId: zod.number().nullish(),
+  rejectionReason: zod.string().nullish(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Add attachment to expense
+ */
+export const AddExpenseAttachmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AddExpenseAttachmentBody = zod.object({
+  objectPath: zod.string(),
+  fileName: zod.string(),
+  contentType: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete expense attachment
+ */
+export const DeleteExpenseAttachmentParams = zod.object({
+  id: zod.coerce.number(),
+  attId: zod.coerce.number(),
+});
+
+export const DeleteExpenseAttachmentResponse = zod.object({
+  message: zod.string(),
+});

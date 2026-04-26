@@ -14,3 +14,4 @@ export * from "./correspondences";
 export * from "./freightShipments";
 export * from "./freightAttachments";
 export * from "./apiResponseTimes";
+export * from "./expenses";

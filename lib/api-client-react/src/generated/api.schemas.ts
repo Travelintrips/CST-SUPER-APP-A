@@ -1445,6 +1445,122 @@ export interface CreateFreightQuoteBody {
   notes?: string | null;
 }
 
+export interface ExpenseCategory {
+  id: number;
+  name: string;
+  code: string;
+  expenseAccountId?: number | null;
+  payableAccountId?: number | null;
+  requiresAttachment: boolean;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateExpenseCategoryBody {
+  name: string;
+  code: string;
+  expenseAccountId?: number | null;
+  payableAccountId?: number | null;
+  requiresAttachment?: boolean;
+  isActive?: boolean;
+}
+
+export type ExpenseExpenseType =
+  (typeof ExpenseExpenseType)[keyof typeof ExpenseExpenseType];
+
+export const ExpenseExpenseType = {
+  vendor_bill: "vendor_bill",
+  reimbursement: "reimbursement",
+  internal: "internal",
+} as const;
+
+export type ExpenseStatus = (typeof ExpenseStatus)[keyof typeof ExpenseStatus];
+
+export const ExpenseStatus = {
+  draft: "draft",
+  submitted: "submitted",
+  approved: "approved",
+  posted: "posted",
+  paid: "paid",
+  rejected: "rejected",
+} as const;
+
+export interface Expense {
+  id: number;
+  expenseNumber: string;
+  date: string;
+  vendorEmployee?: string | null;
+  expenseType: ExpenseExpenseType;
+  salesDocId?: number | null;
+  shipmentId?: number | null;
+  categoryId?: number | null;
+  description?: string | null;
+  qty: number;
+  unit?: string | null;
+  unitPrice: number;
+  subtotal: number;
+  taxRateId?: number | null;
+  taxAmount: number;
+  total: number;
+  currency: string;
+  status: ExpenseStatus;
+  notes?: string | null;
+  entryId?: number | null;
+  expenseAccountId?: number | null;
+  payableAccountId?: number | null;
+  rejectionReason?: string | null;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseAttachment {
+  id: number;
+  expenseId: number;
+  objectPath: string;
+  fileName: string;
+  contentType?: string | null;
+  createdAt: string;
+}
+
+export type ExpenseDetail = Expense & {
+  attachments: ExpenseAttachment[];
+  category?: ExpenseCategory | null;
+};
+
+export type CreateExpenseBodyExpenseType =
+  (typeof CreateExpenseBodyExpenseType)[keyof typeof CreateExpenseBodyExpenseType];
+
+export const CreateExpenseBodyExpenseType = {
+  vendor_bill: "vendor_bill",
+  reimbursement: "reimbursement",
+  internal: "internal",
+} as const;
+
+export interface CreateExpenseBody {
+  date: string;
+  vendorEmployee?: string | null;
+  expenseType?: CreateExpenseBodyExpenseType;
+  salesDocId?: number | null;
+  shipmentId?: number | null;
+  categoryId?: number | null;
+  description?: string | null;
+  qty?: number;
+  unit?: string | null;
+  unitPrice?: number;
+  taxRateId?: number | null;
+  currency?: string;
+  notes?: string | null;
+  expenseAccountId?: number | null;
+  payableAccountId?: number | null;
+}
+
+export interface CreateExpenseAttachmentBody {
+  objectPath: string;
+  fileName: string;
+  contentType?: string | null;
+}
+
 export type ListProductsParams = {
   search?: string;
   itemType?: string;
@@ -1588,4 +1704,37 @@ export const ListCorrespondencesDirection = {
 
 export type UpdateCorrespondenceAttachmentExtractedTextBody = {
   extractedText: string | null;
+};
+
+export type SeedExpenseCategories200 = {
+  seeded: number;
+  categories: ExpenseCategory[];
+};
+
+export type ListExpensesParams = {
+  status?: string;
+  categoryId?: number;
+  expenseType?: string;
+  salesDocId?: number;
+  shipmentId?: number;
+  search?: string;
+  from?: string;
+  to?: string;
+};
+
+export type ExpenseActionBodyAction =
+  (typeof ExpenseActionBodyAction)[keyof typeof ExpenseActionBodyAction];
+
+export const ExpenseActionBodyAction = {
+  submit: "submit",
+  approve: "approve",
+  reject: "reject",
+  post: "post",
+  pay: "pay",
+  reset: "reset",
+} as const;
+
+export type ExpenseActionBody = {
+  action: ExpenseActionBodyAction;
+  reason?: string | null;
 };

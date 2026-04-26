@@ -2042,6 +2042,205 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CorrespondenceAttachment" }
 
+  /expenses/categories:
+    get:
+      operationId: listExpenseCategories
+      summary: List expense categories
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ExpenseCategory" }
+    post:
+      operationId: createExpenseCategory
+      summary: Create expense category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseCategoryBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseCategory" }
+
+  /expenses/categories/seed:
+    post:
+      operationId: seedExpenseCategories
+      summary: Seed default expense categories
+      responses:
+        "200":
+          description: Seeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  seeded: { type: integer }
+                  categories:
+                    type: array
+                    items: { $ref: "#/components/schemas/ExpenseCategory" }
+                required: [seeded, categories]
+
+  /expenses/categories/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      operationId: updateExpenseCategory
+      summary: Update expense category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseCategoryBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseCategory" }
+    delete:
+      operationId: deleteExpenseCategory
+      summary: Delete expense category
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /expenses:
+    get:
+      operationId: listExpenses
+      summary: List expenses
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: categoryId, in: query, schema: { type: integer } }
+        - { name: expenseType, in: query, schema: { type: string } }
+        - { name: salesDocId, in: query, schema: { type: integer } }
+        - { name: shipmentId, in: query, schema: { type: integer } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Expense" }
+    post:
+      operationId: createExpense
+      summary: Create expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Expense" }
+
+  /expenses/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getExpense
+      summary: Get expense detail
+      responses:
+        "200":
+          description: Detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseDetail" }
+    put:
+      operationId: updateExpense
+      summary: Update expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Expense" }
+    delete:
+      operationId: deleteExpense
+      summary: Delete expense
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /expenses/{id}/action:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: expenseAction
+      summary: Perform action on expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action: { type: string, enum: [submit, approve, reject, post, pay, reset] }
+                reason: { type: string, nullable: true }
+              required: [action]
+      responses:
+        "200":
+          description: Updated expense
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Expense" }
+
+  /expenses/{id}/attachments:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: addExpenseAttachment
+      summary: Add attachment to expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateExpenseAttachmentBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseAttachment" }
+
+  /expenses/{id}/attachments/{attId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: attId, in: path, required: true, schema: { type: integer } }
+    delete:
+      operationId: deleteExpenseAttachment
+      summary: Delete expense attachment
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
 components:
   schemas:
     HealthStatus:
@@ -3689,3 +3888,110 @@ components:
         estimatedDays: { type: integer, nullable: true }
         notes: { type: string, nullable: true }
       required: [vendorName]
+
+    ExpenseCategory:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        code: { type: string }
+        expenseAccountId: { type: integer, nullable: true }
+        payableAccountId: { type: integer, nullable: true }
+        requiresAttachment: { type: boolean }
+        isActive: { type: boolean }
+        createdAt: { type: string }
+      required: [id, name, code, requiresAttachment, isActive, createdAt]
+
+    CreateExpenseCategoryBody:
+      type: object
+      properties:
+        name: { type: string }
+        code: { type: string }
+        expenseAccountId: { type: integer, nullable: true }
+        payableAccountId: { type: integer, nullable: true }
+        requiresAttachment: { type: boolean }
+        isActive: { type: boolean }
+      required: [name, code]
+
+    Expense:
+      type: object
+      properties:
+        id: { type: integer }
+        expenseNumber: { type: string }
+        date: { type: string }
+        vendorEmployee: { type: string, nullable: true }
+        expenseType: { type: string, enum: [vendor_bill, reimbursement, internal] }
+        salesDocId: { type: integer, nullable: true }
+        shipmentId: { type: integer, nullable: true }
+        categoryId: { type: integer, nullable: true }
+        description: { type: string, nullable: true }
+        qty: { type: number }
+        unit: { type: string, nullable: true }
+        unitPrice: { type: number }
+        subtotal: { type: number }
+        taxRateId: { type: integer, nullable: true }
+        taxAmount: { type: number }
+        total: { type: number }
+        currency: { type: string }
+        status: { type: string, enum: [draft, submitted, approved, posted, paid, rejected] }
+        notes: { type: string, nullable: true }
+        entryId: { type: integer, nullable: true }
+        expenseAccountId: { type: integer, nullable: true }
+        payableAccountId: { type: integer, nullable: true }
+        rejectionReason: { type: string, nullable: true }
+        createdById: { type: string, nullable: true }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required: [id, expenseNumber, date, expenseType, qty, unitPrice, subtotal, taxAmount, total, currency, status, createdAt, updatedAt]
+
+    ExpenseAttachment:
+      type: object
+      properties:
+        id: { type: integer }
+        expenseId: { type: integer }
+        objectPath: { type: string }
+        fileName: { type: string }
+        contentType: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, expenseId, objectPath, fileName, createdAt]
+
+    ExpenseDetail:
+      allOf:
+        - $ref: "#/components/schemas/Expense"
+        - type: object
+          properties:
+            attachments:
+              type: array
+              items: { $ref: "#/components/schemas/ExpenseAttachment" }
+            category:
+              $ref: "#/components/schemas/ExpenseCategory"
+              nullable: true
+          required: [attachments]
+
+    CreateExpenseBody:
+      type: object
+      properties:
+        date: { type: string }
+        vendorEmployee: { type: string, nullable: true }
+        expenseType: { type: string, enum: [vendor_bill, reimbursement, internal] }
+        salesDocId: { type: integer, nullable: true }
+        shipmentId: { type: integer, nullable: true }
+        categoryId: { type: integer, nullable: true }
+        description: { type: string, nullable: true }
+        qty: { type: number }
+        unit: { type: string, nullable: true }
+        unitPrice: { type: number }
+        taxRateId: { type: integer, nullable: true }
+        currency: { type: string }
+        notes: { type: string, nullable: true }
+        expenseAccountId: { type: integer, nullable: true }
+        payableAccountId: { type: integer, nullable: true }
+      required: [date]
+
+    CreateExpenseAttachmentBody:
+      type: object
+      properties:
+        objectPath: { type: string }
+        fileName: { type: string }
+        contentType: { type: string, nullable: true }
+      required: [objectPath, fileName]

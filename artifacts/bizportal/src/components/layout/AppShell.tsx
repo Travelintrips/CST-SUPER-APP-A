@@ -27,6 +27,8 @@ import {
   Mail,
   Ship,
   Boxes,
+  DollarSign,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -167,6 +169,17 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
     { type: "flat", title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
+    {
+      type: "group",
+      title: "Biaya Operasional",
+      basePath: "/expense",
+      icon: DollarSign,
+      roles: ["admin"],
+      children: [
+        { title: "Daftar Expense", href: "/expense", icon: Receipt },
+        { title: "Kategori Biaya", href: "/expense/categories", icon: Tags },
+      ],
+    },
     { type: "flat", title: "Korespondensi", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", title: "Pengguna", href: "/users", icon: Users, roles: ["admin"] },
     { type: "flat", title: "Settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },

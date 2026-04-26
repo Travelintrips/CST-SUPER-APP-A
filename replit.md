@@ -174,6 +174,22 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - AppShell: Logistics converted from flat nav item to group with sub-items (Pengiriman, Freight Forwarding)
 - Attachments: `freight_attachments` table (id, shipment_id, object_path, file_name, content_type, file_type enum (photo/document/barcode), label, created_at); API routes GET/POST/DELETE at `/api/logistics/freight-shipments/:id/attachments`; `FreightAttachmentsPanel` component with 3 tabs: Foto Kargo (camera upload), Dokumen (file upload), Scan Barcode/QR (ZXing); panel is integrated into the freight detail page (screen-only card, hidden on print)
 
+## Expense / Biaya Operasional Module
+
+- Routes: `/expense` (list), `/expense/new` (create), `/expense/:id` (edit/detail), `/expense/categories` (categories management)
+- DB tables: `expense_categories`, `expenses`, `expense_attachments`
+- Expense number auto-generated: `EXP/YYYY/NNNNN`
+- Status flow: `draft` → `submitted` → `approved` → `posted` → `paid` / `rejected`
+- Expense types: `vendor_bill`, `reimbursement`, `internal`
+- API routes (under `/api/expenses/`): CRUD at `/`, `/:id`, status actions at `/:id/action` (submit/approve/reject/post/pay/reset), attachments at `/:id/attachments`, categories CRUD at `/categories`, seed at `/seed-categories`
+- Posting action: creates accounting journal entry via `postEntry()` using the PUR (purchase) journal; lines: DR expense_account, DR ppnInput (if tax), CR payable_account
+- Expense categories have: `expenseAccountId` (debit) and `payableAccountId` (credit) — can be overridden per expense
+- Seed categories: TRUCKING, HANDLING, STORAGE, CUSTOMS, DOCUMENT, FREIGHT, CONTAINER, OPERATIONAL, REIMBURSEMENT (requiresAttachment=true), VENDOR
+- AppShell: "Biaya Operasional" nav group (icon: DollarSign) with sub-items "Daftar Expense" and "Kategori Biaya"
+- Frontend pages: `artifacts/bizportal/src/pages/expense/index.tsx`, `editor.tsx`, `categories.tsx`
+- Schema: `lib/db/src/schema/expenses.ts`
+- API route: `artifacts/api-server/src/routes/expenses.ts`
+
 ## Correspondence Module
 
 - Route: `/correspondences` (admin role only)
