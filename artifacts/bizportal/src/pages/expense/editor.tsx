@@ -228,12 +228,37 @@ export default function ExpenseEditorPage() {
       const sp = new URLSearchParams(window.location.search);
       const qSalesDocId = sp.get("salesDocId");
       const qShipmentId = sp.get("shipmentId");
+
+      const parseId = (v: string | null): number | null => {
+        if (!v) return null;
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
+
       if (qSalesDocId || qShipmentId) {
+        const salesDocId = parseId(qSalesDocId);
+        const shipmentId = parseId(qShipmentId);
+
+        if (salesDocId) sessionStorage.setItem("expense_new_salesDocId", String(salesDocId));
+        else sessionStorage.removeItem("expense_new_salesDocId");
+        if (shipmentId) sessionStorage.setItem("expense_new_shipmentId", String(shipmentId));
+        else sessionStorage.removeItem("expense_new_shipmentId");
+
         setForm((f) => ({
           ...f,
-          salesDocId: qSalesDocId ? Number(qSalesDocId) : f.salesDocId,
-          shipmentId: qShipmentId ? Number(qShipmentId) : f.shipmentId,
+          salesDocId: salesDocId ?? f.salesDocId,
+          shipmentId: shipmentId ?? f.shipmentId,
         }));
+      } else {
+        const salesDocId = parseId(sessionStorage.getItem("expense_new_salesDocId"));
+        const shipmentId = parseId(sessionStorage.getItem("expense_new_shipmentId"));
+        if (salesDocId || shipmentId) {
+          setForm((f) => ({
+            ...f,
+            salesDocId: salesDocId ?? f.salesDocId,
+            shipmentId: shipmentId ?? f.shipmentId,
+          }));
+        }
       }
     }
   }, [isNew]);
@@ -303,6 +328,8 @@ export default function ExpenseEditorPage() {
     try {
       if (isNew) {
         const created = await createMut.mutateAsync({ data: body });
+        sessionStorage.removeItem("expense_new_salesDocId");
+        sessionStorage.removeItem("expense_new_shipmentId");
         qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
         toast({ title: "Expense dibuat" });
         navigate(`/expense/${created.id}`);
