@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAccountingDefaults } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
+import { seedDemoData } from "./lib/seedDemoData";
 
 const rawPort = process.env["PORT"];
 
@@ -30,9 +31,11 @@ app.listen(port, (err) => {
     logger.error({ err: seedErr }, "Accounting seed failed");
   });
 
-  // Seed logistics service items (no-op if already exist)
-  seedLogisticsServiceItems().catch((seedErr) => {
-    logger.error({ err: seedErr }, "Logistics items seed failed");
-  });
+  // Seed logistics service items, then demo data (chained so demo can reference items)
+  seedLogisticsServiceItems()
+    .then(() => seedDemoData())
+    .catch((seedErr) => {
+      logger.error({ err: seedErr }, "Logistics/demo seed failed");
+    });
 
 });

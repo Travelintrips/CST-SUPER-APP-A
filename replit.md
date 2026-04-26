@@ -174,6 +174,28 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - AppShell: Logistics converted from flat nav item to group with sub-items (Pengiriman, Freight Forwarding)
 - Document Management: `freight_attachments` table extended with `doc_type` (BL/AWB/PIB/PEB/DO/Invoice/PackingList), `doc_number`, `doc_date`, `doc_status` (draft/issued/submitted/received), `invoice_id`; API routes GET/POST/PUT/DELETE at `/api/logistics/freight-shipments/:id/attachments` and `/api/logistics/freight-shipments/:id/attachments/:id`; `FreightAttachmentsPanel` has 3 tabs: **Dokumen Resmi** (structured document upload form with type/number/date/status + inline editing per row), **Foto Kargo** (camera upload), **Scan Barcode/QR** (ZXing); panel integrated into freight detail page
 
+### Profitability Report per Shipment
+
+- Endpoint: `GET /api/logistics/freight-shipments/:id/profitability`
+- Returns: `{ revenue, totalCost, profit, margin, currency, shipmentNumber, invoiceStatus }`
+- Revenue = `grandTotal` of the linked Sales Order (only when `invoiceStatus = "invoiced"`, else 0)
+- Total Cost = sum of all posted expenses linked to the shipment
+- Frontend card on freight detail page shows 4 KPIs (Revenue, Total Cost, Profit, Margin %) with green/red color coding
+
+### Business Validation Rules
+
+- **No Shipment → No Invoice**: `POST /api/sales/documents/:id/actions/mark_invoiced` returns 400 if no linked freight shipment exists
+- **No Sales Order → No Shipment**: `POST /api/logistics/freight-shipments` requires `salesDocId`; freight editor shows required SO picker
+- **No Category → No Expense**: `POST /api/expenses` requires `categoryId`
+- Quote approval stores `approvedVendorName` (string field on `freight_shipments` table)
+
+### Demo Seed Data (`artifacts/api-server/src/lib/seedDemoData.ts`)
+
+- Idempotent startup seed (checks for `SO-DEMO-2026-001` before running)
+- Creates: 8 expense categories, 1 demo customer (PT. Ekspedisi Nusantara), 1 confirmed+invoiced Sales Order (IDR 19,000,000), 1 in-transit freight shipment (FS-DEMO-2026-001, Jakarta→Singapore, FCL 20'), 3 freight documents (BL, Packing List, PEB), 3 expenses (Ocean Freight IDR 12.5M posted, Handling IDR 1.8M posted, Customs IDR 750K draft)
+- Demo profitability: Revenue 19,000,000 / Cost 15,050,000 / Profit 3,950,000 / Margin 20.8%
+- Chained after `seedLogisticsServiceItems()` in `index.ts` to ensure product IDs are available
+
 ### Sales Order ↔ Shipment Linkage (Module 7 completion)
 
 - `freight_shipments.sales_doc_id` (FK → `sales_documents.id`) links shipments to their originating Sales Order.
