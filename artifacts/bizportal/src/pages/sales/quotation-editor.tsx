@@ -10,6 +10,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -46,6 +47,8 @@ import {
   useListAccountingPayments,
   useCreateAccountingPayment,
   useListJournals,
+  useListExpenses,
+  getListExpensesQueryKey,
   getGetSalesDocumentQueryKey,
   getListSalesDocumentsQueryKey,
   getListAccountingPaymentsQueryKey,
@@ -510,6 +513,14 @@ export default function SalesDocumentEditorPage() {
   const isOrderView = !!paramsOrder;
   const backHref = isOrderView ? "/sales/orders" : "/sales/quotations";
 
+  const expensesQueryParams = { salesDocId: id ?? 0 };
+  const { data: linkedExpenses = [], isLoading: expensesLoading } = useListExpenses(
+    expensesQueryParams,
+    { query: { enabled: isOrderView && id !== null, queryKey: getListExpensesQueryKey(expensesQueryParams) } },
+  );
+  const idr = (n: number) =>
+    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+
   if (!isNew && docLoading) {
     return <AppShell><div className="text-muted-foreground">Memuat...</div></AppShell>;
   }
@@ -826,6 +837,74 @@ export default function SalesDocumentEditorPage() {
                       {idr(Math.max(0, Number(doc.grandTotal) - Number(doc.amountPaid ?? 0)))}
                     </span>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {isOrderView && id && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Receipt className="h-4 w-4" /> Biaya Terkait
+                </CardTitle>
+                <Link href={`/expense/new?salesDocId=${id}`}>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs">
+                    <Plus className="h-3 w-3" /> Tambah Biaya
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {expensesLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-7 w-full" />
+                  <Skeleton className="h-7 w-full" />
+                </div>
+              ) : linkedExpenses.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Belum ada biaya terkait pesanan ini.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>No. Biaya</TableHead>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Vendor / Pegawai</TableHead>
+                      <TableHead>Deskripsi</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="w-8"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {linkedExpenses.map((exp) => (
+                      <TableRow key={exp.id}>
+                        <TableCell className="font-mono text-xs">{exp.expenseNumber}</TableCell>
+                        <TableCell className="text-xs">{exp.date}</TableCell>
+                        <TableCell className="text-xs">{exp.vendorEmployee ?? "—"}</TableCell>
+                        <TableCell className="text-xs max-w-[180px] truncate">{exp.description ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">{exp.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-xs font-medium">{idr(exp.total)}</TableCell>
+                        <TableCell>
+                          <Link href={`/expense/${exp.id}`}>
+                            <Button size="icon" variant="ghost" className="h-6 w-6">
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              {linkedExpenses.length > 0 && (
+                <div className="flex justify-end mt-3 pt-3 border-t border-slate-700/50 text-sm font-semibold">
+                  <span className="text-muted-foreground mr-4">Total Biaya</span>
+                  <span>{idr(linkedExpenses.reduce((s, e) => s + e.total, 0))}</span>
                 </div>
               )}
             </CardContent>

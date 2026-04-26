@@ -13,8 +13,11 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
-  TrendingDown, TrendingUp,
+  TrendingDown, TrendingUp, Receipt, ExternalLink,
 } from "lucide-react";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { FreightAttachmentsPanel } from "@/components/freight/FreightAttachmentsPanel";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -23,10 +26,12 @@ import {
   useCreateFreightQuote,
   useApproveFreightQuote,
   useUpdateFreightShipment,
+  useListExpenses,
   getGetFreightShipmentQueryKey,
   type FreightRfqWithQuotes,
   type FreightQuote,
 } from "@workspace/api-client-react";
+import { Link } from "wouter";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -74,6 +79,9 @@ export default function LogisticsFreightDetailPage() {
   const { toast } = useToast();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
+  const { data: expenses = [], isLoading: expensesLoading } = useListExpenses({ shipmentId: id });
+  const idr = (n: number) =>
+    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
   const createRfq = useCreateFreightRfq();
   const createQuote = useCreateFreightQuote();
   const approveQuote = useApproveFreightQuote();
@@ -662,6 +670,76 @@ export default function LogisticsFreightDetailPage() {
             ))
           )}
         </div>
+
+        {/* Biaya / Expenses Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Receipt className="h-4 w-4" />
+                Biaya Operasional
+              </CardTitle>
+              <Link href={`/expense/new?shipmentId=${id}`}>
+                <Button size="sm" variant="outline" className="gap-1">
+                  <Plus className="h-3.5 w-3.5" /> Tambah Biaya
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {expensesLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : expenses.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Belum ada biaya terkait pengiriman ini.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>No. Biaya</TableHead>
+                    <TableHead>Tanggal</TableHead>
+                    <TableHead>Vendor / Pegawai</TableHead>
+                    <TableHead>Deskripsi</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="w-8"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {expenses.map((exp) => (
+                    <TableRow key={exp.id}>
+                      <TableCell className="font-mono text-xs">{exp.expenseNumber}</TableCell>
+                      <TableCell className="text-xs">{exp.date}</TableCell>
+                      <TableCell className="text-xs">{exp.vendorEmployee ?? "—"}</TableCell>
+                      <TableCell className="text-xs max-w-[180px] truncate">{exp.description ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">{exp.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-xs font-medium">{idr(exp.total)}</TableCell>
+                      <TableCell>
+                        <Link href={`/expense/${exp.id}`}>
+                          <Button size="icon" variant="ghost" className="h-6 w-6">
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            {expenses.length > 0 && (
+              <div className="flex justify-end mt-3 pt-3 border-t border-slate-700/50 text-sm font-semibold">
+                <span className="text-muted-foreground mr-4">Total Biaya</span>
+                <span>{idr(expenses.reduce((s, e) => s + e.total, 0))}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Attachments Section */}
         <Card className="print:hidden">

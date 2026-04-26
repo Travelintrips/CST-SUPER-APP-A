@@ -18,6 +18,7 @@ import {
   useGetExpense, useCreateExpense, useUpdateExpense, useExpenseAction,
   useAddExpenseAttachment, useDeleteExpenseAttachment,
   useListExpenseCategories, useListAccounts, useListTaxes,
+  useListSalesDocuments, useListFreightShipments,
   getListExpensesQueryKey, getGetExpenseQueryKey,
   type ExpenseAttachment,
 } from "@workspace/api-client-react";
@@ -27,7 +28,15 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Save, Send, CheckCircle, XCircle, FileText, Banknote,
   RotateCcw, Info, Paperclip, Upload, Trash2, Loader2, AlertTriangle, X,
+  ChevronsUpDown, Check, ExternalLink,
 } from "lucide-react";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import { Link } from "wouter";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -80,6 +89,68 @@ function AttachmentItem({
   );
 }
 
+function ReferenceCombobox<T extends { id: number }>({
+  value,
+  onChange,
+  items,
+  getLabel,
+  placeholder,
+  disabled,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  items: T[];
+  getLabel: (item: T) => string;
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? items.find((i) => i.id === value) : null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          disabled={disabled}
+          className="w-full justify-between font-normal truncate"
+        >
+          <span className="truncate">
+            {selected ? getLabel(selected) : <span className="text-muted-foreground">{placeholder}</span>}
+          </span>
+          <ChevronsUpDown size={13} className="ml-2 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[360px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Cari..." />
+          <CommandList>
+            <CommandEmpty>Tidak ditemukan.</CommandEmpty>
+            <CommandItem
+              value="__clear__"
+              onSelect={() => { onChange(null); setOpen(false); }}
+              className="text-muted-foreground"
+            >
+              — Tidak dipilih —
+            </CommandItem>
+            {items.slice(0, 100).map((item) => (
+              <CommandItem
+                key={item.id}
+                value={`${item.id} ${getLabel(item)}`}
+                onSelect={() => { onChange(item.id); setOpen(false); }}
+              >
+                <Check size={13} className={`mr-2 shrink-0 ${value === item.id ? "opacity-100" : "opacity-0"}`} />
+                {getLabel(item)}
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Diajukan",
@@ -111,6 +182,8 @@ const EMPTY_FORM = {
   notes: "",
   expenseAccountId: null as number | null,
   payableAccountId: null as number | null,
+  salesDocId: null as number | null,
+  shipmentId: null as number | null,
 };
 
 export default function ExpenseEditorPage() {
@@ -151,6 +224,21 @@ export default function ExpenseEditorPage() {
   });
 
   useEffect(() => {
+    if (isNew) {
+      const sp = new URLSearchParams(window.location.search);
+      const qSalesDocId = sp.get("salesDocId");
+      const qShipmentId = sp.get("shipmentId");
+      if (qSalesDocId || qShipmentId) {
+        setForm((f) => ({
+          ...f,
+          salesDocId: qSalesDocId ? Number(qSalesDocId) : f.salesDocId,
+          shipmentId: qShipmentId ? Number(qShipmentId) : f.shipmentId,
+        }));
+      }
+    }
+  }, [isNew]);
+
+  useEffect(() => {
     if (expense && !isNew) {
       setForm({
         date: expense.date,
@@ -166,6 +254,8 @@ export default function ExpenseEditorPage() {
         notes: expense.notes ?? "",
         expenseAccountId: expense.expenseAccountId ?? null,
         payableAccountId: expense.payableAccountId ?? null,
+        salesDocId: expense.salesDocId ?? null,
+        shipmentId: expense.shipmentId ?? null,
       });
     }
   }, [expense]);
@@ -188,6 +278,9 @@ export default function ExpenseEditorPage() {
     }));
   };
 
+  const { data: salesDocs = [] } = useListSalesDocuments();
+  const { data: shipments = [] } = useListFreightShipments();
+
   const save = async () => {
     if (!form.date) { toast({ title: "Tanggal wajib diisi", variant: "destructive" }); return; }
     const body = {
@@ -204,6 +297,8 @@ export default function ExpenseEditorPage() {
       notes: form.notes || undefined,
       expenseAccountId: form.expenseAccountId || undefined,
       payableAccountId: form.payableAccountId || undefined,
+      salesDocId: form.salesDocId || undefined,
+      shipmentId: form.shipmentId || undefined,
     };
     try {
       if (isNew) {
@@ -542,6 +637,50 @@ export default function ExpenseEditorPage() {
             )}
           </div>
         </div>
+
+        {/* Referensi / Job linking */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <ExternalLink size={14} className="text-muted-foreground" />
+              <CardTitle className="text-sm">Referensi / Job</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Sales Order</Label>
+              <ReferenceCombobox
+                value={form.salesDocId}
+                onChange={(v) => setForm((f) => ({ ...f, salesDocId: v }))}
+                items={salesDocs}
+                getLabel={(d) => `${d.docNumber} — ${d.customerName}`}
+                placeholder="Pilih sales order…"
+                disabled={locked}
+              />
+              {form.salesDocId && (
+                <Link href={`/sales/orders/${form.salesDocId}`} className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <ExternalLink size={11} /> Buka sales order
+                </Link>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Pengiriman (Shipment)</Label>
+              <ReferenceCombobox
+                value={form.shipmentId}
+                onChange={(v) => setForm((f) => ({ ...f, shipmentId: v }))}
+                items={shipments}
+                getLabel={(s) => `${s.shipmentNumber} — ${s.consigneeName}`}
+                placeholder="Pilih pengiriman…"
+                disabled={locked}
+              />
+              {form.shipmentId && (
+                <Link href={`/logistics/freight/${form.shipmentId}`} className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <ExternalLink size={11} /> Buka pengiriman
+                </Link>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/*
           Attachment panel — only shown for saved expenses.
