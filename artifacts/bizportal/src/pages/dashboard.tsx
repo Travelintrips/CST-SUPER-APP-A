@@ -74,6 +74,8 @@ export default function DashboardPage() {
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
 
   const [responseTime, setResponseTime] = useState<string | null>(null);
+  const responseTimeMs = responseTime ? parseFloat(responseTime) : null;
+  const responseTimeColor = responseTimeMs === null ? "" : responseTimeMs < 200 ? "text-emerald-500" : responseTimeMs <= 500 ? "text-amber-500" : "text-destructive";
 
   useEffect(() => {
     if (!dataUpdatedAt) return;
@@ -202,7 +204,7 @@ export default function DashboardPage() {
                 {responseTime && (
                   <>
                     <span className="text-muted-foreground/40">·</span>
-                    <span className="flex items-center gap-0.5" title="Waktu respons server">
+                    <span className={`flex items-center gap-0.5 ${responseTimeColor}`} title="Waktu respons server">
                       <Activity className="h-3 w-3" />
                       Muat dalam {responseTime}
                     </span>
