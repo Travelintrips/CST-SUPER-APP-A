@@ -1326,6 +1326,16 @@ export const FreightShipmentTransportMode = {
   multimodal: "multimodal",
 } as const;
 
+export type FreightShipmentCargoType =
+  | (typeof FreightShipmentCargoType)[keyof typeof FreightShipmentCargoType]
+  | null;
+
+export const FreightShipmentCargoType = {
+  FCL: "FCL",
+  LCL: "LCL",
+  Air: "Air",
+} as const;
+
 export interface FreightShipment {
   id: number;
   shipmentNumber: string;
@@ -1357,6 +1367,8 @@ export interface FreightShipment {
   trackingNumber?: string | null;
   awbNumber?: string | null;
   transportMode?: FreightShipmentTransportMode;
+  cargoType?: FreightShipmentCargoType;
+  containerNo?: string | null;
   salesDocId?: number | null;
   createdById?: string | null;
   createdAt: string;
@@ -1437,8 +1449,68 @@ export type FreightRfqWithQuotes = FreightRfq & {
   quotes: FreightQuote[];
 };
 
+export type ShipmentStageStageType =
+  (typeof ShipmentStageStageType)[keyof typeof ShipmentStageStageType];
+
+export const ShipmentStageStageType = {
+  booking: "booking",
+  trucking: "trucking",
+  handling: "handling",
+  customs: "customs",
+} as const;
+
+export type ShipmentStageStatus =
+  (typeof ShipmentStageStatus)[keyof typeof ShipmentStageStatus];
+
+export const ShipmentStageStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  done: "done",
+  cancelled: "cancelled",
+} as const;
+
+export interface ShipmentStage {
+  id: number;
+  shipmentId: number;
+  stageType: ShipmentStageStageType;
+  vendorName?: string | null;
+  date?: string | null;
+  status: ShipmentStageStatus;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export type UpsertShipmentStageBodyStageType =
+  (typeof UpsertShipmentStageBodyStageType)[keyof typeof UpsertShipmentStageBodyStageType];
+
+export const UpsertShipmentStageBodyStageType = {
+  booking: "booking",
+  trucking: "trucking",
+  handling: "handling",
+  customs: "customs",
+} as const;
+
+export type UpsertShipmentStageBodyStatus =
+  (typeof UpsertShipmentStageBodyStatus)[keyof typeof UpsertShipmentStageBodyStatus];
+
+export const UpsertShipmentStageBodyStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  done: "done",
+  cancelled: "cancelled",
+} as const;
+
+export interface UpsertShipmentStageBody {
+  stageType: UpsertShipmentStageBodyStageType;
+  vendorName?: string | null;
+  date?: string | null;
+  status?: UpsertShipmentStageBodyStatus;
+  notes?: string | null;
+}
+
 export type FreightShipmentDetail = FreightShipment & {
   rfqs: FreightRfqWithQuotes[];
+  stages: ShipmentStage[];
 };
 
 export type CreateFreightShipmentBodyTransportMode =
@@ -1450,6 +1522,16 @@ export const CreateFreightShipmentBodyTransportMode = {
   air: "air",
   land: "land",
   multimodal: "multimodal",
+} as const;
+
+export type CreateFreightShipmentBodyCargoType =
+  | (typeof CreateFreightShipmentBodyCargoType)[keyof typeof CreateFreightShipmentBodyCargoType]
+  | null;
+
+export const CreateFreightShipmentBodyCargoType = {
+  FCL: "FCL",
+  LCL: "LCL",
+  Air: "Air",
 } as const;
 
 export interface CreateFreightShipmentBody {
@@ -1476,6 +1558,8 @@ export interface CreateFreightShipmentBody {
   status?: string | null;
   notes?: string | null;
   transportMode?: CreateFreightShipmentBodyTransportMode;
+  cargoType?: CreateFreightShipmentBodyCargoType;
+  containerNo?: string | null;
   salesDocId?: number | null;
 }
 

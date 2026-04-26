@@ -13,5 +13,6 @@ export * from "./accounting";
 export * from "./correspondences";
 export * from "./freightShipments";
 export * from "./freightAttachments";
+export * from "./shipmentStages";
 export * from "./apiResponseTimes";
 export * from "./expenses";

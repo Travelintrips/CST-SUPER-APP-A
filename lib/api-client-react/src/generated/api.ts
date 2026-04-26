@@ -110,6 +110,7 @@ import type {
   SalesSummary,
   SeedExpenseCategories200,
   Shipment,
+  ShipmentStage,
   StockItem,
   Supplier,
   Transaction,
@@ -124,6 +125,7 @@ import type {
   UpdateTaxBody,
   UpdateTransactionDocumentBody,
   UpdateUserBody,
+  UpsertShipmentStageBody,
   UserProfile,
   VoidAccountingPaymentBody,
 } from "./api.schemas";
@@ -2978,6 +2980,182 @@ export const useDeleteFreightShipment = <
   TContext
 > => {
   return useMutation(getDeleteFreightShipmentMutationOptions(options));
+};
+
+/**
+ * @summary List operational stages for a shipment
+ */
+export const getListShipmentStagesUrl = (shipmentId: number) => {
+  return `/api/logistics/freight-shipments/${shipmentId}/stages`;
+};
+
+export const listShipmentStages = async (
+  shipmentId: number,
+  options?: RequestInit,
+): Promise<ShipmentStage[]> => {
+  return customFetch<ShipmentStage[]>(getListShipmentStagesUrl(shipmentId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListShipmentStagesQueryKey = (shipmentId: number) => {
+  return [`/api/logistics/freight-shipments/${shipmentId}/stages`] as const;
+};
+
+export const getListShipmentStagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listShipmentStages>>,
+  TError = ErrorType<unknown>,
+>(
+  shipmentId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listShipmentStages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListShipmentStagesQueryKey(shipmentId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listShipmentStages>>
+  > = ({ signal }) =>
+    listShipmentStages(shipmentId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!shipmentId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listShipmentStages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListShipmentStagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listShipmentStages>>
+>;
+export type ListShipmentStagesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List operational stages for a shipment
+ */
+
+export function useListShipmentStages<
+  TData = Awaited<ReturnType<typeof listShipmentStages>>,
+  TError = ErrorType<unknown>,
+>(
+  shipmentId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listShipmentStages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListShipmentStagesQueryOptions(shipmentId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Upsert (create or update) a stage for a shipment
+ */
+export const getUpsertShipmentStageUrl = (shipmentId: number) => {
+  return `/api/logistics/freight-shipments/${shipmentId}/stages`;
+};
+
+export const upsertShipmentStage = async (
+  shipmentId: number,
+  upsertShipmentStageBody: UpsertShipmentStageBody,
+  options?: RequestInit,
+): Promise<ShipmentStage> => {
+  return customFetch<ShipmentStage>(getUpsertShipmentStageUrl(shipmentId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(upsertShipmentStageBody),
+  });
+};
+
+export const getUpsertShipmentStageMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertShipmentStage>>,
+    TError,
+    { shipmentId: number; data: BodyType<UpsertShipmentStageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertShipmentStage>>,
+  TError,
+  { shipmentId: number; data: BodyType<UpsertShipmentStageBody> },
+  TContext
+> => {
+  const mutationKey = ["upsertShipmentStage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertShipmentStage>>,
+    { shipmentId: number; data: BodyType<UpsertShipmentStageBody> }
+  > = (props) => {
+    const { shipmentId, data } = props ?? {};
+
+    return upsertShipmentStage(shipmentId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertShipmentStageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertShipmentStage>>
+>;
+export type UpsertShipmentStageMutationBody = BodyType<UpsertShipmentStageBody>;
+export type UpsertShipmentStageMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Upsert (create or update) a stage for a shipment
+ */
+export const useUpsertShipmentStage = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertShipmentStage>>,
+    TError,
+    { shipmentId: number; data: BodyType<UpsertShipmentStageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertShipmentStage>>,
+  TError,
+  { shipmentId: number; data: BodyType<UpsertShipmentStageBody> },
+  TContext
+> => {
+  return useMutation(getUpsertShipmentStageMutationOptions(options));
 };
 
 /**

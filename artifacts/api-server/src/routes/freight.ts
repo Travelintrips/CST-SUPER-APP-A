@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable } from "@workspace/db";
 import { eq, desc, inArray } from "drizzle-orm";
 
 const router = Router();
@@ -14,6 +14,9 @@ function nextNumber(prefix: string) {
 function serializeShipment(s: typeof freightShipmentsTable.$inferSelect) {
   return { ...s, createdAt: s.createdAt.toISOString() };
 }
+function serializeStage(s: typeof shipmentStagesTable.$inferSelect) {
+  return { ...s, createdAt: s.createdAt.toISOString() };
+}
 function serializeRfq(r: typeof freightRfqsTable.$inferSelect) {
   return { ...r, createdAt: r.createdAt.toISOString() };
 }
@@ -24,8 +27,11 @@ function serializeQuote(q: typeof freightQuotesTable.$inferSelect) {
 // ─── FREIGHT SHIPMENTS ──────────────────────────────────────────────────────
 
 // GET /api/logistics/freight-shipments
-router.get("/freight-shipments", async (_req, res) => {
-  const rows = await db.select().from(freightShipmentsTable).orderBy(desc(freightShipmentsTable.createdAt));
+router.get("/freight-shipments", async (req, res) => {
+  const salesDocId = req.query.salesDocId ? Number(req.query.salesDocId) : undefined;
+  const rows = salesDocId
+    ? await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.salesDocId, salesDocId)).orderBy(desc(freightShipmentsTable.createdAt))
+    : await db.select().from(freightShipmentsTable).orderBy(desc(freightShipmentsTable.createdAt));
   return res.json(rows.map(serializeShipment));
 });
 
@@ -42,12 +48,14 @@ router.get("/freight-shipments/:id", async (req, res) => {
         .where(rfqIds.length === 1 ? eq(freightQuotesTable.rfqId, rfqIds[0]!) : inArray(freightQuotesTable.rfqId, rfqIds))
         .orderBy(desc(freightQuotesTable.createdAt))
     : [];
+  const stages = await db.select().from(shipmentStagesTable).where(eq(shipmentStagesTable.shipmentId, id));
   return res.json({
     ...serializeShipment(shipment),
     rfqs: rfqs.map((r) => ({
       ...serializeRfq(r),
       quotes: quotes.filter((q) => q.rfqId === r.id).map(serializeQuote),
     })),
+    stages: stages.map(serializeStage),
   });
 });
 
@@ -55,7 +63,8 @@ router.get("/freight-shipments/:id", async (req, res) => {
 router.post("/freight-shipments", async (req, res) => {
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
-    portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes } = req.body;
+    portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes,
+    transportMode, cargoType, containerNo, salesDocId } = req.body;
   if (!shipperName || !consigneeName || !commodity || !origin || !destination) {
     return res.status(400).json({ message: "shipperName, consigneeName, commodity, origin, destination wajib diisi" });
   }
@@ -72,6 +81,10 @@ router.post("/freight-shipments", async (req, res) => {
     vessel: vessel || null, voyage: voyage || null,
     notifyParty: notifyParty || null, marksAndNumbers: marksAndNumbers || null,
     measurement: measurement || null, notes: notes || null,
+    transportMode: transportMode || null,
+    cargoType: cargoType || null,
+    containerNo: containerNo || null,
+    salesDocId: salesDocId ? Number(salesDocId) : null,
   }).returning();
   return res.status(201).json(serializeShipment(shipment!));
 });
@@ -83,7 +96,8 @@ router.put("/freight-shipments/:id", async (req, res) => {
   const { shipperName, shipperAddress, consigneeName, consigneeAddress, commodity,
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, status, notes,
-    actualCost, departureDate, arrivalDate, trackingNumber, awbNumber } = req.body;
+    actualCost, departureDate, arrivalDate, trackingNumber, awbNumber,
+    transportMode, cargoType, containerNo, salesDocId } = req.body;
   const [existing] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
   const patch: Partial<typeof freightShipmentsTable.$inferInsert> = {};
@@ -114,6 +128,10 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (arrivalDate !== undefined) patch.arrivalDate = arrivalDate || null;
   if (trackingNumber !== undefined) patch.trackingNumber = trackingNumber || null;
   if (awbNumber !== undefined) patch.awbNumber = awbNumber || null;
+  if (transportMode !== undefined) patch.transportMode = transportMode || null;
+  if (cargoType !== undefined) patch.cargoType = cargoType || null;
+  if (containerNo !== undefined) patch.containerNo = containerNo || null;
+  if (salesDocId !== undefined) patch.salesDocId = salesDocId ? Number(salesDocId) : null;
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
   return res.json(serializeShipment(updated!));
 });
@@ -126,6 +144,51 @@ router.delete("/freight-shipments/:id", async (req, res) => {
   if (!existing) return res.status(404).json({ message: "Shipment not found" });
   await db.delete(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
   return res.json({ message: "Berhasil dihapus" });
+});
+
+// ─── SHIPMENT STAGES ─────────────────────────────────────────────────────────
+
+// GET /api/logistics/freight-shipments/:shipmentId/stages
+router.get("/freight-shipments/:shipmentId/stages", async (req, res) => {
+  const shipmentId = Number(req.params.shipmentId);
+  if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
+  const rows = await db.select().from(shipmentStagesTable).where(eq(shipmentStagesTable.shipmentId, shipmentId));
+  return res.json(rows.map(serializeStage));
+});
+
+// POST /api/logistics/freight-shipments/:shipmentId/stages  (upsert by stageType)
+router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
+  const shipmentId = Number(req.params.shipmentId);
+  if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
+  const { stageType, vendorName, date, status, notes } = req.body;
+  if (!stageType) return res.status(400).json({ message: "stageType wajib diisi" });
+  const [existing] = await db.select().from(shipmentStagesTable)
+    .where(eq(shipmentStagesTable.shipmentId, shipmentId))
+    .then((rows) => rows.filter((r) => r.stageType === stageType));
+  let stage;
+  if (existing) {
+    [stage] = await db.update(shipmentStagesTable)
+      .set({
+        vendorName: vendorName ?? null,
+        date: date ?? null,
+        status: status ?? existing.status,
+        notes: notes ?? null,
+      })
+      .where(eq(shipmentStagesTable.id, existing.id))
+      .returning();
+  } else {
+    [stage] = await db.insert(shipmentStagesTable)
+      .values({
+        shipmentId,
+        stageType,
+        vendorName: vendorName ?? null,
+        date: date ?? null,
+        status: status ?? "pending",
+        notes: notes ?? null,
+      })
+      .returning();
+  }
+  return res.json(serializeStage(stage!));
 });
 
 // ─── FREIGHT RFQs ────────────────────────────────────────────────────────────

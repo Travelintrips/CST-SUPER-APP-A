@@ -48,10 +48,12 @@ import {
   useCreateAccountingPayment,
   useListJournals,
   useListExpenses,
+  useListFreightShipments,
   getListExpensesQueryKey,
   getGetSalesDocumentQueryKey,
   getListSalesDocumentsQueryKey,
   getListAccountingPaymentsQueryKey,
+  getListFreightShipmentsQueryKey,
   getListProductsQueryKey,
   type Product,
 } from "@workspace/api-client-react";
@@ -349,6 +351,11 @@ export default function SalesDocumentEditorPage() {
   const [taxRateId, setTaxRateId] = useState<number | null>(null);
   const [taxApplied, setTaxApplied] = useState(false);
   const [taxAutoFilledFrom, setTaxAutoFilledFrom] = useState<"customer" | "settings" | null>(null);
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [transportMode, setTransportMode] = useState("");
+  const [etd, setEtd] = useState("");
+  const [eta, setEta] = useState("");
 
   useEffect(() => {
     if (doc) {
@@ -359,6 +366,11 @@ export default function SalesDocumentEditorPage() {
       setNotes(doc.notes ?? "");
       setTaxRateId(doc.taxRateId ?? null);
       setTaxApplied(true);
+      setOrigin((doc as any).origin ?? "");
+      setDestination((doc as any).destination ?? "");
+      setTransportMode((doc as any).transportMode ?? "");
+      setEtd((doc as any).etd ? String((doc as any).etd).slice(0, 10) : "");
+      setEta((doc as any).eta ? String((doc as any).eta).slice(0, 10) : "");
       setLines(
         doc.lines.length > 0
           ? doc.lines.map((l) => ({
@@ -459,6 +471,11 @@ export default function SalesDocumentEditorPage() {
       validUntil: validUntil ? new Date(validUntil).toISOString() : null,
       expectedDate: expectedDate ? new Date(expectedDate).toISOString() : null,
       notes: notes || null,
+      origin: origin || null,
+      destination: destination || null,
+      transportMode: transportMode || null,
+      etd: etd || null,
+      eta: eta || null,
       lines: lines.map((l) => ({
         productId: l.productId ?? null,
         name: l.name,
@@ -517,6 +534,11 @@ export default function SalesDocumentEditorPage() {
   const { data: linkedExpenses = [], isLoading: expensesLoading } = useListExpenses(
     expensesQueryParams,
     { query: { enabled: isOrderView && id !== null, queryKey: getListExpensesQueryKey(expensesQueryParams) } },
+  );
+  const shipmentsQueryParams = { salesDocId: id ?? 0 };
+  const { data: linkedShipments = [] } = useListFreightShipments(
+    shipmentsQueryParams,
+    { query: { enabled: isOrderView && id !== null, queryKey: getListFreightShipmentsQueryKey(shipmentsQueryParams) } },
   );
   const idr = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -640,6 +662,46 @@ export default function SalesDocumentEditorPage() {
             <div className="grid gap-1.5 md:col-span-2">
               <Label>Catatan</Label>
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!isEditable} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="h-4 w-4" /> Detail Logistik
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label>Asal</Label>
+              <Input value={origin} onChange={(e) => setOrigin(e.target.value)} disabled={!isEditable} placeholder="Jakarta, Indonesia" data-testid="input-origin" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Tujuan</Label>
+              <Input value={destination} onChange={(e) => setDestination(e.target.value)} disabled={!isEditable} placeholder="Singapore" data-testid="input-destination" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Moda Transportasi</Label>
+              <Select value={transportMode || "__none"} onValueChange={(v) => setTransportMode(v === "__none" ? "" : v)} disabled={!isEditable}>
+                <SelectTrigger data-testid="select-transport-mode"><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Belum ditentukan —</SelectItem>
+                  <SelectItem value="sea">Laut (Sea)</SelectItem>
+                  <SelectItem value="air">Udara (Air)</SelectItem>
+                  <SelectItem value="land">Darat (Land)</SelectItem>
+                  <SelectItem value="multimodal">Multimodal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5" />
+            <div className="grid gap-1.5">
+              <Label>ETD (Est. Time of Departure)</Label>
+              <Input type="date" value={etd} onChange={(e) => setEtd(e.target.value)} disabled={!isEditable} data-testid="input-etd" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>ETA (Est. Time of Arrival)</Label>
+              <Input type="date" value={eta} onChange={(e) => setEta(e.target.value)} disabled={!isEditable} data-testid="input-eta" />
             </div>
           </CardContent>
         </Card>
@@ -906,6 +968,61 @@ export default function SalesDocumentEditorPage() {
                   <span className="text-muted-foreground mr-4">Total Biaya</span>
                   <span>{idr(linkedExpenses.reduce((s, e) => s + e.total, 0))}</span>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {isOrderView && id && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Truck className="h-4 w-4" /> Shipment / Job Terkait
+                </CardTitle>
+                <Link href={`/logistics/freight/new?salesDocId=${id}${origin ? `&origin=${encodeURIComponent(origin)}` : ""}${destination ? `&destination=${encodeURIComponent(destination)}` : ""}${customerName ? `&consigneeName=${encodeURIComponent(customerName)}` : ""}${transportMode ? `&transportMode=${transportMode}` : ""}`}>
+                  <Button size="sm" variant="default" className="gap-1 text-xs">
+                    <Plus className="h-3 w-3" /> Buat Pengiriman
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {linkedShipments.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Belum ada shipment terkait pesanan ini.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>No. Shipment</TableHead>
+                      <TableHead>Asal → Tujuan</TableHead>
+                      <TableHead>Mode</TableHead>
+                      <TableHead>Consignee</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-8"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {linkedShipments.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-mono text-xs">{s.shipmentNumber}</TableCell>
+                        <TableCell className="text-xs">{s.origin} → {s.destination}</TableCell>
+                        <TableCell className="text-xs capitalize">{(s as any).transportMode ?? "—"}</TableCell>
+                        <TableCell className="text-xs">{s.consigneeName}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">{s.status}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/logistics/freight/${s.id}`}>
+                            <Button size="icon" variant="ghost" className="h-6 w-6">
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>

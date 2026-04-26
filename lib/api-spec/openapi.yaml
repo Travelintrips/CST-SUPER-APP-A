@@ -685,6 +685,37 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /logistics/freight-shipments/{shipmentId}/stages:
+    parameters:
+      - { name: shipmentId, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: listShipmentStages
+      tags: [logistics]
+      summary: List operational stages for a shipment
+      responses:
+        "200":
+          description: Stage list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShipmentStage" }
+    post:
+      operationId: upsertShipmentStage
+      tags: [logistics]
+      summary: Upsert (create or update) a stage for a shipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertShipmentStageBody" }
+      responses:
+        "200":
+          description: Stage saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShipmentStage" }
+
   /logistics/freight-shipments/{shipmentId}/attachments:
     parameters:
       - { name: shipmentId, in: path, required: true, schema: { type: integer } }
@@ -3806,6 +3837,8 @@ components:
         trackingNumber: { type: string, nullable: true }
         awbNumber: { type: string, nullable: true }
         transportMode: { type: string, enum: [sea, air, land, multimodal], nullable: true }
+        cargoType: { type: string, enum: [FCL, LCL, Air], nullable: true }
+        containerNo: { type: string, nullable: true }
         salesDocId: { type: integer, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
@@ -3875,6 +3908,29 @@ components:
               items: { $ref: "#/components/schemas/FreightQuote" }
           required: [quotes]
 
+    ShipmentStage:
+      type: object
+      properties:
+        id: { type: integer }
+        shipmentId: { type: integer }
+        stageType: { type: string, enum: [booking, trucking, handling, customs] }
+        vendorName: { type: string, nullable: true }
+        date: { type: string, nullable: true }
+        status: { type: string, enum: [pending, in_progress, done, cancelled] }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, shipmentId, stageType, status, createdAt]
+
+    UpsertShipmentStageBody:
+      type: object
+      properties:
+        stageType: { type: string, enum: [booking, trucking, handling, customs] }
+        vendorName: { type: string, nullable: true }
+        date: { type: string, nullable: true }
+        status: { type: string, enum: [pending, in_progress, done, cancelled] }
+        notes: { type: string, nullable: true }
+      required: [stageType]
+
     FreightShipmentDetail:
       allOf:
         - $ref: "#/components/schemas/FreightShipment"
@@ -3883,7 +3939,10 @@ components:
             rfqs:
               type: array
               items: { $ref: "#/components/schemas/FreightRfqWithQuotes" }
-          required: [rfqs]
+            stages:
+              type: array
+              items: { $ref: "#/components/schemas/ShipmentStage" }
+          required: [rfqs, stages]
 
     CreateFreightShipmentBody:
       type: object
@@ -3911,6 +3970,8 @@ components:
         status: { type: string, nullable: true }
         notes: { type: string, nullable: true }
         transportMode: { type: string, enum: [sea, air, land, multimodal], nullable: true }
+        cargoType: { type: string, enum: [FCL, LCL, Air], nullable: true }
+        containerNo: { type: string, nullable: true }
         salesDocId: { type: integer, nullable: true }
       required: [shipperName, consigneeName, commodity, origin, destination]
 

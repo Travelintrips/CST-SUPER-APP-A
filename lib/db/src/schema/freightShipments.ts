@@ -41,6 +41,8 @@ export const freightShipmentsTable = pgTable("freight_shipments", {
   trackingNumber: text("tracking_number"),
   awbNumber: text("awb_number"),
   transportMode: text("transport_mode"),
+  cargoType: text("cargo_type"),
+  containerNo: text("container_no"),
   salesDocId: integer("sales_doc_id"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

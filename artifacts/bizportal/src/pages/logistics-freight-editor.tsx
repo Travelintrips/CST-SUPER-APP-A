@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ArrowLeft, Save, Loader2, ScanLine } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { FreightScanDialog, type FreightFormFields } from "@/components/freight/FreightScanDialog";
@@ -34,6 +41,7 @@ export default function LogisticsFreightEditorPage() {
   const create = useCreateFreightShipment();
   const update = useUpdateFreightShipment();
 
+  const [salesDocId, setSalesDocId] = useState<number | null>(null);
   const [form, setForm] = useState({
     shipperName: "",
     shipperAddress: "",
@@ -56,10 +64,29 @@ export default function LogisticsFreightEditorPage() {
     vessel: "",
     voyage: "",
     notes: "",
+    transportMode: "",
+    cargoType: "",
+    containerNo: "",
   });
 
   useEffect(() => {
+    if (!isEdit) {
+      const sp = new URLSearchParams(window.location.search);
+      const sid = sp.get("salesDocId");
+      if (sid) setSalesDocId(Number(sid));
+      setForm((f) => ({
+        ...f,
+        origin: sp.get("origin") ?? f.origin,
+        destination: sp.get("destination") ?? f.destination,
+        consigneeName: sp.get("consigneeName") ?? f.consigneeName,
+        transportMode: sp.get("transportMode") ?? f.transportMode,
+      }));
+    }
+  }, [isEdit]);
+
+  useEffect(() => {
     if (existing) {
+      if ((existing as any).salesDocId) setSalesDocId((existing as any).salesDocId);
       setForm({
         shipperName: existing.shipperName ?? "",
         shipperAddress: existing.shipperAddress ?? "",
@@ -82,6 +109,9 @@ export default function LogisticsFreightEditorPage() {
         vessel: existing.vessel ?? "",
         voyage: existing.voyage ?? "",
         notes: existing.notes ?? "",
+        transportMode: (existing as any).transportMode ?? "",
+        cargoType: (existing as any).cargoType ?? "",
+        containerNo: (existing as any).containerNo ?? "",
       });
     }
   }, [existing]);
@@ -117,7 +147,11 @@ export default function LogisticsFreightEditorPage() {
       vessel: form.vessel || undefined,
       voyage: form.voyage || undefined,
       notes: form.notes || undefined,
-    };
+      transportMode: (form.transportMode || undefined) as any,
+      cargoType: (form.cargoType || undefined) as any,
+      containerNo: form.containerNo || undefined,
+      salesDocId: salesDocId ?? undefined,
+    } as any;
 
     if (isEdit && id) {
       update.mutate(
@@ -253,7 +287,7 @@ export default function LogisticsFreightEditorPage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Rute Pengiriman</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Rute &amp; Moda Pengiriman</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -264,6 +298,37 @@ export default function LogisticsFreightEditorPage() {
                     <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
                     <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required />
                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Moda Transportasi</Label>
+                    <Select value={form.transportMode || "__none"} onValueChange={(v) => setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v }))}>
+                      <SelectTrigger><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Belum ditentukan —</SelectItem>
+                        <SelectItem value="sea">Laut (Sea)</SelectItem>
+                        <SelectItem value="air">Udara (Air)</SelectItem>
+                        <SelectItem value="land">Darat (Land)</SelectItem>
+                        <SelectItem value="multimodal">Multimodal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Jenis Kargo</Label>
+                    <Select value={form.cargoType || "__none"} onValueChange={(v) => setForm((f) => ({ ...f, cargoType: v === "__none" ? "" : v }))}>
+                      <SelectTrigger><SelectValue placeholder="Pilih jenis..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Belum ditentukan —</SelectItem>
+                        <SelectItem value="FCL">FCL (Full Container Load)</SelectItem>
+                        <SelectItem value="LCL">LCL (Less than Container Load)</SelectItem>
+                        <SelectItem value="Air">Air Cargo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="containerNo">Nomor Kontainer</Label>
+                  <Input id="containerNo" value={form.containerNo} onChange={set("containerNo")} placeholder="MSCU1234567" />
                 </div>
               </CardContent>
             </Card>

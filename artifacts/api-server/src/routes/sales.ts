@@ -197,7 +197,8 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
-  const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId } = req.body ?? {};
+  const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId,
+    origin, destination, transportMode, etd, eta } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())
     return res.status(400).json({ message: "customerName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -226,6 +227,11 @@ router.post("/documents", async (req, res) => {
       validUntil: validUntil ? new Date(validUntil) : null,
       expectedDate: expectedDate ? new Date(expectedDate) : null,
       notes: notes ?? null,
+      origin: origin ?? null,
+      destination: destination ?? null,
+      transportMode: transportMode ?? null,
+      etd: etd ?? null,
+      eta: eta ?? null,
     })
     .returning();
 
@@ -251,7 +257,8 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { customerId, customerName, validUntil, expectedDate, notes, lines, kind, taxRateId } = req.body ?? {};
+  const { customerId, customerName, validUntil, expectedDate, notes, lines, kind, taxRateId,
+    origin, destination, transportMode, etd, eta } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof customerName === "string") patch["customerName"] = customerName;
   if (customerId !== undefined) patch["customerId"] = customerId;
@@ -260,6 +267,11 @@ router.put("/documents/:id", async (req, res) => {
   if (notes !== undefined) patch["notes"] = notes;
   if (kind === "quote" || kind === "order") patch["kind"] = kind;
   if (taxRateId !== undefined) patch["taxRateId"] = taxRateId;
+  if (origin !== undefined) patch["origin"] = origin || null;
+  if (destination !== undefined) patch["destination"] = destination || null;
+  if (transportMode !== undefined) patch["transportMode"] = transportMode || null;
+  if (etd !== undefined) patch["etd"] = etd || null;
+  if (eta !== undefined) patch["eta"] = eta || null;
 
   if (Array.isArray(lines)) {
     const total = (lines as LineInput[]).reduce(

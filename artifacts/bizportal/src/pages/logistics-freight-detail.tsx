@@ -1,7 +1,14 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,10 +33,12 @@ import {
   useCreateFreightQuote,
   useApproveFreightQuote,
   useUpdateFreightShipment,
+  useUpsertShipmentStage,
   useListExpenses,
   getGetFreightShipmentQueryKey,
   type FreightRfqWithQuotes,
   type FreightQuote,
+  type ShipmentStage,
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
 
@@ -118,7 +127,56 @@ export default function LogisticsFreightDetailPage() {
     notes: "",
   });
 
+  const upsertStage = useUpsertShipmentStage();
+  type StageType = "booking" | "trucking" | "handling" | "customs";
+  const STAGE_DEFS: { type: StageType; label: string }[] = [
+    { type: "booking", label: "Booking" },
+    { type: "trucking", label: "Trucking" },
+    { type: "handling", label: "Handling" },
+    { type: "customs", label: "Customs Clearance" },
+  ];
+  const [stageForms, setStageForms] = useState<Record<StageType, { vendorName: string; date: string; status: string; notes: string }>>({
+    booking:  { vendorName: "", date: "", status: "pending", notes: "" },
+    trucking: { vendorName: "", date: "", status: "pending", notes: "" },
+    handling: { vendorName: "", date: "", status: "pending", notes: "" },
+    customs:  { vendorName: "", date: "", status: "pending", notes: "" },
+  });
+  const [stagesInitialized, setStagesInitialized] = useState(false);
+
+  useEffect(() => {
+    if (shipment && (shipment as any).stages && !stagesInitialized) {
+      const stages: ShipmentStage[] = (shipment as any).stages ?? [];
+      setStageForms((prev) => {
+        const next = { ...prev };
+        for (const s of stages) {
+          const t = s.stageType as StageType;
+          if (t in next) {
+            next[t] = {
+              vendorName: s.vendorName ?? "",
+              date: s.date ? String(s.date).slice(0, 10) : "",
+              status: s.status ?? "pending",
+              notes: s.notes ?? "",
+            };
+          }
+        }
+        return next;
+      });
+      setStagesInitialized(true);
+    }
+  }, [shipment, stagesInitialized]);
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(id) });
+
+  const handleSaveStage = (stageType: StageType) => {
+    const f = stageForms[stageType];
+    upsertStage.mutate(
+      { shipmentId: id, data: { stageType, vendorName: f.vendorName || null, date: f.date || null, status: f.status as any, notes: f.notes || null } },
+      {
+        onSuccess: () => { invalidate(); toast({ title: `Tahap ${stageType} disimpan` }); },
+        onError: () => toast({ title: "Gagal menyimpan tahap", variant: "destructive" }),
+      }
+    );
+  };
 
   const handleCreateRfq = () => {
     createRfq.mutate(
@@ -569,6 +627,91 @@ export default function LogisticsFreightDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Operational Stages Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              Tahapan Operasional
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {STAGE_DEFS.map(({ type, label }) => {
+                const f = stageForms[type];
+                const existingStage = ((shipment as any).stages ?? []).find((s: ShipmentStage) => s.stageType === type);
+                const statusColor: Record<string, string> = {
+                  pending: "bg-muted text-muted-foreground",
+                  in_progress: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+                  done: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+                  cancelled: "bg-destructive/10 text-destructive border-destructive/20",
+                };
+                return (
+                  <div key={type} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-sm">{label}</p>
+                      <Badge variant="outline" className={`text-xs ${statusColor[f.status] ?? ""}`}>
+                        {{ pending: "Menunggu", in_progress: "Proses", done: "Selesai", cancelled: "Batal" }[f.status] ?? f.status}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1 col-span-2">
+                        <Label className="text-xs">Vendor</Label>
+                        <Input
+                          className="h-7 text-xs"
+                          value={f.vendorName}
+                          onChange={(e) => setStageForms((prev) => ({ ...prev, [type]: { ...prev[type], vendorName: e.target.value } }))}
+                          placeholder="Nama vendor..."
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Tanggal</Label>
+                        <Input
+                          className="h-7 text-xs"
+                          type="date"
+                          value={f.date}
+                          onChange={(e) => setStageForms((prev) => ({ ...prev, [type]: { ...prev[type], date: e.target.value } }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Status</Label>
+                        <Select value={f.status} onValueChange={(v) => setStageForms((prev) => ({ ...prev, [type]: { ...prev[type], status: v } }))}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Menunggu</SelectItem>
+                            <SelectItem value="in_progress">Proses</SelectItem>
+                            <SelectItem value="done">Selesai</SelectItem>
+                            <SelectItem value="cancelled">Batal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1 col-span-2">
+                        <Label className="text-xs">Catatan</Label>
+                        <Input
+                          className="h-7 text-xs"
+                          value={f.notes}
+                          onChange={(e) => setStageForms((prev) => ({ ...prev, [type]: { ...prev[type], notes: e.target.value } }))}
+                          placeholder="Catatan..."
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={existingStage ? "outline" : "default"}
+                      className="w-full h-7 text-xs"
+                      onClick={() => handleSaveStage(type)}
+                      disabled={upsertStage.isPending}
+                    >
+                      {upsertStage.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      {existingStage ? "Perbarui" : "Simpan"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* RFQ Section — screen only */}
         <div className="print:hidden space-y-4">

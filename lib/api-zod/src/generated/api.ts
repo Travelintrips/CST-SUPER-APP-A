@@ -619,6 +619,8 @@ export const ListFreightShipmentsResponseItem = zod.object({
   trackingNumber: zod.string().nullish(),
   awbNumber: zod.string().nullish(),
   transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
+  containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
@@ -654,6 +656,8 @@ export const CreateFreightShipmentBody = zod.object({
   status: zod.string().nullish(),
   notes: zod.string().nullish(),
   transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
+  containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
 });
 
@@ -703,6 +707,8 @@ export const GetFreightShipmentResponse = zod
     trackingNumber: zod.string().nullish(),
     awbNumber: zod.string().nullish(),
     transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+    cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
+    containerNo: zod.string().nullish(),
     salesDocId: zod.number().nullish(),
     createdById: zod.string().nullish(),
     createdAt: zod.string(),
@@ -742,6 +748,18 @@ export const GetFreightShipmentResponse = zod
             }),
           ),
       ),
+      stages: zod.array(
+        zod.object({
+          id: zod.number(),
+          shipmentId: zod.number(),
+          stageType: zod.enum(["booking", "trucking", "handling", "customs"]),
+          vendorName: zod.string().nullish(),
+          date: zod.string().nullish(),
+          status: zod.enum(["pending", "in_progress", "done", "cancelled"]),
+          notes: zod.string().nullish(),
+          createdAt: zod.string(),
+        }),
+      ),
     }),
   );
 
@@ -777,6 +795,8 @@ export const UpdateFreightShipmentBody = zod
     status: zod.string().nullish(),
     notes: zod.string().nullish(),
     transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+    cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
+    containerNo: zod.string().nullish(),
     salesDocId: zod.number().nullish(),
   })
   .and(
@@ -827,6 +847,8 @@ export const UpdateFreightShipmentResponse = zod.object({
   trackingNumber: zod.string().nullish(),
   awbNumber: zod.string().nullish(),
   transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
+  containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
@@ -841,6 +863,53 @@ export const DeleteFreightShipmentParams = zod.object({
 
 export const DeleteFreightShipmentResponse = zod.object({
   message: zod.string(),
+});
+
+/**
+ * @summary List operational stages for a shipment
+ */
+export const ListShipmentStagesParams = zod.object({
+  shipmentId: zod.coerce.number(),
+});
+
+export const ListShipmentStagesResponseItem = zod.object({
+  id: zod.number(),
+  shipmentId: zod.number(),
+  stageType: zod.enum(["booking", "trucking", "handling", "customs"]),
+  vendorName: zod.string().nullish(),
+  date: zod.string().nullish(),
+  status: zod.enum(["pending", "in_progress", "done", "cancelled"]),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListShipmentStagesResponse = zod.array(
+  ListShipmentStagesResponseItem,
+);
+
+/**
+ * @summary Upsert (create or update) a stage for a shipment
+ */
+export const UpsertShipmentStageParams = zod.object({
+  shipmentId: zod.coerce.number(),
+});
+
+export const UpsertShipmentStageBody = zod.object({
+  stageType: zod.enum(["booking", "trucking", "handling", "customs"]),
+  vendorName: zod.string().nullish(),
+  date: zod.string().nullish(),
+  status: zod.enum(["pending", "in_progress", "done", "cancelled"]).optional(),
+  notes: zod.string().nullish(),
+});
+
+export const UpsertShipmentStageResponse = zod.object({
+  id: zod.number(),
+  shipmentId: zod.number(),
+  stageType: zod.enum(["booking", "trucking", "handling", "customs"]),
+  vendorName: zod.string().nullish(),
+  date: zod.string().nullish(),
+  status: zod.enum(["pending", "in_progress", "done", "cancelled"]),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
 });
 
 /**
