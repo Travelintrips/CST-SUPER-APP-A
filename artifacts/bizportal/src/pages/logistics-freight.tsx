@@ -15,6 +15,7 @@ import {
   useListFreightShipments,
   useDeleteFreightShipment,
   getListFreightShipmentsQueryKey,
+  type FreightShipment,
 } from "@workspace/api-client-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -36,6 +37,13 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const ACTIVE_STATUSES = ["draft", "rfq_sent", "confirmed", "in_transit"];
+
+const BL_ELIGIBLE_STATUSES = ["confirmed", "in_transit", "completed"];
+
+function hasBLData(s: FreightShipment): boolean {
+  if (!BL_ELIGIBLE_STATUSES.includes(s.status)) return false;
+  return !!(s.vessel || s.voyage || s.portOfLoading || s.portOfDischarge || s.notifyParty || s.marksAndNumbers || s.measurement);
+}
 
 const FREIGHT_REFRESH_INTERVALS = [
   { label: "30 detik", value: "30" },
@@ -455,6 +463,12 @@ export default function LogisticsFreightPage() {
                     <TableRow key={s.id}>
                       <TableCell>
                         <div className="font-mono text-sm font-semibold">{s.shipmentNumber}</div>
+                        {hasBLData(s) && (
+                          <div className="flex items-center gap-0.5 mt-0.5 text-xs text-sky-600 dark:text-sky-400 font-medium">
+                            <Ship className="h-3 w-3" />
+                            <span>B/L</span>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>{s.shipperName}</TableCell>
                       <TableCell>{s.consigneeName}</TableCell>
@@ -531,9 +545,17 @@ export default function LogisticsFreightPage() {
                   {/* Header: shipment number + status */}
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-sm font-semibold truncate">{s.shipmentNumber}</span>
-                    <Badge variant="outline" className={`shrink-0 ${STATUS_COLORS[s.status] ?? ""}`}>
-                      {STATUS_LABELS[s.status] ?? s.status}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {hasBLData(s) && (
+                        <span className="inline-flex items-center gap-0.5 text-xs font-medium text-sky-600 dark:text-sky-400" title="Bill of Lading tersedia">
+                          <Ship className="h-3 w-3" />
+                          B/L
+                        </span>
+                      )}
+                      <Badge variant="outline" className={STATUS_COLORS[s.status] ?? ""}>
+                        {STATUS_LABELS[s.status] ?? s.status}
+                      </Badge>
+                    </div>
                   </div>
 
                   {/* Shipper → Consignee */}
