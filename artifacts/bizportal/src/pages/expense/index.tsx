@@ -18,7 +18,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Receipt, Search, Trash2 } from "lucide-react";
+import { Briefcase, Plus, Receipt, Search, Trash2 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -95,6 +95,9 @@ export default function ExpenseListPage() {
   const { data: shipments = [] } = useListFreightShipments();
   const deleteMut = useDeleteExpense();
   const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  const soMap = Object.fromEntries(salesDocs.map((sd) => [sd.id, sd.docNumber]));
+  const shipMap = Object.fromEntries(shipments.map((sh) => [sh.id, sh.shipmentNumber]));
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -208,6 +211,7 @@ export default function ExpenseListPage() {
                   <TableHead>Vendor/Karyawan</TableHead>
                   <TableHead>Deskripsi</TableHead>
                   <TableHead>Kategori</TableHead>
+                  <TableHead>Job / Referensi</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-12"></TableHead>
@@ -216,12 +220,12 @@ export default function ExpenseListPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
+                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Memuat data...</TableCell>
                   </TableRow>
                 )}
                 {!isLoading && expenses.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                       Belum ada expense. Klik "Buat Expense" untuk memulai.
                     </TableCell>
                   </TableRow>
@@ -245,6 +249,29 @@ export default function ExpenseListPage() {
                         {cat ? (
                           <Badge variant="secondary" className="text-xs">{cat.name}</Badge>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          {exp.salesDocId && soMap[exp.salesDocId] && (
+                            <Link href={`/sales/${exp.salesDocId}`}>
+                              <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
+                                <Briefcase size={10} />
+                                {soMap[exp.salesDocId]}
+                              </span>
+                            </Link>
+                          )}
+                          {exp.shipmentId && shipMap[exp.shipmentId] && (
+                            <Link href={`/logistics/freight/${exp.shipmentId}`}>
+                              <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
+                                <Briefcase size={10} />
+                                {shipMap[exp.shipmentId]}
+                              </span>
+                            </Link>
+                          )}
+                          {!exp.salesDocId && !exp.shipmentId && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right font-medium">{idr(exp.total)}</TableCell>
                       <TableCell><StatusBadge status={exp.status} /></TableCell>
