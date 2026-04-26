@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Printer, ArrowLeft, Download, Loader2 } from "lucide-react";
 import { useGetFreightShipment } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
 
 const BL_ALLOWED_STATUSES = ["confirmed", "in_transit", "completed"];
 
@@ -37,6 +38,7 @@ export default function LogisticsFreightBLPage() {
   const [, navigate] = useLocation();
   const blRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const { toast } = useToast();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
 
@@ -57,9 +59,27 @@ export default function LogisticsFreightBLPage() {
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+
+      if (pdfHeight <= pageHeight) {
+        pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      } else {
+        let heightLeft = pdfHeight;
+        let position = 0;
+        pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+        while (heightLeft > 0) {
+          position -= pageHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+          heightLeft -= pageHeight;
+        }
+      }
+
       pdf.save(`BL-${shipment.shipmentNumber}.pdf`);
+    } catch {
+      toast({ title: "Gagal membuat PDF", description: "Terjadi kesalahan saat membuat file PDF. Silakan coba lagi.", variant: "destructive" });
     } finally {
       setIsGeneratingPDF(false);
     }
