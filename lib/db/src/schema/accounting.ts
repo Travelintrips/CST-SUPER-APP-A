@@ -226,6 +226,7 @@ export const accountingPaymentsTable = pgTable("accounting_payments", {
   }),
   sourceType: text("source_type"),
   sourceDocId: integer("source_doc_id"),
+  voidReason: text("void_reason"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

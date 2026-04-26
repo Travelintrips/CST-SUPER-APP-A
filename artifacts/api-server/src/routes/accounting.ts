@@ -265,18 +265,12 @@ router.post("/entries", async (req, res) => {
 });
 
 // ============ Payments & Receipts ============
-function parseVoidReason(description: string | null | undefined): string | null {
-  if (!description) return null;
-  const match = description.match(/—\s*Alasan:\s*(.+)/);
-  return match ? match[1]!.trim() : null;
-}
-
-function serializePayment(p: typeof accountingPaymentsTable.$inferSelect, voidDescription?: string | null) {
+function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
   return {
     ...p,
     amount: Number(p.amount),
     createdAt: p.createdAt.toISOString(),
-    voidReason: parseVoidReason(voidDescription) ?? null,
+    voidReason: p.voidReason ?? null,
   };
 }
 
@@ -299,13 +293,12 @@ router.get("/payments", async (req, res) => {
     conds.push(eq(accountingPaymentsTable.sourceDocId, sourceDocIdFilter));
   }
   const rows = await db
-    .select({ payment: accountingPaymentsTable, voidDescription: accountingEntriesTable.description })
+    .select()
     .from(accountingPaymentsTable)
-    .leftJoin(accountingEntriesTable, eq(accountingPaymentsTable.voidEntryId, accountingEntriesTable.id))
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(accountingPaymentsTable.date), desc(accountingPaymentsTable.id))
     .limit(500);
-  return res.json(rows.map(({ payment, voidDescription }) => serializePayment(payment, voidDescription)));
+  return res.json(rows.map(serializePayment));
 });
 
 router.get("/payments/:id", async (req, res) => {
@@ -321,12 +314,7 @@ router.get("/payments/:id", async (req, res) => {
       entry = { ...serializeEntry(e), lines: lines.map(serializeEntryLine) };
     }
   }
-  let voidDesc: string | null = null;
-  if (payment.voidEntryId) {
-    const [ve] = await db.select({ description: accountingEntriesTable.description }).from(accountingEntriesTable).where(eq(accountingEntriesTable.id, payment.voidEntryId));
-    voidDesc = ve?.description ?? null;
-  }
-  return res.json({ ...serializePayment(payment, voidDesc), entry });
+  return res.json({ ...serializePayment(payment), entry });
 });
 
 router.post("/payments", async (req, res) => {
@@ -590,7 +578,7 @@ router.post("/payments/:id/void", async (req, res) => {
 
     await db
       .update(accountingPaymentsTable)
-      .set({ status: "voided", voidEntryId: voidEntry.id })
+      .set({ status: "voided", voidEntryId: voidEntry.id, voidReason: reason })
       .where(eq(accountingPaymentsTable.id, id));
 
     const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -641,7 +629,7 @@ router.post("/payments/:id/void", async (req, res) => {
     const [updated] = await db.select().from(accountingPaymentsTable).where(eq(accountingPaymentsTable.id, id));
     const voidLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, voidEntry.id));
     return res.json({
-      ...serializePayment(updated!, voidDescription),
+      ...serializePayment(updated!),
       entry: { ...serializeEntry(voidEntry), lines: voidLines.map(serializeEntryLine) },
     });
   } catch (err) {
