@@ -674,6 +674,9 @@ router.patch("/settings", async (req, res) => {
   ]) {
     if (req.body?.[k] !== undefined) patch[k] = req.body[k] === null ? null : Number(req.body[k]);
   }
+  for (const k of ["companyName", "companyAddress", "companyNpwp"]) {
+    if (req.body?.[k] !== undefined) patch[k] = req.body[k] === null ? null : String(req.body[k]);
+  }
   await db.update(accountingSettingsTable).set(patch).where(eq(accountingSettingsTable.id, s.id));
   const [updated] = await db.select().from(accountingSettingsTable).where(eq(accountingSettingsTable.id, s.id));
   return res.json(serializeSettings(updated!));

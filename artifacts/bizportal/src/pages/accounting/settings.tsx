@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -25,6 +27,7 @@ const EMPTY: SettingsForm = {
   salesJournalId: null, purchaseJournalId: null,
   bankJournalId: null, cashJournalId: null,
   defaultSalesTaxId: null, defaultPurchaseTaxId: null,
+  companyName: null, companyAddress: null, companyNpwp: null,
 };
 
 export default function AccountingSettingsPage() {
@@ -57,6 +60,9 @@ export default function AccountingSettingsPage() {
         cashJournalId: settings.cashJournalId ?? null,
         defaultSalesTaxId: settings.defaultSalesTaxId ?? null,
         defaultPurchaseTaxId: settings.defaultPurchaseTaxId ?? null,
+        companyName: settings.companyName ?? null,
+        companyAddress: settings.companyAddress ?? null,
+        companyNpwp: settings.companyNpwp ?? null,
       });
     }
   }, [settings]);
@@ -123,6 +129,43 @@ export default function AccountingSettingsPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2"><SettingsIcon className="h-6 w-6" />Pengaturan Akunting</h1>
           <p className="text-sm text-muted-foreground">Mapping akun &amp; jurnal default untuk auto-posting semua modul</p>
         </div>
+
+        <Card>
+          <CardHeader><CardTitle>Profil Perusahaan</CardTitle></CardHeader>
+          <CardContent className="grid gap-4">
+            <div>
+              <Label htmlFor="companyName">Nama Perusahaan</Label>
+              <Input
+                id="companyName"
+                data-testid="input-companyName"
+                value={form.companyName ?? ""}
+                onChange={(e) => setForm({ ...form, companyName: e.target.value || null })}
+                placeholder="Cth. PT Maju Bersama"
+              />
+            </div>
+            <div>
+              <Label htmlFor="companyAddress">Alamat Perusahaan</Label>
+              <Textarea
+                id="companyAddress"
+                data-testid="input-companyAddress"
+                value={form.companyAddress ?? ""}
+                onChange={(e) => setForm({ ...form, companyAddress: e.target.value || null })}
+                placeholder="Cth. Jl. Sudirman No. 1, Jakarta Pusat 10220"
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="companyNpwp">NPWP Perusahaan</Label>
+              <Input
+                id="companyNpwp"
+                data-testid="input-companyNpwp"
+                value={form.companyNpwp ?? ""}
+                onChange={(e) => setForm({ ...form, companyNpwp: e.target.value || null })}
+                placeholder="Cth. 01.234.567.8-901.000"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader><CardTitle>Akun Default — Sales &amp; Purchase</CardTitle></CardHeader>

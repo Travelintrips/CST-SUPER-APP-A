@@ -199,6 +199,9 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
     () => chartOfAccountsTable.id,
     { onDelete: "set null" },
   ),
+  companyName: text("company_name"),
+  companyAddress: text("company_address"),
+  companyNpwp: text("company_npwp"),
   meta: jsonb("meta"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
