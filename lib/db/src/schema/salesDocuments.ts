@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, date, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
@@ -43,6 +43,11 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   taxRateId: integer("tax_rate_id"),
   taxAmount: numeric("tax_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   grandTotal: numeric("grand_total", { precision: 14, scale: 2 }).notNull().default("0"),
+  origin: text("origin"),
+  destination: text("destination"),
+  transportMode: text("transport_mode"),
+  etd: date("etd"),
+  eta: date("eta"),
   validUntil: timestamp("valid_until"),
   expectedDate: timestamp("expected_date"),
   notes: text("notes"),

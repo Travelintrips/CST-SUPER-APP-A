@@ -83,6 +83,7 @@ import type {
   ListExpensesParams,
   ListFreightQuotesParams,
   ListFreightRfqsParams,
+  ListFreightShipmentsParams,
   ListProductsParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
@@ -2533,41 +2534,66 @@ export const useUpdateShipmentStatus = <
 /**
  * @summary List all freight shipments
  */
-export const getListFreightShipmentsUrl = () => {
-  return `/api/logistics/freight-shipments`;
+export const getListFreightShipmentsUrl = (
+  params?: ListFreightShipmentsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/logistics/freight-shipments?${stringifiedParams}`
+    : `/api/logistics/freight-shipments`;
 };
 
 export const listFreightShipments = async (
+  params?: ListFreightShipmentsParams,
   options?: RequestInit,
 ): Promise<FreightShipment[]> => {
-  return customFetch<FreightShipment[]>(getListFreightShipmentsUrl(), {
+  return customFetch<FreightShipment[]>(getListFreightShipmentsUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListFreightShipmentsQueryKey = () => {
-  return [`/api/logistics/freight-shipments`] as const;
+export const getListFreightShipmentsQueryKey = (
+  params?: ListFreightShipmentsParams,
+) => {
+  return [
+    `/api/logistics/freight-shipments`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getListFreightShipmentsQueryOptions = <
   TData = Awaited<ReturnType<typeof listFreightShipments>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listFreightShipments>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListFreightShipmentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightShipments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListFreightShipmentsQueryKey();
+  const queryKey =
+    queryOptions?.queryKey ?? getListFreightShipmentsQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof listFreightShipments>>
-  > = ({ signal }) => listFreightShipments({ signal, ...requestOptions });
+  > = ({ signal }) =>
+    listFreightShipments(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listFreightShipments>>,
@@ -2588,15 +2614,18 @@ export type ListFreightShipmentsQueryError = ErrorType<unknown>;
 export function useListFreightShipments<
   TData = Awaited<ReturnType<typeof listFreightShipments>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof listFreightShipments>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListFreightShipmentsQueryOptions(options);
+>(
+  params?: ListFreightShipmentsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFreightShipments>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFreightShipmentsQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

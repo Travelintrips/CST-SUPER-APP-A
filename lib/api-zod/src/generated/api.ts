@@ -577,6 +577,10 @@ export const UpdateShipmentStatusResponse = zod.object({
 /**
  * @summary List all freight shipments
  */
+export const ListFreightShipmentsQueryParams = zod.object({
+  salesDocId: zod.coerce.number().optional(),
+});
+
 export const ListFreightShipmentsResponseItem = zod.object({
   id: zod.number(),
   shipmentNumber: zod.string(),
@@ -614,6 +618,8 @@ export const ListFreightShipmentsResponseItem = zod.object({
   arrivalDate: zod.string().nullish(),
   trackingNumber: zod.string().nullish(),
   awbNumber: zod.string().nullish(),
+  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  salesDocId: zod.number().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -647,6 +653,8 @@ export const CreateFreightShipmentBody = zod.object({
   measurement: zod.string().nullish(),
   status: zod.string().nullish(),
   notes: zod.string().nullish(),
+  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  salesDocId: zod.number().nullish(),
 });
 
 /**
@@ -694,6 +702,8 @@ export const GetFreightShipmentResponse = zod
     arrivalDate: zod.string().nullish(),
     trackingNumber: zod.string().nullish(),
     awbNumber: zod.string().nullish(),
+    transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+    salesDocId: zod.number().nullish(),
     createdById: zod.string().nullish(),
     createdAt: zod.string(),
   })
@@ -766,6 +776,8 @@ export const UpdateFreightShipmentBody = zod
     measurement: zod.string().nullish(),
     status: zod.string().nullish(),
     notes: zod.string().nullish(),
+    transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+    salesDocId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -814,6 +826,8 @@ export const UpdateFreightShipmentResponse = zod.object({
   arrivalDate: zod.string().nullish(),
   trackingNumber: zod.string().nullish(),
   awbNumber: zod.string().nullish(),
+  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  salesDocId: zod.number().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -1297,6 +1311,11 @@ export const ListSalesDocumentsResponseItem = zod.object({
   taxRateId: zod.number().nullish(),
   taxAmount: zod.number(),
   grandTotal: zod.number(),
+  origin: zod.string().nullish(),
+  destination: zod.string().nullish(),
+  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  etd: zod.string().nullish(),
+  eta: zod.string().nullish(),
   validUntil: zod.string().nullish(),
   expectedDate: zod.string().nullish(),
   notes: zod.string().nullish(),
@@ -1316,6 +1335,11 @@ export const CreateSalesDocumentBody = zod.object({
   kind: zod.enum(["quote", "order"]).optional(),
   customerId: zod.number().nullish(),
   customerName: zod.string(),
+  origin: zod.string().nullish(),
+  destination: zod.string().nullish(),
+  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  etd: zod.string().nullish(),
+  eta: zod.string().nullish(),
   validUntil: zod.string().nullish(),
   expectedDate: zod.string().nullish(),
   notes: zod.string().nullish(),
@@ -1352,6 +1376,11 @@ export const GetSalesDocumentResponse = zod
     taxRateId: zod.number().nullish(),
     taxAmount: zod.number(),
     grandTotal: zod.number(),
+    origin: zod.string().nullish(),
+    destination: zod.string().nullish(),
+    transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+    etd: zod.string().nullish(),
+    eta: zod.string().nullish(),
     validUntil: zod.string().nullish(),
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
@@ -1388,6 +1417,11 @@ export const UpdateSalesDocumentBody = zod.object({
   kind: zod.enum(["quote", "order"]).optional(),
   customerId: zod.number().nullish(),
   customerName: zod.string(),
+  origin: zod.string().nullish(),
+  destination: zod.string().nullish(),
+  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  etd: zod.string().nullish(),
+  eta: zod.string().nullish(),
   validUntil: zod.string().nullish(),
   expectedDate: zod.string().nullish(),
   notes: zod.string().nullish(),
@@ -1417,6 +1451,11 @@ export const UpdateSalesDocumentResponse = zod
     taxRateId: zod.number().nullish(),
     taxAmount: zod.number(),
     grandTotal: zod.number(),
+    origin: zod.string().nullish(),
+    destination: zod.string().nullish(),
+    transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+    etd: zod.string().nullish(),
+    eta: zod.string().nullish(),
     validUntil: zod.string().nullish(),
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
@@ -1485,6 +1524,11 @@ export const SalesDocumentActionResponse = zod
     taxRateId: zod.number().nullish(),
     taxAmount: zod.number(),
     grandTotal: zod.number(),
+    origin: zod.string().nullish(),
+    destination: zod.string().nullish(),
+    transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+    etd: zod.string().nullish(),
+    eta: zod.string().nullish(),
     validUntil: zod.string().nullish(),
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),

@@ -617,6 +617,11 @@ paths:
       operationId: listFreightShipments
       tags: [logistics]
       summary: List all freight shipments
+      parameters:
+        - in: query
+          name: salesDocId
+          schema: { type: integer }
+          required: false
       responses:
         "200":
           description: Freight shipments list
@@ -2899,6 +2904,22 @@ components:
           type: number
         grandTotal:
           type: number
+        origin:
+          type: string
+          nullable: true
+        destination:
+          type: string
+          nullable: true
+        transportMode:
+          type: string
+          enum: [sea, air, land, multimodal]
+          nullable: true
+        etd:
+          type: string
+          nullable: true
+        eta:
+          type: string
+          nullable: true
         validUntil:
           type: string
           nullable: true
@@ -2941,6 +2962,22 @@ components:
           nullable: true
         customerName:
           type: string
+        origin:
+          type: string
+          nullable: true
+        destination:
+          type: string
+          nullable: true
+        transportMode:
+          type: string
+          enum: [sea, air, land, multimodal]
+          nullable: true
+        etd:
+          type: string
+          nullable: true
+        eta:
+          type: string
+          nullable: true
         validUntil:
           type: string
           nullable: true
@@ -3768,6 +3805,8 @@ components:
         arrivalDate: { type: string, nullable: true }
         trackingNumber: { type: string, nullable: true }
         awbNumber: { type: string, nullable: true }
+        transportMode: { type: string, enum: [sea, air, land, multimodal], nullable: true }
+        salesDocId: { type: integer, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
       required: [id, shipmentNumber, shipperName, consigneeName, commodity, origin, destination, status, createdAt]
@@ -3871,6 +3910,8 @@ components:
         measurement: { type: string, nullable: true }
         status: { type: string, nullable: true }
         notes: { type: string, nullable: true }
+        transportMode: { type: string, enum: [sea, air, land, multimodal], nullable: true }
+        salesDocId: { type: integer, nullable: true }
       required: [shipperName, consigneeName, commodity, origin, destination]
 
     UpdateFreightShipmentBody:

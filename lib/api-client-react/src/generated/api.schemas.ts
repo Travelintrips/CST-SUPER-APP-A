@@ -439,6 +439,17 @@ export const SalesDocumentDeliveryStatus = {
   delivered: "delivered",
 } as const;
 
+export type SalesDocumentTransportMode =
+  | (typeof SalesDocumentTransportMode)[keyof typeof SalesDocumentTransportMode]
+  | null;
+
+export const SalesDocumentTransportMode = {
+  sea: "sea",
+  air: "air",
+  land: "land",
+  multimodal: "multimodal",
+} as const;
+
 export interface SalesDocument {
   id: number;
   docNumber: string;
@@ -452,6 +463,11 @@ export interface SalesDocument {
   taxRateId?: number | null;
   taxAmount: number;
   grandTotal: number;
+  origin?: string | null;
+  destination?: string | null;
+  transportMode?: SalesDocumentTransportMode;
+  etd?: string | null;
+  eta?: string | null;
   validUntil?: string | null;
   expectedDate?: string | null;
   notes?: string | null;
@@ -473,10 +489,26 @@ export const CreateSalesDocumentBodyKind = {
   order: "order",
 } as const;
 
+export type CreateSalesDocumentBodyTransportMode =
+  | (typeof CreateSalesDocumentBodyTransportMode)[keyof typeof CreateSalesDocumentBodyTransportMode]
+  | null;
+
+export const CreateSalesDocumentBodyTransportMode = {
+  sea: "sea",
+  air: "air",
+  land: "land",
+  multimodal: "multimodal",
+} as const;
+
 export interface CreateSalesDocumentBody {
   kind?: CreateSalesDocumentBodyKind;
   customerId?: number | null;
   customerName: string;
+  origin?: string | null;
+  destination?: string | null;
+  transportMode?: CreateSalesDocumentBodyTransportMode;
+  etd?: string | null;
+  eta?: string | null;
   validUntil?: string | null;
   expectedDate?: string | null;
   notes?: string | null;
@@ -1283,6 +1315,17 @@ export const FreightShipmentStatus = {
   cancelled: "cancelled",
 } as const;
 
+export type FreightShipmentTransportMode =
+  | (typeof FreightShipmentTransportMode)[keyof typeof FreightShipmentTransportMode]
+  | null;
+
+export const FreightShipmentTransportMode = {
+  sea: "sea",
+  air: "air",
+  land: "land",
+  multimodal: "multimodal",
+} as const;
+
 export interface FreightShipment {
   id: number;
   shipmentNumber: string;
@@ -1313,6 +1356,8 @@ export interface FreightShipment {
   arrivalDate?: string | null;
   trackingNumber?: string | null;
   awbNumber?: string | null;
+  transportMode?: FreightShipmentTransportMode;
+  salesDocId?: number | null;
   createdById?: string | null;
   createdAt: string;
 }
@@ -1396,6 +1441,17 @@ export type FreightShipmentDetail = FreightShipment & {
   rfqs: FreightRfqWithQuotes[];
 };
 
+export type CreateFreightShipmentBodyTransportMode =
+  | (typeof CreateFreightShipmentBodyTransportMode)[keyof typeof CreateFreightShipmentBodyTransportMode]
+  | null;
+
+export const CreateFreightShipmentBodyTransportMode = {
+  sea: "sea",
+  air: "air",
+  land: "land",
+  multimodal: "multimodal",
+} as const;
+
 export interface CreateFreightShipmentBody {
   shipperName: string;
   shipperAddress?: string | null;
@@ -1419,6 +1475,8 @@ export interface CreateFreightShipmentBody {
   measurement?: string | null;
   status?: string | null;
   notes?: string | null;
+  transportMode?: CreateFreightShipmentBodyTransportMode;
+  salesDocId?: number | null;
 }
 
 export type UpdateFreightShipmentBody = CreateFreightShipmentBody & {
@@ -1595,6 +1653,10 @@ export type ListProductsParams = {
   itemType?: string;
   subcategory?: string;
   isActive?: string;
+};
+
+export type ListFreightShipmentsParams = {
+  salesDocId?: number;
 };
 
 export type ListFreightRfqsParams = {
