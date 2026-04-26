@@ -3205,6 +3205,9 @@ components:
         defaultPurchaseTaxId: { type: integer, nullable: true }
         inventoryAccountId: { type: integer, nullable: true }
         cogsAccountId: { type: integer, nullable: true }
+        companyName: { type: string, nullable: true }
+        companyAddress: { type: string, nullable: true }
+        companyNpwp: { type: string, nullable: true }
         updatedAt: { type: string }
       required: [id, updatedAt]
 
@@ -3227,6 +3230,9 @@ components:
         defaultPurchaseTaxId: { type: integer, nullable: true }
         inventoryAccountId: { type: integer, nullable: true }
         cogsAccountId: { type: integer, nullable: true }
+        companyName: { type: string, nullable: true }
+        companyAddress: { type: string, nullable: true }
+        companyNpwp: { type: string, nullable: true }
 
     TrialBalanceRow:
       type: object

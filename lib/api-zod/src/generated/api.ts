@@ -2367,6 +2367,9 @@ export const GetAccountingSettingsResponse = zod.object({
   defaultPurchaseTaxId: zod.number().nullish(),
   inventoryAccountId: zod.number().nullish(),
   cogsAccountId: zod.number().nullish(),
+  companyName: zod.string().nullish(),
+  companyAddress: zod.string().nullish(),
+  companyNpwp: zod.string().nullish(),
   updatedAt: zod.string(),
 });
 
@@ -2390,6 +2393,9 @@ export const UpdateAccountingSettingsBody = zod.object({
   defaultPurchaseTaxId: zod.number().nullish(),
   inventoryAccountId: zod.number().nullish(),
   cogsAccountId: zod.number().nullish(),
+  companyName: zod.string().nullish(),
+  companyAddress: zod.string().nullish(),
+  companyNpwp: zod.string().nullish(),
 });
 
 export const UpdateAccountingSettingsResponse = zod.object({
@@ -2410,6 +2416,9 @@ export const UpdateAccountingSettingsResponse = zod.object({
   defaultPurchaseTaxId: zod.number().nullish(),
   inventoryAccountId: zod.number().nullish(),
   cogsAccountId: zod.number().nullish(),
+  companyName: zod.string().nullish(),
+  companyAddress: zod.string().nullish(),
+  companyNpwp: zod.string().nullish(),
   updatedAt: zod.string(),
 });
 
