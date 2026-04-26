@@ -327,17 +327,19 @@ export default function CorrespondencesPage() {
     const payload = buildPayload(form);
     if (editingId !== null) {
       const fileToAttach = saveScannedAsAttachment && scannedFile ? scannedFile : null;
-      updateCorrespondence.mutate({ id: editingId, data: payload }, {
+      const currentEditingId = editingId;
+      updateCorrespondence.mutate({ id: currentEditingId, data: payload }, {
         onSuccess: async () => {
           queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
           setIsFormOpen(false);
           setScannedFile(null);
           toast({ title: "Korespondensi berhasil diperbarui" });
+          refreshDetail(currentEditingId);
           if (fileToAttach) {
             const uploadRes = await uploadScannedFile(fileToAttach);
             if (uploadRes) {
               addAttachment.mutate({
-                id: editingId,
+                id: currentEditingId,
                 data: {
                   objectPath: uploadRes.objectPath,
                   fileName: fileToAttach.name,
@@ -346,6 +348,7 @@ export default function CorrespondencesPage() {
               }, {
                 onSuccess: () => {
                   queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+                  refreshDetail(currentEditingId);
                 },
                 onError: () => toast({ title: "Gagal menyimpan lampiran scan", variant: "destructive" }),
               });
