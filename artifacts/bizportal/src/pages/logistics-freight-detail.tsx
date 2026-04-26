@@ -89,6 +89,15 @@ export default function LogisticsFreightDetailPage() {
   const [showCompletedDialog, setShowCompletedDialog] = useState(false);
   const [completedForm, setCompletedForm] = useState({ arrivalDate: "", actualCost: "" });
 
+  const [showEditAktualDialog, setShowEditAktualDialog] = useState(false);
+  const [editAktualForm, setEditAktualForm] = useState({
+    departureDate: "",
+    arrivalDate: "",
+    trackingNumber: "",
+    awbNumber: "",
+    actualCost: "",
+  });
+
   const [showQuoteDialog, setShowQuoteDialog] = useState(false);
   const [quoteRfqId, setQuoteRfqId] = useState<number | null>(null);
   const [quoteForm, setQuoteForm] = useState({
@@ -227,6 +236,45 @@ export default function LogisticsFreightDetailPage() {
           toast({ title: "Status diperbarui: Selesai" });
         },
         onError: () => toast({ title: "Gagal mengubah status", variant: "destructive" }),
+      }
+    );
+  };
+
+  const openEditAktual = () => {
+    setEditAktualForm({
+      departureDate: shipment!.departureDate ? shipment!.departureDate.substring(0, 10) : "",
+      arrivalDate: shipment!.arrivalDate ? shipment!.arrivalDate.substring(0, 10) : "",
+      trackingNumber: shipment!.trackingNumber ?? "",
+      awbNumber: shipment!.awbNumber ?? "",
+      actualCost: shipment!.actualCost ? String(shipment!.actualCost) : "",
+    });
+    setShowEditAktualDialog(true);
+  };
+
+  const handleSaveAktual = () => {
+    updateShipment.mutate(
+      {
+        id,
+        data: {
+          shipperName: shipment!.shipperName,
+          consigneeName: shipment!.consigneeName,
+          commodity: shipment!.commodity,
+          origin: shipment!.origin,
+          destination: shipment!.destination,
+          departureDate: editAktualForm.departureDate || null,
+          arrivalDate: editAktualForm.arrivalDate || null,
+          trackingNumber: editAktualForm.trackingNumber || null,
+          awbNumber: editAktualForm.awbNumber || null,
+          actualCost: editAktualForm.actualCost ? Number(editAktualForm.actualCost) : null,
+        },
+      },
+      {
+        onSuccess: () => {
+          invalidate();
+          setShowEditAktualDialog(false);
+          toast({ title: "Info aktual berhasil disimpan" });
+        },
+        onError: () => toast({ title: "Gagal menyimpan info aktual", variant: "destructive" }),
       }
     );
   };
@@ -411,7 +459,19 @@ export default function LogisticsFreightDetailPage() {
                 {(shipment.departureDate || shipment.arrivalDate || shipment.trackingNumber || shipment.awbNumber || shipment.actualCost) && (
                   <>
                     <Separator className="my-2" />
-                    <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Pengiriman Aktual</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Pengiriman Aktual</p>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 print:hidden"
+                        onClick={openEditAktual}
+                        aria-label="Edit info aktual"
+                        data-testid="button-edit-aktual"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     {shipment.departureDate && (
                       <InfoRow label="Tgl Berangkat" value={new Date(shipment.departureDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })} />
                     )}
@@ -721,6 +781,75 @@ export default function LogisticsFreightDetailPage() {
             <Button onClick={handleMarkCompleted} disabled={updateShipment.isPending}>
               {updateShipment.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Konfirmasi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Aktual Dialog */}
+      <Dialog open={showEditAktualDialog} onOpenChange={setShowEditAktualDialog}>
+        <DialogContent className="max-w-md" data-testid="dialog-edit-aktual">
+          <DialogHeader><DialogTitle>Edit Info Aktual</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="aktual-departure">Tgl Berangkat</Label>
+                <Input
+                  id="aktual-departure"
+                  type="date"
+                  value={editAktualForm.departureDate}
+                  onChange={(e) => setEditAktualForm((f) => ({ ...f, departureDate: e.target.value }))}
+                  data-testid="input-aktual-departure"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="aktual-arrival">Tgl Tiba</Label>
+                <Input
+                  id="aktual-arrival"
+                  type="date"
+                  value={editAktualForm.arrivalDate}
+                  onChange={(e) => setEditAktualForm((f) => ({ ...f, arrivalDate: e.target.value }))}
+                  data-testid="input-aktual-arrival"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="aktual-tracking">No. Tracking</Label>
+              <Input
+                id="aktual-tracking"
+                value={editAktualForm.trackingNumber}
+                onChange={(e) => setEditAktualForm((f) => ({ ...f, trackingNumber: e.target.value }))}
+                placeholder="Nomor tracking pengiriman"
+                data-testid="input-aktual-tracking"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="aktual-awb">No. AWB / BL</Label>
+              <Input
+                id="aktual-awb"
+                value={editAktualForm.awbNumber}
+                onChange={(e) => setEditAktualForm((f) => ({ ...f, awbNumber: e.target.value }))}
+                placeholder="Air Waybill atau Bill of Lading"
+                data-testid="input-aktual-awb"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="aktual-cost">Biaya Aktual (IDR)</Label>
+              <Input
+                id="aktual-cost"
+                type="number"
+                value={editAktualForm.actualCost}
+                onChange={(e) => setEditAktualForm((f) => ({ ...f, actualCost: e.target.value }))}
+                placeholder="0"
+                data-testid="input-aktual-cost"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditAktualDialog(false)}>Batal</Button>
+            <Button onClick={handleSaveAktual} disabled={updateShipment.isPending} data-testid="button-save-aktual">
+              {updateShipment.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Simpan
             </Button>
           </DialogFooter>
         </DialogContent>
