@@ -31,7 +31,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import {
   Plus, Search, Mail, MessageCircle, FileText, MoreHorizontal,
   Paperclip, Trash2, Eye, Pencil, Download, FileImage, ArrowDownLeft, ArrowUpRight,
-  ScanLine, Loader2,
+  ScanLine, Loader2, Camera, Upload,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -143,6 +143,7 @@ export default function CorrespondencesPage() {
   const [viewOpen, setViewOpen] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const scanFileInputRef = useRef<HTMLInputElement>(null);
+  const scanCameraInputRef = useRef<HTMLInputElement>(null);
 
   const uploader = useUpload({
     onSuccess: async (res) => {
@@ -450,22 +451,51 @@ export default function CorrespondencesPage() {
               <DialogDescription>Catat email, surat, atau penawaran sebagai arsip.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full gap-2 border-dashed"
-                disabled={scanLoading}
-                onClick={() => scanFileInputRef.current?.click()}
-                data-testid="button-scan-document"
-              >
-                {scanLoading
-                  ? <><Loader2 className="h-4 w-4 animate-spin" />Sedang mengekstrak data dokumen...</>
-                  : <><ScanLine className="h-4 w-4" />Scan Dokumen — isi form otomatis dari gambar atau PDF</>}
-              </Button>
+              {scanLoading ? (
+                <div className="flex items-center justify-center gap-2 rounded-md border border-dashed px-4 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sedang mengekstrak data dokumen...
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 border-dashed"
+                    onClick={() => scanFileInputRef.current?.click()}
+                    data-testid="button-scan-document"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Upload File
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 border-dashed"
+                    onClick={() => scanCameraInputRef.current?.click()}
+                    data-testid="button-scan-camera"
+                  >
+                    <Camera className="h-4 w-4" />
+                    Ambil Foto
+                  </Button>
+                </div>
+              )}
               <input
                 ref={scanFileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleScanFile(file);
+                  e.target.value = "";
+                }}
+              />
+              <input
+                ref={scanCameraInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="environment"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
