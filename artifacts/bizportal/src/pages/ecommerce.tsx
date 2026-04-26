@@ -150,8 +150,6 @@ export default function EcommercePage() {
   const [filterCategories, setFilterCategories] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState<string>("");
 
-  const categories = productCategories.map((c) => c.name);
-
   const filteredProducts = (products ?? []).filter((p) => {
     if (productSearch.trim()) {
       const q = productSearch.trim().toLowerCase();
