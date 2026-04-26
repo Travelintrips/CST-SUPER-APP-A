@@ -144,7 +144,9 @@ export default function ExpenseReportsPage() {
       rows.push([v.vendor, String(v.total), String(v.count)]);
     }
 
-    const csvContent = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const csvContent = rows
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

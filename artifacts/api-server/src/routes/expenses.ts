@@ -142,11 +142,22 @@ router.post("/seed-categories", async (_req, res) => {
 
 // ===================== Expense Summary / Reports =====================
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const VALID_STATUSES = new Set(["draft", "submitted", "approved", "posted", "paid", "rejected"]);
+
 router.get("/summary", async (req, res) => {
   const { from, to, status } = req.query as Record<string, string>;
 
-  const dateFrom = from ?? new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
-  const dateTo = to ?? new Date().toISOString().slice(0, 10);
+  const dateFrom = from && ISO_DATE_RE.test(from)
+    ? from
+    : new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const dateTo = to && ISO_DATE_RE.test(to)
+    ? to
+    : new Date().toISOString().slice(0, 10);
+
+  if (status && !VALID_STATUSES.has(status)) {
+    return res.status(400).json({ message: `Invalid status: ${status}` });
+  }
 
   const conditions: ReturnType<typeof eq>[] = [
     gte(expensesTable.date, dateFrom),
