@@ -242,22 +242,27 @@ export default function CorrespondencesPage() {
       };
       const d = json.data;
       const filled: string[] = [];
-      setForm((prev) => {
-        const next = { ...prev };
-        if (d.subject) { next.subject = d.subject; filled.push("Subjek"); }
-        if (d.senderName) { next.senderName = d.senderName; filled.push("Nama Pengirim"); }
-        if (d.senderEmail) { next.senderEmail = d.senderEmail; filled.push("Email Pengirim"); }
-        if (d.receiverName) { next.receiverName = d.receiverName; filled.push("Nama Penerima"); }
-        if (d.receiverEmail) { next.receiverEmail = d.receiverEmail; filled.push("Email Penerima"); }
-        if (d.correspondedAt) {
-          try {
-            next.correspondedAt = new Date(d.correspondedAt).toISOString().slice(0, 16);
-            filled.push("Tanggal");
-          } catch {}
-        }
-        if (d.body) { next.body = d.body; filled.push("Isi"); }
-        return next;
-      });
+      let parsedDate: string | undefined;
+      if (d.correspondedAt) {
+        try { parsedDate = new Date(d.correspondedAt).toISOString().slice(0, 16); } catch {}
+      }
+      if (d.subject) filled.push("Subjek");
+      if (d.senderName) filled.push("Nama Pengirim");
+      if (d.senderEmail) filled.push("Email Pengirim");
+      if (d.receiverName) filled.push("Nama Penerima");
+      if (d.receiverEmail) filled.push("Email Penerima");
+      if (parsedDate) filled.push("Tanggal");
+      if (d.body) filled.push("Isi");
+      setForm((prev) => ({
+        ...prev,
+        ...(d.subject ? { subject: d.subject } : {}),
+        ...(d.senderName ? { senderName: d.senderName } : {}),
+        ...(d.senderEmail ? { senderEmail: d.senderEmail } : {}),
+        ...(d.receiverName ? { receiverName: d.receiverName } : {}),
+        ...(d.receiverEmail ? { receiverEmail: d.receiverEmail } : {}),
+        ...(parsedDate ? { correspondedAt: parsedDate } : {}),
+        ...(d.body ? { body: d.body } : {}),
+      }));
       if (filled.length > 0) {
         toast({ title: `Berhasil mengisi: ${filled.join(", ")}` });
       } else {

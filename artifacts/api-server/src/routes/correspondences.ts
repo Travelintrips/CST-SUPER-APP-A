@@ -54,11 +54,11 @@ router.post("/scan", async (req, res, next) => {
   }
 
   const mimeType = file.mimetype;
-  const isImage = mimeType.startsWith("image/");
+  const allowedMimes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
   const isPdf = mimeType === "application/pdf";
 
-  if (!isImage && !isPdf) {
-    res.status(400).json({ message: "Hanya file gambar (JPG, PNG, WEBP) dan PDF yang didukung" });
+  if (!allowedMimes.includes(mimeType)) {
+    res.status(400).json({ message: "Hanya file JPG, PNG, WEBP, dan PDF yang didukung" });
     return;
   }
 
