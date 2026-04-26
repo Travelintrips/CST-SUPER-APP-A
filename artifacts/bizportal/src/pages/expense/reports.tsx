@@ -27,6 +27,11 @@ import {
   CartesianGrid,
   LineChart,
   Line,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  Tooltip,
 } from "recharts";
 import { Download, TrendingUp, Receipt, Users, BarChart2, Printer } from "lucide-react";
 import { Link } from "wouter";
@@ -270,12 +275,12 @@ export default function ExpenseReportsPage() {
           </Card>
         </div>
 
-        {/* Charts row */}
+        {/* Category charts row: bar + pie side by side */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {/* By category bar chart */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Pengeluaran per Kategori</CardTitle>
+              <CardTitle className="text-sm">Pengeluaran per Kategori (Bar)</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -319,55 +324,98 @@ export default function ExpenseReportsPage() {
             </CardContent>
           </Card>
 
-          {/* Monthly trend line chart */}
+          {/* By category pie chart */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Tren Pengeluaran per Bulan</CardTitle>
+              <CardTitle className="text-sm">Komposisi per Kategori (Pie)</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
                 <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">Memuat...</div>
-              ) : monthData.length === 0 ? (
+              ) : categoryData.length === 0 ? (
                 <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">Tidak ada data</div>
               ) : (
-                <ChartContainer config={lineChartConfig} className="h-64 w-full">
-                  <LineChart
-                    data={monthData}
-                    margin={{ top: 4, right: 12, left: 4, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fontSize: 10 }}
-                    />
-                    <YAxis
-                      tickFormatter={idrShort}
-                      tick={{ fontSize: 10 }}
-                      width={60}
-                    />
-                    <ChartTooltip
-                      content={
-                        <ChartTooltipContent
-                          formatter={(v) => idr(Number(v))}
-                          labelFormatter={(_, payload) =>
-                            payload?.[0]?.payload?.month ?? ""
-                          }
-                        />
-                      }
-                    />
-                    <Line
-                      type="monotone"
+                <div className="h-64 w-full">
+                  <PieChart width={300} height={256} style={{ margin: "0 auto" }}>
+                    <Pie
+                      data={categoryData}
                       dataKey="total"
-                      stroke="hsl(var(--chart-2))"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
+                      nameKey="fullName"
+                      cx="50%"
+                      cy="45%"
+                      outerRadius={90}
+                      innerRadius={40}
+                    >
+                      {categoryData.map((entry, i) => (
+                        <Cell key={entry.fullName} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: number) => [idr(v), "Total"]}
                     />
-                  </LineChart>
-                </ChartContainer>
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      formatter={(value) =>
+                        value.length > 16 ? value.slice(0, 14) + "…" : value
+                      }
+                      wrapperStyle={{ fontSize: "10px" }}
+                    />
+                  </PieChart>
+                </div>
               )}
             </CardContent>
           </Card>
         </div>
+
+        {/* Monthly trend line chart — full width */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Tren Pengeluaran per Bulan</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">Memuat...</div>
+            ) : monthData.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-muted-foreground text-sm">Tidak ada data</div>
+            ) : (
+              <ChartContainer config={lineChartConfig} className="h-56 w-full">
+                <LineChart
+                  data={monthData}
+                  margin={{ top: 4, right: 16, left: 4, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10 }}
+                  />
+                  <YAxis
+                    tickFormatter={idrShort}
+                    tick={{ fontSize: 10 }}
+                    width={60}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(v) => idr(Number(v))}
+                        labelFormatter={(_, payload) =>
+                          payload?.[0]?.payload?.month ?? ""
+                        }
+                      />
+                    }
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="total"
+                    stroke="hsl(var(--chart-2))"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Top vendors table */}
         <Card>
