@@ -18,7 +18,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Briefcase, Plus, Receipt, Search, Trash2 } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -255,7 +255,7 @@ export default function ExpenseListPage() {
                           {exp.salesDocId && (
                             <Link href={`/sales/orders/${exp.salesDocId}`}>
                               <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
-                                <Briefcase size={10} />
+                                <ShoppingCart size={10} />
                                 {soMap[exp.salesDocId] ?? `SO #${exp.salesDocId}`}
                               </span>
                             </Link>
@@ -263,7 +263,7 @@ export default function ExpenseListPage() {
                           {exp.shipmentId && (
                             <Link href={`/logistics/freight/${exp.shipmentId}`}>
                               <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
-                                <Briefcase size={10} />
+                                <Ship size={10} />
                                 {shipMap[exp.shipmentId] ?? `SHIP #${exp.shipmentId}`}
                               </span>
                             </Link>
