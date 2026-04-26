@@ -252,19 +252,19 @@ export default function ExpenseListPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
-                          {exp.salesDocId && soMap[exp.salesDocId] && (
-                            <Link href={`/sales/${exp.salesDocId}`}>
+                          {exp.salesDocId && (
+                            <Link href={`/sales/orders/${exp.salesDocId}`}>
                               <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
                                 <Briefcase size={10} />
-                                {soMap[exp.salesDocId]}
+                                {soMap[exp.salesDocId] ?? `SO #${exp.salesDocId}`}
                               </span>
                             </Link>
                           )}
-                          {exp.shipmentId && shipMap[exp.shipmentId] && (
+                          {exp.shipmentId && (
                             <Link href={`/logistics/freight/${exp.shipmentId}`}>
                               <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
                                 <Briefcase size={10} />
-                                {shipMap[exp.shipmentId]}
+                                {shipMap[exp.shipmentId] ?? `SHIP #${exp.shipmentId}`}
                               </span>
                             </Link>
                           )}
