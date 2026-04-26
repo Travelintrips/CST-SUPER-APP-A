@@ -29,6 +29,7 @@ import { FreightAttachmentsPanel } from "@/components/freight/FreightAttachments
 import { useToast } from "@/hooks/use-toast";
 import {
   useGetFreightShipment,
+  useGetSalesDocument,
   useCreateFreightRfq,
   useCreateFreightQuote,
   useApproveFreightQuote,
@@ -88,6 +89,8 @@ export default function LogisticsFreightDetailPage() {
   const { toast } = useToast();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
+  const salesDocId = (shipment as any)?.salesDocId as number | null | undefined;
+  const { data: linkedSalesDoc } = useGetSalesDocument(salesDocId ?? 0, { query: { enabled: !!salesDocId } });
   const { data: expenses = [], isLoading: expensesLoading } = useListExpenses({ shipmentId: id });
   const idr = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -710,6 +713,87 @@ export default function LogisticsFreightDetailPage() {
                 );
               })}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Sales Order & Invoice Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-primary" />
+              Sales Order &amp; Invoice
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {salesDocId && linkedSalesDoc ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-4 p-3 border rounded-lg bg-muted/10">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">No. Sales Order</p>
+                    <p className="font-mono font-semibold text-sm">{linkedSalesDoc.docNumber}</p>
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Pelanggan</p>
+                    <p className="text-sm font-medium truncate">{linkedSalesDoc.customerName}</p>
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Grand Total</p>
+                    <p className="text-sm font-semibold">{idr(Number(linkedSalesDoc.grandTotal))}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Status Invoice</p>
+                    <Badge
+                      variant="outline"
+                      className={
+                        linkedSalesDoc.invoiceStatus === "invoiced"
+                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                          : linkedSalesDoc.invoiceStatus === "to_invoice"
+                          ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                          : "bg-muted text-muted-foreground"
+                      }
+                    >
+                      {linkedSalesDoc.invoiceStatus === "invoiced"
+                        ? "Sudah Diinvoice"
+                        : linkedSalesDoc.invoiceStatus === "to_invoice"
+                        ? "Perlu Diinvoice"
+                        : "Belum Ada Invoice"}
+                    </Badge>
+                  </div>
+                  <Link href={`/sales/${salesDocId}`}>
+                    <Button variant="outline" size="sm">
+                      <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                      Lihat Sales Order
+                    </Button>
+                  </Link>
+                </div>
+                {linkedSalesDoc.invoiceStatus === "to_invoice" && (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <Receipt className="h-4 w-4 text-amber-500 shrink-0" />
+                    <p className="text-xs text-amber-600">Sales Order ini sudah dikonfirmasi dan siap diinvoice. Buka Sales Order untuk menyelesaikan invoicing.</p>
+                    <Link href={`/sales/${salesDocId}`} className="ml-auto">
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-500/10">
+                        Invoice Sekarang
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            ) : salesDocId ? (
+              <div className="flex items-center gap-3 text-muted-foreground text-sm py-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Memuat data Sales Order...
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Shipment ini belum terhubung ke Sales Order. Buat Sales Order untuk membuat invoice kepada pelanggan.</p>
+                <Link href="/sales/new">
+                  <Button variant="outline" size="sm">
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    Buat Sales Order Baru
+                  </Button>
+                </Link>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -174,6 +174,23 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - AppShell: Logistics converted from flat nav item to group with sub-items (Pengiriman, Freight Forwarding)
 - Document Management: `freight_attachments` table extended with `doc_type` (BL/AWB/PIB/PEB/DO/Invoice/PackingList), `doc_number`, `doc_date`, `doc_status` (draft/issued/submitted/received), `invoice_id`; API routes GET/POST/PUT/DELETE at `/api/logistics/freight-shipments/:id/attachments` and `/api/logistics/freight-shipments/:id/attachments/:id`; `FreightAttachmentsPanel` has 3 tabs: **Dokumen Resmi** (structured document upload form with type/number/date/status + inline editing per row), **Foto Kargo** (camera upload), **Scan Barcode/QR** (ZXing); panel integrated into freight detail page
 
+### Sales Order ↔ Shipment Linkage (Module 7 completion)
+
+- `freight_shipments.sales_doc_id` (FK → `sales_documents.id`) links shipments to their originating Sales Order.
+- `freight_shipments.transport_mode` mirrors Sales Order transport mode on the shipment.
+- `sales_documents` has logistics fields: `origin`, `destination`, `transport_mode`, `etd` (date), `eta` (date).
+- Sales Order editor (`quotation-editor.tsx`) has a "Detail Logistik" card (origin, destination, transport mode, ETD, ETA) and, on the order view, a "Shipment / Job Terkait" panel that lists linked shipments + a "Buat Pengiriman" button. The button links to `/logistics/freight/new?salesDocId=X&origin=...&destination=...&consigneeName=...&transportMode=...` to pre-fill the new shipment form.
+- Freight editor (`logistics-freight-editor.tsx`) reads all URL params on mount to pre-fill origin, destination, consigneeName, transportMode, and sets salesDocId state.
+- Freight detail page (`logistics-freight-detail.tsx`) shows a "Sales Order & Invoice" card when `salesDocId` is set: displays SO number, customer name, grand total, invoice status badge, and a "Lihat Sales Order" button; shows a callout when invoice status is `to_invoice`.
+- Freight list endpoint accepts `?salesDocId=N` filter.
+
+### Logistics Service Items Seed
+
+- `artifacts/api-server/src/lib/seedLogisticsItems.ts` — idempotent startup seed that inserts 10 pre-defined logistics jasa items into `products` (itemType="jasa", subcategory="Logistics Services"):
+  - SVC-OCEAN-FREIGHT, SVC-AIR-FREIGHT, SVC-TRUCKING, SVC-HANDLING, SVC-CUSTOMS, SVC-PPJK, SVC-PORT-CHARGES, SVC-STORAGE, SVC-EMKL, SVC-INSURANCE
+- Called in `index.ts` alongside `seedAccountingDefaults()` using `.onConflictDoNothing({ target: productsTable.sku })`.
+- These appear in the item picker on Sales Orders filtered by `itemType = jasa`.
+
 ## Expense / Biaya Operasional Module
 
 - Routes: `/expense` (list), `/expense/new` (create), `/expense/:id` (edit/detail), `/expense/categories` (categories management)
