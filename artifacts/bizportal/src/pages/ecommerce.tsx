@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer, Search } from "lucide-react";
+import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -47,6 +47,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@workspace/object-storage-web";
@@ -146,7 +147,7 @@ export default function EcommercePage() {
 
   const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
-  const [filterCategory, setFilterCategory] = useState<string>("__all__");
+  const [filterCategories, setFilterCategories] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState<string>("");
 
   const categories = productCategories.map((c) => c.name);
@@ -170,7 +171,7 @@ export default function EcommercePage() {
         if (String(p.defaultPurchaseTaxId) !== filterPurchaseTaxId) return false;
       }
     }
-    if (filterCategory !== "__all__" && !(p.categories ?? []).includes(filterCategory)) return false;
+    if (filterCategories.length > 0 && !filterCategories.some((cat) => (p.categories ?? []).includes(cat))) return false;
     return true;
   });
 
@@ -571,18 +572,84 @@ export default function EcommercePage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={filterCategory} onValueChange={setFilterCategory} data-testid="filter-category">
-                <SelectTrigger className="sm:w-[200px]" data-testid="filter-category-trigger">
-                  <SelectValue placeholder="Filter Kategori" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Semua Kategori</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="sm:w-[200px] justify-between font-normal"
+                    data-testid="filter-category-trigger"
+                  >
+                    <span className="truncate">
+                      {filterCategories.length === 0
+                        ? "Semua Kategori"
+                        : filterCategories.length === 1
+                          ? filterCategories[0]
+                          : `${filterCategories.length} kategori`}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2" align="start" data-testid="filter-category-popover">
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                      onClick={() => setFilterCategories([])}
+                    >
+                      <span className={`h-4 w-4 rounded-sm border flex items-center justify-center ${filterCategories.length === 0 ? "bg-primary border-primary" : "border-input"}`}>
+                        {filterCategories.length === 0 && <span className="block h-2 w-2 bg-primary-foreground rounded-[2px]" />}
+                      </span>
+                      Semua Kategori
+                    </button>
+                    {categories.map((cat) => (
+                      <label
+                        key={cat}
+                        className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent cursor-pointer"
+                        data-testid={`filter-category-option-${cat}`}
+                      >
+                        <Checkbox
+                          checked={filterCategories.includes(cat)}
+                          onCheckedChange={(checked) =>
+                            setFilterCategories((prev) =>
+                              checked ? [...prev, cat] : prev.filter((c) => c !== cat)
+                            )
+                          }
+                        />
+                        {cat}
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
+
+            {filterCategories.length > 0 && (
+              <div className="flex flex-wrap gap-2 items-center" data-testid="filter-category-chips">
+                <span className="text-xs text-muted-foreground">Kategori:</span>
+                {filterCategories.map((cat) => (
+                  <Badge key={cat} variant="secondary" className="gap-1 pr-1">
+                    {cat}
+                    <button
+                      type="button"
+                      aria-label={`Hapus filter ${cat}`}
+                      onClick={() => setFilterCategories((prev) => prev.filter((c) => c !== cat))}
+                      className="rounded-full hover:bg-muted-foreground/20 p-0.5"
+                      data-testid={`chip-remove-category-${cat}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setFilterCategories([])}
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  data-testid="clear-category-filters"
+                >
+                  Hapus semua
+                </button>
+              </div>
+            )}
 
             <Card className="hidden md:block">
               <CardContent className="p-0">
@@ -620,7 +687,7 @@ export default function EcommercePage() {
                         <TableCell colSpan={9} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
-                            <p>{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                            <p>{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategories.length > 0) ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -684,7 +751,7 @@ export default function EcommercePage() {
               ) : filteredProducts.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <PackageSearch className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategory !== "__all__") ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
+                  <p className="text-sm text-muted-foreground">{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategories.length > 0) ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                 </CardContent></Card>
               ) : (
                 filteredProducts.map((product) => (
