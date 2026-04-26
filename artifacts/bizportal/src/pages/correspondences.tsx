@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -142,8 +143,14 @@ export default function CorrespondencesPage() {
   const [viewingDetail, setViewingDetail] = useState<CorrespondenceDetail | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [scannedFile, setScannedFile] = useState<File | null>(null);
+  const [saveScannedAsAttachment, setSaveScannedAsAttachment] = useState(true);
   const scanFileInputRef = useRef<HTMLInputElement>(null);
   const scanCameraInputRef = useRef<HTMLInputElement>(null);
+
+  const { uploadFile: uploadScannedFile } = useUpload({
+    onError: () => toast({ title: "Gagal mengunggah lampiran scan", variant: "destructive" }),
+  });
 
   const uploader = useUpload({
     onSuccess: async (res) => {
@@ -176,10 +183,14 @@ export default function CorrespondencesPage() {
   function openCreate() {
     setEditingId(null);
     setForm(emptyForm());
+    setScannedFile(null);
+    setSaveScannedAsAttachment(true);
     setIsFormOpen(true);
   }
 
   function openEdit(c: Correspondence) {
+    setScannedFile(null);
+    setSaveScannedAsAttachment(true);
     setEditingId(c.id);
     setForm({
       kind: c.kind,
@@ -264,6 +275,8 @@ export default function CorrespondencesPage() {
         ...(parsedDate ? { correspondedAt: parsedDate } : {}),
         ...(d.body ? { body: d.body } : {}),
       }));
+      setScannedFile(file);
+      setSaveScannedAsAttachment(true);
       if (filled.length > 0) {
         toast({ title: `Berhasil mengisi: ${filled.join(", ")}` });
       } else {
@@ -290,11 +303,26 @@ export default function CorrespondencesPage() {
         onError: () => toast({ title: "Gagal memperbarui", variant: "destructive" }),
       });
     } else {
+      const fileToAttach = saveScannedAsAttachment && scannedFile ? scannedFile : null;
       createCorrespondence.mutate({ data: payload }, {
-        onSuccess: () => {
+        onSuccess: async (newCorrespondence) => {
           queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
           setIsFormOpen(false);
+          setScannedFile(null);
           toast({ title: "Korespondensi berhasil disimpan" });
+          if (fileToAttach) {
+            const uploadRes = await uploadScannedFile(fileToAttach);
+            if (uploadRes) {
+              addAttachment.mutate({
+                id: newCorrespondence.id,
+                data: {
+                  objectPath: uploadRes.objectPath,
+                  fileName: fileToAttach.name,
+                  mimeType: fileToAttach.type || null,
+                },
+              });
+            }
+          }
         },
         onError: () => toast({ title: "Gagal menyimpan", variant: "destructive" }),
       });
@@ -443,7 +471,7 @@ export default function CorrespondencesPage() {
       </div>
 
       {/* CREATE / EDIT DIALOG */}
-      <Dialog open={isFormOpen} onOpenChange={(o) => !o && setIsFormOpen(false)}>
+      <Dialog open={isFormOpen} onOpenChange={(o) => { if (!o) { setIsFormOpen(false); setScannedFile(null); setSaveScannedAsAttachment(true); } }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
@@ -503,6 +531,21 @@ export default function CorrespondencesPage() {
                   e.target.value = "";
                 }}
               />
+              {scannedFile && !editingId && (
+                <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                  <Checkbox
+                    id="save-scanned-attachment"
+                    checked={saveScannedAsAttachment}
+                    onCheckedChange={(v) => setSaveScannedAsAttachment(Boolean(v))}
+                  />
+                  <Label htmlFor="save-scanned-attachment" className="cursor-pointer text-sm font-normal">
+                    Simpan file ini sebagai lampiran
+                  </Label>
+                  <span className="ml-auto max-w-[180px] truncate text-xs text-muted-foreground">
+                    {scannedFile.name}
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Jenis</Label>
