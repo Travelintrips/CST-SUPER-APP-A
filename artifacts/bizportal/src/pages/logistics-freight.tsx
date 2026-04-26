@@ -47,6 +47,7 @@ const FREIGHT_REFRESH_INTERVALS = [
 type FreightRefreshValue = "30" | "60" | "300" | "off";
 
 const FREIGHT_REFRESH_LS_KEY = "freight-refresh-interval";
+const FREIGHT_DATE_LS_KEY = "freight-date-filter";
 
 function getInitialRefreshInterval(): FreightRefreshValue {
   try {
@@ -56,6 +57,22 @@ function getInitialRefreshInterval(): FreightRefreshValue {
     }
   } catch {}
   return "60";
+}
+
+function loadDateFromStorage(): { preset: DatePreset; from: string; to: string } {
+  try {
+    const raw = localStorage.getItem(FREIGHT_DATE_LS_KEY);
+    if (!raw) return { preset: "all", from: "", to: "" };
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const preset = DATE_PRESETS.includes(data.preset as DatePreset) ? (data.preset as DatePreset) : "all";
+    return {
+      preset,
+      from: typeof data.from === "string" ? data.from : "",
+      to: typeof data.to === "string" ? data.to : "",
+    };
+  } catch {
+    return { preset: "all", from: "", to: "" };
+  }
 }
 
 function refetchIntervalMs(value: FreightRefreshValue): number | false {
@@ -129,7 +146,14 @@ export default function LogisticsFreightPage() {
 
   void location;
 
-  const initial = parseParamsFromSearch(window.location.search);
+  const initial = (() => {
+    const fromUrl = parseParamsFromSearch(window.location.search);
+    const urlSearch = new URLSearchParams(window.location.search);
+    const urlHasDate = urlSearch.has("date") || urlSearch.has("from") || urlSearch.has("to");
+    if (urlHasDate) return fromUrl;
+    const stored = loadDateFromStorage();
+    return { status: fromUrl.status, preset: stored.preset, from: stored.from, to: stored.to };
+  })();
 
   const [statusFilter, setStatusFilterState] = useState<string | null>(initial.status);
   const [datePreset, setDatePresetState] = useState<DatePreset>(initial.preset);
@@ -162,6 +186,13 @@ export default function LogisticsFreightPage() {
     if (newUrl !== currentFull) {
       navigate(newUrl, { replace: true });
     }
+    try {
+      localStorage.setItem(FREIGHT_DATE_LS_KEY, JSON.stringify({
+        preset: datePreset,
+        from: datePreset === "custom" ? customDateFrom : "",
+        to: datePreset === "custom" ? customDateTo : "",
+      }));
+    } catch {}
   }, [statusFilter, datePreset, customDateFrom, customDateTo]);
 
   const setStatusFilter = (value: string | null) => {
