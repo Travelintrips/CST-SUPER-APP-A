@@ -242,7 +242,7 @@ export default function PaymentsPage() {
     setForm((f) => ({
       ...f,
       partnerName: entry.partnerName,
-      amount: String(Math.round(entry.balance)),
+      amount: String(Math.round(entry.balance * 100) / 100),
       paymentType,
       sourceType: entry.sourceType,
       sourceDocId: entry.sourceDocId,
