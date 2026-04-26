@@ -3,8 +3,8 @@ import { simpleParser } from "mailparser";
 import { randomUUID } from "crypto";
 import {
   db,
-  correspondencesTable,
-  correspondenceAttachmentsTable,
+  emailCorrespondencesTable,
+  emailAttachmentsTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { objectStorageClient } from "./objectStorage.js";
@@ -86,10 +86,11 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
           const parsed = await simpleParser(msgData.source);
           const messageId = parsed.messageId ?? `uid-${uid}-${user}`;
 
+          // Deduplication — check email_correspondences table
           const [existing] = await db
-            .select({ id: correspondencesTable.id })
-            .from(correspondencesTable)
-            .where(eq(correspondencesTable.emailMessageId, messageId))
+            .select({ id: emailCorrespondencesTable.id })
+            .from(emailCorrespondencesTable)
+            .where(eq(emailCorrespondencesTable.emailMessageId, messageId))
             .limit(1);
 
           if (existing) continue;
@@ -108,29 +109,23 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
               : (parsed.cc as any).value ?? [])
             : [];
 
-          const toEmails = toList.map((a: any) => a.address).filter(Boolean).join(", ");
-          const ccEmails = ccList.map((a: any) => a.address).filter(Boolean).join(", ");
+          const fromEmail = fromAddr?.address ?? null;
+          const toEmail = toList.map((a: any) => a.address).filter(Boolean).join(", ") || null;
+          const ccEmail = ccList.map((a: any) => a.address).filter(Boolean).join(", ") || null;
 
           const body = parsed.text ?? parsed.html?.replace(/<[^>]*>/g, "") ?? null;
 
           const [saved] = await db
-            .insert(correspondencesTable)
+            .insert(emailCorrespondencesTable)
             .values({
-              kind: "email",
-              direction: "inbound",
+              emailMessageId: messageId,
+              fromEmail,
+              toEmail,
+              ccEmail,
               subject: parsed.subject ?? "(No Subject)",
               body: body ? body.slice(0, 10000) : null,
-              senderName: fromAddr?.name ?? null,
-              senderEmail: fromAddr?.address ?? null,
-              receiverName: null,
-              receiverEmail: toEmails || null,
-              ccEmail: ccEmails || null,
+              receivedAt: parsed.date ?? new Date(),
               status: "new",
-              emailMessageId: messageId,
-              emailThreadId: parsed.references
-                ? (Array.isArray(parsed.references) ? parsed.references[0] : parsed.references) ?? null
-                : null,
-              correspondedAt: parsed.date ?? new Date(),
             })
             .returning();
 
@@ -139,15 +134,15 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
           for (const att of parsed.attachments ?? []) {
             if (!att.content) continue;
             try {
-              const objectPath = await uploadAttachmentToStorage(
+              const fileUrl = await uploadAttachmentToStorage(
                 att.content,
                 att.filename ?? "attachment",
                 att.contentType ?? "application/octet-stream",
               );
-              await db.insert(correspondenceAttachmentsTable).values({
-                correspondenceId: saved.id,
+              await db.insert(emailAttachmentsTable).values({
+                emailCorrespondenceId: saved.id,
                 fileName: att.filename ?? "attachment",
-                objectPath,
+                fileUrl,
                 mimeType: att.contentType ?? "application/octet-stream",
               });
             } catch (attErr) {

@@ -35,6 +35,7 @@ import type {
   CreateCorrespondenceAttachmentBody,
   CreateCorrespondenceBody,
   CreateCustomerBody,
+  CreateEmailLinkBody,
   CreateEntryBody,
   CreateExpenseAttachmentBody,
   CreateExpenseBody,
@@ -56,6 +57,9 @@ import type {
   CreateTransactionBody,
   Customer,
   DashboardSummary,
+  EmailCorrespondence,
+  EmailCorrespondenceDetail,
+  EmailLink,
   Expense,
   ExpenseActionBody,
   ExpenseAttachment,
@@ -82,6 +86,7 @@ import type {
   ListAccountingEntriesParams,
   ListAccountingPaymentsParams,
   ListCorrespondencesParams,
+  ListEmailCorrespondencesParams,
   ListExpensesParams,
   ListFreightQuotesParams,
   ListFreightRfqsParams,
@@ -131,6 +136,8 @@ import type {
   UpdateUserBody,
   UpsertShipmentStageBody,
   UserProfile,
+  ValidateEmailCorrespondenceStatusBody,
+  ValidateEmailLinkBody,
   VoidAccountingPaymentBody,
 } from "./api.schemas";
 
@@ -10935,6 +10942,640 @@ export const useDeleteExpenseCategory = <
   TContext
 > => {
   return useMutation(getDeleteExpenseCategoryMutationOptions(options));
+};
+
+/**
+ * @summary List email correspondences
+ */
+export const getListEmailCorrespondencesUrl = (
+  params?: ListEmailCorrespondencesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/email-correspondences?${stringifiedParams}`
+    : `/api/email-correspondences`;
+};
+
+export const listEmailCorrespondences = async (
+  params?: ListEmailCorrespondencesParams,
+  options?: RequestInit,
+): Promise<EmailCorrespondence[]> => {
+  return customFetch<EmailCorrespondence[]>(
+    getListEmailCorrespondencesUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEmailCorrespondencesQueryKey = (
+  params?: ListEmailCorrespondencesParams,
+) => {
+  return [`/api/email-correspondences`, ...(params ? [params] : [])] as const;
+};
+
+export const getListEmailCorrespondencesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEmailCorrespondences>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEmailCorrespondencesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEmailCorrespondences>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEmailCorrespondencesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEmailCorrespondences>>
+  > = ({ signal }) =>
+    listEmailCorrespondences(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEmailCorrespondences>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEmailCorrespondencesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEmailCorrespondences>>
+>;
+export type ListEmailCorrespondencesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List email correspondences
+ */
+
+export function useListEmailCorrespondences<
+  TData = Awaited<ReturnType<typeof listEmailCorrespondences>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEmailCorrespondencesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEmailCorrespondences>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEmailCorrespondencesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get email with attachments and links
+ */
+export const getGetEmailCorrespondenceUrl = (id: number) => {
+  return `/api/email-correspondences/${id}`;
+};
+
+export const getEmailCorrespondence = async (
+  id: number,
+  options?: RequestInit,
+): Promise<EmailCorrespondenceDetail> => {
+  return customFetch<EmailCorrespondenceDetail>(
+    getGetEmailCorrespondenceUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetEmailCorrespondenceQueryKey = (id: number) => {
+  return [`/api/email-correspondences/${id}`] as const;
+};
+
+export const getGetEmailCorrespondenceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEmailCorrespondence>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEmailCorrespondence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEmailCorrespondenceQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEmailCorrespondence>>
+  > = ({ signal }) => getEmailCorrespondence(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEmailCorrespondence>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEmailCorrespondenceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEmailCorrespondence>>
+>;
+export type GetEmailCorrespondenceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get email with attachments and links
+ */
+
+export function useGetEmailCorrespondence<
+  TData = Awaited<ReturnType<typeof getEmailCorrespondence>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEmailCorrespondence>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEmailCorrespondenceQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update status of an email correspondence
+ */
+export const getValidateEmailCorrespondenceStatusUrl = (id: number) => {
+  return `/api/email-correspondences/${id}/validate-status`;
+};
+
+export const validateEmailCorrespondenceStatus = async (
+  id: number,
+  validateEmailCorrespondenceStatusBody: ValidateEmailCorrespondenceStatusBody,
+  options?: RequestInit,
+): Promise<EmailCorrespondence> => {
+  return customFetch<EmailCorrespondence>(
+    getValidateEmailCorrespondenceStatusUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(validateEmailCorrespondenceStatusBody),
+    },
+  );
+};
+
+export const getValidateEmailCorrespondenceStatusMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateEmailCorrespondenceStatus>>,
+    TError,
+    { id: number; data: BodyType<ValidateEmailCorrespondenceStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof validateEmailCorrespondenceStatus>>,
+  TError,
+  { id: number; data: BodyType<ValidateEmailCorrespondenceStatusBody> },
+  TContext
+> => {
+  const mutationKey = ["validateEmailCorrespondenceStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof validateEmailCorrespondenceStatus>>,
+    { id: number; data: BodyType<ValidateEmailCorrespondenceStatusBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return validateEmailCorrespondenceStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ValidateEmailCorrespondenceStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof validateEmailCorrespondenceStatus>>
+>;
+export type ValidateEmailCorrespondenceStatusMutationBody =
+  BodyType<ValidateEmailCorrespondenceStatusBody>;
+export type ValidateEmailCorrespondenceStatusMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update status of an email correspondence
+ */
+export const useValidateEmailCorrespondenceStatus = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateEmailCorrespondenceStatus>>,
+    TError,
+    { id: number; data: BodyType<ValidateEmailCorrespondenceStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof validateEmailCorrespondenceStatus>>,
+  TError,
+  { id: number; data: BodyType<ValidateEmailCorrespondenceStatusBody> },
+  TContext
+> => {
+  return useMutation(
+    getValidateEmailCorrespondenceStatusMutationOptions(options),
+  );
+};
+
+/**
+ * @summary List links for an email correspondence
+ */
+export const getListEmailLinksUrl = (id: number) => {
+  return `/api/email-correspondences/${id}/links`;
+};
+
+export const listEmailLinks = async (
+  id: number,
+  options?: RequestInit,
+): Promise<EmailLink[]> => {
+  return customFetch<EmailLink[]>(getListEmailLinksUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListEmailLinksQueryKey = (id: number) => {
+  return [`/api/email-correspondences/${id}/links`] as const;
+};
+
+export const getListEmailLinksQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEmailLinks>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEmailLinks>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListEmailLinksQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listEmailLinks>>> = ({
+    signal,
+  }) => listEmailLinks(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEmailLinks>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEmailLinksQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEmailLinks>>
+>;
+export type ListEmailLinksQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List links for an email correspondence
+ */
+
+export function useListEmailLinks<
+  TData = Awaited<ReturnType<typeof listEmailLinks>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEmailLinks>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEmailLinksQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Link an email to a transaction
+ */
+export const getCreateEmailLinkUrl = (id: number) => {
+  return `/api/email-correspondences/${id}/links`;
+};
+
+export const createEmailLink = async (
+  id: number,
+  createEmailLinkBody: CreateEmailLinkBody,
+  options?: RequestInit,
+): Promise<EmailLink> => {
+  return customFetch<EmailLink>(getCreateEmailLinkUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createEmailLinkBody),
+  });
+};
+
+export const getCreateEmailLinkMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createEmailLink>>,
+    TError,
+    { id: number; data: BodyType<CreateEmailLinkBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createEmailLink>>,
+  TError,
+  { id: number; data: BodyType<CreateEmailLinkBody> },
+  TContext
+> => {
+  const mutationKey = ["createEmailLink"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createEmailLink>>,
+    { id: number; data: BodyType<CreateEmailLinkBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createEmailLink(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateEmailLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createEmailLink>>
+>;
+export type CreateEmailLinkMutationBody = BodyType<CreateEmailLinkBody>;
+export type CreateEmailLinkMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Link an email to a transaction
+ */
+export const useCreateEmailLink = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createEmailLink>>,
+    TError,
+    { id: number; data: BodyType<CreateEmailLinkBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createEmailLink>>,
+  TError,
+  { id: number; data: BodyType<CreateEmailLinkBody> },
+  TContext
+> => {
+  return useMutation(getCreateEmailLinkMutationOptions(options));
+};
+
+/**
+ * @summary Validate an email link
+ */
+export const getValidateEmailLinkUrl = (id: number, linkId: number) => {
+  return `/api/email-correspondences/${id}/links/${linkId}/validate`;
+};
+
+export const validateEmailLink = async (
+  id: number,
+  linkId: number,
+  validateEmailLinkBody?: ValidateEmailLinkBody,
+  options?: RequestInit,
+): Promise<EmailLink> => {
+  return customFetch<EmailLink>(getValidateEmailLinkUrl(id, linkId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(validateEmailLinkBody),
+  });
+};
+
+export const getValidateEmailLinkMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateEmailLink>>,
+    TError,
+    { id: number; linkId: number; data: BodyType<ValidateEmailLinkBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof validateEmailLink>>,
+  TError,
+  { id: number; linkId: number; data: BodyType<ValidateEmailLinkBody> },
+  TContext
+> => {
+  const mutationKey = ["validateEmailLink"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof validateEmailLink>>,
+    { id: number; linkId: number; data: BodyType<ValidateEmailLinkBody> }
+  > = (props) => {
+    const { id, linkId, data } = props ?? {};
+
+    return validateEmailLink(id, linkId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ValidateEmailLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof validateEmailLink>>
+>;
+export type ValidateEmailLinkMutationBody = BodyType<ValidateEmailLinkBody>;
+export type ValidateEmailLinkMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Validate an email link
+ */
+export const useValidateEmailLink = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateEmailLink>>,
+    TError,
+    { id: number; linkId: number; data: BodyType<ValidateEmailLinkBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof validateEmailLink>>,
+  TError,
+  { id: number; linkId: number; data: BodyType<ValidateEmailLinkBody> },
+  TContext
+> => {
+  return useMutation(getValidateEmailLinkMutationOptions(options));
+};
+
+/**
+ * @summary Remove a link from an email correspondence
+ */
+export const getDeleteEmailLinkUrl = (id: number, linkId: number) => {
+  return `/api/email-correspondences/${id}/links/${linkId}`;
+};
+
+export const deleteEmailLink = async (
+  id: number,
+  linkId: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeleteEmailLinkUrl(id, linkId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteEmailLinkMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEmailLink>>,
+    TError,
+    { id: number; linkId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteEmailLink>>,
+  TError,
+  { id: number; linkId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteEmailLink"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteEmailLink>>,
+    { id: number; linkId: number }
+  > = (props) => {
+    const { id, linkId } = props ?? {};
+
+    return deleteEmailLink(id, linkId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteEmailLinkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteEmailLink>>
+>;
+
+export type DeleteEmailLinkMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove a link from an email correspondence
+ */
+export const useDeleteEmailLink = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEmailLink>>,
+    TError,
+    { id: number; linkId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteEmailLink>>,
+  TError,
+  { id: number; linkId: number },
+  TContext
+> => {
+  return useMutation(getDeleteEmailLinkMutationOptions(options));
 };
 
 /**

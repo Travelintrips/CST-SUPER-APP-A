@@ -46,6 +46,7 @@ import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledg
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
 import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
 import CorrespondencesPage from "@/pages/correspondences";
+import EmailInboxPage from "@/pages/email-inbox";
 import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
 import ExpenseCategoriesPage from "@/pages/expense/categories";
@@ -210,6 +211,9 @@ function Router() {
       </Route>
       <Route path="/correspondences">
         <ProtectedRoute component={CorrespondencesPage} />
+      </Route>
+      <Route path="/email-inbox">
+        <ProtectedRoute component={EmailInboxPage} />
       </Route>
 
       <Route path="/sales/items">

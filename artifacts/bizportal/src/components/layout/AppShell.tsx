@@ -183,6 +183,7 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
     { type: "flat", title: "Korespondensi", href: "/correspondences", icon: Mail, roles: ["admin"] },
+    { type: "flat", title: "Kotak Masuk Email", href: "/email-inbox", icon: Mail, roles: ["admin"] },
     { type: "flat", title: "Pengguna", href: "/users", icon: Users, roles: ["admin"] },
     { type: "flat", title: "Settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
   ];

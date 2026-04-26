@@ -2261,6 +2261,122 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /email-correspondences:
+    get:
+      operationId: listEmailCorrespondences
+      summary: List email correspondences
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [new, linked, validated, rejected, archived] } }
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EmailCorrespondence" }
+
+  /email-correspondences/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getEmailCorrespondence
+      summary: Get email with attachments and links
+      responses:
+        "200":
+          description: Detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailCorrespondenceDetail" }
+
+  /email-correspondences/{id}/validate-status:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: validateEmailCorrespondenceStatus
+      summary: Update status of an email correspondence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [new, linked, validated, rejected, archived] }
+              required: [status]
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailCorrespondence" }
+
+  /email-correspondences/{id}/links:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: listEmailLinks
+      summary: List links for an email correspondence
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EmailLink" }
+    post:
+      operationId: createEmailLink
+      summary: Link an email to a transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEmailLinkBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailLink" }
+
+  /email-correspondences/{id}/links/{linkId}/validate:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: linkId, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: validateEmailLink
+      summary: Validate an email link
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Validated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailLink" }
+
+  /email-correspondences/{id}/links/{linkId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: linkId, in: path, required: true, schema: { type: integer } }
+    delete:
+      operationId: deleteEmailLink
+      summary: Remove a link from an email correspondence
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
   /expenses:
     get:
       operationId: listExpenses
@@ -4301,3 +4417,69 @@ components:
           type: array
           items: { $ref: "#/components/schemas/ExpenseSummaryVendor" }
       required: [from, to, grandTotal, totalCount, byCategory, byMonth, topVendors]
+
+    EmailCorrespondence:
+      type: object
+      properties:
+        id: { type: integer }
+        emailMessageId: { type: string, nullable: true }
+        fromEmail: { type: string, nullable: true }
+        toEmail: { type: string, nullable: true }
+        ccEmail: { type: string, nullable: true }
+        subject: { type: string }
+        body: { type: string, nullable: true }
+        receivedAt: { type: string }
+        status: { type: string, enum: [new, linked, validated, rejected, archived] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required: [id, subject, receivedAt, status, createdAt, updatedAt]
+
+    EmailAttachment:
+      type: object
+      properties:
+        id: { type: integer }
+        emailCorrespondenceId: { type: integer }
+        fileName: { type: string }
+        fileUrl: { type: string }
+        mimeType: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, emailCorrespondenceId, fileName, fileUrl, createdAt]
+
+    EmailLink:
+      type: object
+      properties:
+        id: { type: integer }
+        emailCorrespondenceId: { type: integer }
+        linkedType: { type: string, enum: [sales_order, purchase_order, expense, shipment, payment, invoice] }
+        linkedId: { type: integer }
+        linkReason: { type: string, nullable: true }
+        isValidated: { type: boolean }
+        validatedBy: { type: string, nullable: true }
+        validatedAt: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, emailCorrespondenceId, linkedType, linkedId, isValidated, createdAt]
+
+    EmailCorrespondenceDetail:
+      allOf:
+        - $ref: "#/components/schemas/EmailCorrespondence"
+        - type: object
+          properties:
+            attachments:
+              type: array
+              items: { $ref: "#/components/schemas/EmailAttachment" }
+            links:
+              type: array
+              items: { $ref: "#/components/schemas/EmailLink" }
+          required: [attachments, links]
+
+    CreateEmailLinkBody:
+      type: object
+      properties:
+        linkedType:
+          type: string
+          enum: [sales_order, purchase_order, expense, shipment, payment, invoice]
+        linkedId: { type: integer }
+        linkReason: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+      required: [linkedType, linkedId]

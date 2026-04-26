@@ -1846,6 +1846,89 @@ export interface ExpenseSummary {
   topVendors: ExpenseSummaryVendor[];
 }
 
+export type EmailCorrespondenceStatus =
+  (typeof EmailCorrespondenceStatus)[keyof typeof EmailCorrespondenceStatus];
+
+export const EmailCorrespondenceStatus = {
+  new: "new",
+  linked: "linked",
+  validated: "validated",
+  rejected: "rejected",
+  archived: "archived",
+} as const;
+
+export interface EmailCorrespondence {
+  id: number;
+  emailMessageId?: string | null;
+  fromEmail?: string | null;
+  toEmail?: string | null;
+  ccEmail?: string | null;
+  subject: string;
+  body?: string | null;
+  receivedAt: string;
+  status: EmailCorrespondenceStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailAttachment {
+  id: number;
+  emailCorrespondenceId: number;
+  fileName: string;
+  fileUrl: string;
+  mimeType?: string | null;
+  createdAt: string;
+}
+
+export type EmailLinkLinkedType =
+  (typeof EmailLinkLinkedType)[keyof typeof EmailLinkLinkedType];
+
+export const EmailLinkLinkedType = {
+  sales_order: "sales_order",
+  purchase_order: "purchase_order",
+  expense: "expense",
+  shipment: "shipment",
+  payment: "payment",
+  invoice: "invoice",
+} as const;
+
+export interface EmailLink {
+  id: number;
+  emailCorrespondenceId: number;
+  linkedType: EmailLinkLinkedType;
+  linkedId: number;
+  linkReason?: string | null;
+  isValidated: boolean;
+  validatedBy?: string | null;
+  validatedAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export type EmailCorrespondenceDetail = EmailCorrespondence & {
+  attachments: EmailAttachment[];
+  links: EmailLink[];
+};
+
+export type CreateEmailLinkBodyLinkedType =
+  (typeof CreateEmailLinkBodyLinkedType)[keyof typeof CreateEmailLinkBodyLinkedType];
+
+export const CreateEmailLinkBodyLinkedType = {
+  sales_order: "sales_order",
+  purchase_order: "purchase_order",
+  expense: "expense",
+  shipment: "shipment",
+  payment: "payment",
+  invoice: "invoice",
+} as const;
+
+export interface CreateEmailLinkBody {
+  linkedType: CreateEmailLinkBodyLinkedType;
+  linkedId: number;
+  linkReason?: string | null;
+  notes?: string | null;
+}
+
 export type ListProductsParams = {
   search?: string;
   itemType?: string;
@@ -2033,6 +2116,41 @@ export type UpdateCorrespondenceAttachmentExtractedTextBody = {
 export type SeedExpenseCategories200 = {
   seeded: number;
   categories: ExpenseCategory[];
+};
+
+export type ListEmailCorrespondencesParams = {
+  q?: string;
+  status?: ListEmailCorrespondencesStatus;
+};
+
+export type ListEmailCorrespondencesStatus =
+  (typeof ListEmailCorrespondencesStatus)[keyof typeof ListEmailCorrespondencesStatus];
+
+export const ListEmailCorrespondencesStatus = {
+  new: "new",
+  linked: "linked",
+  validated: "validated",
+  rejected: "rejected",
+  archived: "archived",
+} as const;
+
+export type ValidateEmailCorrespondenceStatusBodyStatus =
+  (typeof ValidateEmailCorrespondenceStatusBodyStatus)[keyof typeof ValidateEmailCorrespondenceStatusBodyStatus];
+
+export const ValidateEmailCorrespondenceStatusBodyStatus = {
+  new: "new",
+  linked: "linked",
+  validated: "validated",
+  rejected: "rejected",
+  archived: "archived",
+} as const;
+
+export type ValidateEmailCorrespondenceStatusBody = {
+  status: ValidateEmailCorrespondenceStatusBodyStatus;
+};
+
+export type ValidateEmailLinkBody = {
+  notes?: string | null;
 };
 
 export type ListExpensesParams = {
