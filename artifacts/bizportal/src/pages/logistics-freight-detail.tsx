@@ -423,6 +423,33 @@ export default function LogisticsFreightDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Bill of Lading Section — screen only */}
+        {(shipment.vessel || shipment.voyage || shipment.portOfLoading || shipment.portOfDischarge || shipment.notifyParty || shipment.marksAndNumbers || shipment.measurement) && (
+          <Card className="print:hidden">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Ship className="h-4 w-4 text-primary" />
+                Detail Bill of Lading
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <InfoRow label="Kapal (Vessel)" value={shipment.vessel} />
+                  <InfoRow label="Voyage" value={shipment.voyage} />
+                  <InfoRow label="Port of Loading" value={shipment.portOfLoading} />
+                  <InfoRow label="Port of Discharge" value={shipment.portOfDischarge} />
+                </div>
+                <div className="space-y-2">
+                  <InfoRow label="Notify Party" value={shipment.notifyParty} />
+                  <InfoRow label="Marks & Numbers" value={shipment.marksAndNumbers} />
+                  <InfoRow label="Measurement" value={shipment.measurement} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* RFQ Section — screen only */}
         <div className="print:hidden space-y-4">
           <div className="flex items-center justify-between">
