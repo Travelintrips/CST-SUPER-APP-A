@@ -31,7 +31,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import {
   Plus, Search, Mail, MessageCircle, FileText, MoreHorizontal,
   Paperclip, Trash2, Eye, Pencil, Download, FileImage, ArrowDownLeft, ArrowUpRight,
-  ScanLine, Loader2, Camera, Upload,
+  Loader2, Camera, Upload,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
