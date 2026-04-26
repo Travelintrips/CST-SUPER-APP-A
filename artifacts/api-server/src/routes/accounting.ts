@@ -533,6 +533,11 @@ router.post("/payments/:id/void", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
+  const reason: string | null =
+    typeof req.body?.reason === "string" && req.body.reason.trim().length > 0
+      ? req.body.reason.trim()
+      : null;
+
   const [payment] = await db.select().from(accountingPaymentsTable).where(eq(accountingPaymentsTable.id, id));
   if (!payment) return res.status(404).json({ message: "Not found" });
   if (payment.status === "voided") return res.status(400).json({ message: "Pembayaran sudah dibatalkan sebelumnya." });
@@ -554,13 +559,16 @@ router.post("/payments/:id/void", async (req, res) => {
     description: `[VOID] ${l.description ?? ""}`.trim(),
   }));
 
+  const baseDescription = `[VOID] ${origEntry.description ?? `Pembayaran #${payment.id}`}`;
+  const voidDescription = reason ? `${baseDescription} — Alasan: ${reason}` : baseDescription;
+
   try {
     const voidEntry = await postEntry(
       {
         journalId: payment.journalId,
         date: new Date(),
         ref: payment.ref ?? null,
-        description: `[VOID] ${origEntry.description ?? `Pembayaran #${payment.id}`}`,
+        description: voidDescription,
         source: "manual",
         lines: reversalLines,
       },

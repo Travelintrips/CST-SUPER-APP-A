@@ -59,14 +59,16 @@ function LinkedDocBadge({ sourceType, sourceDocId }: { sourceType?: string | nul
 
 function VoidDialog({ payment, onVoided }: { payment: AccountingPayment; onVoided: () => void }) {
   const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
   const { toast } = useToast();
   const voidMut = useVoidAccountingPayment();
 
   const handleVoid = async () => {
     try {
-      await voidMut.mutateAsync({ id: payment.id });
+      await voidMut.mutateAsync({ id: payment.id, data: { reason: reason.trim() || undefined } });
       toast({ title: "Pembayaran dibatalkan", description: "Jurnal pembalik otomatis telah dibuat." });
       setOpen(false);
+      setReason("");
       onVoided();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
@@ -75,7 +77,7 @@ function VoidDialog({ payment, onVoided }: { payment: AccountingPayment; onVoide
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setReason(""); }}>
       <DialogTrigger asChild>
         <Button
           variant="ghost"
@@ -117,12 +119,23 @@ function VoidDialog({ payment, onVoided }: { payment: AccountingPayment; onVoide
               </div>
             )}
           </div>
+          <div className="space-y-1">
+            <Label className="text-slate-300 text-xs">Alasan Pembatalan <span className="text-slate-500">(opsional)</span></Label>
+            <Textarea
+              placeholder="Mis. jumlah salah input, pembayaran ganda..."
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="text-sm resize-none"
+              data-testid={`void-reason-${payment.id}`}
+            />
+          </div>
           <p className="text-amber-400 text-xs">
             Aksi ini tidak dapat dibatalkan. Jurnal pembalik akan langsung diposting.
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={voidMut.isPending}>
+          <Button variant="outline" onClick={() => { setOpen(false); setReason(""); }} disabled={voidMut.isPending}>
             Kembali
           </Button>
           <Button
