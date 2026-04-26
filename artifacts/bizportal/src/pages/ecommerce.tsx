@@ -611,7 +611,9 @@ export default function EcommercePage() {
                           checked={filterCategories.includes(cat)}
                           onCheckedChange={(checked) =>
                             setFilterCategories((prev) =>
-                              checked ? [...prev, cat] : prev.filter((c) => c !== cat)
+                              checked === true
+                                ? prev.includes(cat) ? prev : [...prev, cat]
+                                : prev.filter((c) => c !== cat)
                             )
                           }
                         />
