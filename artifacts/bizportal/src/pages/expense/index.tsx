@@ -254,7 +254,7 @@ export default function ExpenseListPage() {
                         <div className="flex flex-col gap-0.5">
                           {exp.salesDocId && (
                             <Link href={`/sales/orders/${exp.salesDocId}`}>
-                              <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
+                              <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
                                 <ShoppingCart size={10} />
                                 {soMap[exp.salesDocId] ?? `SO #${exp.salesDocId}`}
                               </span>
@@ -262,7 +262,7 @@ export default function ExpenseListPage() {
                           )}
                           {exp.shipmentId && (
                             <Link href={`/logistics/freight/${exp.shipmentId}`}>
-                              <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-mono">
+                              <span className="inline-flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:underline font-mono">
                                 <Ship size={10} />
                                 {shipMap[exp.shipmentId] ?? `SHIP #${exp.shipmentId}`}
                               </span>
