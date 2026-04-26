@@ -396,6 +396,15 @@ export default function SalesDocumentEditorPage() {
                     <>
                       <Badge variant="outline" className="capitalize">Invoice: {doc.invoiceStatus.replace("_", " ")}</Badge>
                       <Badge variant="outline" className="capitalize">Delivery: {doc.deliveryStatus.replace("_", " ")}</Badge>
+                      {(() => {
+                        const paid = doc.amountPaid ?? 0;
+                        const total = doc.grandTotal;
+                        if (paid >= total - 0.005)
+                          return <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700" data-testid="badge-payment-status">Lunas</Badge>;
+                        if (paid > 0.005)
+                          return <Badge className="bg-amber-900/50 text-amber-300 border-amber-700" data-testid="badge-payment-status">Sebagian</Badge>;
+                        return <Badge variant="outline" className="text-slate-400 border-slate-600" data-testid="badge-payment-status">Belum Bayar</Badge>;
+                      })()}
                     </>
                   )}
                 </div>
