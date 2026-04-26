@@ -172,7 +172,7 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - Frontend: list page at `/logistics/freight`, full-page editor at `/logistics/freight/new` and `/logistics/freight/edit/:id`, detail page at `/logistics/freight/:id` (with RFQ management, quote comparison, approve button)
 - Print packing list via `window.print()` — a hidden print-only section in the detail page renders the packing list
 - AppShell: Logistics converted from flat nav item to group with sub-items (Pengiriman, Freight Forwarding)
-- Attachments: `freight_attachments` table (id, shipment_id, object_path, file_name, content_type, file_type enum (photo/document/barcode), label, created_at); API routes GET/POST/DELETE at `/api/logistics/freight-shipments/:id/attachments`; `FreightAttachmentsPanel` component with 3 tabs: Foto Kargo (camera upload), Dokumen (file upload), Scan Barcode/QR (ZXing); panel is integrated into the freight detail page (screen-only card, hidden on print)
+- Document Management: `freight_attachments` table extended with `doc_type` (BL/AWB/PIB/PEB/DO/Invoice/PackingList), `doc_number`, `doc_date`, `doc_status` (draft/issued/submitted/received), `invoice_id`; API routes GET/POST/PUT/DELETE at `/api/logistics/freight-shipments/:id/attachments` and `/api/logistics/freight-shipments/:id/attachments/:id`; `FreightAttachmentsPanel` has 3 tabs: **Dokumen Resmi** (structured document upload form with type/number/date/status + inline editing per row), **Foto Kargo** (camera upload), **Scan Barcode/QR** (ZXing); panel integrated into freight detail page
 
 ## Expense / Biaya Operasional Module
 

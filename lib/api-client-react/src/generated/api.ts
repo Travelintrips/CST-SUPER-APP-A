@@ -118,6 +118,7 @@ import type {
   UpdateAccountBody,
   UpdateAccountingSettingsBody,
   UpdateCorrespondenceAttachmentExtractedTextBody,
+  UpdateFreightAttachmentBody,
   UpdateFreightShipmentBody,
   UpdateJournalBody,
   UpdateOrderBody,
@@ -3344,6 +3345,126 @@ export const useCreateFreightAttachment = <
   TContext
 > => {
   return useMutation(getCreateFreightAttachmentMutationOptions(options));
+};
+
+/**
+ * @summary Update freight attachment metadata
+ */
+export const getUpdateFreightAttachmentUrl = (
+  shipmentId: number,
+  attachmentId: number,
+) => {
+  return `/api/logistics/freight-shipments/${shipmentId}/attachments/${attachmentId}`;
+};
+
+export const updateFreightAttachment = async (
+  shipmentId: number,
+  attachmentId: number,
+  updateFreightAttachmentBody: UpdateFreightAttachmentBody,
+  options?: RequestInit,
+): Promise<FreightAttachment> => {
+  return customFetch<FreightAttachment>(
+    getUpdateFreightAttachmentUrl(shipmentId, attachmentId),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateFreightAttachmentBody),
+    },
+  );
+};
+
+export const getUpdateFreightAttachmentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightAttachment>>,
+    TError,
+    {
+      shipmentId: number;
+      attachmentId: number;
+      data: BodyType<UpdateFreightAttachmentBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateFreightAttachment>>,
+  TError,
+  {
+    shipmentId: number;
+    attachmentId: number;
+    data: BodyType<UpdateFreightAttachmentBody>;
+  },
+  TContext
+> => {
+  const mutationKey = ["updateFreightAttachment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateFreightAttachment>>,
+    {
+      shipmentId: number;
+      attachmentId: number;
+      data: BodyType<UpdateFreightAttachmentBody>;
+    }
+  > = (props) => {
+    const { shipmentId, attachmentId, data } = props ?? {};
+
+    return updateFreightAttachment(
+      shipmentId,
+      attachmentId,
+      data,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateFreightAttachmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateFreightAttachment>>
+>;
+export type UpdateFreightAttachmentMutationBody =
+  BodyType<UpdateFreightAttachmentBody>;
+export type UpdateFreightAttachmentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update freight attachment metadata
+ */
+export const useUpdateFreightAttachment = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateFreightAttachment>>,
+    TError,
+    {
+      shipmentId: number;
+      attachmentId: number;
+      data: BodyType<UpdateFreightAttachmentBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateFreightAttachment>>,
+  TError,
+  {
+    shipmentId: number;
+    attachmentId: number;
+    data: BodyType<UpdateFreightAttachmentBody>;
+  },
+  TContext
+> => {
+  return useMutation(getUpdateFreightAttachmentMutationOptions(options));
 };
 
 /**

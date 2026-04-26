@@ -369,7 +369,7 @@ router.get("/freight-shipments/:shipmentId/attachments", async (req, res) => {
 router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
   const shipmentId = Number(req.params.shipmentId);
   if (!Number.isInteger(shipmentId) || shipmentId <= 0) return res.status(400).json({ message: "Invalid shipmentId" });
-  const { objectPath, fileName, contentType, fileType, label } = req.body;
+  const { objectPath, fileName, contentType, fileType, label, docType, docNumber, docDate, docStatus, invoiceId } = req.body;
   if (!objectPath || !fileName || !contentType || !fileType) {
     return res.status(400).json({ message: "objectPath, fileName, contentType, fileType wajib diisi" });
   }
@@ -382,8 +382,32 @@ router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
     shipmentId, objectPath, fileName, contentType,
     fileType: fileType as "photo" | "document",
     label: label || null,
+    docType: docType || null,
+    docNumber: docNumber || null,
+    docDate: docDate || null,
+    docStatus: docStatus || null,
+    invoiceId: invoiceId ? Number(invoiceId) : null,
   }).returning();
   return res.status(201).json({ ...attachment!, createdAt: attachment!.createdAt.toISOString() });
+});
+
+// PUT /api/logistics/freight-shipments/:shipmentId/attachments/:attachmentId
+router.put("/freight-shipments/:shipmentId/attachments/:attachmentId", async (req, res) => {
+  const shipmentId = Number(req.params.shipmentId);
+  const attachmentId = Number(req.params.attachmentId);
+  if (!Number.isInteger(shipmentId) || !Number.isInteger(attachmentId)) return res.status(400).json({ message: "Invalid id" });
+  const { label, docType, docNumber, docDate, docStatus, invoiceId } = req.body;
+  const patch: Record<string, unknown> = {};
+  if (label !== undefined) patch.label = label || null;
+  if (docType !== undefined) patch.docType = docType || null;
+  if (docNumber !== undefined) patch.docNumber = docNumber || null;
+  if (docDate !== undefined) patch.docDate = docDate || null;
+  if (docStatus !== undefined) patch.docStatus = docStatus || null;
+  if (invoiceId !== undefined) patch.invoiceId = invoiceId ? Number(invoiceId) : null;
+  if (Object.keys(patch).length === 0) return res.status(400).json({ message: "No fields to update" });
+  const [updated] = await db.update(freightAttachmentsTable).set(patch).where(eq(freightAttachmentsTable.id, attachmentId)).returning();
+  if (!updated) return res.status(404).json({ message: "Attachment tidak ditemukan" });
+  return res.json({ ...updated, createdAt: updated.createdAt.toISOString() });
 });
 
 // DELETE /api/logistics/freight-shipments/:shipmentId/attachments/:attachmentId

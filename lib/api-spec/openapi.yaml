@@ -751,6 +751,21 @@ paths:
     parameters:
       - { name: shipmentId, in: path, required: true, schema: { type: integer } }
       - { name: attachmentId, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: updateFreightAttachment
+      tags: [logistics]
+      summary: Update freight attachment metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFreightAttachmentBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightAttachment" }
     delete:
       operationId: deleteFreightAttachment
       tags: [logistics]
@@ -3855,6 +3870,11 @@ components:
         fileType: { type: string, enum: [photo, document] }
         label: { type: string, nullable: true }
         uploadedById: { type: string, nullable: true }
+        docType: { type: string, nullable: true, enum: [BL, AWB, PIB, PEB, DO, Invoice, PackingList] }
+        docNumber: { type: string, nullable: true }
+        docDate: { type: string, nullable: true }
+        docStatus: { type: string, nullable: true, enum: [draft, issued, submitted, received] }
+        invoiceId: { type: integer, nullable: true }
         createdAt: { type: string }
       required: [id, shipmentId, objectPath, fileName, contentType, fileType, createdAt]
 
@@ -3866,7 +3886,22 @@ components:
         contentType: { type: string }
         fileType: { type: string, enum: [photo, document] }
         label: { type: string }
+        docType: { type: string, enum: [BL, AWB, PIB, PEB, DO, Invoice, PackingList] }
+        docNumber: { type: string }
+        docDate: { type: string }
+        docStatus: { type: string, enum: [draft, issued, submitted, received] }
+        invoiceId: { type: integer }
       required: [objectPath, fileName, contentType, fileType]
+
+    UpdateFreightAttachmentBody:
+      type: object
+      properties:
+        label: { type: string }
+        docType: { type: string, enum: [BL, AWB, PIB, PEB, DO, Invoice, PackingList] }
+        docNumber: { type: string }
+        docDate: { type: string }
+        docStatus: { type: string, enum: [draft, issued, submitted, received] }
+        invoiceId: { type: integer }
 
     FreightRfq:
       type: object

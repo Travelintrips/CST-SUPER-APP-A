@@ -1382,6 +1382,31 @@ export const FreightAttachmentFileType = {
   document: "document",
 } as const;
 
+export type FreightAttachmentDocType =
+  | (typeof FreightAttachmentDocType)[keyof typeof FreightAttachmentDocType]
+  | null;
+
+export const FreightAttachmentDocType = {
+  BL: "BL",
+  AWB: "AWB",
+  PIB: "PIB",
+  PEB: "PEB",
+  DO: "DO",
+  Invoice: "Invoice",
+  PackingList: "PackingList",
+} as const;
+
+export type FreightAttachmentDocStatus =
+  | (typeof FreightAttachmentDocStatus)[keyof typeof FreightAttachmentDocStatus]
+  | null;
+
+export const FreightAttachmentDocStatus = {
+  draft: "draft",
+  issued: "issued",
+  submitted: "submitted",
+  received: "received",
+} as const;
+
 export interface FreightAttachment {
   id: number;
   shipmentId: number;
@@ -1391,6 +1416,11 @@ export interface FreightAttachment {
   fileType: FreightAttachmentFileType;
   label?: string | null;
   uploadedById?: string | null;
+  docType?: FreightAttachmentDocType;
+  docNumber?: string | null;
+  docDate?: string | null;
+  docStatus?: FreightAttachmentDocStatus;
+  invoiceId?: number | null;
   createdAt: string;
 }
 
@@ -1402,12 +1432,72 @@ export const CreateFreightAttachmentBodyFileType = {
   document: "document",
 } as const;
 
+export type CreateFreightAttachmentBodyDocType =
+  (typeof CreateFreightAttachmentBodyDocType)[keyof typeof CreateFreightAttachmentBodyDocType];
+
+export const CreateFreightAttachmentBodyDocType = {
+  BL: "BL",
+  AWB: "AWB",
+  PIB: "PIB",
+  PEB: "PEB",
+  DO: "DO",
+  Invoice: "Invoice",
+  PackingList: "PackingList",
+} as const;
+
+export type CreateFreightAttachmentBodyDocStatus =
+  (typeof CreateFreightAttachmentBodyDocStatus)[keyof typeof CreateFreightAttachmentBodyDocStatus];
+
+export const CreateFreightAttachmentBodyDocStatus = {
+  draft: "draft",
+  issued: "issued",
+  submitted: "submitted",
+  received: "received",
+} as const;
+
 export interface CreateFreightAttachmentBody {
   objectPath: string;
   fileName: string;
   contentType: string;
   fileType: CreateFreightAttachmentBodyFileType;
   label?: string;
+  docType?: CreateFreightAttachmentBodyDocType;
+  docNumber?: string;
+  docDate?: string;
+  docStatus?: CreateFreightAttachmentBodyDocStatus;
+  invoiceId?: number;
+}
+
+export type UpdateFreightAttachmentBodyDocType =
+  (typeof UpdateFreightAttachmentBodyDocType)[keyof typeof UpdateFreightAttachmentBodyDocType];
+
+export const UpdateFreightAttachmentBodyDocType = {
+  BL: "BL",
+  AWB: "AWB",
+  PIB: "PIB",
+  PEB: "PEB",
+  DO: "DO",
+  Invoice: "Invoice",
+  PackingList: "PackingList",
+} as const;
+
+export type UpdateFreightAttachmentBodyDocStatus =
+  (typeof UpdateFreightAttachmentBodyDocStatus)[keyof typeof UpdateFreightAttachmentBodyDocStatus];
+
+export const UpdateFreightAttachmentBodyDocStatus = {
+  draft: "draft",
+  issued: "issued",
+  submitted: "submitted",
+  received: "received",
+} as const;
+
+export interface UpdateFreightAttachmentBody {
+  label?: string;
+  docType?: UpdateFreightAttachmentBodyDocType;
+  docNumber?: string;
+  docDate?: string;
+  docStatus?: UpdateFreightAttachmentBodyDocStatus;
+  invoiceId?: number;
 }
 
 export interface FreightRfq {

@@ -928,6 +928,13 @@ export const ListFreightAttachmentsResponseItem = zod.object({
   fileType: zod.enum(["photo", "document"]),
   label: zod.string().nullish(),
   uploadedById: zod.string().nullish(),
+  docType: zod
+    .enum(["BL", "AWB", "PIB", "PEB", "DO", "Invoice", "PackingList"])
+    .nullish(),
+  docNumber: zod.string().nullish(),
+  docDate: zod.string().nullish(),
+  docStatus: zod.enum(["draft", "issued", "submitted", "received"]).nullish(),
+  invoiceId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 export const ListFreightAttachmentsResponse = zod.array(
@@ -947,6 +954,51 @@ export const CreateFreightAttachmentBody = zod.object({
   contentType: zod.string(),
   fileType: zod.enum(["photo", "document"]),
   label: zod.string().optional(),
+  docType: zod
+    .enum(["BL", "AWB", "PIB", "PEB", "DO", "Invoice", "PackingList"])
+    .optional(),
+  docNumber: zod.string().optional(),
+  docDate: zod.string().optional(),
+  docStatus: zod.enum(["draft", "issued", "submitted", "received"]).optional(),
+  invoiceId: zod.number().optional(),
+});
+
+/**
+ * @summary Update freight attachment metadata
+ */
+export const UpdateFreightAttachmentParams = zod.object({
+  shipmentId: zod.coerce.number(),
+  attachmentId: zod.coerce.number(),
+});
+
+export const UpdateFreightAttachmentBody = zod.object({
+  label: zod.string().optional(),
+  docType: zod
+    .enum(["BL", "AWB", "PIB", "PEB", "DO", "Invoice", "PackingList"])
+    .optional(),
+  docNumber: zod.string().optional(),
+  docDate: zod.string().optional(),
+  docStatus: zod.enum(["draft", "issued", "submitted", "received"]).optional(),
+  invoiceId: zod.number().optional(),
+});
+
+export const UpdateFreightAttachmentResponse = zod.object({
+  id: zod.number(),
+  shipmentId: zod.number(),
+  objectPath: zod.string(),
+  fileName: zod.string(),
+  contentType: zod.string(),
+  fileType: zod.enum(["photo", "document"]),
+  label: zod.string().nullish(),
+  uploadedById: zod.string().nullish(),
+  docType: zod
+    .enum(["BL", "AWB", "PIB", "PEB", "DO", "Invoice", "PackingList"])
+    .nullish(),
+  docNumber: zod.string().nullish(),
+  docDate: zod.string().nullish(),
+  docStatus: zod.enum(["draft", "issued", "submitted", "received"]).nullish(),
+  invoiceId: zod.number().nullish(),
+  createdAt: zod.string(),
 });
 
 /**
