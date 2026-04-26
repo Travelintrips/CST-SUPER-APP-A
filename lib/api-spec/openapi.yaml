@@ -1765,6 +1765,14 @@ paths:
           name: id
           required: true
           schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, nullable: true }
       responses:
         "200":
           description: Voided payment with reversing entry

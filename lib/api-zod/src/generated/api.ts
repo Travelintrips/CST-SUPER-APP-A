@@ -2320,6 +2320,10 @@ export const VoidAccountingPaymentParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const VoidAccountingPaymentBody = zod.object({
+  reason: zod.string().nullish(),
+});
+
 export const VoidAccountingPaymentResponse = zod
   .object({
     id: zod.number(),

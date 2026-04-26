@@ -1505,6 +1505,10 @@ export const ListAccountingPaymentsPaymentType = {
   outbound: "outbound",
 } as const;
 
+export type VoidAccountingPaymentBody = {
+  reason?: string | null;
+};
+
 export type GetTrialBalanceParams = {
   from?: string;
   to?: string;

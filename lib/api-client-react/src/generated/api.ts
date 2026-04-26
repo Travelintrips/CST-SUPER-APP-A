@@ -111,6 +111,7 @@ import type {
   UpdateTransactionDocumentBody,
   UpdateUserBody,
   UserProfile,
+  VoidAccountingPaymentBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -8181,11 +8182,14 @@ export const getVoidAccountingPaymentUrl = (id: number) => {
 
 export const voidAccountingPayment = async (
   id: number,
+  voidAccountingPaymentBody?: VoidAccountingPaymentBody,
   options?: RequestInit,
 ): Promise<AccountingPaymentDetail> => {
   return customFetch<AccountingPaymentDetail>(getVoidAccountingPaymentUrl(id), {
     ...options,
     method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(voidAccountingPaymentBody),
   });
 };
 
@@ -8196,14 +8200,14 @@ export const getVoidAccountingPaymentMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof voidAccountingPayment>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<VoidAccountingPaymentBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof voidAccountingPayment>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<VoidAccountingPaymentBody> },
   TContext
 > => {
   const mutationKey = ["voidAccountingPayment"];
@@ -8217,11 +8221,11 @@ export const getVoidAccountingPaymentMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof voidAccountingPayment>>,
-    { id: number }
+    { id: number; data: BodyType<VoidAccountingPaymentBody> }
   > = (props) => {
-    const { id } = props ?? {};
+    const { id, data } = props ?? {};
 
-    return voidAccountingPayment(id, requestOptions);
+    return voidAccountingPayment(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -8230,7 +8234,8 @@ export const getVoidAccountingPaymentMutationOptions = <
 export type VoidAccountingPaymentMutationResult = NonNullable<
   Awaited<ReturnType<typeof voidAccountingPayment>>
 >;
-
+export type VoidAccountingPaymentMutationBody =
+  BodyType<VoidAccountingPaymentBody>;
 export type VoidAccountingPaymentMutationError = ErrorType<MessageResponse>;
 
 /**
@@ -8243,14 +8248,14 @@ export const useVoidAccountingPayment = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof voidAccountingPayment>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<VoidAccountingPaymentBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof voidAccountingPayment>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<VoidAccountingPaymentBody> },
   TContext
 > => {
   return useMutation(getVoidAccountingPaymentMutationOptions(options));
