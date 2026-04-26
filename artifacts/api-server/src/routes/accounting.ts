@@ -11,7 +11,7 @@ import {
   salesDocumentsTable,
   purchaseDocumentsTable,
 } from "@workspace/db";
-import { eq, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
+import { eq, ne, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
@@ -456,6 +456,10 @@ router.get("/partner-balances", async (_req, res) => {
   // (amountPaid is kept void-safe by the payment void handler).
   const THRESHOLD = 0.005;
 
+  // Filter: invoiced/billed status ensures the AR/AP journal entry has been posted
+  // (mark_invoiced posts the sales_invoice entry; mark_billed posts the purchase_bill entry).
+  // paymentStatus != 'paid' excludes fully settled documents.
+  // amountPaid is void-safe (void handler recalculates it excluding voided payments).
   const [arDocs, apDocs] = await Promise.all([
     db
       .select({
@@ -469,7 +473,8 @@ router.get("/partner-balances", async (_req, res) => {
       .where(
         and(
           eq(salesDocumentsTable.kind, "order"),
-          eq(salesDocumentsTable.invoiceStatus, "to_invoice"),
+          eq(salesDocumentsTable.invoiceStatus, "invoiced"),
+          ne(salesDocumentsTable.paymentStatus, "paid"),
         ),
       ),
     db
@@ -484,7 +489,8 @@ router.get("/partner-balances", async (_req, res) => {
       .where(
         and(
           eq(purchaseDocumentsTable.kind, "order"),
-          eq(purchaseDocumentsTable.billStatus, "to_bill"),
+          eq(purchaseDocumentsTable.billStatus, "billed"),
+          ne(purchaseDocumentsTable.paymentStatus, "paid"),
         ),
       ),
   ]);
