@@ -156,6 +156,18 @@ export default function EcommercePage() {
   const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
   const [filterCategories, setFilterCategories] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState<string>("");
+  const [orderSearch, setOrderSearch] = useState<string>("");
+
+  const filteredOrders = (orders ?? []).filter((o) => {
+    if (!orderSearch.trim()) return true;
+    const q = orderSearch.trim().toLowerCase();
+    const orderId = `#ORD-${o.id.toString().padStart(4, "0")}`.toLowerCase();
+    return (
+      orderId.includes(q) ||
+      (o.customerName ?? "").toLowerCase().includes(q) ||
+      (o.customerEmail ?? "").toLowerCase().includes(q)
+    );
+  });
 
   const filteredProducts = (products ?? []).filter((p) => {
     if (productSearch.trim()) {
@@ -977,6 +989,17 @@ export default function EcommercePage() {
               </Dialog>
             </div>
 
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="Cari nama pelanggan, email, atau ID order..."
+                value={orderSearch}
+                onChange={(e) => setOrderSearch(e.target.value)}
+                data-testid="input-order-search"
+              />
+            </div>
+
             <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
@@ -1002,17 +1025,17 @@ export default function EcommercePage() {
                           <TableCell className="text-right"><Skeleton className="h-8 w-[80px] ml-auto" /></TableCell>
                         </TableRow>
                       ))
-                    ) : orders?.length === 0 ? (
+                    ) : filteredOrders.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <ShoppingBag className="h-8 w-8 mb-2 opacity-50" />
-                            <p>Belum ada order.</p>
+                            <p>{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : "Belum ada order."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      orders?.map((order) => (
+                      filteredOrders.map((order) => (
                         <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
                           <TableCell className="font-medium">#ORD-{order.id.toString().padStart(4, '0')}</TableCell>
                           <TableCell>
@@ -1061,13 +1084,13 @@ export default function EcommercePage() {
                     <Skeleton className="h-4 w-1/2" />
                   </CardContent></Card>
                 ))
-              ) : orders?.length === 0 ? (
+              ) : filteredOrders.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <ShoppingBag className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Belum ada order.</p>
+                  <p className="text-sm text-muted-foreground">{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : "Belum ada order."}</p>
                 </CardContent></Card>
               ) : (
-                orders?.map((order) => (
+                filteredOrders.map((order) => (
                   <Card key={order.id} data-testid={`card-order-${order.id}`}><CardContent className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium font-mono text-sm">#ORD-{order.id.toString().padStart(4, '0')}</p>
