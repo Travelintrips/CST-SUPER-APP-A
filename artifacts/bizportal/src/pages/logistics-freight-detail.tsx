@@ -778,7 +778,7 @@ export default function LogisticsFreightDetailPage() {
                         : "Belum Ada Invoice"}
                     </Badge>
                   </div>
-                  <Link href={`/sales/${salesDocId}`}>
+                  <Link href={`/sales/orders/${salesDocId}`}>
                     <Button variant="outline" size="sm">
                       <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                       Lihat Sales Order
@@ -789,7 +789,7 @@ export default function LogisticsFreightDetailPage() {
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                     <Receipt className="h-4 w-4 text-amber-500 shrink-0" />
                     <p className="text-xs text-amber-600">Sales Order ini sudah dikonfirmasi dan siap diinvoice. Buka Sales Order untuk menyelesaikan invoicing.</p>
-                    <Link href={`/sales/${salesDocId}`} className="ml-auto">
+                    <Link href={`/sales/orders/${salesDocId}`} className="ml-auto">
                       <Button size="sm" variant="outline" className="h-7 text-xs border-amber-500/40 text-amber-600 hover:bg-amber-500/10">
                         Invoice Sekarang
                       </Button>
