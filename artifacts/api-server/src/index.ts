@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { seedAccountingDefaults } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedDemoData } from "./lib/seedDemoData";
+import { startImapPoller } from "./lib/imapPoller";
 
 const rawPort = process.env["PORT"];
 
@@ -37,5 +38,8 @@ app.listen(port, (err) => {
     .catch((seedErr) => {
       logger.error({ err: seedErr }, "Logistics/demo seed failed");
     });
+
+  // Start IMAP email poller (polls every 5 minutes when IMAP credentials are configured)
+  startImapPoller();
 
 });

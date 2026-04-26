@@ -1993,6 +1993,7 @@ paths:
         - { name: direction, in: query, schema: { type: string, enum: [inbound, outbound] } }
         - { name: customerId, in: query, schema: { type: integer } }
         - { name: supplierId, in: query, schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [new, linked, validated, rejected, archived] } }
       responses:
         "200":
           description: Correspondence list
@@ -2083,6 +2084,87 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /correspondences/sync:
+    post:
+      operationId: syncCorrespondencesImap
+      summary: Trigger manual IMAP email sync
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  synced: { type: integer }
+                  errors: { type: integer }
+                required: [message, synced, errors]
+
+  /correspondences/{id}/validate:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: validateCorrespondence
+      summary: Mark correspondence as validated
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Correspondence" }
+
+  /correspondences/{id}/reject:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: rejectCorrespondence
+      summary: Mark correspondence as rejected
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Correspondence" }
+
+  /correspondences/{id}/archive:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: archiveCorrespondence
+      summary: Archive a correspondence
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Correspondence" }
+
+  /correspondences/{id}/link:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: linkCorrespondence
+      summary: Link correspondence to a transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                linkedDocType:
+                  type: string
+                  enum: [sales_order, purchase_order, expense, shipment, payment, invoice]
+                linkedDocId: { type: integer }
+              required: [linkedDocType, linkedDocId]
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Correspondence" }
 
   /correspondences/{id}/attachments/{attId}/extracted-text:
     parameters:
@@ -3770,6 +3852,10 @@ components:
         senderEmail: { type: string, nullable: true }
         receiverName: { type: string, nullable: true }
         receiverEmail: { type: string, nullable: true }
+        ccEmail: { type: string, nullable: true }
+        status: { type: string, enum: [new, linked, validated, rejected, archived] }
+        linkedDocType: { type: string, nullable: true }
+        linkedDocId: { type: integer, nullable: true }
         customerId: { type: integer, nullable: true }
         supplierId: { type: integer, nullable: true }
         tags: { type: array, items: { type: string } }
@@ -3779,7 +3865,7 @@ components:
         correspondedAt: { type: string }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
-      required: [id, kind, direction, subject, tags, correspondedAt, createdAt]
+      required: [id, kind, direction, subject, status, tags, correspondedAt, createdAt]
 
     CorrespondenceAttachment:
       type: object

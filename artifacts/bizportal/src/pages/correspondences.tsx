@@ -8,6 +8,11 @@ import {
   useDeleteCorrespondenceAttachment,
   useListCustomers,
   useListSuppliers,
+  useValidateCorrespondence,
+  useRejectCorrespondence,
+  useArchiveCorrespondence,
+  useLinkCorrespondence,
+  useSyncCorrespondencesImap,
   getListCorrespondencesQueryKey,
   type Correspondence,
   type CorrespondenceDetail,
@@ -16,7 +21,7 @@ import {
 import { useState, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -32,7 +37,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import {
   Plus, Search, Mail, MessageCircle, FileText, MoreHorizontal,
   Paperclip, Trash2, Eye, Pencil, Download, FileImage, ArrowDownLeft, ArrowUpRight,
-  Loader2, Camera, Upload, CheckCircle2,
+  Loader2, Camera, Upload, CheckCircle2, Link2, RefreshCw, ShieldCheck, XCircle, Archive,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -49,6 +54,39 @@ const KIND_ICONS: Record<string, React.ReactNode> = {
   letter: <FileText className="h-3.5 w-3.5" />,
   other: <MoreHorizontal className="h-3.5 w-3.5" />,
 };
+
+const STATUS_LABELS: Record<string, string> = {
+  new: "Baru",
+  linked: "Ditautkan",
+  validated: "Divalidasi",
+  rejected: "Ditolak",
+  archived: "Diarsipkan",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  new: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  linked: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  validated: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  rejected: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  archived: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400",
+};
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  sales_order: "Sales Order (SO)",
+  purchase_order: "Purchase Order (PO)",
+  expense: "Biaya (Expense)",
+  shipment: "Pengiriman (Shipment)",
+  payment: "Pembayaran (Payment)",
+  invoice: "Invoice",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status] ?? STATUS_COLORS["new"]}`}>
+      {STATUS_LABELS[status] ?? status}
+    </span>
+  );
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -133,12 +171,14 @@ export default function CorrespondencesPage() {
   const [searchQ, setSearchQ] = useState("");
   const [filterKind, setFilterKind] = useState("__all__");
   const [filterDirection, setFilterDirection] = useState("__all__");
+  const [filterStatus, setFilterStatus] = useState("__all__");
 
   const queryParams = useMemo(() => ({
     ...(searchQ.trim() ? { q: searchQ.trim() } : {}),
     ...(filterKind !== "__all__" ? { kind: filterKind as "email" | "whatsapp" | "letter" | "other" } : {}),
     ...(filterDirection !== "__all__" ? { direction: filterDirection as "inbound" | "outbound" } : {}),
-  }), [searchQ, filterKind, filterDirection]);
+    ...(filterStatus !== "__all__" ? { status: filterStatus as "new" | "linked" | "validated" | "rejected" | "archived" } : {}),
+  }), [searchQ, filterKind, filterDirection, filterStatus]);
 
   const { data: correspondences, isLoading } = useListCorrespondences(queryParams, {
     query: { queryKey: getListCorrespondencesQueryKey(queryParams) },
@@ -151,6 +191,11 @@ export default function CorrespondencesPage() {
   const deleteCorrespondence = useDeleteCorrespondence();
   const addAttachment = useAddCorrespondenceAttachment();
   const deleteAttachment = useDeleteCorrespondenceAttachment();
+  const validateCorrespondence = useValidateCorrespondence();
+  const rejectCorrespondence = useRejectCorrespondence();
+  const archiveCorrespondence = useArchiveCorrespondence();
+  const linkCorrespondence = useLinkCorrespondence();
+  const syncImap = useSyncCorrespondencesImap();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -164,6 +209,11 @@ export default function CorrespondencesPage() {
   const [saveScannedAsAttachment, setSaveScannedAsAttachment] = useState(true);
   const scanFileInputRef = useRef<HTMLInputElement>(null);
   const scanCameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Link dialog state
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkDocType, setLinkDocType] = useState("sales_order");
+  const [linkDocId, setLinkDocId] = useState("");
 
   const { uploadFile: uploadScannedFile } = useUpload({
     onError: () => toast({ title: "Gagal mengunggah lampiran scan", variant: "destructive" }),
@@ -413,7 +463,76 @@ export default function CorrespondencesPage() {
     });
   }
 
-  const isFiltered = searchQ.trim() || filterKind !== "__all__" || filterDirection !== "__all__";
+  function handleValidate() {
+    if (!viewingDetail) return;
+    const id = viewingDetail.id;
+    validateCorrespondence.mutate({ id }, {
+      onSuccess: () => {
+        refreshDetail(id);
+        queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+        toast({ title: "Korespondensi divalidasi" });
+      },
+      onError: () => toast({ title: "Gagal memvalidasi", variant: "destructive" }),
+    });
+  }
+
+  function handleReject() {
+    if (!viewingDetail) return;
+    const id = viewingDetail.id;
+    rejectCorrespondence.mutate({ id }, {
+      onSuccess: () => {
+        refreshDetail(id);
+        queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+        toast({ title: "Korespondensi ditolak" });
+      },
+      onError: () => toast({ title: "Gagal menolak", variant: "destructive" }),
+    });
+  }
+
+  function handleArchive() {
+    if (!viewingDetail) return;
+    const id = viewingDetail.id;
+    archiveCorrespondence.mutate({ id }, {
+      onSuccess: () => {
+        refreshDetail(id);
+        queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+        toast({ title: "Korespondensi diarsipkan" });
+      },
+      onError: () => toast({ title: "Gagal mengarsipkan", variant: "destructive" }),
+    });
+  }
+
+  function handleLink() {
+    if (!viewingDetail) return;
+    const docId = parseInt(linkDocId);
+    if (!linkDocType || isNaN(docId) || docId <= 0) {
+      toast({ title: "Tipe dan ID dokumen harus diisi dengan benar", variant: "destructive" });
+      return;
+    }
+    const id = viewingDetail.id;
+    linkCorrespondence.mutate({ id, data: { linkedDocType: linkDocType as any, linkedDocId: docId } }, {
+      onSuccess: () => {
+        refreshDetail(id);
+        queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+        setLinkOpen(false);
+        setLinkDocId("");
+        toast({ title: "Korespondensi berhasil ditautkan" });
+      },
+      onError: () => toast({ title: "Gagal menautkan", variant: "destructive" }),
+    });
+  }
+
+  function handleSync() {
+    syncImap.mutate(undefined, {
+      onSuccess: (result) => {
+        queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
+        toast({ title: result.message ?? `${result.synced} email baru disinkronkan` });
+      },
+      onError: () => toast({ title: "Sinkronisasi email gagal", variant: "destructive" }),
+    });
+  }
+
+  const isFiltered = searchQ.trim() || filterKind !== "__all__" || filterDirection !== "__all__" || filterStatus !== "__all__";
 
   return (
     <AppShell>
@@ -423,13 +542,28 @@ export default function CorrespondencesPage() {
             <h1 className="text-2xl font-bold">Korespondensi</h1>
             <p className="text-sm text-muted-foreground">Arsip email, surat, dan dokumen penawaran</p>
           </div>
-          <Button onClick={openCreate} data-testid="button-add-correspondence">
-            <Plus className="h-4 w-4 mr-2" /> Tambah
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSync}
+              disabled={syncImap.isPending}
+              title="Sinkronisasi email dari IMAP"
+              data-testid="button-sync-imap"
+            >
+              {syncImap.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <RefreshCw className="h-4 w-4" />}
+              <span className="ml-1.5 hidden sm:inline">Sinkron Email</span>
+            </Button>
+            <Button onClick={openCreate} data-testid="button-add-correspondence">
+              <Plus className="h-4 w-4 mr-2" /> Tambah
+            </Button>
+          </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
               className="pl-9"
@@ -440,7 +574,7 @@ export default function CorrespondencesPage() {
             />
           </div>
           <Select value={filterKind} onValueChange={setFilterKind} data-testid="filter-kind">
-            <SelectTrigger className="sm:w-[160px]"><SelectValue placeholder="Semua Jenis" /></SelectTrigger>
+            <SelectTrigger className="sm:w-[150px]"><SelectValue placeholder="Semua Jenis" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Semua Jenis</SelectItem>
               <SelectItem value="email">Email</SelectItem>
@@ -450,11 +584,22 @@ export default function CorrespondencesPage() {
             </SelectContent>
           </Select>
           <Select value={filterDirection} onValueChange={setFilterDirection} data-testid="filter-direction">
-            <SelectTrigger className="sm:w-[160px]"><SelectValue placeholder="Semua Arah" /></SelectTrigger>
+            <SelectTrigger className="sm:w-[140px]"><SelectValue placeholder="Semua Arah" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Semua Arah</SelectItem>
               <SelectItem value="inbound">Masuk</SelectItem>
               <SelectItem value="outbound">Keluar</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterStatus} onValueChange={setFilterStatus} data-testid="filter-status">
+            <SelectTrigger className="sm:w-[150px]"><SelectValue placeholder="Semua Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Semua Status</SelectItem>
+              <SelectItem value="new">Baru</SelectItem>
+              <SelectItem value="linked">Ditautkan</SelectItem>
+              <SelectItem value="validated">Divalidasi</SelectItem>
+              <SelectItem value="rejected">Ditolak</SelectItem>
+              <SelectItem value="archived">Diarsipkan</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -468,7 +613,7 @@ export default function CorrespondencesPage() {
             <Card><CardContent className="p-12 text-center text-muted-foreground">
               <Mail className="h-10 w-10 mb-3 mx-auto opacity-40" />
               <p className="font-medium">{isFiltered ? "Tidak ada korespondensi yang cocok." : "Belum ada korespondensi."}</p>
-              {!isFiltered && <p className="text-sm mt-1">Klik "Tambah" untuk mencatat korespondensi pertama.</p>}
+              {!isFiltered && <p className="text-sm mt-1">Klik "Tambah" atau "Sinkron Email" untuk memulai.</p>}
             </CardContent></Card>
           ) : (
             (correspondences ?? []).map((c) => (
@@ -481,12 +626,13 @@ export default function CorrespondencesPage() {
                           ? <ArrowDownLeft className="h-4 w-4 text-blue-400" />
                           : <ArrowUpRight className="h-4 w-4 text-emerald-400" />}
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap mb-0.5">
                           <Badge variant="outline" className="gap-1 text-xs shrink-0">
                             {KIND_ICONS[c.kind]}{KIND_LABELS[c.kind]}
                           </Badge>
-                          {c.tags.length > 0 && c.tags.slice(0, 3).map((t) => (
+                          <StatusBadge status={c.status} />
+                          {c.tags.length > 0 && c.tags.slice(0, 2).map((t) => (
                             <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
                           ))}
                         </div>
@@ -498,6 +644,12 @@ export default function CorrespondencesPage() {
                             ? `Ke: ${c.receiverName ?? c.receiverEmail}`
                             : "—"}
                         </p>
+                        {c.linkedDocType && c.linkedDocId && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            <Link2 className="h-3 w-3 inline mr-1" />
+                            {DOC_TYPE_LABELS[c.linkedDocType] ?? c.linkedDocType} #{c.linkedDocId}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -836,6 +988,7 @@ export default function CorrespondencesPage() {
                       ? <><ArrowDownLeft className="h-3 w-3" />Masuk</>
                       : <><ArrowUpRight className="h-3 w-3" />Keluar</>}
                   </Badge>
+                  <StatusBadge status={viewingDetail.status} />
                 </div>
                 <DialogTitle className="text-lg leading-snug">{viewingDetail.subject}</DialogTitle>
                 <DialogDescription asChild>
@@ -847,8 +1000,17 @@ export default function CorrespondencesPage() {
                     {(viewingDetail.receiverName || viewingDetail.receiverEmail) && (
                       <p>Ke: <span className="font-medium">{viewingDetail.receiverName ?? ""} {viewingDetail.receiverEmail ? `<${viewingDetail.receiverEmail}>` : ""}</span></p>
                     )}
+                    {viewingDetail.ccEmail && (
+                      <p>CC: <span className="font-medium">{viewingDetail.ccEmail}</span></p>
+                    )}
                     {viewingDetail.customerName && <p>Customer: <span className="font-medium">{viewingDetail.customerName}</span></p>}
                     {viewingDetail.supplierName && <p>Vendor: <span className="font-medium">{viewingDetail.supplierName}</span></p>}
+                    {viewingDetail.linkedDocType && viewingDetail.linkedDocId && (
+                      <p className="flex items-center gap-1">
+                        <Link2 className="h-3.5 w-3.5 shrink-0" />
+                        Ditautkan ke: <span className="font-medium">{DOC_TYPE_LABELS[viewingDetail.linkedDocType] ?? viewingDetail.linkedDocType} #{viewingDetail.linkedDocId}</span>
+                      </p>
+                    )}
                     {viewingDetail.tags.length > 0 && (
                       <div className="flex gap-1 flex-wrap pt-1">
                         {viewingDetail.tags.map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
@@ -861,7 +1023,7 @@ export default function CorrespondencesPage() {
               {viewingDetail.body && (
                 <div className="mt-2">
                   <p className="text-sm font-medium text-muted-foreground mb-1">Isi / Catatan</p>
-                  <div className="text-sm bg-muted/30 rounded-md p-3 whitespace-pre-wrap leading-relaxed">
+                  <div className="text-sm bg-muted/30 rounded-md p-3 whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
                     {viewingDetail.body}
                   </div>
                 </div>
@@ -940,7 +1102,54 @@ export default function CorrespondencesPage() {
                 )}
               </div>
 
-              <DialogFooter className="mt-4">
+              {/* ACTION BUTTONS */}
+              <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                  onClick={handleValidate}
+                  disabled={validateCorrespondence.isPending || viewingDetail.status === "validated"}
+                  data-testid="button-validate-correspondence"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Validasi
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => { setLinkDocType("sales_order"); setLinkDocId(""); setLinkOpen(true); }}
+                  data-testid="button-link-correspondence"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  Tautkan Transaksi
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/20"
+                  onClick={handleReject}
+                  disabled={rejectCorrespondence.isPending || viewingDetail.status === "rejected"}
+                  data-testid="button-reject-correspondence"
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  Tolak
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-gray-600"
+                  onClick={handleArchive}
+                  disabled={archiveCorrespondence.isPending || viewingDetail.status === "archived"}
+                  data-testid="button-archive-correspondence"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  Arsipkan
+                </Button>
+              </div>
+
+              <DialogFooter className="mt-2">
                 <Button variant="outline" onClick={() => openEdit(viewingDetail)} className="gap-1.5">
                   <Pencil className="h-3.5 w-3.5" />Edit
                 </Button>
@@ -948,6 +1157,64 @@ export default function CorrespondencesPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* LINK TO TRANSACTION DIALOG */}
+      <Dialog open={linkOpen} onOpenChange={(o) => { if (!o) setLinkOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-4 w-4" /> Tautkan ke Transaksi
+            </DialogTitle>
+            <DialogDescription>
+              Pilih jenis dokumen transaksi dan masukkan nomor ID-nya.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>Jenis Dokumen</Label>
+              <Select value={linkDocType} onValueChange={setLinkDocType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sales_order">Sales Order (SO)</SelectItem>
+                  <SelectItem value="purchase_order">Purchase Order (PO)</SelectItem>
+                  <SelectItem value="invoice">Invoice</SelectItem>
+                  <SelectItem value="expense">Biaya (Expense)</SelectItem>
+                  <SelectItem value="payment">Pembayaran (Payment)</SelectItem>
+                  <SelectItem value="shipment">Pengiriman (Shipment)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="link-doc-id">ID Dokumen</Label>
+              <Input
+                id="link-doc-id"
+                type="number"
+                min="1"
+                value={linkDocId}
+                onChange={(e) => setLinkDocId(e.target.value)}
+                placeholder="Contoh: 42"
+                data-testid="input-link-doc-id"
+              />
+              <p className="text-xs text-muted-foreground">
+                Masukkan nomor ID dari dokumen transaksi yang ingin ditautkan.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkOpen(false)}>Batal</Button>
+            <Button
+              onClick={handleLink}
+              disabled={linkCorrespondence.isPending || !linkDocId}
+              data-testid="button-confirm-link"
+            >
+              {linkCorrespondence.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
+              Tautkan
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

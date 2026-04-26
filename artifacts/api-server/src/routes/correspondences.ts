@@ -5,6 +5,7 @@ import { db, correspondencesTable, correspondenceAttachmentsTable, customersTabl
 import { eq, desc, ilike, or, and } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { syncImapEmails } from "../lib/imapPoller.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -117,12 +118,13 @@ function serializeAttachment(a: typeof correspondenceAttachmentsTable.$inferSele
 
 // GET /api/correspondences
 router.get("/", async (req, res) => {
-  const { q, kind, direction, customerId, supplierId } = req.query;
+  const { q, kind, direction, customerId, supplierId, status } = req.query;
   const conditions = [];
   if (kind) conditions.push(eq(correspondencesTable.kind, kind as "email" | "whatsapp" | "letter" | "other"));
   if (direction) conditions.push(eq(correspondencesTable.direction, direction as "inbound" | "outbound"));
   if (customerId) conditions.push(eq(correspondencesTable.customerId, Number(customerId)));
   if (supplierId) conditions.push(eq(correspondencesTable.supplierId, Number(supplierId)));
+  if (status) conditions.push(eq(correspondencesTable.status, status as string));
   if (q) {
     const like = `%${q}%`;
     conditions.push(
@@ -269,6 +271,74 @@ router.delete("/:id/attachments/:attId", async (req, res) => {
   const attId = Number(req.params.attId);
   await db.delete(correspondenceAttachmentsTable).where(eq(correspondenceAttachmentsTable.id, attId));
   return res.json({ message: "Lampiran berhasil dihapus" });
+});
+
+// POST /api/correspondences/:id/validate
+router.post("/:id/validate", async (req, res) => {
+  const id = Number(req.params.id);
+  const [row] = await db
+    .update(correspondencesTable)
+    .set({ status: "validated" })
+    .where(eq(correspondencesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Korespondensi tidak ditemukan" });
+  return res.json(serializeCorrespondence(row));
+});
+
+// POST /api/correspondences/:id/reject
+router.post("/:id/reject", async (req, res) => {
+  const id = Number(req.params.id);
+  const [row] = await db
+    .update(correspondencesTable)
+    .set({ status: "rejected" })
+    .where(eq(correspondencesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Korespondensi tidak ditemukan" });
+  return res.json(serializeCorrespondence(row));
+});
+
+// POST /api/correspondences/:id/archive
+router.post("/:id/archive", async (req, res) => {
+  const id = Number(req.params.id);
+  const [row] = await db
+    .update(correspondencesTable)
+    .set({ status: "archived" })
+    .where(eq(correspondencesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Korespondensi tidak ditemukan" });
+  return res.json(serializeCorrespondence(row));
+});
+
+// POST /api/correspondences/:id/link — link to a transaction
+router.post("/:id/link", async (req, res) => {
+  const id = Number(req.params.id);
+  const { linkedDocType, linkedDocId } = req.body;
+  const validDocTypes = ["sales_order", "purchase_order", "expense", "shipment", "payment", "invoice"];
+  if (!linkedDocType || !validDocTypes.includes(linkedDocType)) {
+    return res.status(400).json({ message: `linkedDocType harus salah satu dari: ${validDocTypes.join(", ")}` });
+  }
+  if (!linkedDocId || isNaN(Number(linkedDocId))) {
+    return res.status(400).json({ message: "linkedDocId harus berupa angka" });
+  }
+  const [row] = await db
+    .update(correspondencesTable)
+    .set({ linkedDocType, linkedDocId: Number(linkedDocId), status: "linked" })
+    .where(eq(correspondencesTable.id, id))
+    .returning();
+  if (!row) return res.status(404).json({ message: "Korespondensi tidak ditemukan" });
+  return res.json(serializeCorrespondence(row));
+});
+
+// POST /api/correspondences/sync — manually trigger IMAP sync
+router.post("/sync", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const result = await syncImapEmails();
+    return res.json({ message: `Sinkronisasi selesai: ${result.synced} email baru`, ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ message: "Sinkronisasi gagal", error: msg });
+  }
 });
 
 export default router;

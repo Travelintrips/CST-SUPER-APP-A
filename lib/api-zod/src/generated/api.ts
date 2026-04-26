@@ -2846,6 +2846,9 @@ export const ListCorrespondencesQueryParams = zod.object({
   direction: zod.enum(["inbound", "outbound"]).optional(),
   customerId: zod.coerce.number().optional(),
   supplierId: zod.coerce.number().optional(),
+  status: zod
+    .enum(["new", "linked", "validated", "rejected", "archived"])
+    .optional(),
 });
 
 export const ListCorrespondencesResponseItem = zod.object({
@@ -2859,6 +2862,10 @@ export const ListCorrespondencesResponseItem = zod.object({
   senderEmail: zod.string().nullish(),
   receiverName: zod.string().nullish(),
   receiverEmail: zod.string().nullish(),
+  ccEmail: zod.string().nullish(),
+  status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  linkedDocType: zod.string().nullish(),
+  linkedDocId: zod.number().nullish(),
   customerId: zod.number().nullish(),
   supplierId: zod.number().nullish(),
   tags: zod.array(zod.string()),
@@ -2912,6 +2919,10 @@ export const GetCorrespondenceResponse = zod
     senderEmail: zod.string().nullish(),
     receiverName: zod.string().nullish(),
     receiverEmail: zod.string().nullish(),
+    ccEmail: zod.string().nullish(),
+    status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+    linkedDocType: zod.string().nullish(),
+    linkedDocId: zod.number().nullish(),
     customerId: zod.number().nullish(),
     supplierId: zod.number().nullish(),
     tags: zod.array(zod.string()),
@@ -2975,6 +2986,10 @@ export const UpdateCorrespondenceResponse = zod.object({
   senderEmail: zod.string().nullish(),
   receiverName: zod.string().nullish(),
   receiverEmail: zod.string().nullish(),
+  ccEmail: zod.string().nullish(),
+  status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  linkedDocType: zod.string().nullish(),
+  linkedDocId: zod.number().nullish(),
   customerId: zod.number().nullish(),
   supplierId: zod.number().nullish(),
   tags: zod.array(zod.string()),
@@ -3021,6 +3036,159 @@ export const DeleteCorrespondenceAttachmentParams = zod.object({
 
 export const DeleteCorrespondenceAttachmentResponse = zod.object({
   message: zod.string(),
+});
+
+/**
+ * @summary Trigger manual IMAP email sync
+ */
+export const SyncCorrespondencesImapResponse = zod.object({
+  message: zod.string(),
+  synced: zod.number(),
+  errors: zod.number(),
+});
+
+/**
+ * @summary Mark correspondence as validated
+ */
+export const ValidateCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ValidateCorrespondenceResponse = zod.object({
+  id: zod.number(),
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]),
+  direction: zod.enum(["inbound", "outbound"]),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  ccEmail: zod.string().nullish(),
+  status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  linkedDocType: zod.string().nullish(),
+  linkedDocId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()),
+  attachments: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+  correspondedAt: zod.string(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Mark correspondence as rejected
+ */
+export const RejectCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RejectCorrespondenceResponse = zod.object({
+  id: zod.number(),
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]),
+  direction: zod.enum(["inbound", "outbound"]),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  ccEmail: zod.string().nullish(),
+  status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  linkedDocType: zod.string().nullish(),
+  linkedDocId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()),
+  attachments: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+  correspondedAt: zod.string(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Archive a correspondence
+ */
+export const ArchiveCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ArchiveCorrespondenceResponse = zod.object({
+  id: zod.number(),
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]),
+  direction: zod.enum(["inbound", "outbound"]),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  ccEmail: zod.string().nullish(),
+  status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  linkedDocType: zod.string().nullish(),
+  linkedDocId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()),
+  attachments: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+  correspondedAt: zod.string(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Link correspondence to a transaction
+ */
+export const LinkCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const LinkCorrespondenceBody = zod.object({
+  linkedDocType: zod.enum([
+    "sales_order",
+    "purchase_order",
+    "expense",
+    "shipment",
+    "payment",
+    "invoice",
+  ]),
+  linkedDocId: zod.number(),
+});
+
+export const LinkCorrespondenceResponse = zod.object({
+  id: zod.number(),
+  kind: zod.enum(["email", "whatsapp", "letter", "other"]),
+  direction: zod.enum(["inbound", "outbound"]),
+  subject: zod.string(),
+  body: zod.string().nullish(),
+  extractedText: zod.string().nullish(),
+  senderName: zod.string().nullish(),
+  senderEmail: zod.string().nullish(),
+  receiverName: zod.string().nullish(),
+  receiverEmail: zod.string().nullish(),
+  ccEmail: zod.string().nullish(),
+  status: zod.enum(["new", "linked", "validated", "rejected", "archived"]),
+  linkedDocType: zod.string().nullish(),
+  linkedDocId: zod.number().nullish(),
+  customerId: zod.number().nullish(),
+  supplierId: zod.number().nullish(),
+  tags: zod.array(zod.string()),
+  attachments: zod.string().nullish(),
+  emailMessageId: zod.string().nullish(),
+  emailThreadId: zod.string().nullish(),
+  correspondedAt: zod.string(),
+  createdById: zod.string().nullish(),
+  createdAt: zod.string(),
 });
 
 /**

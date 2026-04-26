@@ -78,6 +78,7 @@ import type {
   GetSalesReportParams,
   GetTrialBalanceParams,
   HealthStatus,
+  LinkCorrespondenceBody,
   ListAccountingEntriesParams,
   ListAccountingPaymentsParams,
   ListCorrespondencesParams,
@@ -114,6 +115,7 @@ import type {
   ShipmentStage,
   StockItem,
   Supplier,
+  SyncCorrespondencesImap200,
   Transaction,
   TrialBalanceReport,
   UpdateAccountBody,
@@ -9971,6 +9973,429 @@ export const useDeleteCorrespondenceAttachment = <
   TContext
 > => {
   return useMutation(getDeleteCorrespondenceAttachmentMutationOptions(options));
+};
+
+/**
+ * @summary Trigger manual IMAP email sync
+ */
+export const getSyncCorrespondencesImapUrl = () => {
+  return `/api/correspondences/sync`;
+};
+
+export const syncCorrespondencesImap = async (
+  options?: RequestInit,
+): Promise<SyncCorrespondencesImap200> => {
+  return customFetch<SyncCorrespondencesImap200>(
+    getSyncCorrespondencesImapUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getSyncCorrespondencesImapMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncCorrespondencesImap>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof syncCorrespondencesImap>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["syncCorrespondencesImap"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof syncCorrespondencesImap>>,
+    void
+  > = () => {
+    return syncCorrespondencesImap(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SyncCorrespondencesImapMutationResult = NonNullable<
+  Awaited<ReturnType<typeof syncCorrespondencesImap>>
+>;
+
+export type SyncCorrespondencesImapMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Trigger manual IMAP email sync
+ */
+export const useSyncCorrespondencesImap = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncCorrespondencesImap>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof syncCorrespondencesImap>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getSyncCorrespondencesImapMutationOptions(options));
+};
+
+/**
+ * @summary Mark correspondence as validated
+ */
+export const getValidateCorrespondenceUrl = (id: number) => {
+  return `/api/correspondences/${id}/validate`;
+};
+
+export const validateCorrespondence = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Correspondence> => {
+  return customFetch<Correspondence>(getValidateCorrespondenceUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getValidateCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof validateCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["validateCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof validateCorrespondence>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return validateCorrespondence(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ValidateCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof validateCorrespondence>>
+>;
+
+export type ValidateCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mark correspondence as validated
+ */
+export const useValidateCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof validateCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof validateCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getValidateCorrespondenceMutationOptions(options));
+};
+
+/**
+ * @summary Mark correspondence as rejected
+ */
+export const getRejectCorrespondenceUrl = (id: number) => {
+  return `/api/correspondences/${id}/reject`;
+};
+
+export const rejectCorrespondence = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Correspondence> => {
+  return customFetch<Correspondence>(getRejectCorrespondenceUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRejectCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rejectCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["rejectCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rejectCorrespondence>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return rejectCorrespondence(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RejectCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rejectCorrespondence>>
+>;
+
+export type RejectCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Mark correspondence as rejected
+ */
+export const useRejectCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rejectCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRejectCorrespondenceMutationOptions(options));
+};
+
+/**
+ * @summary Archive a correspondence
+ */
+export const getArchiveCorrespondenceUrl = (id: number) => {
+  return `/api/correspondences/${id}/archive`;
+};
+
+export const archiveCorrespondence = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Correspondence> => {
+  return customFetch<Correspondence>(getArchiveCorrespondenceUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getArchiveCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof archiveCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof archiveCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["archiveCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof archiveCorrespondence>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return archiveCorrespondence(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ArchiveCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof archiveCorrespondence>>
+>;
+
+export type ArchiveCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Archive a correspondence
+ */
+export const useArchiveCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof archiveCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof archiveCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getArchiveCorrespondenceMutationOptions(options));
+};
+
+/**
+ * @summary Link correspondence to a transaction
+ */
+export const getLinkCorrespondenceUrl = (id: number) => {
+  return `/api/correspondences/${id}/link`;
+};
+
+export const linkCorrespondence = async (
+  id: number,
+  linkCorrespondenceBody: LinkCorrespondenceBody,
+  options?: RequestInit,
+): Promise<Correspondence> => {
+  return customFetch<Correspondence>(getLinkCorrespondenceUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(linkCorrespondenceBody),
+  });
+};
+
+export const getLinkCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkCorrespondence>>,
+    TError,
+    { id: number; data: BodyType<LinkCorrespondenceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof linkCorrespondence>>,
+  TError,
+  { id: number; data: BodyType<LinkCorrespondenceBody> },
+  TContext
+> => {
+  const mutationKey = ["linkCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof linkCorrespondence>>,
+    { id: number; data: BodyType<LinkCorrespondenceBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return linkCorrespondence(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LinkCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof linkCorrespondence>>
+>;
+export type LinkCorrespondenceMutationBody = BodyType<LinkCorrespondenceBody>;
+export type LinkCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Link correspondence to a transaction
+ */
+export const useLinkCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkCorrespondence>>,
+    TError,
+    { id: number; data: BodyType<LinkCorrespondenceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof linkCorrespondence>>,
+  TError,
+  { id: number; data: BodyType<LinkCorrespondenceBody> },
+  TContext
+> => {
+  return useMutation(getLinkCorrespondenceMutationOptions(options));
 };
 
 /**

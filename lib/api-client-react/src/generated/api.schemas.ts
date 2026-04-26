@@ -1223,6 +1223,17 @@ export const CorrespondenceDirection = {
   outbound: "outbound",
 } as const;
 
+export type CorrespondenceStatus =
+  (typeof CorrespondenceStatus)[keyof typeof CorrespondenceStatus];
+
+export const CorrespondenceStatus = {
+  new: "new",
+  linked: "linked",
+  validated: "validated",
+  rejected: "rejected",
+  archived: "archived",
+} as const;
+
 export interface Correspondence {
   id: number;
   kind: CorrespondenceKind;
@@ -1234,6 +1245,10 @@ export interface Correspondence {
   senderEmail?: string | null;
   receiverName?: string | null;
   receiverEmail?: string | null;
+  ccEmail?: string | null;
+  status: CorrespondenceStatus;
+  linkedDocType?: string | null;
+  linkedDocId?: number | null;
   customerId?: number | null;
   supplierId?: number | null;
   tags: string[];
@@ -1956,6 +1971,7 @@ export type ListCorrespondencesParams = {
   direction?: ListCorrespondencesDirection;
   customerId?: number;
   supplierId?: number;
+  status?: ListCorrespondencesStatus;
 };
 
 export type ListCorrespondencesKind =
@@ -1975,6 +1991,40 @@ export const ListCorrespondencesDirection = {
   inbound: "inbound",
   outbound: "outbound",
 } as const;
+
+export type ListCorrespondencesStatus =
+  (typeof ListCorrespondencesStatus)[keyof typeof ListCorrespondencesStatus];
+
+export const ListCorrespondencesStatus = {
+  new: "new",
+  linked: "linked",
+  validated: "validated",
+  rejected: "rejected",
+  archived: "archived",
+} as const;
+
+export type SyncCorrespondencesImap200 = {
+  message: string;
+  synced: number;
+  errors: number;
+};
+
+export type LinkCorrespondenceBodyLinkedDocType =
+  (typeof LinkCorrespondenceBodyLinkedDocType)[keyof typeof LinkCorrespondenceBodyLinkedDocType];
+
+export const LinkCorrespondenceBodyLinkedDocType = {
+  sales_order: "sales_order",
+  purchase_order: "purchase_order",
+  expense: "expense",
+  shipment: "shipment",
+  payment: "payment",
+  invoice: "invoice",
+} as const;
+
+export type LinkCorrespondenceBody = {
+  linkedDocType: LinkCorrespondenceBodyLinkedDocType;
+  linkedDocId: number;
+};
 
 export type UpdateCorrespondenceAttachmentExtractedTextBody = {
   extractedText: string | null;
