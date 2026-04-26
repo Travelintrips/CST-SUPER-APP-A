@@ -300,7 +300,7 @@ export default function LogisticsPage() {
                   title={freightStatusFilter === "rfq_sent" ? "Klik untuk hapus filter" : "Filter: Menunggu Persetujuan Quote"}
                 >
                   {freightStatusFilter === "rfq_sent" && (
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white" aria-label="Hapus filter">
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white animate-in zoom-in-50 duration-150" aria-label="Hapus filter">
                       <X className="h-2.5 w-2.5" />
                     </span>
                   )}
@@ -319,7 +319,7 @@ export default function LogisticsPage() {
                   title={freightStatusFilter === "in_transit" ? "Klik untuk hapus filter" : "Filter: Dalam Perjalanan"}
                 >
                   {freightStatusFilter === "in_transit" && (
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-400 text-white" aria-label="Hapus filter">
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-400 text-white animate-in zoom-in-50 duration-150" aria-label="Hapus filter">
                       <X className="h-2.5 w-2.5" />
                     </span>
                   )}
