@@ -83,6 +83,31 @@ export default function LogisticsPage() {
     wasFetchingRef.current = freightFetching;
   }, [freightFetching]);
 
+  const [freightSecondsLeft, setFreightSecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    const intervalMs = refetchIntervalMs(freightRefreshInterval);
+    if (!intervalMs || !lastRefreshed) {
+      setFreightSecondsLeft(null);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.round((lastRefreshed.getTime() + intervalMs - Date.now()) / 1000);
+      setFreightSecondsLeft(Math.max(0, remaining));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lastRefreshed, freightRefreshInterval]);
+
+  const formatFreightCountdown = (secs: number): string => {
+    if (secs <= 0) return "sebentar lagi";
+    if (secs < 60) return `${secs}d`;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return s > 0 ? `${m}m ${s}d` : `${m}m`;
+  };
+
   const FREIGHT_STATUS_LABELS: Record<string, string> = {
     draft: "Draft",
     rfq_sent: "RFQ Dikirim",
@@ -369,8 +394,17 @@ export default function LogisticsPage() {
               </div>
             </div>
             {lastRefreshed && (
-              <p className="text-[11px] text-muted-foreground">
-                Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <span>Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                {freightSecondsLeft !== null && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span className="flex items-center gap-0.5">
+                      <Clock className="h-3 w-3" />
+                      Refresh dalam {formatFreightCountdown(freightSecondsLeft)}
+                    </span>
+                  </>
+                )}
               </p>
             )}
             {isFreightFiltered && (

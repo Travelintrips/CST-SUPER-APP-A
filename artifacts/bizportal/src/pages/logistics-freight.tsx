@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
@@ -149,6 +149,31 @@ export default function LogisticsFreightPage() {
     }
     wasFetchingRef.current = isFetching;
   }, [isFetching]);
+
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    const intervalMs = refetchIntervalMs(refreshInterval);
+    if (!intervalMs || !lastRefreshed) {
+      setSecondsLeft(null);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.round((lastRefreshed.getTime() + intervalMs - Date.now()) / 1000);
+      setSecondsLeft(Math.max(0, remaining));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lastRefreshed, refreshInterval]);
+
+  const formatCountdown = (secs: number): string => {
+    if (secs <= 0) return "sebentar lagi";
+    if (secs < 60) return `${secs}d`;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return s > 0 ? `${m}m ${s}d` : `${m}m`;
+  };
 
   const deleteShipment = useDeleteFreightShipment();
 
@@ -331,8 +356,17 @@ export default function LogisticsFreightPage() {
           </div>
         </div>
         {lastRefreshed && (
-          <p className="text-xs text-muted-foreground -mt-4">
-            Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          <p className="text-xs text-muted-foreground -mt-4 flex items-center gap-1.5">
+            <span>Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+            {secondsLeft !== null && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="flex items-center gap-0.5">
+                  <Clock className="h-3 w-3" />
+                  Refresh dalam {formatCountdown(secondsLeft)}
+                </span>
+              </>
+            )}
           </p>
         )}
 
