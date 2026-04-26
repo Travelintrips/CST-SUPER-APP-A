@@ -278,7 +278,7 @@ export default function ExpenseEditorPage() {
     }));
   };
 
-  const { data: salesDocs = [] } = useListSalesDocuments();
+  const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
   const { data: shipments = [] } = useListFreightShipments();
 
   const save = async () => {
