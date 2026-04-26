@@ -2150,6 +2150,21 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Expense" }
 
+  /expenses/summary:
+    get:
+      operationId: getExpenseSummary
+      summary: Get expense summary report
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Expense summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExpenseSummary" }
+
   /expenses/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
@@ -3995,3 +4010,46 @@ components:
         fileName: { type: string }
         contentType: { type: string, nullable: true }
       required: [objectPath, fileName]
+
+    ExpenseSummaryCategory:
+      type: object
+      properties:
+        categoryId: { type: integer, nullable: true }
+        categoryName: { type: string }
+        total: { type: number }
+        count: { type: integer }
+      required: [categoryName, total, count]
+
+    ExpenseSummaryMonth:
+      type: object
+      properties:
+        month: { type: string }
+        total: { type: number }
+        count: { type: integer }
+      required: [month, total, count]
+
+    ExpenseSummaryVendor:
+      type: object
+      properties:
+        vendor: { type: string }
+        total: { type: number }
+        count: { type: integer }
+      required: [vendor, total, count]
+
+    ExpenseSummary:
+      type: object
+      properties:
+        from: { type: string }
+        to: { type: string }
+        grandTotal: { type: number }
+        totalCount: { type: integer }
+        byCategory:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseSummaryCategory" }
+        byMonth:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseSummaryMonth" }
+        topVendors:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseSummaryVendor" }
+      required: [from, to, grandTotal, totalCount, byCategory, byMonth, topVendors]

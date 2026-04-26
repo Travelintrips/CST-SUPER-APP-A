@@ -49,6 +49,7 @@ import CorrespondencesPage from "@/pages/correspondences";
 import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
 import ExpenseCategoriesPage from "@/pages/expense/categories";
+import ExpenseReportsPage from "@/pages/expense/reports";
 
 const queryClient = new QueryClient();
 
@@ -313,6 +314,9 @@ function Router() {
 
       <Route path="/expense/categories">
         <ProtectedRoute component={ExpenseCategoriesPage} />
+      </Route>
+      <Route path="/expense/reports">
+        <ProtectedRoute component={ExpenseReportsPage} />
       </Route>
       <Route path="/expense/new">
         <ProtectedRoute component={ExpenseEditorPage} />

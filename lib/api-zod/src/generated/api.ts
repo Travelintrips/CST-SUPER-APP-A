@@ -3023,6 +3023,44 @@ export const CreateExpenseBody = zod.object({
 });
 
 /**
+ * @summary Get expense summary report
+ */
+export const GetExpenseSummaryQueryParams = zod.object({
+  from: zod.coerce.string().optional(),
+  to: zod.coerce.string().optional(),
+  status: zod.coerce.string().optional(),
+});
+
+export const GetExpenseSummaryResponse = zod.object({
+  from: zod.string(),
+  to: zod.string(),
+  grandTotal: zod.number(),
+  totalCount: zod.number(),
+  byCategory: zod.array(
+    zod.object({
+      categoryId: zod.number().nullish(),
+      categoryName: zod.string(),
+      total: zod.number(),
+      count: zod.number(),
+    }),
+  ),
+  byMonth: zod.array(
+    zod.object({
+      month: zod.string(),
+      total: zod.number(),
+      count: zod.number(),
+    }),
+  ),
+  topVendors: zod.array(
+    zod.object({
+      vendor: zod.string(),
+      total: zod.number(),
+      count: zod.number(),
+    }),
+  ),
+});
+
+/**
  * @summary Get expense detail
  */
 export const GetExpenseParams = zod.object({

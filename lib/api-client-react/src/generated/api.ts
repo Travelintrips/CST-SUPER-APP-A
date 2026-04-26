@@ -61,6 +61,7 @@ import type {
   ExpenseAttachment,
   ExpenseCategory,
   ExpenseDetail,
+  ExpenseSummary,
   FreightAttachment,
   FreightQuote,
   FreightRfq,
@@ -69,6 +70,7 @@ import type {
   FreightShipmentDetail,
   GeneralLedgerReport,
   GetBalanceSheetParams,
+  GetExpenseSummaryParams,
   GetGeneralLedgerParams,
   GetProfitLossParams,
   GetPurchaseReportParams,
@@ -10265,6 +10267,103 @@ export const useCreateExpense = <
 > => {
   return useMutation(getCreateExpenseMutationOptions(options));
 };
+
+/**
+ * @summary Get expense summary report
+ */
+export const getGetExpenseSummaryUrl = (params?: GetExpenseSummaryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/expenses/summary?${stringifiedParams}`
+    : `/api/expenses/summary`;
+};
+
+export const getExpenseSummary = async (
+  params?: GetExpenseSummaryParams,
+  options?: RequestInit,
+): Promise<ExpenseSummary> => {
+  return customFetch<ExpenseSummary>(getGetExpenseSummaryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetExpenseSummaryQueryKey = (
+  params?: GetExpenseSummaryParams,
+) => {
+  return [`/api/expenses/summary`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetExpenseSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getExpenseSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetExpenseSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExpenseSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetExpenseSummaryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getExpenseSummary>>
+  > = ({ signal }) => getExpenseSummary(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getExpenseSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetExpenseSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getExpenseSummary>>
+>;
+export type GetExpenseSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get expense summary report
+ */
+
+export function useGetExpenseSummary<
+  TData = Awaited<ReturnType<typeof getExpenseSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetExpenseSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExpenseSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetExpenseSummaryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get expense detail

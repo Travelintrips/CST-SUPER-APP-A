@@ -140,6 +140,94 @@ router.post("/seed-categories", async (_req, res) => {
   return res.json({ seeded: rows.length, categories: rows.map(serializeCategory) });
 });
 
+// ===================== Expense Summary / Reports =====================
+
+router.get("/summary", async (req, res) => {
+  const { from, to, status } = req.query as Record<string, string>;
+
+  const dateFrom = from ?? new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const dateTo = to ?? new Date().toISOString().slice(0, 10);
+
+  const conditions: ReturnType<typeof eq>[] = [
+    gte(expensesTable.date, dateFrom),
+    lte(expensesTable.date, dateTo),
+  ];
+  if (status) conditions.push(eq(expensesTable.status, status));
+
+  const where = and(...conditions);
+
+  // Grand total & count
+  const [totals] = await db
+    .select({
+      grandTotal: sql<number>`COALESCE(SUM(CAST(${expensesTable.total} AS NUMERIC)), 0)`,
+      totalCount: sql<number>`CAST(COUNT(*) AS INT)`,
+    })
+    .from(expensesTable)
+    .where(where);
+
+  // By category
+  const byCategory = await db
+    .select({
+      categoryId: expensesTable.categoryId,
+      categoryName: expenseCategoriesTable.name,
+      total: sql<number>`COALESCE(SUM(CAST(${expensesTable.total} AS NUMERIC)), 0)`,
+      count: sql<number>`CAST(COUNT(*) AS INT)`,
+    })
+    .from(expensesTable)
+    .leftJoin(expenseCategoriesTable, eq(expensesTable.categoryId, expenseCategoriesTable.id))
+    .where(where)
+    .groupBy(expensesTable.categoryId, expenseCategoriesTable.name)
+    .orderBy(sql`SUM(CAST(${expensesTable.total} AS NUMERIC)) DESC`);
+
+  // By month (trend)
+  const byMonth = await db
+    .select({
+      month: sql<string>`TO_CHAR(${expensesTable.date}::date, 'YYYY-MM')`,
+      total: sql<number>`COALESCE(SUM(CAST(${expensesTable.total} AS NUMERIC)), 0)`,
+      count: sql<number>`CAST(COUNT(*) AS INT)`,
+    })
+    .from(expensesTable)
+    .where(where)
+    .groupBy(sql`TO_CHAR(${expensesTable.date}::date, 'YYYY-MM')`)
+    .orderBy(sql`TO_CHAR(${expensesTable.date}::date, 'YYYY-MM') ASC`);
+
+  // Top vendors
+  const topVendors = await db
+    .select({
+      vendor: sql<string>`COALESCE(${expensesTable.vendorEmployee}, '(Tanpa vendor)')`,
+      total: sql<number>`COALESCE(SUM(CAST(${expensesTable.total} AS NUMERIC)), 0)`,
+      count: sql<number>`CAST(COUNT(*) AS INT)`,
+    })
+    .from(expensesTable)
+    .where(where)
+    .groupBy(expensesTable.vendorEmployee)
+    .orderBy(sql`SUM(CAST(${expensesTable.total} AS NUMERIC)) DESC`)
+    .limit(10);
+
+  return res.json({
+    from: dateFrom,
+    to: dateTo,
+    grandTotal: Number(totals?.grandTotal ?? 0),
+    totalCount: Number(totals?.totalCount ?? 0),
+    byCategory: byCategory.map((r) => ({
+      categoryId: r.categoryId,
+      categoryName: r.categoryName ?? "(Tanpa kategori)",
+      total: Number(r.total),
+      count: Number(r.count),
+    })),
+    byMonth: byMonth.map((r) => ({
+      month: r.month,
+      total: Number(r.total),
+      count: Number(r.count),
+    })),
+    topVendors: topVendors.map((r) => ({
+      vendor: r.vendor,
+      total: Number(r.total),
+      count: Number(r.count),
+    })),
+  });
+});
+
 // ===================== Expenses CRUD =====================
 
 router.get("/", async (req, res) => {

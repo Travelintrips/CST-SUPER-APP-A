@@ -1561,6 +1561,35 @@ export interface CreateExpenseAttachmentBody {
   contentType?: string | null;
 }
 
+export interface ExpenseSummaryCategory {
+  categoryId?: number | null;
+  categoryName: string;
+  total: number;
+  count: number;
+}
+
+export interface ExpenseSummaryMonth {
+  month: string;
+  total: number;
+  count: number;
+}
+
+export interface ExpenseSummaryVendor {
+  vendor: string;
+  total: number;
+  count: number;
+}
+
+export interface ExpenseSummary {
+  from: string;
+  to: string;
+  grandTotal: number;
+  totalCount: number;
+  byCategory: ExpenseSummaryCategory[];
+  byMonth: ExpenseSummaryMonth[];
+  topVendors: ExpenseSummaryVendor[];
+}
+
 export type ListProductsParams = {
   search?: string;
   itemType?: string;
@@ -1720,6 +1749,12 @@ export type ListExpensesParams = {
   search?: string;
   from?: string;
   to?: string;
+};
+
+export type GetExpenseSummaryParams = {
+  from?: string;
+  to?: string;
+  status?: string;
 };
 
 export type ExpenseActionBodyAction =

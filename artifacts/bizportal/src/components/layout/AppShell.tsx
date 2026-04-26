@@ -29,6 +29,7 @@ import {
   Boxes,
   DollarSign,
   Tags,
+  BarChart2,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -178,6 +179,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { title: "Daftar Expense", href: "/expense", icon: Receipt },
         { title: "Kategori Biaya", href: "/expense/categories", icon: Tags },
+        { title: "Laporan", href: "/expense/reports", icon: BarChart2 },
       ],
     },
     { type: "flat", title: "Korespondensi", href: "/correspondences", icon: Mail, roles: ["admin"] },
