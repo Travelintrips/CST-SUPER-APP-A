@@ -284,9 +284,14 @@ export default function LogisticsPage() {
                 <button
                   type="button"
                   onClick={() => setFreightStatusFilter(freightStatusFilter === "rfq_sent" ? "all" : "rfq_sent")}
-                  className={`space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "rfq_sent" ? "ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-950/20" : ""}`}
-                  title="Filter: Menunggu Persetujuan Quote"
+                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "rfq_sent" ? "ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-950/20" : ""}`}
+                  title={freightStatusFilter === "rfq_sent" ? "Klik untuk hapus filter" : "Filter: Menunggu Persetujuan Quote"}
                 >
+                  {freightStatusFilter === "rfq_sent" && (
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white" aria-label="Hapus filter">
+                      <X className="h-2.5 w-2.5" />
+                    </span>
+                  )}
                   <div className="flex items-center gap-1.5">
                     <p className="text-2xl font-bold text-amber-500">{awaitingQuote.length}</p>
                     {awaitingQuote.length > 0 && (
@@ -298,9 +303,14 @@ export default function LogisticsPage() {
                 <button
                   type="button"
                   onClick={() => setFreightStatusFilter(freightStatusFilter === "in_transit" ? "all" : "in_transit")}
-                  className={`space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "in_transit" ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950/20" : ""}`}
-                  title="Filter: Dalam Perjalanan"
+                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "in_transit" ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950/20" : ""}`}
+                  title={freightStatusFilter === "in_transit" ? "Klik untuk hapus filter" : "Filter: Dalam Perjalanan"}
                 >
+                  {freightStatusFilter === "in_transit" && (
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-400 text-white" aria-label="Hapus filter">
+                      <X className="h-2.5 w-2.5" />
+                    </span>
+                  )}
                   <p className="text-2xl font-bold text-indigo-500">{inTransit.length}</p>
                   <p className="text-xs text-muted-foreground">Dalam Perjalanan</p>
                 </button>
