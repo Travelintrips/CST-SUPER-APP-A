@@ -1014,9 +1014,6 @@ export interface AccountingSettings {
   defaultPurchaseTaxId?: number | null;
   inventoryAccountId?: number | null;
   cogsAccountId?: number | null;
-  companyName?: string | null;
-  companyAddress?: string | null;
-  companyNpwp?: string | null;
   updatedAt: string;
 }
 
@@ -1037,9 +1034,6 @@ export interface UpdateAccountingSettingsBody {
   defaultPurchaseTaxId?: number | null;
   inventoryAccountId?: number | null;
   cogsAccountId?: number | null;
-  companyName?: string | null;
-  companyAddress?: string | null;
-  companyNpwp?: string | null;
 }
 
 export interface TrialBalanceRow {
@@ -1126,6 +1120,9 @@ export interface BalanceSheetReport {
 export interface PartnerBalanceEntry {
   partnerName: string;
   balance: number;
+  docNumber: string;
+  sourceType: string;
+  sourceDocId: number;
 }
 
 export interface PartnerBalances {

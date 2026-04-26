@@ -2421,12 +2421,18 @@ export const GetPartnerBalancesResponse = zod.object({
     zod.object({
       partnerName: zod.string(),
       balance: zod.number(),
+      docNumber: zod.string(),
+      sourceType: zod.string(),
+      sourceDocId: zod.number(),
     }),
   ),
   ap: zod.array(
     zod.object({
       partnerName: zod.string(),
       balance: zod.number(),
+      docNumber: zod.string(),
+      sourceType: zod.string(),
+      sourceDocId: zod.number(),
     }),
   ),
   totalAr: zod.number(),

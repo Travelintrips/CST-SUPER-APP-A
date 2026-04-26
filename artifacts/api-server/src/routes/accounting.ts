@@ -451,94 +451,65 @@ router.post("/payments", async (req, res) => {
 
 // ============ Partner Balances ============
 router.get("/partner-balances", async (_req, res) => {
-  const settings = await ensureAccountingSettings();
-  const arId = settings.arAccountId;
-  const apId = settings.apAccountId;
+  // Document-level query: each open invoice/bill is a separate entry.
+  // Uses grandTotal - amountPaid so settled docs naturally disappear
+  // (amountPaid is kept void-safe by the payment void handler).
+  const THRESHOLD = 0.005;
 
-  const queryAr = async (accountId: number) => {
-    const rows = await db.execute<{ partner_name: string; balance: string }>(sql`
-      WITH lines AS (
-        SELECT
-          CAST(el.debit AS numeric) - CAST(el.credit AS numeric) AS net,
-          e.source::text AS source,
-          e.source_id,
-          e.id AS entry_id
-        FROM accounting_entry_lines el
-        JOIN accounting_entries e ON e.id = el.entry_id
-        WHERE el.account_id = ${accountId}
-          AND e.status = 'posted'
+  const [arDocs, apDocs] = await Promise.all([
+    db
+      .select({
+        id: salesDocumentsTable.id,
+        docNumber: salesDocumentsTable.docNumber,
+        partnerName: salesDocumentsTable.customerName,
+        grandTotal: salesDocumentsTable.grandTotal,
+        amountPaid: salesDocumentsTable.amountPaid,
+      })
+      .from(salesDocumentsTable)
+      .where(
+        and(
+          eq(salesDocumentsTable.kind, "order"),
+          eq(salesDocumentsTable.invoiceStatus, "to_invoice"),
+        ),
       ),
-      with_partner AS (
-        SELECT
-          l.net,
-          COALESCE(
-            sd.customer_name,
-            o.customer_name,
-            pd.supplier_name,
-            ap.partner_name,
-            'Tidak Diketahui'
-          ) AS partner_name
-        FROM lines l
-        LEFT JOIN sales_documents sd ON l.source = 'sales_invoice' AND sd.id = l.source_id
-        LEFT JOIN orders o ON l.source = 'ecommerce_order' AND o.id = l.source_id
-        LEFT JOIN purchase_documents pd ON l.source = 'purchase_bill' AND pd.id = l.source_id
-        LEFT JOIN accounting_payments ap ON ap.entry_id = l.entry_id
-      )
-      SELECT
-        partner_name,
-        ROUND(SUM(net), 2) AS balance
-      FROM with_partner
-      GROUP BY partner_name
-      HAVING ROUND(SUM(net), 2) > 0.005
-      ORDER BY balance DESC
-    `);
-    return rows.rows.map((r) => ({ partnerName: r.partner_name, balance: Number(r.balance) }));
-  };
-
-  const queryAp = async (accountId: number) => {
-    const rows = await db.execute<{ partner_name: string; balance: string }>(sql`
-      WITH lines AS (
-        SELECT
-          CAST(el.credit AS numeric) - CAST(el.debit AS numeric) AS net,
-          e.source::text AS source,
-          e.source_id,
-          e.id AS entry_id
-        FROM accounting_entry_lines el
-        JOIN accounting_entries e ON e.id = el.entry_id
-        WHERE el.account_id = ${accountId}
-          AND e.status = 'posted'
+    db
+      .select({
+        id: purchaseDocumentsTable.id,
+        docNumber: purchaseDocumentsTable.docNumber,
+        partnerName: purchaseDocumentsTable.supplierName,
+        grandTotal: purchaseDocumentsTable.grandTotal,
+        amountPaid: purchaseDocumentsTable.amountPaid,
+      })
+      .from(purchaseDocumentsTable)
+      .where(
+        and(
+          eq(purchaseDocumentsTable.kind, "order"),
+          eq(purchaseDocumentsTable.billStatus, "to_bill"),
+        ),
       ),
-      with_partner AS (
-        SELECT
-          l.net,
-          COALESCE(
-            sd.customer_name,
-            o.customer_name,
-            pd.supplier_name,
-            ap.partner_name,
-            'Tidak Diketahui'
-          ) AS partner_name
-        FROM lines l
-        LEFT JOIN sales_documents sd ON l.source = 'sales_invoice' AND sd.id = l.source_id
-        LEFT JOIN orders o ON l.source = 'ecommerce_order' AND o.id = l.source_id
-        LEFT JOIN purchase_documents pd ON l.source = 'purchase_bill' AND pd.id = l.source_id
-        LEFT JOIN accounting_payments ap ON ap.entry_id = l.entry_id
-      )
-      SELECT
-        partner_name,
-        ROUND(SUM(net), 2) AS balance
-      FROM with_partner
-      GROUP BY partner_name
-      HAVING ROUND(SUM(net), 2) > 0.005
-      ORDER BY balance DESC
-    `);
-    return rows.rows.map((r) => ({ partnerName: r.partner_name, balance: Number(r.balance) }));
-  };
-
-  const [ar, ap] = await Promise.all([
-    arId ? queryAr(arId) : Promise.resolve([]),
-    apId ? queryAp(apId) : Promise.resolve([]),
   ]);
+
+  const ar = arDocs
+    .map((d) => ({
+      partnerName: d.partnerName,
+      balance: Math.max(0, Number(d.grandTotal) - Number(d.amountPaid)),
+      docNumber: d.docNumber,
+      sourceType: "sales_order",
+      sourceDocId: d.id,
+    }))
+    .filter((e) => e.balance > THRESHOLD)
+    .sort((a, b) => b.balance - a.balance);
+
+  const ap = apDocs
+    .map((d) => ({
+      partnerName: d.partnerName,
+      balance: Math.max(0, Number(d.grandTotal) - Number(d.amountPaid)),
+      docNumber: d.docNumber,
+      sourceType: "purchase_order",
+      sourceDocId: d.id,
+    }))
+    .filter((e) => e.balance > THRESHOLD)
+    .sort((a, b) => b.balance - a.balance);
 
   const totalAr = Math.round(ar.reduce((s, r) => s + r.balance, 0) * 100) / 100;
   const totalAp = Math.round(ap.reduce((s, r) => s + r.balance, 0) * 100) / 100;

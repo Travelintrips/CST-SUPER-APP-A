@@ -26,6 +26,7 @@ import {
   useVoidAccountingPayment,
   useListJournals,
   useGetPartnerBalances,
+  getGetPartnerBalancesQueryKey,
   type AccountingPayment,
   type PartnerBalanceEntry,
 } from "@workspace/api-client-react";
@@ -193,6 +194,8 @@ export default function PaymentsPage() {
     date: today,
     ref: "",
     memo: "",
+    sourceType: undefined as string | undefined,
+    sourceDocId: undefined as number | undefined,
   };
   const [form, setForm] = useState(emptyForm);
 
@@ -208,6 +211,9 @@ export default function PaymentsPage() {
       partnerName: entry.partnerName,
       amount: String(Math.round(entry.balance)),
       paymentType,
+      sourceType: entry.sourceType,
+      sourceDocId: entry.sourceDocId,
+      ref: entry.docNumber,
     }));
     setOpen(true);
   };
@@ -232,10 +238,15 @@ export default function PaymentsPage() {
           date: form.date,
           ref: form.ref || undefined,
           memo: form.memo || undefined,
+          sourceType: form.sourceType || undefined,
+          sourceDocId: form.sourceDocId || undefined,
         },
       });
       toast({ title: "Pembayaran berhasil dicatat", description: "Jurnal otomatis dibuat." });
-      await qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey() });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey() }),
+        qc.invalidateQueries({ queryKey: getGetPartnerBalancesQueryKey() }),
+      ]);
       setOpen(false);
       reset();
     } catch (err: unknown) {
@@ -253,7 +264,10 @@ export default function PaymentsPage() {
   const hasFilters = filter.paymentType || filter.from || filter.to || filter.sourceType || filter.sourceDocId || refSearch;
 
   const handleVoided = async () => {
-    await qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey() });
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey() }),
+      qc.invalidateQueries({ queryKey: getGetPartnerBalancesQueryKey() }),
+    ]);
   };
 
   return (
@@ -303,6 +317,17 @@ export default function PaymentsPage() {
                       : "Posting: DR Hutang (AP) \u2192 CR Bank/Kas"}
                   </p>
                 </div>
+
+                {form.sourceDocId && (
+                  <div className="flex items-center gap-2 rounded-md border border-indigo-700/50 bg-indigo-900/20 px-3 py-2 text-xs text-indigo-300">
+                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Melunasi{" "}
+                      <span className="font-mono font-semibold">{form.ref}</span>
+                      {" — "}saldo akan diperbarui otomatis setelah disimpan.
+                    </span>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -466,14 +491,22 @@ export default function PaymentsPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <TableHead>No. Dokumen</TableHead>
                               <TableHead>Pelanggan</TableHead>
-                              <TableHead className="text-right">Saldo Piutang (IDR)</TableHead>
+                              <TableHead className="text-right">Sisa Tagihan (IDR)</TableHead>
                               <TableHead className="text-right">Aksi</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {partnerBalances.ar.map((entry) => (
-                              <TableRow key={entry.partnerName} className="hover:bg-slate-800/40">
+                              <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/40">
+                                <TableCell>
+                                  <Link href={`/sales/orders/${entry.sourceDocId}`}>
+                                    <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
+                                      <FileText className="h-3 w-3" /> {entry.docNumber}
+                                    </Badge>
+                                  </Link>
+                                </TableCell>
                                 <TableCell className="text-slate-200 text-sm">{entry.partnerName}</TableCell>
                                 <TableCell className="text-right font-mono text-emerald-400 tabular-nums text-sm">
                                   {idr(entry.balance)}
@@ -502,14 +535,22 @@ export default function PaymentsPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <TableHead>No. Dokumen</TableHead>
                               <TableHead>Pemasok</TableHead>
-                              <TableHead className="text-right">Saldo Hutang (IDR)</TableHead>
+                              <TableHead className="text-right">Sisa Hutang (IDR)</TableHead>
                               <TableHead className="text-right">Aksi</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {partnerBalances.ap.map((entry) => (
-                              <TableRow key={entry.partnerName} className="hover:bg-slate-800/40">
+                              <TableRow key={entry.sourceDocId} className="hover:bg-slate-800/40">
+                                <TableCell>
+                                  <Link href={`/purchase/orders/${entry.sourceDocId}`}>
+                                    <Badge className="bg-slate-700 text-slate-300 border-slate-600 text-xs gap-1 cursor-pointer hover:bg-slate-600 font-mono">
+                                      <FileText className="h-3 w-3" /> {entry.docNumber}
+                                    </Badge>
+                                  </Link>
+                                </TableCell>
                                 <TableCell className="text-slate-200 text-sm">{entry.partnerName}</TableCell>
                                 <TableCell className="text-right font-mono text-red-400 tabular-nums text-sm">
                                   {idr(entry.balance)}

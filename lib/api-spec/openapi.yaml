@@ -3348,7 +3348,10 @@ components:
       properties:
         partnerName: { type: string }
         balance: { type: number }
-      required: [partnerName, balance]
+        docNumber: { type: string }
+        sourceType: { type: string }
+        sourceDocId: { type: integer }
+      required: [partnerName, balance, docNumber, sourceType, sourceDocId]
 
     PartnerBalances:
       type: object
