@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
+  TrendingDown, TrendingUp,
 } from "lucide-react";
 import { FreightAttachmentsPanel } from "@/components/freight/FreightAttachmentsPanel";
 import { useToast } from "@/hooks/use-toast";
@@ -252,6 +253,14 @@ export default function LogisticsFreightDetailPage() {
   const rfqs: FreightRfqWithQuotes[] = shipment.rfqs ?? [];
   const printDate = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
+  const approvedQuote = rfqs.flatMap((r) => r.quotes ?? []).find((q) => q.status === "approved");
+  const quotedCost = approvedQuote?.totalCost ? Number(approvedQuote.totalCost) : null;
+  const actualCost = shipment.actualCost ? Number(shipment.actualCost) : null;
+  const hasCostComparison = quotedCost !== null && actualCost !== null;
+  const variance = hasCostComparison ? actualCost - quotedCost : null;
+  const variancePct = hasCostComparison && quotedCost !== 0 ? ((actualCost - quotedCost) / quotedCost) * 100 : null;
+  const isOverBudget = variance !== null && variance > 0;
+
   return (
     <AppShell>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -422,6 +431,46 @@ export default function LogisticsFreightDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Cost Comparison Card — shown when approved quote + actual cost both exist */}
+        {hasCostComparison && (
+          <Card className="print:hidden">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                {isOverBudget
+                  ? <TrendingUp className="h-4 w-4 text-destructive" />
+                  : <TrendingDown className="h-4 w-4 text-emerald-500" />}
+                Perbandingan Biaya
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Biaya Penawaran</p>
+                  <p className="text-lg font-semibold">{fmt(String(quotedCost))}</p>
+                  <p className="text-xs text-muted-foreground">dari quote disetujui</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Biaya Aktual</p>
+                  <p className="text-lg font-semibold">{fmt(String(actualCost))}</p>
+                  <p className="text-xs text-muted-foreground">realisasi pengiriman</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Selisih</p>
+                  <p className={`text-lg font-semibold ${isOverBudget ? "text-destructive" : "text-emerald-500"}`}>
+                    {variance! > 0 ? "+" : ""}{fmt(String(variance))}
+                  </p>
+                  {variancePct !== null && (
+                    <p className={`text-xs font-medium ${isOverBudget ? "text-destructive" : "text-emerald-500"}`}>
+                      {variance! > 0 ? "+" : ""}{variancePct.toFixed(1)}%
+                      {isOverBudget ? " melebihi anggaran" : " di bawah anggaran"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Bill of Lading Section — screen only */}
         {(shipment.vessel || shipment.voyage || shipment.portOfLoading || shipment.portOfDischarge || shipment.notifyParty || shipment.marksAndNumbers || shipment.measurement) && (
