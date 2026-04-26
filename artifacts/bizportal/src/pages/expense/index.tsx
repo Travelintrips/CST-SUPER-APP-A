@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/table";
 import {
   useListExpenses, useListExpenseCategories, getListExpensesQueryKey,
-  useDeleteExpense, type Expense,
+  useDeleteExpense, useListSalesDocuments, useListFreightShipments,
+  type Expense,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -65,14 +66,20 @@ export default function ExpenseListPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [catFilter, setCatFilter] = useState("all");
+  const [salesDocFilter, setSalesDocFilter] = useState("all");
+  const [shipmentFilter, setShipmentFilter] = useState("all");
 
   const { data: expenses = [], isLoading } = useListExpenses({
     status: statusFilter !== "all" ? statusFilter : undefined,
     expenseType: typeFilter !== "all" ? typeFilter : undefined,
     categoryId: catFilter !== "all" ? Number(catFilter) : undefined,
+    salesDocId: salesDocFilter !== "all" ? Number(salesDocFilter) : undefined,
+    shipmentId: shipmentFilter !== "all" ? Number(shipmentFilter) : undefined,
     search: search || undefined,
   });
   const { data: cats = [] } = useListExpenseCategories();
+  const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
+  const { data: shipments = [] } = useListFreightShipments();
   const deleteMut = useDeleteExpense();
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
@@ -146,6 +153,32 @@ export default function ExpenseListPage() {
               <SelectItem value="all">Semua Kategori</SelectItem>
               {cats.map((c) => (
                 <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={salesDocFilter} onValueChange={setSalesDocFilter}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Semua Sales Order" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Sales Order</SelectItem>
+              {salesDocs.map((sd) => (
+                <SelectItem key={sd.id} value={sd.id.toString()}>
+                  {sd.docNumber} — {sd.customerName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={shipmentFilter} onValueChange={setShipmentFilter}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Semua Shipment" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Shipment</SelectItem>
+              {shipments.map((sh) => (
+                <SelectItem key={sh.id} value={sh.id.toString()}>
+                  {sh.shipmentNumber}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
