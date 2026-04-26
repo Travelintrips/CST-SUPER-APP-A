@@ -15,15 +15,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Save, Loader2, ScanLine } from "lucide-react";
+import { ArrowLeft, Save, Loader2, ScanLine, ChevronsUpDown, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { FreightScanDialog, type FreightFormFields } from "@/components/freight/FreightScanDialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   useCreateFreightShipment,
   useGetFreightShipment,
   useUpdateFreightShipment,
+  useListSalesDocuments,
   getListFreightShipmentsQueryKey,
   getGetFreightShipmentQueryKey,
+  getListSalesDocumentsQueryKey,
 } from "@workspace/api-client-react";
 
 export default function LogisticsFreightEditorPage() {
@@ -41,6 +56,8 @@ export default function LogisticsFreightEditorPage() {
   const create = useCreateFreightShipment();
   const update = useUpdateFreightShipment();
 
+  const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }), enabled: !isEdit } });
+  const [soPickerOpen, setSoPickerOpen] = useState(false);
   const [salesDocId, setSalesDocId] = useState<number | null>(null);
   const [form, setForm] = useState({
     shipperName: "",
@@ -119,8 +136,27 @@ export default function LogisticsFreightEditorPage() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const handleSelectSo = (docId: number) => {
+    const doc = salesOrders.find((d) => d.id === docId);
+    setSalesDocId(docId);
+    setSoPickerOpen(false);
+    if (doc) {
+      setForm((f) => ({
+        ...f,
+        consigneeName: doc.customerName || f.consigneeName,
+        origin: (doc.origin ?? "") || f.origin,
+        destination: (doc.destination ?? "") || f.destination,
+        transportMode: (doc.transportMode ?? "") || f.transportMode,
+      }));
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isEdit && !salesDocId) {
+      toast({ title: "Sales Order wajib dipilih sebelum membuat shipment.", variant: "destructive" });
+      return;
+    }
     if (!form.shipperName || !form.consigneeName || !form.commodity || !form.origin || !form.destination) {
       toast({ title: "Harap isi semua field wajib", variant: "destructive" });
       return;
@@ -214,6 +250,77 @@ export default function LogisticsFreightEditorPage() {
           <div className="flex items-center justify-center py-20 text-muted-foreground">Memuat...</div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Sales Order picker — required for new shipments */}
+            {!isEdit && (
+              <Card className={!salesDocId ? "border-destructive/50 bg-destructive/5" : ""}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    Sales Order
+                    <span className="text-destructive text-sm font-normal">* wajib</span>
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">Pilih Sales Order yang terkait dengan shipment ini. Data konsignee dan rute akan diisi otomatis.</p>
+                </CardHeader>
+                <CardContent>
+                  {salesDocId ? (
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 p-3 rounded-lg border bg-muted/20">
+                        {(() => {
+                          const doc = salesOrders.find((d) => d.id === salesDocId);
+                          return doc ? (
+                            <div className="flex items-center gap-4">
+                              <span className="font-mono font-semibold text-sm">{doc.docNumber}</span>
+                              <span className="text-sm text-muted-foreground">{doc.customerName}</span>
+                            </div>
+                          ) : (
+                            <span className="text-sm font-mono">SO #{salesDocId}</span>
+                          );
+                        })()}
+                      </div>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setSalesDocId(null)}>
+                        Ganti
+                      </Button>
+                    </div>
+                  ) : (
+                    <Popover open={soPickerOpen} onOpenChange={setSoPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={soPickerOpen}
+                          className="w-full justify-between"
+                        >
+                          Pilih Sales Order...
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Cari nomor SO atau nama pelanggan..." />
+                          <CommandList>
+                            <CommandEmpty>Tidak ada Sales Order yang cocok.</CommandEmpty>
+                            <CommandGroup>
+                              {salesOrders.map((doc) => (
+                                <CommandItem
+                                  key={doc.id}
+                                  value={`${doc.docNumber} ${doc.customerName}`}
+                                  onSelect={() => handleSelectSo(doc.id)}
+                                >
+                                  <Check className={`mr-2 h-4 w-4 ${salesDocId === doc.id ? "opacity-100" : "opacity-0"}`} />
+                                  <span className="font-mono mr-2">{doc.docNumber}</span>
+                                  <span className="text-muted-foreground text-sm truncate">{doc.customerName}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader><CardTitle>Informasi Shipper</CardTitle></CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -68,6 +68,7 @@ import type {
   FreightRfqWithQuotes,
   FreightShipment,
   FreightShipmentDetail,
+  FreightShipmentProfitability,
   GeneralLedgerReport,
   GetBalanceSheetParams,
   GetExpenseSummaryParams,
@@ -2982,6 +2983,101 @@ export const useDeleteFreightShipment = <
 > => {
   return useMutation(getDeleteFreightShipmentMutationOptions(options));
 };
+
+/**
+ * @summary Get profitability report for a shipment
+ */
+export const getGetFreightShipmentProfitabilityUrl = (id: number) => {
+  return `/api/logistics/freight-shipments/${id}/profitability`;
+};
+
+export const getFreightShipmentProfitability = async (
+  id: number,
+  options?: RequestInit,
+): Promise<FreightShipmentProfitability> => {
+  return customFetch<FreightShipmentProfitability>(
+    getGetFreightShipmentProfitabilityUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetFreightShipmentProfitabilityQueryKey = (id: number) => {
+  return [`/api/logistics/freight-shipments/${id}/profitability`] as const;
+};
+
+export const getGetFreightShipmentProfitabilityQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFreightShipmentProfitability>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightShipmentProfitability>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFreightShipmentProfitabilityQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFreightShipmentProfitability>>
+  > = ({ signal }) =>
+    getFreightShipmentProfitability(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFreightShipmentProfitability>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFreightShipmentProfitabilityQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFreightShipmentProfitability>>
+>;
+export type GetFreightShipmentProfitabilityQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get profitability report for a shipment
+ */
+
+export function useGetFreightShipmentProfitability<
+  TData = Awaited<ReturnType<typeof getFreightShipmentProfitability>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFreightShipmentProfitability>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFreightShipmentProfitabilityQueryOptions(
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List operational stages for a shipment

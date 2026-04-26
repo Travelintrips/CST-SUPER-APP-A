@@ -36,7 +36,10 @@ import {
   useUpdateFreightShipment,
   useUpsertShipmentStage,
   useListExpenses,
+  useGetFreightShipmentProfitability,
   getGetFreightShipmentQueryKey,
+  getGetSalesDocumentQueryKey,
+  getGetFreightShipmentProfitabilityQueryKey,
   type FreightRfqWithQuotes,
   type FreightQuote,
   type ShipmentStage,
@@ -90,8 +93,9 @@ export default function LogisticsFreightDetailPage() {
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
   const salesDocId = (shipment as any)?.salesDocId as number | null | undefined;
-  const { data: linkedSalesDoc } = useGetSalesDocument(salesDocId ?? 0, { query: { enabled: !!salesDocId } });
+  const { data: linkedSalesDoc } = useGetSalesDocument(salesDocId ?? 0, { query: { queryKey: getGetSalesDocumentQueryKey(salesDocId ?? 0), enabled: !!salesDocId } });
   const { data: expenses = [], isLoading: expensesLoading } = useListExpenses({ shipmentId: id });
+  const { data: profitability } = useGetFreightShipmentProfitability(id, { query: { queryKey: getGetFreightShipmentProfitabilityQueryKey(id), enabled: !!id } });
   const idr = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
   const createRfq = useCreateFreightRfq();
@@ -792,6 +796,58 @@ export default function LogisticsFreightDetailPage() {
                     Buat Sales Order Baru
                   </Button>
                 </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Profitability Report Card */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {profitability && profitability.profit >= 0
+                ? <TrendingUp className="h-4 w-4 text-emerald-500" />
+                : <TrendingDown className="h-4 w-4 text-destructive" />}
+              Laporan Profitabilitas
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {profitability?.invoiceStatus === "invoiced"
+                ? "Revenue dihitung dari Sales Order yang sudah diinvoice."
+                : "Revenue belum tersedia — Sales Order belum diinvoice."}
+            </p>
+          </CardHeader>
+          <CardContent>
+            {profitability ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div className="space-y-1 p-3 rounded-lg bg-muted/20 border">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Revenue</p>
+                  <p className="text-base font-semibold">{idr(profitability.revenue)}</p>
+                  <p className="text-xs text-muted-foreground">dari Sales Order</p>
+                </div>
+                <div className="space-y-1 p-3 rounded-lg bg-muted/20 border">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Biaya</p>
+                  <p className="text-base font-semibold">{idr(profitability.totalCost)}</p>
+                  <p className="text-xs text-muted-foreground">dari semua expenses</p>
+                </div>
+                <div className={`space-y-1 p-3 rounded-lg border ${profitability.profit >= 0 ? "bg-emerald-500/5 border-emerald-500/20" : "bg-destructive/5 border-destructive/20"}`}>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Profit</p>
+                  <p className={`text-base font-semibold ${profitability.profit >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                    {profitability.profit >= 0 ? "" : "-"}{idr(Math.abs(profitability.profit))}
+                  </p>
+                  <p className="text-xs text-muted-foreground">revenue − biaya</p>
+                </div>
+                <div className={`space-y-1 p-3 rounded-lg border ${(profitability.margin ?? null) != null && profitability.margin! >= 0 ? "bg-emerald-500/5 border-emerald-500/20" : "bg-destructive/5 border-destructive/20"}`}>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Margin</p>
+                  <p className={`text-base font-semibold ${(profitability.margin ?? null) != null && profitability.margin! >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                    {profitability.margin != null ? `${profitability.margin.toFixed(1)}%` : "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">profit / revenue</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Menghitung profitabilitas...
               </div>
             )}
           </CardContent>

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable } from "@workspace/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, expensesTable } from "@workspace/db";
+import { eq, desc, inArray, sum } from "drizzle-orm";
 
 const router = Router();
 
@@ -65,6 +65,13 @@ router.post("/freight-shipments", async (req, res) => {
     grossWeight, netWeight, quantity, packingType, dimensions, hsCode, origin, destination,
     portOfLoading, portOfDischarge, vessel, voyage, notifyParty, marksAndNumbers, measurement, notes,
     transportMode, cargoType, containerNo, salesDocId } = req.body;
+  if (!salesDocId) {
+    return res.status(400).json({ message: "Sales Order wajib dipilih sebelum membuat shipment." });
+  }
+  const [linkedDoc] = await db.select({ id: salesDocumentsTable.id }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, Number(salesDocId))).limit(1);
+  if (!linkedDoc) {
+    return res.status(400).json({ message: "Sales Order tidak ditemukan." });
+  }
   if (!shipperName || !consigneeName || !commodity || !origin || !destination) {
     return res.status(400).json({ message: "shipperName, consigneeName, commodity, origin, destination wajib diisi" });
   }
@@ -345,10 +352,46 @@ router.post("/freight-quotes/:id/approve", async (req, res) => {
       .where(eq(freightQuotesTable.id, id))
       .returning();
     await tx.update(freightRfqsTable).set({ status: "closed" }).where(eq(freightRfqsTable.id, quote.rfqId));
-    await tx.update(freightShipmentsTable).set({ status: "confirmed" }).where(eq(freightShipmentsTable.id, rfq.shipmentId));
+    await tx.update(freightShipmentsTable)
+      .set({ status: "confirmed", approvedVendorName: quote.vendorName })
+      .where(eq(freightShipmentsTable.id, rfq.shipmentId));
     return approvedQuote!;
   });
   return res.json(serializeQuote(approved));
+});
+
+// GET /api/logistics/freight-shipments/:id/profitability
+router.get("/freight-shipments/:id/profitability", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+
+  const [shipment] = await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.id, id));
+  if (!shipment) return res.status(404).json({ message: "Shipment not found" });
+
+  // Revenue: from linked Sales Order grand total (only if invoiced)
+  let revenue = 0;
+  let invoiceStatus = "none";
+  if (shipment.salesDocId) {
+    const [doc] = await db.select({
+      grandTotal: salesDocumentsTable.grandTotal,
+      invoiceStatus: salesDocumentsTable.invoiceStatus,
+    }).from(salesDocumentsTable).where(eq(salesDocumentsTable.id, shipment.salesDocId));
+    if (doc) {
+      invoiceStatus = doc.invoiceStatus;
+      if (doc.invoiceStatus === "invoiced") revenue = Number(doc.grandTotal);
+    }
+  }
+
+  // Cost: sum of all expenses linked to this shipment
+  const [expResult] = await db.select({ total: sum(expensesTable.total) })
+    .from(expensesTable)
+    .where(eq(expensesTable.shipmentId, id));
+  const totalCost = Number(expResult?.total ?? 0);
+
+  const profit = revenue - totalCost;
+  const margin = revenue > 0 ? Math.round((profit / revenue) * 10000) / 100 : null;
+
+  return res.json({ revenue, totalCost, profit, margin, invoiceStatus });
 });
 
 // ─── Freight Attachments ────────────────────────────────────────────────────

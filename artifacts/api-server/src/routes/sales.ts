@@ -5,8 +5,9 @@ import {
   salesDocumentsTable,
   salesDocumentLinesTable,
   accountingTaxesTable,
+  freightShipmentsTable,
 } from "@workspace/db";
-import { eq, sql, desc, and, type SQL } from "drizzle-orm";
+import { eq, sql, desc, and, count, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postSalesInvoice } from "../lib/accounting.js";
@@ -345,10 +346,18 @@ router.post("/documents/:id/action", async (req, res) => {
     case "draft":
       patch["status"] = "draft" satisfies SalesDocStatus;
       break;
-    case "mark_invoiced":
+    case "mark_invoiced": {
+      const [{ shipmentCount }] = await db
+        .select({ shipmentCount: count() })
+        .from(freightShipmentsTable)
+        .where(eq(freightShipmentsTable.salesDocId, id));
+      if (shipmentCount === 0) {
+        return res.status(400).json({ message: "Tidak bisa membuat invoice: belum ada Shipment yang terhubung dengan Sales Order ini. Buat Shipment terlebih dahulu." });
+      }
       patch["invoiceStatus"] = "invoiced" satisfies SalesInvoiceStatus;
       if (doc.deliveryStatus === "delivered") patch["status"] = "done" satisfies SalesDocStatus;
       break;
+    }
     case "mark_delivered":
       patch["deliveryStatus"] = "delivered";
       if (doc.invoiceStatus === "invoiced") patch["status"] = "done" satisfies SalesDocStatus;

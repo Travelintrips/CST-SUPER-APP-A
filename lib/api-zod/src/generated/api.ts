@@ -622,6 +622,7 @@ export const ListFreightShipmentsResponseItem = zod.object({
   cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
   containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
+  approvedVendorName: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -710,6 +711,7 @@ export const GetFreightShipmentResponse = zod
     cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
     containerNo: zod.string().nullish(),
     salesDocId: zod.number().nullish(),
+    approvedVendorName: zod.string().nullish(),
     createdById: zod.string().nullish(),
     createdAt: zod.string(),
   })
@@ -850,6 +852,7 @@ export const UpdateFreightShipmentResponse = zod.object({
   cargoType: zod.enum(["FCL", "LCL", "Air"]).nullish(),
   containerNo: zod.string().nullish(),
   salesDocId: zod.number().nullish(),
+  approvedVendorName: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -863,6 +866,21 @@ export const DeleteFreightShipmentParams = zod.object({
 
 export const DeleteFreightShipmentResponse = zod.object({
   message: zod.string(),
+});
+
+/**
+ * @summary Get profitability report for a shipment
+ */
+export const GetFreightShipmentProfitabilityParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetFreightShipmentProfitabilityResponse = zod.object({
+  revenue: zod.number(),
+  totalCost: zod.number(),
+  profit: zod.number(),
+  margin: zod.number().nullish(),
+  invoiceStatus: zod.string(),
 });
 
 /**

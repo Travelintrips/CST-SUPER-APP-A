@@ -1370,8 +1370,17 @@ export interface FreightShipment {
   cargoType?: FreightShipmentCargoType;
   containerNo?: string | null;
   salesDocId?: number | null;
+  approvedVendorName?: string | null;
   createdById?: string | null;
   createdAt: string;
+}
+
+export interface FreightShipmentProfitability {
+  revenue: number;
+  totalCost: number;
+  profit: number;
+  margin?: number | null;
+  invoiceStatus: string;
 }
 
 export type FreightAttachmentFileType =

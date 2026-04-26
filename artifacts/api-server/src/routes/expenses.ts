@@ -300,6 +300,7 @@ router.post("/", async (req, res) => {
   } = req.body ?? {};
 
   if (!date) return res.status(400).json({ message: "date required" });
+  if (!categoryId) return res.status(400).json({ message: "Kategori wajib dipilih." });
 
   const qtyN = Number(qty ?? 1);
   const upN = Number(unitPrice ?? 0);

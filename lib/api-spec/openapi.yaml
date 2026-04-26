@@ -685,6 +685,20 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /logistics/freight-shipments/{id}/profitability:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getFreightShipmentProfitability
+      tags: [logistics]
+      summary: Get profitability report for a shipment
+      responses:
+        "200":
+          description: Profitability data
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreightShipmentProfitability" }
+
   /logistics/freight-shipments/{shipmentId}/stages:
     parameters:
       - { name: shipmentId, in: path, required: true, schema: { type: integer } }
@@ -3855,9 +3869,20 @@ components:
         cargoType: { type: string, enum: [FCL, LCL, Air], nullable: true }
         containerNo: { type: string, nullable: true }
         salesDocId: { type: integer, nullable: true }
+        approvedVendorName: { type: string, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
       required: [id, shipmentNumber, shipperName, consigneeName, commodity, origin, destination, status, createdAt]
+
+    FreightShipmentProfitability:
+      type: object
+      properties:
+        revenue: { type: number }
+        totalCost: { type: number }
+        profit: { type: number }
+        margin: { type: number, nullable: true }
+        invoiceStatus: { type: string }
+      required: [revenue, totalCost, profit, invoiceStatus]
 
     FreightAttachment:
       type: object

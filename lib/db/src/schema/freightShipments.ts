@@ -1,6 +1,7 @@
 import { pgTable, serial, text, numeric, integer, timestamp, date, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { salesDocumentsTable } from "./salesDocuments";
 
 export const freightShipmentStatusEnum = pgEnum("freight_shipment_status", [
   "draft", "rfq_sent", "confirmed", "in_transit", "completed", "cancelled",
@@ -43,7 +44,8 @@ export const freightShipmentsTable = pgTable("freight_shipments", {
   transportMode: text("transport_mode"),
   cargoType: text("cargo_type"),
   containerNo: text("container_no"),
-  salesDocId: integer("sales_doc_id"),
+  salesDocId: integer("sales_doc_id").references(() => salesDocumentsTable.id, { onDelete: "set null" }),
+  approvedVendorName: text("approved_vendor_name"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
