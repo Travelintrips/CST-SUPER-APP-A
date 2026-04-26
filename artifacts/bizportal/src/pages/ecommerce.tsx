@@ -63,27 +63,62 @@ export default function EcommercePage() {
   const search = useSearch();
   const [, setLocation] = useLocation();
 
+  const initialParams = new URLSearchParams(search);
+
   const initialTab = (() => {
-    const params = new URLSearchParams(search);
-    const t = params.get("tab");
+    const t = initialParams.get("tab");
     return t === "orders" || t === "categories" ? t : "products";
   })();
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+
+  const syncUrl = (overrides: {
+    tab?: string;
+    search?: string;
+    salesTax?: string;
+    purchaseTax?: string;
+    categories?: string[];
+  }) => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = overrides.tab ?? params.get("tab") ?? "";
+    const productSearchVal = "search" in overrides ? overrides.search! : (params.get("search") ?? "");
+    const salesTaxVal = "salesTax" in overrides ? overrides.salesTax! : (params.get("salesTax") ?? "all");
+    const purchaseTaxVal = "purchaseTax" in overrides ? overrides.purchaseTax! : (params.get("purchaseTax") ?? "all");
+    const categoriesVal = "categories" in overrides ? overrides.categories! : (params.get("categories") ? params.get("categories")!.split(",").filter(Boolean) : []);
+
+    if (tab === "orders") params.set("tab", "orders");
+    else if (tab === "categories") params.set("tab", "categories");
+    else params.delete("tab");
+
+    if (productSearchVal) params.set("search", productSearchVal);
+    else params.delete("search");
+
+    if (salesTaxVal && salesTaxVal !== "all") params.set("salesTax", salesTaxVal);
+    else params.delete("salesTax");
+
+    if (purchaseTaxVal && purchaseTaxVal !== "all") params.set("purchaseTax", purchaseTaxVal);
+    else params.delete("purchaseTax");
+
+    if (categoriesVal.length > 0) params.set("categories", categoriesVal.join(","));
+    else params.delete("categories");
+
+    const qs = params.toString();
+    setLocation(qs ? `/ecommerce?${qs}` : `/ecommerce`, { replace: true });
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(search);
     const t = params.get("tab");
     const next = t === "orders" || t === "categories" || t === "products" ? t : "products";
     setActiveTab((prev) => (prev !== next ? next : prev));
+    setProductSearch(params.get("search") ?? "");
+    setFilterSalesTaxId(params.get("salesTax") ?? "all");
+    setFilterPurchaseTaxId(params.get("purchaseTax") ?? "all");
+    setFilterCategories(params.get("categories") ? params.get("categories")!.split(",").filter(Boolean) : []);
   }, [search]);
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
-    const params = new URLSearchParams(search);
-    if (value === "orders") params.set("tab", "orders");
-    else if (value === "categories") params.set("tab", "categories");
-    else params.delete("tab");
-    const qs = params.toString();
-    setLocation(qs ? `/ecommerce?${qs}` : `/ecommerce`, { replace: true });
+    syncUrl({ tab: value });
   };
 
   const { data: products, isLoading: isLoadingProducts } = useListProducts({
@@ -152,10 +187,13 @@ export default function EcommercePage() {
   const [createProdCategories, setCreateProdCategories] = useState<string[]>([]);
   const [editProdCategories, setEditProdCategories] = useState<string[]>([]);
 
-  const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>("all");
-  const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>("all");
-  const [filterCategories, setFilterCategories] = useState<string[]>([]);
-  const [productSearch, setProductSearch] = useState<string>("");
+  const [filterSalesTaxId, setFilterSalesTaxId] = useState<string>(() => initialParams.get("salesTax") ?? "all");
+  const [filterPurchaseTaxId, setFilterPurchaseTaxId] = useState<string>(() => initialParams.get("purchaseTax") ?? "all");
+  const [filterCategories, setFilterCategories] = useState<string[]>(() => {
+    const c = initialParams.get("categories");
+    return c ? c.split(",").filter(Boolean) : [];
+  });
+  const [productSearch, setProductSearch] = useState<string>(() => initialParams.get("search") ?? "");
   const [orderSearch, setOrderSearch] = useState<string>("");
 
   const filteredOrders = (orders ?? []).filter((o) => {
@@ -597,13 +635,13 @@ export default function EcommercePage() {
                 className="pl-9"
                 placeholder="Cari nama produk atau SKU..."
                 value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
+                onChange={(e) => { setProductSearch(e.target.value); syncUrl({ search: e.target.value }); }}
                 data-testid="input-product-search"
               />
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2">
-              <Select value={filterSalesTaxId} onValueChange={setFilterSalesTaxId} data-testid="filter-sales-tax">
+              <Select value={filterSalesTaxId} onValueChange={(v) => { setFilterSalesTaxId(v); syncUrl({ salesTax: v }); }} data-testid="filter-sales-tax">
                 <SelectTrigger className="sm:w-[220px]" data-testid="filter-sales-tax-trigger">
                   <SelectValue placeholder="Filter Pajak Jual" />
                 </SelectTrigger>
@@ -615,7 +653,7 @@ export default function EcommercePage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={filterPurchaseTaxId} onValueChange={setFilterPurchaseTaxId} data-testid="filter-purchase-tax">
+              <Select value={filterPurchaseTaxId} onValueChange={(v) => { setFilterPurchaseTaxId(v); syncUrl({ purchaseTax: v }); }} data-testid="filter-purchase-tax">
                 <SelectTrigger className="sm:w-[220px]" data-testid="filter-purchase-tax-trigger">
                   <SelectValue placeholder="Filter Pajak Beli" />
                 </SelectTrigger>
@@ -649,7 +687,7 @@ export default function EcommercePage() {
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
-                      onClick={() => setFilterCategories([])}
+                      onClick={() => { setFilterCategories([]); syncUrl({ categories: [] }); }}
                     >
                       <span className={`h-4 w-4 rounded-sm border flex items-center justify-center ${filterCategories.length === 0 ? "bg-primary border-primary" : "border-input"}`}>
                         {filterCategories.length === 0 && <span className="block h-2 w-2 bg-primary-foreground rounded-[2px]" />}
@@ -664,13 +702,15 @@ export default function EcommercePage() {
                       >
                         <Checkbox
                           checked={filterCategories.includes(pc.name)}
-                          onCheckedChange={(checked) =>
-                            setFilterCategories((prev) =>
-                              checked === true
+                          onCheckedChange={(checked) => {
+                            setFilterCategories((prev) => {
+                              const next = checked === true
                                 ? prev.includes(pc.name) ? prev : [...prev, pc.name]
-                                : prev.filter((c) => c !== pc.name)
-                            )
-                          }
+                                : prev.filter((c) => c !== pc.name);
+                              syncUrl({ categories: next });
+                              return next;
+                            });
+                          }}
                         />
                         <span className="flex-1">{pc.name}</span>
                         <span className="text-xs text-muted-foreground tabular-nums">{pc.productCount}</span>
@@ -690,7 +730,7 @@ export default function EcommercePage() {
                     <button
                       type="button"
                       aria-label={`Hapus filter ${cat}`}
-                      onClick={() => setFilterCategories((prev) => prev.filter((c) => c !== cat))}
+                      onClick={() => { setFilterCategories((prev) => { const next = prev.filter((c) => c !== cat); syncUrl({ categories: next }); return next; }); }}
                       className="rounded-full hover:bg-muted-foreground/20 p-0.5"
                       data-testid={`chip-remove-category-${cat}`}
                     >
@@ -700,7 +740,7 @@ export default function EcommercePage() {
                 ))}
                 <button
                   type="button"
-                  onClick={() => setFilterCategories([])}
+                  onClick={() => { setFilterCategories([]); syncUrl({ categories: [] }); }}
                   className="text-xs text-muted-foreground underline-offset-2 hover:underline"
                   data-testid="clear-category-filters"
                 >
