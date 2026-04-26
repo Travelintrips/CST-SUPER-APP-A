@@ -51,6 +51,9 @@ const TYPE_LABELS: Record<string, string> = {
   internal: "Internal",
 };
 
+const LS_SALES_DOC_FILTER = "expense_list_salesDocFilter";
+const LS_SHIPMENT_FILTER  = "expense_list_shipmentFilter";
+
 function StatusBadge({ status }: { status: string }) {
   return (
     <Badge className={`text-xs border ${STATUS_COLORS[status] ?? "bg-muted text-muted-foreground"}`}>
@@ -66,8 +69,12 @@ export default function ExpenseListPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [catFilter, setCatFilter] = useState("all");
-  const [salesDocFilter, setSalesDocFilter] = useState("all");
-  const [shipmentFilter, setShipmentFilter] = useState("all");
+  const [salesDocFilter, setSalesDocFilter] = useState(
+    () => localStorage.getItem(LS_SALES_DOC_FILTER) ?? "all"
+  );
+  const [shipmentFilter, setShipmentFilter] = useState(
+    () => localStorage.getItem(LS_SHIPMENT_FILTER) ?? "all"
+  );
 
   const { data: expenses = [], isLoading } = useListExpenses({
     status: statusFilter !== "all" ? statusFilter : undefined,
@@ -156,7 +163,7 @@ export default function ExpenseListPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={salesDocFilter} onValueChange={setSalesDocFilter}>
+          <Select value={salesDocFilter} onValueChange={(v) => { setSalesDocFilter(v); try { localStorage.setItem(LS_SALES_DOC_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Semua Sales Order" />
             </SelectTrigger>
@@ -169,7 +176,7 @@ export default function ExpenseListPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={shipmentFilter} onValueChange={setShipmentFilter}>
+          <Select value={shipmentFilter} onValueChange={(v) => { setShipmentFilter(v); try { localStorage.setItem(LS_SHIPMENT_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Semua Shipment" />
             </SelectTrigger>
