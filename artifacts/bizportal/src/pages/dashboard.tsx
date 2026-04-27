@@ -419,6 +419,11 @@ function ResponseTimeTrendCard({ entries }: { entries: ResponseTimeEntry[] }) {
             />
           ))}
         </div>
+        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-emerald-500" />{"< 200ms"}</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-amber-500" />200–500ms</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-destructive" />{"> 500ms"}</span>
+        </div>
         <div className="space-y-1 max-h-36 overflow-y-auto">
           {[...last20].reverse().slice(0, 10).map((e, i) => (
             <div key={i} className="flex items-center justify-between text-xs py-0.5">
