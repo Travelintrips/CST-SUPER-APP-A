@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart } from "lucide-react";
+import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListFreightShipments,
@@ -44,6 +44,36 @@ const BL_ELIGIBLE_STATUSES = ["confirmed", "in_transit", "completed"];
 function hasBLData(s: FreightShipment): boolean {
   if (!BL_ELIGIBLE_STATUSES.includes(s.status)) return false;
   return !!(s.vessel || s.voyage || s.portOfLoading || s.portOfDischarge || s.notifyParty || s.marksAndNumbers || s.measurement);
+}
+
+function idr(value: string | number | null | undefined): string {
+  if (value == null) return "—";
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  if (isNaN(n)) return "—";
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+}
+
+function CostBadge({ actualCost, approvedQuoteCost }: { actualCost?: string | null; approvedQuoteCost?: string | null }) {
+  const actual = actualCost ? parseFloat(actualCost) : null;
+  const quoted = approvedQuoteCost ? parseFloat(approvedQuoteCost) : null;
+  if (actual === null && quoted === null) return null;
+  if (actual !== null && quoted !== null) {
+    const over = actual > quoted;
+    const pct = quoted !== 0 ? Math.abs(((actual - quoted) / quoted) * 100) : null;
+    return (
+      <div className={`inline-flex flex-col gap-0.5 text-xs rounded px-1.5 py-1 border ${over ? "bg-red-500/5 border-red-500/20" : "bg-emerald-500/5 border-emerald-500/20"}`}>
+        <span className="text-muted-foreground leading-none">Kuota: {idr(quoted)}</span>
+        <span className={`flex items-center gap-0.5 font-medium leading-none ${over ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+          {over ? <TrendingUp className="h-3 w-3 shrink-0" /> : <TrendingDown className="h-3 w-3 shrink-0" />}
+          {idr(actual)}{pct !== null && <span className="opacity-70 ml-0.5">({pct.toFixed(0)}%{over ? " ↑" : " ↓"})</span>}
+        </span>
+      </div>
+    );
+  }
+  if (actual !== null) {
+    return <span className="text-xs text-muted-foreground">Aktual: {idr(actual)}</span>;
+  }
+  return <span className="text-xs text-muted-foreground">Kuota: {idr(quoted)}</span>;
 }
 
 const FREIGHT_REFRESH_INTERVALS = [
@@ -475,6 +505,7 @@ export default function LogisticsFreightPage() {
                   <TableHead>Komoditi</TableHead>
                   <TableHead>Origin → Destination</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Biaya</TableHead>
                   <TableHead>Tgl. Dibuat</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
@@ -483,14 +514,14 @@ export default function LogisticsFreightPage() {
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {Array.from({ length: 9 }).map((_, j) => (
                         <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                       ))}
                     </TableRow>
                   ))
                 ) : !filteredShipments.length ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                       {isFiltered
                         ? "Tidak ada shipment dengan filter ini."
                         : "Belum ada freight shipment. Buat shipment pertama Anda."}
@@ -528,6 +559,9 @@ export default function LogisticsFreightPage() {
                         <Badge variant="outline" className={STATUS_COLORS[s.status] ?? ""}>
                           {STATUS_LABELS[s.status] ?? s.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <CostBadge actualCost={s.actualCost} approvedQuoteCost={s.approvedQuoteCost} />
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                         {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
@@ -626,6 +660,13 @@ export default function LogisticsFreightPage() {
                         {soMap[s.salesDocId] ?? `SO #${s.salesDocId}`}
                       </span>
                     </Link>
+                  )}
+
+                  {/* Cost comparison */}
+                  {(s.actualCost || s.approvedQuoteCost) && (
+                    <div>
+                      <CostBadge actualCost={s.actualCost} approvedQuoteCost={s.approvedQuoteCost} />
+                    </div>
                   )}
 
                   {/* Date + actions */}

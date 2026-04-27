@@ -1380,6 +1380,7 @@ export interface FreightShipment {
   status: FreightShipmentStatus;
   notes?: string | null;
   actualCost?: string | null;
+  approvedQuoteCost?: string | null;
   departureDate?: string | null;
   arrivalDate?: string | null;
   trackingNumber?: string | null;

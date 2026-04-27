@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable } from "@workspace/db";
-import { eq, desc, inArray, sum } from "drizzle-orm";
+import { eq, desc, inArray, sum, and } from "drizzle-orm";
 
 const router = Router();
 
@@ -32,7 +32,34 @@ router.get("/freight-shipments", async (req, res) => {
   const rows = salesDocId
     ? await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.salesDocId, salesDocId)).orderBy(desc(freightShipmentsTable.createdAt))
     : await db.select().from(freightShipmentsTable).orderBy(desc(freightShipmentsTable.createdAt));
-  return res.json(rows.map(serializeShipment));
+
+  // Bulk-fetch approved quote costs for all shipments in one query
+  const shipmentIds = rows.map((r) => r.id);
+  const approvedQuotes = shipmentIds.length > 0
+    ? await db
+        .select({ shipmentId: freightQuotesTable.shipmentId, totalCost: freightQuotesTable.totalCost })
+        .from(freightQuotesTable)
+        .where(
+          and(
+            eq(freightQuotesTable.status, "approved"),
+            shipmentIds.length === 1
+              ? eq(freightQuotesTable.shipmentId, shipmentIds[0]!)
+              : inArray(freightQuotesTable.shipmentId, shipmentIds)
+          )
+        )
+    : [];
+  // Pick the first approved quote per shipment (consistent with detail page)
+  const approvedCostMap = new Map<number, string | null>();
+  for (const q of approvedQuotes) {
+    if (!approvedCostMap.has(q.shipmentId)) {
+      approvedCostMap.set(q.shipmentId, q.totalCost ?? null);
+    }
+  }
+
+  return res.json(rows.map((r) => ({
+    ...serializeShipment(r),
+    approvedQuoteCost: approvedCostMap.get(r.id) ?? null,
+  })));
 });
 
 // GET /api/logistics/freight-shipments/:id
