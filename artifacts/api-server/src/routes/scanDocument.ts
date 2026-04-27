@@ -169,7 +169,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
         const cleanText = cleanPdfText(pdfText);
         const response = await openai.chat.completions.create({
           model: "gpt-5-mini",
-          max_completion_tokens: 2048,
+          max_completion_tokens: 3500,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             {
@@ -185,7 +185,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
         const base64Pdf = file.buffer.toString("base64");
         const response = await openai.chat.completions.create({
           model: "gpt-5.1",
-          max_completion_tokens: 2048,
+          max_completion_tokens: 3500,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             {
@@ -204,7 +204,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       const base64Image = file.buffer.toString("base64");
       const response = await openai.chat.completions.create({
         model: "gpt-5.1",
-        max_completion_tokens: 2048,
+        max_completion_tokens: 3500,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
