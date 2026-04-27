@@ -90,6 +90,7 @@ export default function LogisticsFreightEditorPage() {
   const [shipperAddressAutoFilled, setShipperAddressAutoFilled] = useState(false);
   const [shipperAddressAutoFilledValue, setShipperAddressAutoFilledValue] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+  const [vendorWasManuallySelected, setVendorWasManuallySelected] = useState(false);
   const [shipperVendorNameFilled, setShipperVendorNameFilled] = useState(false);
   const [shipperVendorAddressFilled, setShipperVendorAddressFilled] = useState(false);
   const [shipperVendorNameValue, setShipperVendorNameValue] = useState("");
@@ -249,6 +250,7 @@ export default function LogisticsFreightEditorPage() {
     // Always update (including clearing to null) so switching POs doesn't leave
     // a stale vendor ID that could cause editing the wrong vendor.
     setSelectedVendorId(catalogVendor ? catalogVendor.id : null);
+    setVendorWasManuallySelected(false);
     setForm((f) => {
       return {
         ...f,
@@ -353,6 +355,7 @@ export default function LogisticsFreightEditorPage() {
     setVendorPickerOpen(false);
     if (!vendor) return;
     setSelectedVendorId(supplierId);
+    setVendorWasManuallySelected(true);
     setShipperVendorNameValue(vendor.name);
     setShipperVendorAddressValue(vendor.address ?? "");
     setForm((f) => {
@@ -445,6 +448,7 @@ export default function LogisticsFreightEditorPage() {
 
   const handleSelectVendorByData = (vendor: { id: number; name: string; address?: string | null }) => {
     setSelectedVendorId(vendor.id);
+    setVendorWasManuallySelected(true);
     setShipperVendorNameValue(vendor.name);
     setShipperVendorAddressValue(vendor.address ?? "");
     setForm((f) => {
@@ -708,7 +712,9 @@ export default function LogisticsFreightEditorPage() {
                         setShipperCatalogAddressFilled(false);
                         setShipperCatalogAddressValue("");
                       }
-                      setSelectedVendorId(null);
+                      if (!vendorWasManuallySelected) {
+                        setSelectedVendorId(null);
+                      }
                       setPurchaseDocId(null);
                     }}>
                       Ganti
