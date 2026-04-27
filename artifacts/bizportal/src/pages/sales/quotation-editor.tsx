@@ -700,6 +700,18 @@ export default function SalesDocumentEditorPage() {
               <Label>Nama Customer</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={!isEditable} data-testid="input-customer-name" />
             </div>
+            {customerId !== null && (customers ?? []).find((c) => c.id === customerId)?.taxId && (
+              <div className="grid gap-1.5">
+                <Label>NPWP Customer</Label>
+                <Input
+                  value={(customers ?? []).find((c) => c.id === customerId)?.taxId ?? ""}
+                  readOnly
+                  disabled
+                  data-testid="input-customer-tax-id"
+                  className="bg-muted text-muted-foreground cursor-default"
+                />
+              </div>
+            )}
             <div className="grid gap-1.5">
               <Label>Berlaku Hingga</Label>
               <DatePicker value={validUntil} onChange={setValidUntil} disabled={!isEditable} />
