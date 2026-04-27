@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +58,7 @@ export default function LogisticsFreightEditorPage() {
   const create = useCreateFreightShipment();
   const update = useUpdateFreightShipment();
 
-  const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }), enabled: !isEdit } });
+  const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }) } });
   const { data: purchaseOrders = [] } = useListPurchaseDocuments({ kind: "order" }, { query: { queryKey: getListPurchaseDocumentsQueryKey({ kind: "order" }) } });
   const [soPickerOpen, setSoPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
@@ -152,6 +152,42 @@ export default function LogisticsFreightEditorPage() {
       });
     }
   }, [existing]);
+
+  const autoFillSetupDone = useRef(false);
+
+  useEffect(() => {
+    autoFillSetupDone.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (!isEdit || !existing || autoFillSetupDone.current) return;
+    const existingSalesDocId = (existing as any).salesDocId;
+    const existingPurchaseDocId = (existing as any).purchaseDocId;
+    // Track each required source independently — only finalize when ALL required docs are resolved
+    let soProcessed = !existingSalesDocId;
+    let poProcessed = !existingPurchaseDocId;
+    if (existingSalesDocId && salesOrders.length > 0) {
+      const soDoc = salesOrders.find((d) => d.id === existingSalesDocId);
+      if (soDoc) {
+        if (soDoc.customerName) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(soDoc.customerName); }
+        if (soDoc.customerAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(soDoc.customerAddress); }
+        if ((soDoc as any).origin) { setOriginAutoFilled(true); setOriginAutoFilledValue((soDoc as any).origin); }
+        if ((soDoc as any).destination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue((soDoc as any).destination); }
+        if ((soDoc as any).transportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue((soDoc as any).transportMode); }
+        soProcessed = true;
+      }
+    }
+    if (existingPurchaseDocId && purchaseOrders.length > 0) {
+      const poDoc = purchaseOrders.find((d) => d.id === existingPurchaseDocId);
+      if (poDoc) {
+        if (poDoc.supplierName) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(poDoc.supplierName); }
+        if ((poDoc as any).supplierAddress) { setShipperAddressAutoFilled(true); setShipperAddressAutoFilledValue((poDoc as any).supplierAddress); }
+        poProcessed = true;
+      }
+    }
+    // Mark setup complete only when all linked sources are resolved
+    if (soProcessed && poProcessed) autoFillSetupDone.current = true;
+  }, [isEdit, existing, salesOrders, purchaseOrders]);
 
   const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
 
