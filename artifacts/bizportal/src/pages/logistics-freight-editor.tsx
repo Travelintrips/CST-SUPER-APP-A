@@ -157,6 +157,18 @@ export default function LogisticsFreightEditorPage() {
     }
   };
 
+  const handleSelectPo = (docId: number) => {
+    const doc = purchaseOrders.find((d) => d.id === docId);
+    setPurchaseDocId(docId);
+    setPoPickerOpen(false);
+    if (doc) {
+      setForm((f) => ({
+        ...f,
+        shipperName: f.shipperName || (doc.supplierName ?? ""),
+      }));
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isEdit && !salesDocId) {
@@ -335,7 +347,7 @@ export default function LogisticsFreightEditorPage() {
                   Purchase Order
                   <span className="text-muted-foreground text-sm font-normal">(opsional)</span>
                 </CardTitle>
-                <p className="text-sm text-muted-foreground">Tautkan ke Purchase Order yang terkait dengan shipment ini.</p>
+                <p className="text-sm text-muted-foreground">Tautkan ke Purchase Order yang terkait dengan shipment ini. Nama supplier akan diisi otomatis ke kolom Shipper jika belum terisi.</p>
               </CardHeader>
               <CardContent>
                 {purchaseDocId ? (
@@ -382,7 +394,7 @@ export default function LogisticsFreightEditorPage() {
                               <CommandItem
                                 key={doc.id}
                                 value={`${doc.docNumber} ${doc.supplierName}`}
-                                onSelect={() => { setPurchaseDocId(doc.id); setPoPickerOpen(false); }}
+                                onSelect={() => handleSelectPo(doc.id)}
                               >
                                 <Check className={`mr-2 h-4 w-4 ${purchaseDocId === doc.id ? "opacity-100" : "opacity-0"}`} />
                                 <span className="font-mono mr-2">{doc.docNumber}</span>
