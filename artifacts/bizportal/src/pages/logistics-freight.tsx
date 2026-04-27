@@ -434,7 +434,7 @@ export default function LogisticsFreightPage() {
           </div>
         </div>
         {lastRefreshed && (
-          <p className="text-xs text-muted-foreground -mt-4 flex items-center gap-1.5">
+          <p className={`text-xs text-muted-foreground -mt-4 flex items-center gap-1.5 transition-opacity ${isFetching && !isLoading ? "animate-pulse opacity-50" : ""}`}>
             <span>Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
             {secondsLeft !== null && (
               <>
