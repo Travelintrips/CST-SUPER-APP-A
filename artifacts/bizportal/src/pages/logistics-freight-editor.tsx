@@ -185,10 +185,12 @@ export default function LogisticsFreightEditorPage() {
 
   const autoFillSetupDone = useRef(false);
   const poUrlPreLinkDone = useRef(false);
+  const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     autoFillSetupDone.current = false;
     poUrlPreLinkDone.current = false;
+    setScannedFields(new Set());
   }, [id]);
 
   // Catalog-aware PO autofill helper (shared by manual selection, URL pre-link, and edit load)
@@ -266,8 +268,6 @@ export default function LogisticsFreightEditorPage() {
     // Mark setup complete only when all linked sources are resolved
     if (soProcessed && poProcessed) autoFillSetupDone.current = true;
   }, [isEdit, existing, salesOrders, purchaseOrders, suppliersFetched, suppliers]);
-
-  const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
