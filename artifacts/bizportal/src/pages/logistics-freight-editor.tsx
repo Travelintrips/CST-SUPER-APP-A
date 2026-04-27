@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Save, Loader2, ScanLine, ChevronsUpDown, Check, Plus, Pencil } from "lucide-react";
+import { ArrowLeft, Save, Loader2, ScanLine, ChevronsUpDown, Check, Plus, Pencil, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { FreightScanDialog, type FreightFormFields } from "@/components/freight/FreightScanDialog";
 import {
@@ -818,6 +818,23 @@ export default function LogisticsFreightEditorPage() {
                               )}
                             </div>
                           </CommandEmpty>
+                          {selectedVendorId && (
+                            <CommandGroup>
+                              <CommandItem
+                                value="__clear_vendor__"
+                                onSelect={() => {
+                                  setSelectedVendorId(null);
+                                  setVendorPickerOpen(false);
+                                  setVendorSearchQuery("");
+                                }}
+                                className="text-destructive aria-selected:text-destructive"
+                                data-testid="clear-vendor-item"
+                              >
+                                <X className="mr-2 h-4 w-4" />
+                                Hapus vendor
+                              </CommandItem>
+                            </CommandGroup>
+                          )}
                           <CommandGroup heading="Katalog Vendor">
                             {suppliers.map((s) => (
                               <CommandItem
