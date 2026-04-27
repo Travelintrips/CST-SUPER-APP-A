@@ -106,7 +106,7 @@ Rules:
 - AWB number format: "XXX-XXXXXXX" (3-digit airline prefix + 7 or 8-digit serial), e.g., "081-12345678" or "157-43470523"
 - For shipper/consignee, copy the FULL name including company designation (PT., Pte. Ltd., Co. Ltd., etc.) and address as it appears
 - For notifyParty: extract the "Notify Party" or "Also Notify" box if present; write "Same as Consignee" if the document states that; leave null if the field is absent from the document
-- For commodity, summarize the goods description briefly (e.g., "Electronic equipment", "Garments", "Spare parts")
+- For commodity, list ALL distinct goods/product types exactly as they appear in the document, separated by newlines. Do NOT summarize or condense. If there are 7 SKUs, list all 7. Example: "MOTOR ASSY + COVER + SWITCH HFN 1210\nMOTOR ASSY + COVER + SWITCH 16SR 7116\n..."
 - For "dimensions": for sea freight FCL/LCL use the CBM value as a string (e.g., "67.57 CBM"), for air freight use piece dimensions (e.g., "52X34X17")
 - For "grossWeight": sum all container/package weights if multiple; report as total
 - For "measurement": total CBM across all containers/packages
