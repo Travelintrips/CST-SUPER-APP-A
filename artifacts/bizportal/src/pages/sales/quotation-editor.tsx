@@ -410,6 +410,7 @@ export default function SalesDocumentEditorPage() {
   const total = subtotal;
 
   const isEditable = isNew || (doc && (doc.status === "draft" || doc.status === "sent"));
+  const selectedCustomer = (customers ?? []).find((c) => c.id === customerId) ?? null;
 
   const setLine = (idx: number, patch: Partial<LineDraft>) => {
     setLines((arr) => arr.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -700,11 +701,11 @@ export default function SalesDocumentEditorPage() {
               <Label>Nama Customer</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={!isEditable} data-testid="input-customer-name" />
             </div>
-            {customerId !== null && (customers ?? []).find((c) => c.id === customerId)?.taxId && (
+            {selectedCustomer?.taxId && (
               <div className="grid gap-1.5">
                 <Label>NPWP Customer</Label>
                 <Input
-                  value={(customers ?? []).find((c) => c.id === customerId)?.taxId ?? ""}
+                  value={selectedCustomer.taxId}
                   readOnly
                   disabled
                   data-testid="input-customer-tax-id"
