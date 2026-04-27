@@ -168,6 +168,13 @@ export default function LogisticsPage() {
   const awaitingQuote = freightShipments?.filter((s) => s.status === "rfq_sent") ?? [];
   const inTransit = freightShipments?.filter((s) => s.status === "in_transit") ?? [];
 
+  const freightStatusCounts = {
+    draft: activeFreight.filter((s) => s.status === "draft").length,
+    rfq_sent: awaitingQuote.length,
+    confirmed: activeFreight.filter((s) => s.status === "confirmed").length,
+    in_transit: inTransit.length,
+  };
+
   const customFrom = customDateFrom
     ? (() => { const [y, m, d] = customDateFrom.split("-").map(Number); return new Date(y, m - 1, d, 0, 0, 0, 0); })()
     : null;
@@ -431,11 +438,11 @@ export default function LogisticsPage() {
                   <SelectValue placeholder="Semua Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua Status</SelectItem>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="rfq_sent">RFQ Dikirim</SelectItem>
-                  <SelectItem value="confirmed">Dikonfirmasi</SelectItem>
-                  <SelectItem value="in_transit">Dalam Perjalanan</SelectItem>
+                  <SelectItem value="all">Semua Status ({activeFreight.length})</SelectItem>
+                  <SelectItem value="draft">Draft ({freightStatusCounts.draft})</SelectItem>
+                  <SelectItem value="rfq_sent">RFQ Dikirim ({freightStatusCounts.rfq_sent})</SelectItem>
+                  <SelectItem value="confirmed">Dikonfirmasi ({freightStatusCounts.confirmed})</SelectItem>
+                  <SelectItem value="in_transit">Dalam Perjalanan ({freightStatusCounts.in_transit})</SelectItem>
                 </SelectContent>
               </Select>
               <Select
