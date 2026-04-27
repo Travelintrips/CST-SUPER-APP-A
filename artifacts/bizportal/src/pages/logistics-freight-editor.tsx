@@ -195,6 +195,16 @@ export default function LogisticsFreightEditorPage() {
     poUrlPreLinkDone.current = false;
     setScannedFields(new Set());
     setDismissedBadges(new Set());
+    setShipperNameAutoFilled(false);
+    setShipperAddressAutoFilled(false);
+    setConsigneeNameAutoFilled(false);
+    setConsigneeAddressAutoFilled(false);
+    setOriginAutoFilled(false);
+    setDestinationAutoFilled(false);
+    setTransportModeAutoFilled(false);
+    setShipperVendorNameFilled(false);
+    setShipperVendorAddressFilled(false);
+    setShipperCatalogAddressFilled(false);
   }, [id]);
 
   // Catalog-aware PO autofill helper (shared by manual selection, URL pre-link, and edit load)
