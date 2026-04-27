@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,8 @@ import {
 } from "@workspace/api-client-react";
 import type { UpdateAccountingSettingsBody } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, Upload, X } from "lucide-react";
+import { useUpload } from "@workspace/object-storage-web";
 
 type SettingsForm = Required<UpdateAccountingSettingsBody>;
 
@@ -27,8 +28,13 @@ const EMPTY: SettingsForm = {
   salesJournalId: null, purchaseJournalId: null,
   bankJournalId: null, cashJournalId: null,
   defaultSalesTaxId: null, defaultPurchaseTaxId: null,
-  companyName: null, companyAddress: null, companyNpwp: null,
+  companyName: null, companyAddress: null, companyNpwp: null, companyLogoUrl: null,
 };
+
+function getLogoServeUrl(objectPath: string) {
+  if (objectPath.startsWith("/objects/")) return `/api/storage${objectPath}`;
+  return objectPath;
+}
 
 export default function AccountingSettingsPage() {
   const qc = useQueryClient();
@@ -38,6 +44,15 @@ export default function AccountingSettingsPage() {
   const { data: journals } = useListJournals();
   const { data: taxes } = useListTaxes();
   const updateMut = useUpdateAccountingSettings();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+
+  const { uploadFile } = useUpload({
+    onError: (err) => {
+      toast({ title: `Upload logo gagal: ${err.message}`, variant: "destructive" });
+      setLogoUploading(false);
+    },
+  });
 
   const [form, setForm] = useState<SettingsForm>(EMPTY);
 
@@ -63,9 +78,23 @@ export default function AccountingSettingsPage() {
         companyName: settings.companyName ?? null,
         companyAddress: settings.companyAddress ?? null,
         companyNpwp: settings.companyNpwp ?? null,
+        companyLogoUrl: settings.companyLogoUrl ?? null,
       });
     }
   }, [settings]);
+
+  const handleLogoUpload = async (file: File) => {
+    setLogoUploading(true);
+    try {
+      const result = await uploadFile(file);
+      if (result?.objectPath) {
+        setForm((prev) => ({ ...prev, companyLogoUrl: result.objectPath }));
+        toast({ title: "Logo berhasil diunggah" });
+      }
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   const submit = async () => {
     try {
@@ -163,6 +192,67 @@ export default function AccountingSettingsPage() {
                 onChange={(e) => setForm({ ...form, companyNpwp: e.target.value || null })}
                 placeholder="Cth. 01.234.567.8-901.000"
               />
+            </div>
+            <div>
+              <Label>Logo Perusahaan</Label>
+              <p className="text-xs text-muted-foreground mb-2">Logo akan tampil di header invoice yang dicetak.</p>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                data-testid="input-companyLogo"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleLogoUpload(file);
+                  e.target.value = "";
+                }}
+              />
+              {form.companyLogoUrl ? (
+                <div className="flex items-start gap-3">
+                  <img
+                    src={getLogoServeUrl(form.companyLogoUrl)}
+                    alt="Logo Perusahaan"
+                    className="h-16 w-auto max-w-[200px] rounded border object-contain bg-white"
+                    data-testid="preview-companyLogo"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={logoUploading}
+                      data-testid="button-changeLogo"
+                    >
+                      <Upload className="h-3 w-3 mr-1" />
+                      {logoUploading ? "Mengunggah..." : "Ganti Logo"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setForm((prev) => ({ ...prev, companyLogoUrl: null }))}
+                      data-testid="button-removeLogo"
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Hapus
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={logoUploading}
+                  data-testid="button-uploadLogo"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {logoUploading ? "Mengunggah..." : "Unggah Logo"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

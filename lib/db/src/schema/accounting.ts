@@ -202,6 +202,7 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
   companyName: text("company_name"),
   companyAddress: text("company_address"),
   companyNpwp: text("company_npwp"),
+  companyLogoUrl: text("company_logo_url"),
   meta: jsonb("meta"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

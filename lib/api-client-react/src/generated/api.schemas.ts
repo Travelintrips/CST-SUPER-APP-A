@@ -1086,6 +1086,7 @@ export interface AccountingSettings {
   companyName?: string | null;
   companyAddress?: string | null;
   companyNpwp?: string | null;
+  companyLogoUrl?: string | null;
   updatedAt: string;
 }
 
@@ -1109,6 +1110,7 @@ export interface UpdateAccountingSettingsBody {
   companyName?: string | null;
   companyAddress?: string | null;
   companyNpwp?: string | null;
+  companyLogoUrl?: string | null;
 }
 
 export interface TrialBalanceRow {
@@ -1394,7 +1396,6 @@ export interface FreightShipment {
   approvedVendorName?: string | null;
   createdById?: string | null;
   createdAt: string;
-  approvedQuoteTotalCost?: string | null;
 }
 
 export interface FreightShipmentProfitability {

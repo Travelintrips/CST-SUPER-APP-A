@@ -1574,6 +1574,10 @@ function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogPro
   const companyName = settings?.companyName || 'BizPortal';
   const companyAddress = settings?.companyAddress ?? null;
   const companyNpwp = settings?.companyNpwp ?? null;
+  const companyLogoUrl = settings?.companyLogoUrl ?? null;
+  const logoSrc = companyLogoUrl
+    ? (companyLogoUrl.startsWith('/objects/') ? `/api/storage${companyLogoUrl}` : companyLogoUrl)
+    : null;
 
   const orderId = `#ORD-${order.id.toString().padStart(4, '0')}`;
   const date = new Date(order.createdAt).toLocaleDateString('id-ID', {
@@ -1598,11 +1602,16 @@ function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogPro
         }
       `}</style>
       <div style={{ maxWidth: 600, margin: '0 auto', fontFamily: 'sans-serif', color: '#000' }}>
-        <div style={{ borderBottom: '2px solid #000', paddingBottom: 16, marginBottom: 24 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>INVOICE</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 16, fontWeight: 600 }}>{companyName}</p>
-          {companyAddress && <p style={{ margin: '2px 0 0', fontSize: 13, color: '#555', whiteSpace: 'pre-wrap' }}>{companyAddress}</p>}
-          {companyNpwp && <p style={{ margin: '2px 0 0', fontSize: 13, color: '#555' }}>NPWP: {companyNpwp}</p>}
+        <div style={{ borderBottom: '2px solid #000', paddingBottom: 16, marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          {logoSrc && (
+            <img src={logoSrc} alt="Logo" style={{ height: 56, width: 'auto', maxWidth: 140, objectFit: 'contain' }} />
+          )}
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>INVOICE</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 16, fontWeight: 600 }}>{companyName}</p>
+            {companyAddress && <p style={{ margin: '2px 0 0', fontSize: 13, color: '#555', whiteSpace: 'pre-wrap' }}>{companyAddress}</p>}
+            {companyNpwp && <p style={{ margin: '2px 0 0', fontSize: 13, color: '#555' }}>NPWP: {companyNpwp}</p>}
+          </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
@@ -1677,10 +1686,20 @@ function OrderInvoiceDialog({ order, formatIDR, onClose }: OrderInvoiceDialogPro
           </DialogHeader>
 
           <div className="rounded-lg border bg-white text-foreground p-6 space-y-4" data-testid="invoice-preview">
-            <div className="border-b pb-3">
-              <p className="font-bold text-base" data-testid="invoice-company-name">{companyName}</p>
-              {companyAddress && <p className="text-xs text-muted-foreground whitespace-pre-wrap" data-testid="invoice-company-address">{companyAddress}</p>}
-              {companyNpwp && <p className="text-xs text-muted-foreground" data-testid="invoice-company-npwp">NPWP: {companyNpwp}</p>}
+            <div className="border-b pb-3 flex items-start gap-3">
+              {logoSrc && (
+                <img
+                  src={logoSrc}
+                  alt="Logo Perusahaan"
+                  className="h-12 w-auto max-w-[120px] object-contain"
+                  data-testid="invoice-company-logo"
+                />
+              )}
+              <div>
+                <p className="font-bold text-base" data-testid="invoice-company-name">{companyName}</p>
+                {companyAddress && <p className="text-xs text-muted-foreground whitespace-pre-wrap" data-testid="invoice-company-address">{companyAddress}</p>}
+                {companyNpwp && <p className="text-xs text-muted-foreground" data-testid="invoice-company-npwp">NPWP: {companyNpwp}</p>}
+              </div>
             </div>
             <div className="flex justify-between items-start">
               <div>

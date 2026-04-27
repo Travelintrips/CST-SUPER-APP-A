@@ -626,7 +626,6 @@ export const ListFreightShipmentsResponseItem = zod.object({
   approvedVendorName: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
-  approvedQuoteTotalCost: zod.string().nullish(),
 });
 export const ListFreightShipmentsResponse = zod.array(
   ListFreightShipmentsResponseItem,
@@ -2639,6 +2638,7 @@ export const GetAccountingSettingsResponse = zod.object({
   companyName: zod.string().nullish(),
   companyAddress: zod.string().nullish(),
   companyNpwp: zod.string().nullish(),
+  companyLogoUrl: zod.string().nullish(),
   updatedAt: zod.string(),
 });
 
@@ -2665,6 +2665,7 @@ export const UpdateAccountingSettingsBody = zod.object({
   companyName: zod.string().nullish(),
   companyAddress: zod.string().nullish(),
   companyNpwp: zod.string().nullish(),
+  companyLogoUrl: zod.string().nullish(),
 });
 
 export const UpdateAccountingSettingsResponse = zod.object({
@@ -2688,6 +2689,7 @@ export const UpdateAccountingSettingsResponse = zod.object({
   companyName: zod.string().nullish(),
   companyAddress: zod.string().nullish(),
   companyNpwp: zod.string().nullish(),
+  companyLogoUrl: zod.string().nullish(),
   updatedAt: zod.string(),
 });
 
