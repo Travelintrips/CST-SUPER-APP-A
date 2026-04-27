@@ -74,31 +74,52 @@ function AutofillRestoreMarker({ source, fieldKey, originalValue, currentValue, 
   const meta = AUTOFILL_SOURCE_META[source];
   const isDifferent = originalValue !== currentValue;
   const [open, setOpen] = useState(false);
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelHoverTimer = () => {
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stickyRef = useRef(false);
+  const cancelTimers = () => {
+    if (openTimerRef.current) { clearTimeout(openTimerRef.current); openTimerRef.current = null; }
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
+  };
+  const scheduleHoverOpen = () => {
+    cancelTimers();
+    openTimerRef.current = setTimeout(() => setOpen(true), 150);
+  };
+  const scheduleHoverClose = () => {
+    if (stickyRef.current) return;
+    cancelTimers();
+    closeTimerRef.current = setTimeout(() => setOpen(false), 200);
   };
   return (
-    <Popover open={open} onOpenChange={(o) => { cancelHoverTimer(); setOpen(o); }}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        cancelTimers();
+        if (o) { stickyRef.current = true; }
+        else { stickyRef.current = false; }
+        setOpen(o);
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
           className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded text-[10px] font-bold ${meta.iconBg} ${meta.iconText} ${meta.iconHover} transition-colors`}
           aria-label={`Lihat nilai asli dari ${meta.label}`}
           data-testid={`autofill-marker-${fieldKey}-${source}`}
-          onMouseEnter={() => {
-            cancelHoverTimer();
-            hoverTimerRef.current = setTimeout(() => setOpen(true), 150);
-          }}
-          onMouseLeave={cancelHoverTimer}
+          onMouseEnter={scheduleHoverOpen}
+          onMouseLeave={scheduleHoverClose}
+          onClick={() => { stickyRef.current = true; }}
         >
           {meta.icon}
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-72 p-3 text-xs space-y-2">
+      <PopoverContent
+        side="top"
+        align="start"
+        className="w-72 p-3 text-xs space-y-2"
+        onMouseEnter={cancelTimers}
+        onMouseLeave={scheduleHoverClose}
+      >
         <div className="font-semibold">Diisi otomatis dari {meta.label}</div>
         <div>
           <div className="text-muted-foreground mb-0.5">Nilai asli:</div>
@@ -107,7 +128,7 @@ function AutofillRestoreMarker({ source, fieldKey, originalValue, currentValue, 
         {isDifferent ? (
           <button
             type="button"
-            onClick={() => { onRestore(); setOpen(false); }}
+            onClick={() => { stickyRef.current = false; onRestore(); setOpen(false); }}
             className={`w-full inline-flex items-center justify-center rounded px-2 py-1 text-xs font-medium ${meta.iconBg} ${meta.iconText} ${meta.iconHover} transition-colors`}
             data-testid={`autofill-restore-${fieldKey}-${source}`}
           >
