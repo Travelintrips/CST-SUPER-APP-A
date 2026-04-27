@@ -350,12 +350,16 @@ export default function LogisticsFreightEditorPage() {
 
   const applyScannedFields = (fields: FreightFormFields) => {
     const newlyScanned = new Set<string>();
-    if (fields.shipperName !== undefined && fields.shipperName !== null) newlyScanned.add("shipperName");
-    if (fields.shipperAddress !== undefined && fields.shipperAddress !== null) newlyScanned.add("shipperAddress");
-    if (fields.consigneeName !== undefined && fields.consigneeName !== null) newlyScanned.add("consigneeName");
-    if (fields.consigneeAddress !== undefined && fields.consigneeAddress !== null) newlyScanned.add("consigneeAddress");
-    if (fields.origin !== undefined && fields.origin !== null) newlyScanned.add("origin");
-    if (fields.destination !== undefined && fields.destination !== null) newlyScanned.add("destination");
+    const scanFieldKeys: (keyof FreightFormFields)[] = [
+      "shipperName", "shipperAddress", "consigneeName", "consigneeAddress",
+      "notifyParty", "commodity", "hsCode", "grossWeight", "netWeight",
+      "quantity", "packingType", "dimensions", "marksAndNumbers", "measurement",
+      "origin", "destination", "portOfLoading", "portOfDischarge",
+      "vessel", "voyage", "notes",
+    ];
+    for (const key of scanFieldKeys) {
+      if (fields[key] !== undefined && fields[key] !== null) newlyScanned.add(key);
+    }
     if ((fields as any).transportMode !== undefined && (fields as any).transportMode !== null) newlyScanned.add("transportMode");
     setScannedFields((prev) => new Set([...prev, ...newlyScanned]));
     setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)) }));
@@ -684,6 +688,12 @@ export default function LogisticsFreightEditorPage() {
                 <div className="space-y-2">
                   <Label htmlFor="notifyParty">Notify Party</Label>
                   <Input id="notifyParty" value={form.notifyParty} onChange={set("notifyParty")} placeholder="Nama / alamat pihak yang diberitahu (jika berbeda dengan consignee)" />
+                  {scannedFields.has("notifyParty") && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      Diisi dari scan dokumen.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -695,33 +705,75 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="commodity">Komoditi <span className="text-destructive">*</span></Label>
                     <Input id="commodity" value={form.commodity} onChange={set("commodity")} placeholder="Elektronik, Tekstil, dll." required />
+                    {scannedFields.has("commodity") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="hsCode">HS Code</Label>
                     <Input id="hsCode" value={form.hsCode} onChange={set("hsCode")} placeholder="8471.30.00" />
+                    {scannedFields.has("hsCode") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="grossWeight">Berat Bruto (kg)</Label>
                     <Input id="grossWeight" type="number" step="0.01" value={form.grossWeight} onChange={set("grossWeight")} placeholder="0" />
+                    {scannedFields.has("grossWeight") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="netWeight">Berat Neto (kg)</Label>
                     <Input id="netWeight" type="number" step="0.01" value={form.netWeight} onChange={set("netWeight")} placeholder="0" />
+                    {scannedFields.has("netWeight") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="quantity">Jumlah</Label>
                     <Input id="quantity" type="number" value={form.quantity} onChange={set("quantity")} placeholder="0" />
+                    {scannedFields.has("quantity") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="packingType">Jenis Packing</Label>
                     <Input id="packingType" value={form.packingType} onChange={set("packingType")} placeholder="Karton, Pallet, dll." />
+                    {scannedFields.has("packingType") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dimensions">Dimensi</Label>
                   <Input id="dimensions" value={form.dimensions} onChange={set("dimensions")} placeholder="P x L x T cm" />
+                  {scannedFields.has("dimensions") && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      Diisi dari scan dokumen.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -813,20 +865,44 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="portOfLoading">Port of Loading</Label>
                     <Input id="portOfLoading" value={form.portOfLoading} onChange={set("portOfLoading")} placeholder="Tanjung Priok, Jakarta" />
+                    {scannedFields.has("portOfLoading") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="portOfDischarge">Port of Discharge</Label>
                     <Input id="portOfDischarge" value={form.portOfDischarge} onChange={set("portOfDischarge")} placeholder="Port of Singapore" />
+                    {scannedFields.has("portOfDischarge") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="vessel">Vessel / Nama Kapal</Label>
                     <Input id="vessel" value={form.vessel} onChange={set("vessel")} placeholder="MV. Contoh Kapal" />
+                    {scannedFields.has("vessel") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="voyage">Voyage No.</Label>
                     <Input id="voyage" value={form.voyage} onChange={set("voyage")} placeholder="VY-001" />
+                    {scannedFields.has("voyage") && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        Diisi dari scan dokumen.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -838,10 +914,22 @@ export default function LogisticsFreightEditorPage() {
                     placeholder="Tanda / nomor pada kemasan..."
                     rows={2}
                   />
+                  {scannedFields.has("marksAndNumbers") && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      Diisi dari scan dokumen.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="measurement">Measurement (CBM)</Label>
                   <Input id="measurement" value={form.measurement} onChange={set("measurement")} placeholder="cth: 12.5 CBM" />
+                  {scannedFields.has("measurement") && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      Diisi dari scan dokumen.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
