@@ -40,6 +40,7 @@ import {
   usePurchaseDocumentAction,
   useDeletePurchaseDocument,
   useListSuppliers,
+  useCreateSupplier,
   useUpdateSupplier,
   useListProducts,
   useListTaxes,
@@ -51,6 +52,7 @@ import {
   getListPurchaseDocumentsQueryKey,
   getListAccountingPaymentsQueryKey,
   getListSuppliersQueryKey,
+  type Supplier,
 } from "@workspace/api-client-react";
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -96,6 +98,7 @@ export default function PurchaseDocumentEditorPage() {
   const deleteMut = useDeletePurchaseDocument();
   const createPaymentMut = useCreateAccountingPayment();
   const updateSupplierMut = useUpdateSupplier();
+  const createVendorMut = useCreateSupplier();
   const { data: journals = [] } = useListJournals();
   const bankCashJournals = journals.filter((j) => j.type === "bank" || j.type === "cash");
 
@@ -168,6 +171,8 @@ export default function PurchaseDocumentEditorPage() {
   const [supplierCatalogAddress, setSupplierCatalogAddress] = useState<string | null>(null);
   const [updateVendorAddrOpen, setUpdateVendorAddrOpen] = useState(false);
   const [pendingNewAddress, setPendingNewAddress] = useState("");
+  const [addVendorOpen, setAddVendorOpen] = useState(false);
+  const [addVendorForm, setAddVendorForm] = useState({ name: "", country: "ID", contactEmail: "", phone: "", address: "", defaultPurchaseTaxId: null as number | null });
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([
@@ -270,6 +275,43 @@ export default function PurchaseDocumentEditorPage() {
         setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
         setTaxAutoFilledFrom(v.defaultPurchaseTaxId ? "vendor" : "settings");
       }
+    }
+  };
+
+  const handleSaveNewVendor = async () => {
+    if (!addVendorForm.name.trim() || !addVendorForm.contactEmail.trim()) {
+      toast({ title: "Nama dan email vendor wajib diisi", variant: "destructive" });
+      return;
+    }
+    try {
+      const created: Supplier = await createVendorMut.mutateAsync({
+        data: {
+          name: addVendorForm.name.trim(),
+          country: addVendorForm.country.trim() || "ID",
+          contactEmail: addVendorForm.contactEmail.trim(),
+          phone: addVendorForm.phone.trim() || undefined,
+          address: addVendorForm.address.trim() || undefined,
+          defaultPurchaseTaxId: addVendorForm.defaultPurchaseTaxId ?? undefined,
+        },
+      });
+      qc.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
+        old ? [...old, created] : [created]
+      );
+      qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+      setSupplierId(created.id);
+      setSupplierName(created.name);
+      setSupplierAddress(created.address ?? "");
+      setSupplierAddressAutoFilled(!!(created.address));
+      setSupplierCatalogAddress(created.address ?? null);
+      if (isNew || taxRateId === null) {
+        setTaxRateId(created.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
+        setTaxAutoFilledFrom(created.defaultPurchaseTaxId ? "vendor" : "settings");
+      }
+      setAddVendorOpen(false);
+      setAddVendorForm({ name: "", country: "ID", contactEmail: "", phone: "", address: "", defaultPurchaseTaxId: null });
+      toast({ title: "Vendor baru berhasil ditambahkan" });
+    } catch (e) {
+      toast({ title: "Gagal membuat vendor", description: String(e), variant: "destructive" });
     }
   };
 
@@ -481,7 +523,14 @@ export default function PurchaseDocumentEditorPage() {
           <CardHeader><CardTitle>Informasi Vendor</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="grid gap-1.5">
-              <Label>Vendor</Label>
+              <div className="flex items-center justify-between">
+                <Label>Vendor</Label>
+                {isEditable && (
+                  <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => setAddVendorOpen(true)} data-testid="button-add-vendor-inline">
+                    <Plus className="h-3 w-3 mr-1" /> Tambah Baru
+                  </Button>
+                )}
+              </div>
               <Select value={supplierId !== null ? String(supplierId) : "__none"} onValueChange={onVendorChange} disabled={!isEditable}>
                 <SelectTrigger data-testid="select-vendor"><SelectValue placeholder="Pilih vendor" /></SelectTrigger>
                 <SelectContent>
@@ -806,6 +855,58 @@ export default function PurchaseDocumentEditorPage() {
           module="purchase"
         />
       )}
+
+      {/* Inline add-vendor dialog */}
+      <Dialog open={addVendorOpen} onOpenChange={(open) => { setAddVendorOpen(open); if (!open) setAddVendorForm({ name: "", country: "ID", contactEmail: "", phone: "", address: "", defaultPurchaseTaxId: null }); }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Tambah Vendor Baru</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="av-name">Nama <span className="text-destructive">*</span></Label>
+              <Input id="av-name" autoComplete="off" value={addVendorForm.name} onChange={(e) => setAddVendorForm((f) => ({ ...f, name: e.target.value }))} data-testid="input-new-vendor-name" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="av-email">Email Kontak <span className="text-destructive">*</span></Label>
+              <Input id="av-email" type="email" value={addVendorForm.contactEmail} onChange={(e) => setAddVendorForm((f) => ({ ...f, contactEmail: e.target.value }))} data-testid="input-new-vendor-email" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="av-phone">Telepon</Label>
+              <Input id="av-phone" value={addVendorForm.phone} onChange={(e) => setAddVendorForm((f) => ({ ...f, phone: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="av-country">Negara</Label>
+              <Input id="av-country" autoComplete="off" value={addVendorForm.country} onChange={(e) => setAddVendorForm((f) => ({ ...f, country: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="av-address">Alamat</Label>
+              <Textarea id="av-address" value={addVendorForm.address} onChange={(e) => setAddVendorForm((f) => ({ ...f, address: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Pajak Pembelian Default</Label>
+              <Select
+                value={addVendorForm.defaultPurchaseTaxId !== null ? String(addVendorForm.defaultPurchaseTaxId) : "none"}
+                onValueChange={(v) => setAddVendorForm((f) => ({ ...f, defaultPurchaseTaxId: v === "none" ? null : parseInt(v) }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Tanpa default pajak" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Tanpa default —</SelectItem>
+                  {(taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive).map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.rate}%)</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddVendorOpen(false)}>Batal</Button>
+            <Button onClick={handleSaveNewVendor} disabled={createVendorMut.isPending} data-testid="button-save-new-vendor">
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={updateVendorAddrOpen} onOpenChange={setUpdateVendorAddrOpen}>
         <DialogContent className="max-w-sm" data-testid="dialog-update-vendor-address">
