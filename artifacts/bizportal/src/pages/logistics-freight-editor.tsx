@@ -36,9 +36,11 @@ import {
   useGetFreightShipment,
   useUpdateFreightShipment,
   useListSalesDocuments,
+  useListPurchaseDocuments,
   getListFreightShipmentsQueryKey,
   getGetFreightShipmentQueryKey,
   getListSalesDocumentsQueryKey,
+  getListPurchaseDocumentsQueryKey,
 } from "@workspace/api-client-react";
 
 export default function LogisticsFreightEditorPage() {
@@ -57,8 +59,11 @@ export default function LogisticsFreightEditorPage() {
   const update = useUpdateFreightShipment();
 
   const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }), enabled: !isEdit } });
+  const { data: purchaseOrders = [] } = useListPurchaseDocuments({ kind: "order" }, { query: { queryKey: getListPurchaseDocumentsQueryKey({ kind: "order" }) } });
   const [soPickerOpen, setSoPickerOpen] = useState(false);
+  const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [salesDocId, setSalesDocId] = useState<number | null>(null);
+  const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
   const [form, setForm] = useState({
     shipperName: "",
     shipperAddress: "",
@@ -104,6 +109,7 @@ export default function LogisticsFreightEditorPage() {
   useEffect(() => {
     if (existing) {
       if ((existing as any).salesDocId) setSalesDocId((existing as any).salesDocId);
+      if ((existing as any).purchaseDocId) setPurchaseDocId((existing as any).purchaseDocId);
       setForm({
         shipperName: existing.shipperName ?? "",
         shipperAddress: existing.shipperAddress ?? "",
@@ -187,6 +193,7 @@ export default function LogisticsFreightEditorPage() {
       cargoType: (form.cargoType || undefined) as any,
       containerNo: form.containerNo || undefined,
       salesDocId: salesDocId ?? undefined,
+      purchaseDocId: purchaseDocId ?? undefined,
     } as any;
 
     if (isEdit && id) {
@@ -320,6 +327,79 @@ export default function LogisticsFreightEditorPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Purchase Order picker — optional, available for both create and edit */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  Purchase Order
+                  <span className="text-muted-foreground text-sm font-normal">(opsional)</span>
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Tautkan ke Purchase Order yang terkait dengan shipment ini.</p>
+              </CardHeader>
+              <CardContent>
+                {purchaseDocId ? (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 p-3 rounded-lg border bg-muted/20">
+                      {(() => {
+                        const doc = purchaseOrders.find((d) => d.id === purchaseDocId);
+                        return doc ? (
+                          <div className="flex items-center gap-4">
+                            <span className="font-mono font-semibold text-sm">{doc.docNumber}</span>
+                            <span className="text-sm text-muted-foreground">{doc.supplierName}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm font-mono">PO #{purchaseDocId}</span>
+                        );
+                      })()}
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPurchaseDocId(null)}>
+                      Ganti
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setPurchaseDocId(null)}>
+                      Hapus
+                    </Button>
+                  </div>
+                ) : (
+                  <Popover open={poPickerOpen} onOpenChange={setPoPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={poPickerOpen}
+                        className="w-full justify-between"
+                        data-testid="po-picker-trigger"
+                      >
+                        Pilih Purchase Order...
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[400px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Cari nomor PO atau nama supplier..." />
+                        <CommandList>
+                          <CommandEmpty>Tidak ada Purchase Order yang cocok.</CommandEmpty>
+                          <CommandGroup>
+                            {purchaseOrders.map((doc) => (
+                              <CommandItem
+                                key={doc.id}
+                                value={`${doc.docNumber} ${doc.supplierName}`}
+                                onSelect={() => { setPurchaseDocId(doc.id); setPoPickerOpen(false); }}
+                              >
+                                <Check className={`mr-2 h-4 w-4 ${purchaseDocId === doc.id ? "opacity-100" : "opacity-0"}`} />
+                                <span className="font-mono mr-2">{doc.docNumber}</span>
+                                <span className="text-muted-foreground text-sm truncate">{doc.supplierName}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader><CardTitle>Informasi Shipper</CardTitle></CardHeader>
