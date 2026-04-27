@@ -3,6 +3,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
+import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import {
   db,
   suppliersTable,
@@ -332,6 +333,7 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     const rows = await db.select().from(suppliersTable).where(eq(suppliersTable.id, detail.supplierId)).limit(1);
     supplier = rows[0] ?? null;
   }
+  const acctSettings = await ensureAccountingSettings();
   const titleMap: Record<string, string> = {
     rfq: "REQUEST FOR QUOTATION",
     order: "PURCHASE ORDER",
@@ -341,6 +343,9 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     docNumber: detail.docNumber,
     status: detail.status,
     kind: detail.kind,
+    companyName: acctSettings.companyName,
+    companyAddress: acctSettings.companyAddress,
+    companyNpwp: acctSettings.companyNpwp,
     partyLabel: "Vendor",
     partyName: detail.supplierName,
     partyEmail: supplier?.contactEmail ?? null,
@@ -387,12 +392,16 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
     supplier = rows[0] ?? null;
   }
 
+  const acctSettings = await ensureAccountingSettings();
   const titleMap: Record<string, string> = { rfq: "REQUEST FOR QUOTATION", order: "PURCHASE ORDER" };
   const pdfData = {
     title: titleMap[detail.kind] ?? "DOKUMEN PEMBELIAN",
     docNumber: detail.docNumber,
     status: detail.status,
     kind: detail.kind,
+    companyName: acctSettings.companyName,
+    companyAddress: acctSettings.companyAddress,
+    companyNpwp: acctSettings.companyNpwp,
     partyLabel: "Vendor",
     partyName: detail.supplierName,
     partyEmail: supplier?.contactEmail ?? null,

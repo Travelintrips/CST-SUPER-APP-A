@@ -14,6 +14,9 @@ export interface InvoiceData {
   docNumber: string;
   status: string;
   kind: string;
+  companyName?: string | null;
+  companyAddress?: string | null;
+  companyNpwp?: string | null;
   partyLabel: string;
   partyName: string;
   partyEmail?: string | null;
@@ -49,11 +52,27 @@ function _renderInvoiceDoc(doc: InstanceType<typeof PDFDocument>, data: InvoiceD
   doc
     .fontSize(20)
     .fillColor("#0f172a")
-    .text("BizPortal", { align: "left" })
-    .fontSize(9)
-    .fillColor("#64748b")
-    .text("Sistem Manajemen Bisnis Multi-Divisi", { align: "left" })
-    .moveDown(0.3);
+    .text(data.companyName || "BizPortal", { align: "left" });
+  if (data.companyAddress) {
+    doc
+      .fontSize(9)
+      .fillColor("#64748b")
+      .text(data.companyAddress, { align: "left" });
+  } else {
+    doc
+      .fontSize(9)
+      .fillColor("#64748b")
+      .text("Sistem Manajemen Bisnis Multi-Divisi", { align: "left" });
+  }
+  if (data.companyNpwp) {
+    doc
+      .fontSize(9)
+      .fillColor("#475569")
+      .font("Helvetica-Bold")
+      .text(`NPWP: ${data.companyNpwp}`, { align: "left" })
+      .font("Helvetica");
+  }
+  doc.moveDown(0.3);
 
   doc
     .fontSize(16)

@@ -12,6 +12,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postSalesInvoice } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
+import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -412,6 +413,7 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     const rows = await db.select().from(customersTable).where(eq(customersTable.id, detail.customerId)).limit(1);
     customer = rows[0] ?? null;
   }
+  const acctSettings = await ensureAccountingSettings();
   const titleMap: Record<string, string> = {
     quote: "QUOTATION",
     order: "SALES ORDER",
@@ -421,6 +423,9 @@ router.get("/documents/:id/pdf", async (req, res): Promise<void> => {
     docNumber: detail.docNumber,
     status: detail.status,
     kind: detail.kind,
+    companyName: acctSettings.companyName,
+    companyAddress: acctSettings.companyAddress,
+    companyNpwp: acctSettings.companyNpwp,
     partyLabel: "Pelanggan",
     partyName: detail.customerName,
     partyEmail: customer?.email ?? null,
@@ -469,12 +474,16 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
     customer = rows[0] ?? null;
   }
 
+  const acctSettings = await ensureAccountingSettings();
   const titleMap: Record<string, string> = { quote: "QUOTATION", order: "SALES ORDER" };
   const pdfData = {
     title: titleMap[detail.kind] ?? "DOKUMEN PENJUALAN",
     docNumber: detail.docNumber,
     status: detail.status,
     kind: detail.kind,
+    companyName: acctSettings.companyName,
+    companyAddress: acctSettings.companyAddress,
+    companyNpwp: acctSettings.companyNpwp,
     partyLabel: "Pelanggan",
     partyName: detail.customerName,
     partyEmail: customer?.email ?? null,
