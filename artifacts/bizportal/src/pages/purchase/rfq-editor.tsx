@@ -40,6 +40,7 @@ import {
   usePurchaseDocumentAction,
   useDeletePurchaseDocument,
   useListSuppliers,
+  useUpdateSupplier,
   useListProducts,
   useListTaxes,
   useGetAccountingSettings,
@@ -49,6 +50,7 @@ import {
   getGetPurchaseDocumentQueryKey,
   getListPurchaseDocumentsQueryKey,
   getListAccountingPaymentsQueryKey,
+  getListSuppliersQueryKey,
 } from "@workspace/api-client-react";
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -93,6 +95,7 @@ export default function PurchaseDocumentEditorPage() {
   const actionMut = usePurchaseDocumentAction();
   const deleteMut = useDeletePurchaseDocument();
   const createPaymentMut = useCreateAccountingPayment();
+  const updateSupplierMut = useUpdateSupplier();
   const { data: journals = [] } = useListJournals();
   const bankCashJournals = journals.filter((j) => j.type === "bank" || j.type === "cash");
 
@@ -162,6 +165,9 @@ export default function PurchaseDocumentEditorPage() {
   const [supplierName, setSupplierName] = useState("");
   const [supplierAddress, setSupplierAddress] = useState("");
   const [supplierAddressAutoFilled, setSupplierAddressAutoFilled] = useState(false);
+  const [supplierCatalogAddress, setSupplierCatalogAddress] = useState<string | null>(null);
+  const [updateVendorAddrOpen, setUpdateVendorAddrOpen] = useState(false);
+  const [pendingNewAddress, setPendingNewAddress] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([
@@ -176,6 +182,12 @@ export default function PurchaseDocumentEditorPage() {
       setSupplierId(doc.supplierId ?? null);
       setSupplierName(doc.supplierName);
       setSupplierAddress(doc.supplierAddress ?? "");
+      if (doc.supplierId) {
+        const v = (vendors ?? []).find((x) => x.id === doc.supplierId);
+        setSupplierCatalogAddress(v?.address ?? null);
+      } else {
+        setSupplierCatalogAddress(null);
+      }
       setExpectedDate(doc.expectedDate ? doc.expectedDate.slice(0, 10) : "");
       setNotes(doc.notes ?? "");
       setTaxRateId(doc.taxRateId ?? null);
@@ -192,7 +204,7 @@ export default function PurchaseDocumentEditorPage() {
           : [{ name: "", quantity: 1, unitCost: 0 }],
       );
     }
-  }, [doc]);
+  }, [doc, vendors]);
 
   useEffect(() => {
     if (isNew && !taxApplied && acctSettings?.defaultPurchaseTaxId) {
@@ -243,6 +255,7 @@ export default function PurchaseDocumentEditorPage() {
     if (val === "__none") {
       setSupplierId(null);
       setSupplierAddressAutoFilled(false);
+      setSupplierCatalogAddress(null);
       return;
     }
     const sid = Number(val);
@@ -252,6 +265,7 @@ export default function PurchaseDocumentEditorPage() {
       setSupplierName(v.name);
       setSupplierAddress(v.address ?? "");
       setSupplierAddressAutoFilled(!!(v.address));
+      setSupplierCatalogAddress(v.address ?? null);
       if (isNew || taxRateId === null) {
         setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
         setTaxAutoFilledFrom(v.defaultPurchaseTaxId ? "vendor" : "settings");
@@ -303,8 +317,31 @@ export default function PurchaseDocumentEditorPage() {
         qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
         toast({ title: "Dokumen diperbarui" });
       }
+      if (
+        supplierId !== null &&
+        supplierAddress.trim() &&
+        supplierAddress.trim() !== (supplierCatalogAddress ?? "").trim()
+      ) {
+        setPendingNewAddress(supplierAddress.trim());
+        setUpdateVendorAddrOpen(true);
+      }
     } catch (e) {
       toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+    }
+  };
+
+  const confirmUpdateVendorAddress = async () => {
+    if (supplierId === null) return;
+    try {
+      await updateSupplierMut.mutateAsync({ id: supplierId, data: { address: pendingNewAddress } });
+      setSupplierCatalogAddress(pendingNewAddress);
+      setSupplierAddressAutoFilled(true);
+      qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+      toast({ title: "Alamat vendor diperbarui", description: "Katalog vendor telah disinkronkan." });
+    } catch (e) {
+      toast({ title: "Gagal memperbarui vendor", description: String(e), variant: "destructive" });
+    } finally {
+      setUpdateVendorAddrOpen(false);
     }
   };
 
@@ -769,6 +806,30 @@ export default function PurchaseDocumentEditorPage() {
           module="purchase"
         />
       )}
+
+      <Dialog open={updateVendorAddrOpen} onOpenChange={setUpdateVendorAddrOpen}>
+        <DialogContent className="max-w-sm" data-testid="dialog-update-vendor-address">
+          <DialogHeader>
+            <DialogTitle>Update alamat di katalog vendor juga?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Alamat yang Anda masukkan berbeda dari data vendor di katalog. Ingin memperbarui katalog vendor agar PO berikutnya menggunakan alamat yang baru?
+          </p>
+          <p className="text-sm font-mono bg-muted rounded p-2 mt-1 whitespace-pre-wrap">{pendingNewAddress}</p>
+          <DialogFooter className="flex-row justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setUpdateVendorAddrOpen(false)} data-testid="button-skip-vendor-address-update">
+              Tidak
+            </Button>
+            <Button
+              onClick={confirmUpdateVendorAddress}
+              disabled={updateSupplierMut.isPending}
+              data-testid="button-confirm-vendor-address-update"
+            >
+              Ya, Update Katalog
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
