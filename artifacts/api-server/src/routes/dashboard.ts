@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable } from "@workspace/db";
+import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable, apiResponseTimesTable } from "@workspace/db";
 import { sql, and, ne, eq } from "drizzle-orm";
 import { getRecentResponseTimesFromDb } from "../lib/responseTimeLog";
 
@@ -56,6 +56,39 @@ router.get("/response-times", async (req, res) => {
   const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
   const entries = await getRecentResponseTimesFromDb(pathFilter);
   return res.json({ entries });
+});
+
+// GET /api/dashboard/response-time-stats
+// Returns per-path aggregate stats (count, min, max, avg, p95) from persisted history.
+router.get("/response-time-stats", async (req, res) => {
+  try {
+    const rows = await db
+      .select()
+      .from(apiResponseTimesTable)
+      .orderBy(sql`id DESC`)
+      .limit(2000);
+
+    const byPath: Record<string, number[]> = {};
+    for (const row of rows) {
+      if (!byPath[row.path]) byPath[row.path] = [];
+      byPath[row.path]!.push(row.durationMs);
+    }
+
+    const stats = Object.entries(byPath).map(([path, durations]) => {
+      const sorted = [...durations].sort((a, b) => a - b);
+      const count = sorted.length;
+      const minMs = sorted[0]!;
+      const maxMs = sorted[count - 1]!;
+      const avgMs = Math.round(sorted.reduce((s, v) => s + v, 0) / count);
+      const p95Ms = sorted[Math.min(Math.floor(count * 0.95), count - 1)]!;
+      return { path, count, minMs, maxMs, avgMs, p95Ms };
+    });
+
+    stats.sort((a, b) => b.count - a.count);
+    return res.json({ stats });
+  } catch {
+    return res.json({ stats: [] });
+  }
 });
 
 export default router;

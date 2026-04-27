@@ -15,6 +15,15 @@ interface ResponseTimeEntry {
   durationMs: number;
 }
 
+interface PathStat {
+  path: string;
+  count: number;
+  minMs: number;
+  maxMs: number;
+  avgMs: number;
+  p95Ms: number;
+}
+
 const SLOW_THRESHOLD_MS = 500;
 
 async function fetchResponseTimeTrend(): Promise<ResponseTimeEntry[]> {
@@ -22,6 +31,13 @@ async function fetchResponseTimeTrend(): Promise<ResponseTimeEntry[]> {
   if (!res.ok) return [];
   const data = (await res.json()) as { entries: ResponseTimeEntry[] };
   return data.entries;
+}
+
+async function fetchResponseTimeStats(): Promise<PathStat[]> {
+  const res = await fetch("/api/dashboard/response-time-stats");
+  if (!res.ok) return [];
+  const data = (await res.json()) as { stats: PathStat[] };
+  return data.stats;
 }
 
 function rtColor(ms: number): string {
@@ -127,9 +143,14 @@ export default function DashboardPage() {
     queryFn: fetchResponseTimeTrend,
   });
 
+  const { data: rtStats = [], refetch: refetchStats } = useQuery({
+    queryKey: ["dashboard-response-time-stats"],
+    queryFn: fetchResponseTimeStats,
+  });
+
   useEffect(() => {
-    if (dataUpdatedAt) void refetchRt();
-  }, [dataUpdatedAt, refetchRt]);
+    if (dataUpdatedAt) { void refetchRt(); void refetchStats(); }
+  }, [dataUpdatedAt, refetchRt, refetchStats]);
 
   const activeFreightCount = summary?.activeFreightCount ?? 0;
   const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
@@ -332,6 +353,9 @@ export default function DashboardPage() {
         {rtEntries.length > 0 && (
           <ResponseTimeTrendCard entries={rtEntries} />
         )}
+        {rtStats.length > 0 && (
+          <ResponseTimeStatsCard stats={rtStats} />
+        )}
       </div>
     </AppShell>
   );
@@ -368,6 +392,51 @@ function StatCard({ title, href, icon, isLoading, value, valueClassName, titleCl
         </CardContent>
       </Card>
     </Link>
+  );
+}
+
+function ResponseTimeStatsCard({ stats }: { stats: PathStat[] }) {
+  if (!stats.length) return null;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Activity className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium">Statistik Performa per Endpoint</CardTitle>
+        </div>
+        <CardDescription className="text-xs">Min / Avg / p95 / Max dari histori terakhir</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border/50 text-muted-foreground">
+                <th className="text-left pb-1.5 font-medium pr-4">Endpoint</th>
+                <th className="text-right pb-1.5 font-medium pr-3 tabular-nums">N</th>
+                <th className="text-right pb-1.5 font-medium pr-3 tabular-nums">Min</th>
+                <th className="text-right pb-1.5 font-medium pr-3 tabular-nums">Avg</th>
+                <th className="text-right pb-1.5 font-medium pr-3 tabular-nums">p95</th>
+                <th className="text-right pb-1.5 font-medium tabular-nums">Max</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/30">
+              {stats.map((s) => (
+                <tr key={s.path}>
+                  <td className="py-1.5 pr-4 font-mono text-[10px] text-muted-foreground truncate max-w-[160px]" title={s.path}>
+                    {s.path.replace(/^\/api\//, "")}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{s.count}</td>
+                  <td className={`py-1.5 pr-3 text-right tabular-nums font-medium ${rtColor(s.minMs)}`}>{s.minMs}ms</td>
+                  <td className={`py-1.5 pr-3 text-right tabular-nums font-medium ${rtColor(s.avgMs)}`}>{s.avgMs}ms</td>
+                  <td className={`py-1.5 pr-3 text-right tabular-nums font-medium ${rtColor(s.p95Ms)}`}>{s.p95Ms}ms</td>
+                  <td className={`py-1.5 text-right tabular-nums font-medium ${rtColor(s.maxMs)}`}>{s.maxMs}ms</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
