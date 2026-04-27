@@ -357,7 +357,7 @@ export default function SalesDocumentEditorPage() {
   ]);
   const [taxRateId, setTaxRateId] = useState<number | null>(null);
   const [taxApplied, setTaxApplied] = useState(false);
-  const [taxAutoFilledFrom, setTaxAutoFilledFrom] = useState<"customer" | "settings" | null>(null);
+  const [taxAutoFilledFrom, setTaxAutoFilledFrom] = useState<"customer" | "settings" | "product" | null>(null);
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [transportMode, setTransportMode] = useState("");
@@ -435,7 +435,15 @@ export default function SalesDocumentEditorPage() {
       ?? acctSettings?.defaultSalesTaxId
       ?? null
     );
-    setTaxAutoFilledFrom(null);
+    if (product.defaultSalesTaxId) {
+      setTaxAutoFilledFrom("product");
+    } else if (currentCustomer?.defaultSalesTaxId) {
+      setTaxAutoFilledFrom("customer");
+    } else if (acctSettings?.defaultSalesTaxId) {
+      setTaxAutoFilledFrom("settings");
+    } else {
+      setTaxAutoFilledFrom(null);
+    }
   };
 
   const onCustomerChange = (val: string) => {
@@ -873,7 +881,7 @@ export default function SalesDocumentEditorPage() {
                 </Select>
                 {taxAutoFilledFrom && taxRateId && (
                   <p className="text-xs text-muted-foreground mt-1" data-testid="text-tax-autofill-hint">
-                    {taxAutoFilledFrom === "customer" ? "(default dari customer)" : "(default dari pengaturan)"}
+                    {taxAutoFilledFrom === "customer" ? "(default dari customer)" : taxAutoFilledFrom === "product" ? "(default dari produk)" : "(default dari pengaturan)"}
                   </p>
                 )}
               </div>

@@ -180,7 +180,7 @@ export default function PurchaseDocumentEditorPage() {
   ]);
   const [taxRateId, setTaxRateId] = useState<number | null>(null);
   const [taxApplied, setTaxApplied] = useState(false);
-  const [taxAutoFilledFrom, setTaxAutoFilledFrom] = useState<"vendor" | "settings" | null>(null);
+  const [taxAutoFilledFrom, setTaxAutoFilledFrom] = useState<"vendor" | "settings" | "product" | null>(null);
 
   useEffect(() => {
     if (doc) {
@@ -252,7 +252,15 @@ export default function PurchaseDocumentEditorPage() {
         ?? acctSettings?.defaultPurchaseTaxId
         ?? null
       );
-      setTaxAutoFilledFrom(null);
+      if (product.defaultPurchaseTaxId) {
+        setTaxAutoFilledFrom("product");
+      } else if (currentVendor?.defaultPurchaseTaxId) {
+        setTaxAutoFilledFrom("vendor");
+      } else if (acctSettings?.defaultPurchaseTaxId) {
+        setTaxAutoFilledFrom("settings");
+      } else {
+        setTaxAutoFilledFrom(null);
+      }
     }
   };
 
@@ -685,7 +693,7 @@ export default function PurchaseDocumentEditorPage() {
                 </Select>
                 {taxAutoFilledFrom && taxRateId && (
                   <p className="text-xs text-muted-foreground mt-1" data-testid="text-tax-autofill-hint">
-                    {taxAutoFilledFrom === "vendor" ? "(default dari vendor)" : "(default dari pengaturan)"}
+                    {taxAutoFilledFrom === "vendor" ? "(default dari vendor)" : taxAutoFilledFrom === "product" ? "(default dari produk)" : "(default dari pengaturan)"}
                   </p>
                 )}
               </div>
