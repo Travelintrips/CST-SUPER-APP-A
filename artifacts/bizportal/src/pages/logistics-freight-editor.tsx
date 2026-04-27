@@ -196,6 +196,11 @@ export default function LogisticsFreightEditorPage() {
   // Catalog-aware PO autofill helper (shared by manual selection, URL pre-link, and edit load)
   const applyPoAutoFill = (poDoc: { supplierName?: string | null; supplierAddress?: string | null }) => {
     const normalise = (s: string) => s.trim().toLowerCase();
+    // Find a catalog vendor that matches the PO's supplier name
+    const catalogVendor = poDoc.supplierName
+      ? suppliers.find((s) => normalise(s.name) === normalise(poDoc.supplierName ?? ""))
+      : null;
+
     if (poDoc.supplierName && !form.shipperName) {
       setShipperNameAutoFilled(true);
       setShipperNameAutoFilledValue(poDoc.supplierName);
@@ -206,24 +211,22 @@ export default function LogisticsFreightEditorPage() {
         setShipperAddressAutoFilledValue(poDoc.supplierAddress);
         setShipperCatalogAddressFilled(false);
         setShipperCatalogAddressValue("");
-      } else if (poDoc.supplierName) {
-        const catalogMatch = suppliers.find((s) => normalise(s.name) === normalise(poDoc.supplierName ?? ""));
-        if (catalogMatch?.address) {
-          setShipperCatalogAddressFilled(true);
-          setShipperCatalogAddressValue(catalogMatch.address);
-          setShipperAddressAutoFilled(false);
-          setShipperAddressAutoFilledValue("");
-        }
+      } else if (catalogVendor?.address) {
+        setShipperCatalogAddressFilled(true);
+        setShipperCatalogAddressValue(catalogVendor.address);
+        setShipperAddressAutoFilled(false);
+        setShipperAddressAutoFilledValue("");
       }
     }
+    // Pre-select the matching catalog vendor so "Edit Vendor" button appears
+    if (catalogVendor) {
+      setSelectedVendorId(catalogVendor.id);
+    }
     setForm((f) => {
-      const catalogMatch = !poDoc.supplierAddress && poDoc.supplierName
-        ? suppliers.find((s) => normalise(s.name) === normalise(poDoc.supplierName ?? ""))
-        : null;
       return {
         ...f,
         shipperName: f.shipperName || (poDoc.supplierName ?? ""),
-        shipperAddress: f.shipperAddress || (poDoc.supplierAddress ?? "") || (catalogMatch?.address ?? ""),
+        shipperAddress: f.shipperAddress || (poDoc.supplierAddress ?? "") || (catalogVendor?.address ?? ""),
       };
     });
   };
