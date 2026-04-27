@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown, X, Filter } from "lucide-react";
+import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown, X, Filter, CheckCircle2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -306,8 +306,8 @@ export default function LogisticsPage() {
           </CardHeader>
           <CardContent>
             {freightLoading ? (
-              <div className="grid grid-cols-3 gap-4">
-                {Array.from({ length: 3 }).map((_, i) => (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="space-y-1">
                     <Skeleton className="h-7 w-10" />
                     <Skeleton className="h-4 w-24" />
@@ -315,7 +315,7 @@ export default function LogisticsPage() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <button
                   type="button"
                   onClick={() => setFreightStatusFilter("all")}
@@ -343,6 +343,25 @@ export default function LogisticsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">Menunggu Persetujuan Quote</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreightStatusFilter(freightStatusFilter === "confirmed" ? "all" : "confirmed")}
+                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "confirmed" ? "ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-950/20" : ""}`}
+                  title={freightStatusFilter === "confirmed" ? "Klik untuk hapus filter" : "Filter: Dikonfirmasi"}
+                >
+                  {freightStatusFilter === "confirmed" && (
+                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400 text-white animate-in zoom-in-0 duration-150" aria-label="Hapus filter">
+                      <X className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-2xl font-bold text-blue-500">{freightStatusCounts.confirmed}</p>
+                    {freightStatusCounts.confirmed > 0 && (
+                      <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Dikonfirmasi</p>
                 </button>
                 <button
                   type="button"
