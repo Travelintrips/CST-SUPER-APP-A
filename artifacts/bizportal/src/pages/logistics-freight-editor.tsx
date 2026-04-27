@@ -632,7 +632,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="shipperAddress">Alamat Shipper</Label>
-                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperAddressAutoFilled) setShipperAddressAutoFilled(false); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); }} placeholder="Jl. ..." />
+                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); }} placeholder="Jl. ..." />
                     {(shipperAddressAutoFilled || shipperVendorAddressFilled || scannedFields.has("shipperAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
