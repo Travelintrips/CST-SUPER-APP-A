@@ -58,15 +58,24 @@ router.get("/response-times", async (req, res) => {
   return res.json({ entries });
 });
 
-// GET /api/dashboard/response-time-stats
+// GET /api/dashboard/response-time-stats?path=<path-fragment>
 // Returns per-path aggregate stats (count, min, max, avg, p95) from persisted history.
+// Optional ?path filter narrows rows to paths containing the fragment (LIKE %fragment%).
 router.get("/response-time-stats", async (req, res) => {
   try {
-    const rows = await db
-      .select()
-      .from(apiResponseTimesTable)
-      .orderBy(sql`id DESC`)
-      .limit(2000);
+    const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
+    const rows = pathFilter
+      ? await db
+          .select()
+          .from(apiResponseTimesTable)
+          .where(sql`path LIKE ${"%" + pathFilter + "%"}`)
+          .orderBy(sql`id DESC`)
+          .limit(2000)
+      : await db
+          .select()
+          .from(apiResponseTimesTable)
+          .orderBy(sql`id DESC`)
+          .limit(2000);
 
     const byPath: Record<string, number[]> = {};
     for (const row of rows) {
