@@ -698,7 +698,9 @@ export default function EcommercePage() {
                       </span>
                       Semua Kategori
                     </button>
-                    {productCategories.map((pc) => (
+                    {[...productCategories]
+                      .sort((a, b) => b.productCount - a.productCount || a.name.localeCompare(b.name))
+                      .map((pc) => (
                       <label
                         key={pc.name}
                         className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent cursor-pointer ${pc.productCount === 0 ? "opacity-50" : ""}`}
