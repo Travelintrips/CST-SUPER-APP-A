@@ -89,7 +89,7 @@ router.get("/response-time-stats", async (req, res) => {
       const minMs = sorted[0]!;
       const maxMs = sorted[count - 1]!;
       const avgMs = Math.round(sorted.reduce((s, v) => s + v, 0) / count);
-      const p95Ms = sorted[Math.min(Math.floor(count * 0.95), count - 1)]!;
+      const p95Ms = sorted[Math.min(Math.ceil(count * 0.95) - 1, count - 1)]!;
       return { path, count, minMs, maxMs, avgMs, p95Ms };
     });
 
