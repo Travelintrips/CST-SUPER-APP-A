@@ -74,14 +74,26 @@ function AutofillRestoreMarker({ source, fieldKey, originalValue, currentValue, 
   const meta = AUTOFILL_SOURCE_META[source];
   const isDifferent = originalValue !== currentValue;
   const [open, setOpen] = useState(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelHoverTimer = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { cancelHoverTimer(); setOpen(o); }}>
       <PopoverTrigger asChild>
         <button
           type="button"
           className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded text-[10px] font-bold ${meta.iconBg} ${meta.iconText} ${meta.iconHover} transition-colors`}
           aria-label={`Lihat nilai asli dari ${meta.label}`}
           data-testid={`autofill-marker-${fieldKey}-${source}`}
+          onMouseEnter={() => {
+            cancelHoverTimer();
+            hoverTimerRef.current = setTimeout(() => setOpen(true), 150);
+          }}
+          onMouseLeave={cancelHoverTimer}
         >
           {meta.icon}
         </button>
