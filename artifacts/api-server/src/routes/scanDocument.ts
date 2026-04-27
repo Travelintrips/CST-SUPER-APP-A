@@ -77,9 +77,8 @@ For freight/shipment documents (Master Air Waybill / MAWB, House Air Waybill / H
   "notifyParty": string | null,
   "originAirport": string | null,
   "destinationAirport": string | null,
-  "airline": string | null,
-  "flightNo": string | null,
-  "flightDate": string | null,
+  "vessel": string | null,
+  "voyage": string | null,
   "commodity": string | null,
   "hsCode": string | null,
   "grossWeight": number | null,
@@ -98,8 +97,13 @@ Rules:
 - Extract all weights, pieces, and volumes as plain numbers (no units like "kg", "pcs", "cbm")
 - Dates as ISO strings (YYYY-MM-DD) or null if not found
 - For airport fields, prefer "City Name (IATA-CODE)" format, e.g., "Jakarta (CGK)" or just the IATA code if city is unknown
+- For air freight (AWB/MAWB/HAWB): set "vessel" to the airline/carrier name (e.g., "China Southern Airlines"), set "voyage" to the flight number (e.g., "CZ8353")
+- For sea freight (B/L): set "vessel" to the ship name, set "voyage" to the voyage number
+- For originAirport: look for "Airport of Departure", "From", "Origin" or "Place of Acceptance". In a MAWB, this is typically the shipper's airport (NOT the destination code printed at top-left which is the Airport of Destination)
+- For destinationAirport: look for "Airport of Destination", "To", "Destination". In a MAWB, the 3-letter IATA code printed at top-left (before the carrier code) is the Airport of Destination
 - AWB number format: "XXX-XXXXXXX" (3-digit airline prefix + 7 or 8-digit serial), e.g., "081-12345678" or "157-43470523"
 - For shipper/consignee, copy the FULL name including company designation (PT., Pte. Ltd., Co. Ltd., etc.) and address as it appears
+- For notifyParty: extract the "Notify Party" or "Also Notify" box if present; write "Same as Consignee" if the document states that; leave null if the field is absent from the document
 - For commodity, summarize the goods description briefly (e.g., "Electronic equipment", "Garments", "Spare parts")
 - Set partyName to the shipper or consignee name (whichever is the BizPortal customer side)
 - If unsure of docType, default to "sales"

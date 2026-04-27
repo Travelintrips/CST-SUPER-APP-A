@@ -198,6 +198,8 @@ const AWB_ALIASES: AliasMap = {
   destCity: ["destination"],
   destAirport: ["destination", "portOfDischarge"],
   dest_airport: ["destination", "portOfDischarge"],
+  destinationAirport: ["destination", "portOfDischarge"],
+  destination_airport: ["destination", "portOfDischarge"],
   pod: ["destination", "portOfDischarge"],
   aod: ["portOfDischarge"],
   portOfDischarge: ["portOfDischarge"],
@@ -208,18 +210,20 @@ const AWB_ALIASES: AliasMap = {
   // Carrier / Vessel
   airline: ["vessel"],
   carrier: ["vessel"],
-  flight: ["vessel"],
-  flightNo: ["vessel"],
-  flight_no: ["vessel"],
-  flightNumber: ["vessel"],
   vessel: ["vessel"],
   vesselName: ["vessel"],
 
-  // Flight date / Voyage
+  // Flight number / Voyage — flight number is the voyage identifier for air freight
+  flightNo: ["voyage"],
+  flight_no: ["voyage"],
+  flightNumber: ["voyage"],
+  flight: ["voyage"],
+  voyage: ["voyage"],
+
+  // Flight date — fallback to voyage only when no flight number is present
   flightDate: ["voyage"],
   flight_date: ["voyage"],
   etd: ["voyage"],
-  voyage: ["voyage"],
   flightDateVoyage: ["voyage"],
 
   // Marks
@@ -352,10 +356,12 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
         let isAwb = false;
 
         // First pass: direct field name match
+        const AWB_DIRECT_KEYS = new Set(["vessel", "voyage", "marksAndNumbers", "grossWeight", "quantity", "shipperName", "consigneeName"]);
         for (const key of VALID_KEYS) {
           if (key in obj && obj[key] !== undefined && obj[key] !== null) {
             (fields as Record<string, string>)[key] = String(obj[key]);
             matched++;
+            if (AWB_DIRECT_KEYS.has(key)) isAwb = true;
           }
         }
 
@@ -370,7 +376,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
               }
             }
             // Detect AWB format by known AWB keys
-            if (["awb", "awbNumber", "mawb", "hawb", "awb_number", "airline", "flightNo", "pcs", "gw"].includes(alias)) {
+            if (["awb", "awbNumber", "mawb", "hawb", "awb_number", "airline", "vessel", "voyage", "flightNo", "pcs", "gw"].includes(alias)) {
               isAwb = true;
             }
           }
@@ -472,10 +478,12 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
         let matched = 0;
         let isAwb = false;
 
+        const AWB_DIRECT_KEYS_UPLOAD = new Set(["vessel", "voyage", "marksAndNumbers", "grossWeight", "quantity", "shipperName", "consigneeName"]);
         for (const key of VALID_KEYS) {
           if (key in obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
             (fields as Record<string, string>)[key] = String(obj[key]);
             matched++;
+            if (AWB_DIRECT_KEYS_UPLOAD.has(key)) isAwb = true;
           }
         }
 
@@ -488,7 +496,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                 matched++;
               }
             }
-            if (["awb", "awbNumber", "mawb", "hawb", "awb_number", "airline", "flightNo", "pcs", "gw"].includes(alias)) {
+            if (["awb", "awbNumber", "mawb", "hawb", "awb_number", "airline", "vessel", "voyage", "flightNo", "pcs", "gw"].includes(alias)) {
               isAwb = true;
             }
           }
