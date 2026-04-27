@@ -23,6 +23,22 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 // Below this we fall back to vision OCR.
 const PDF_TEXT_FAST_PATH_MIN_CHARS = 200;
 
+// Maximum characters to send to the AI — cuts off legal boilerplate found on
+// later pages / lower sections of B/Ls and MAWBs which only add tokens and
+// slow down the response without contributing useful data.
+const PDF_TEXT_MAX_CHARS = 5000;
+
+// Strip excessive blank lines and common boilerplate headers before sending to AI.
+function cleanPdfText(raw: string): string {
+  return raw
+    // Collapse 3+ consecutive newlines into 2
+    .replace(/\n{3,}/g, "\n\n")
+    // Remove lines that are only dashes / underscores / dots (dividers)
+    .replace(/^[-_.=*]{5,}\s*$/gm, "")
+    .trim()
+    .slice(0, PDF_TEXT_MAX_CHARS);
+}
+
 router.use((req, res, next) => {
   const { userId } = getAuth(req);
   if (!userId) {
@@ -150,14 +166,15 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       if (pdfText.length >= PDF_TEXT_FAST_PATH_MIN_CHARS) {
         // Text-based PDF: send extracted text to a faster text-only model.
         mode = "pdf-text";
+        const cleanText = cleanPdfText(pdfText);
         const response = await openai.chat.completions.create({
           model: "gpt-5-mini",
-          max_completion_tokens: 4096,
+          max_completion_tokens: 2048,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             {
               role: "user",
-              content: `Extract all data from this document and return as JSON only.\n\n----- DOCUMENT TEXT -----\n${pdfText}`,
+              content: `Extract all data from this document and return as JSON only.\n\n----- DOCUMENT TEXT -----\n${cleanText}`,
             },
           ],
         });
@@ -168,7 +185,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
         const base64Pdf = file.buffer.toString("base64");
         const response = await openai.chat.completions.create({
           model: "gpt-5.1",
-          max_completion_tokens: 4096,
+          max_completion_tokens: 2048,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             {
@@ -187,7 +204,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       const base64Image = file.buffer.toString("base64");
       const response = await openai.chat.completions.create({
         model: "gpt-5.1",
-        max_completion_tokens: 4096,
+        max_completion_tokens: 2048,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
