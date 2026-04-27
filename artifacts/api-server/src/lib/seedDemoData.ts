@@ -3,6 +3,8 @@ import {
   customersTable,
   salesDocumentsTable,
   salesDocumentLinesTable,
+  purchaseDocumentsTable,
+  purchaseDocumentLinesTable,
   freightShipmentsTable,
   freightAttachmentsTable,
   expenseCategoriesTable,
@@ -26,9 +28,144 @@ const EXPENSE_CATEGORIES = [
   { code: "BIAYA-LAINNYA",       name: "Biaya Operasional Lainnya" },
 ];
 
+// ── AR / AP Aging demo orders (always idempotent, run even on pre-seeded DBs) ──
+async function seedAgingDemoOrders(): Promise<void> {
+  const arDemoOrders = [
+    {
+      docNumber: "SO-AR-DEMO-001",
+      customerName: "PT. Maju Bersama Indonesia",
+      grandTotal: "8500000",
+      amountPaid: "0",
+      confirmedAt: new Date("2026-04-11"), // ~15 days ago → 0-30 bucket
+      notes: "Demo AR aging — piutang baru (0–30 hari)",
+    },
+    {
+      docNumber: "SO-AR-DEMO-002",
+      customerName: "CV. Karya Logistik Utama",
+      grandTotal: "12000000",
+      amountPaid: "3000000",
+      confirmedAt: new Date("2026-03-12"), // ~45 days ago → 31-60 bucket
+      notes: "Demo AR aging — piutang jatuh tempo (31–60 hari), dibayar sebagian",
+    },
+    {
+      docNumber: "SO-AR-DEMO-003",
+      customerName: "PT. Sarana Distribusi Raya",
+      grandTotal: "5750000",
+      amountPaid: "0",
+      confirmedAt: new Date("2026-01-21"), // ~95 days ago → 90+ bucket
+      notes: "Demo AR aging — piutang lewat jatuh tempo (90+ hari)",
+    },
+  ];
+
+  for (const order of arDemoOrders) {
+    const [existing] = await db
+      .select({ id: salesDocumentsTable.id })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.docNumber, order.docNumber))
+      .limit(1);
+    if (!existing) {
+      const [doc] = await db
+        .insert(salesDocumentsTable)
+        .values({
+          docNumber: order.docNumber,
+          kind: "order",
+          status: "confirmed",
+          invoiceStatus: "to_invoice",
+          deliveryStatus: "to_deliver",
+          customerName: order.customerName,
+          totalAmount: order.grandTotal,
+          taxAmount: "0",
+          grandTotal: order.grandTotal,
+          amountPaid: order.amountPaid,
+          confirmedAt: order.confirmedAt,
+          notes: order.notes,
+        })
+        .returning();
+      await db.insert(salesDocumentLinesTable).values({
+        documentId: doc!.id,
+        name: "Jasa Freight & Logistik",
+        description: "Layanan freight internasional",
+        quantity: "1",
+        unitPrice: order.grandTotal,
+        subtotal: order.grandTotal,
+      });
+    }
+  }
+
+  logger.info("AR aging demo orders (3 entries) seeded");
+
+  const apDemoOrders = [
+    {
+      docNumber: "PO-AP-DEMO-001",
+      supplierName: "PT. Samudera Shipping Lines",
+      grandTotal: "6000000",
+      amountPaid: "0",
+      confirmedAt: new Date("2026-04-06"), // ~20 days ago → 0-30 bucket
+      notes: "Demo AP aging — hutang baru (0–30 hari)",
+    },
+    {
+      docNumber: "PO-AP-DEMO-002",
+      supplierName: "PT. Graha Port Services",
+      grandTotal: "9500000",
+      amountPaid: "2000000",
+      confirmedAt: new Date("2026-03-02"), // ~55 days ago → 31-60 bucket
+      notes: "Demo AP aging — hutang jatuh tempo (31–60 hari), dibayar sebagian",
+    },
+    {
+      docNumber: "PO-AP-DEMO-003",
+      supplierName: "CV. Agen Bea Cukai Nusantara",
+      grandTotal: "4250000",
+      amountPaid: "0",
+      confirmedAt: new Date("2026-02-05"), // ~80 days ago → 61-90 bucket
+      notes: "Demo AP aging — hutang mendekati jatuh tempo (61–90 hari)",
+    },
+  ];
+
+  for (const order of apDemoOrders) {
+    const [existing] = await db
+      .select({ id: purchaseDocumentsTable.id })
+      .from(purchaseDocumentsTable)
+      .where(eq(purchaseDocumentsTable.docNumber, order.docNumber))
+      .limit(1);
+    if (!existing) {
+      const [doc] = await db
+        .insert(purchaseDocumentsTable)
+        .values({
+          docNumber: order.docNumber,
+          kind: "order",
+          status: "confirmed",
+          billStatus: "to_bill",
+          receiveStatus: "to_receive",
+          supplierName: order.supplierName,
+          totalAmount: order.grandTotal,
+          taxAmount: "0",
+          grandTotal: order.grandTotal,
+          amountPaid: order.amountPaid,
+          confirmedAt: order.confirmedAt,
+          notes: order.notes,
+        })
+        .returning();
+      await db.insert(purchaseDocumentLinesTable).values({
+        documentId: doc!.id,
+        name: "Jasa Freight & Logistik",
+        description: "Layanan freight internasional",
+        quantity: "1",
+        unitCost: order.grandTotal,
+        subtotal: order.grandTotal,
+      });
+    }
+  }
+
+  logger.info("AP aging demo orders (3 entries) seeded");
+}
+
 export async function seedDemoData(): Promise<void> {
   try {
-    // Check if demo already seeded
+    // Always seed AR/AP aging demo orders — idempotent per-order, runs on
+    // pre-seeded databases too so the aging reports always have rows to show.
+    await seedAgingDemoOrders();
+
+    // Check if main demo already seeded
     const [existing] = await db
       .select({ id: salesDocumentsTable.id })
       .from(salesDocumentsTable)
