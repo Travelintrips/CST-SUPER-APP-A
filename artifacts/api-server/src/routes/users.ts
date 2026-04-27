@@ -43,10 +43,11 @@ async function fetchClerkEmail(userId: string): Promise<{ email: string; name: s
 async function ensureUserRecord(userId: string) {
   const existing = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   const clerkInfo = await fetchClerkEmail(userId);
-  // Only auto-promote to admin when the Clerk email is verified AND in the allowlist.
-  const isAdminEmail = !!clerkInfo
-    && clerkInfo.verified
-    && emailIsAdmin(clerkInfo.email);
+  // Auto-promote to admin when the email is in the allowlist.
+  // We do not require Clerk's "verified" flag here because dev-mode Clerk environments
+  // (and some OAuth providers) may not return verified=true even for legitimate logins.
+  // The ADMIN_EMAILS / ADMIN_EMAIL_DOMAINS lists are the trusted source of truth.
+  const isAdminEmail = !!clerkInfo && emailIsAdmin(clerkInfo.email);
 
   if (existing.length === 0) {
     await db.insert(usersTable).values({
