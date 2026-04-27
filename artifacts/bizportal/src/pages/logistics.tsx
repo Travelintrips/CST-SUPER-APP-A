@@ -412,6 +412,7 @@ export default function LogisticsPage() {
                 <Filter className="h-3.5 w-3.5 text-primary shrink-0" />
                 <span className="text-foreground font-medium">Filter aktif:</span>
                 <span className="text-muted-foreground">{activeFreightFilterParts.join(" · ")}</span>
+                <span className="text-primary font-semibold">· {recentFreight.length} shipment</span>
                 <Button
                   variant="ghost"
                   size="sm"
