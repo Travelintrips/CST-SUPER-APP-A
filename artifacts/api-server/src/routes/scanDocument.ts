@@ -1,7 +1,14 @@
 import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
+import { createRequire } from "node:module";
 import { requireAdmin } from "../lib/requireAdmin.js";
+
+const require_ = createRequire(import.meta.url);
+type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
+// pdf-parse v1.1.1 has a self-test loader issue when imported as the package
+// root; importing the inner module path skips that and works in CJS+ESM.
+const pdfParse = require_("pdf-parse/lib/pdf-parse.js") as PdfParseFn;
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -10,6 +17,10 @@ const openai = new OpenAI({
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// Minimum extracted text length to consider a PDF "text-based" (vs scanned image).
+// Below this we fall back to vision OCR.
+const PDF_TEXT_FAST_PATH_MIN_CHARS = 200;
 
 router.use(async (req, res, next) => {
   if (!(await requireAdmin(req, res))) return;
@@ -97,33 +108,58 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
 
   try {
     let extractedText: string;
+    let mode: "pdf-text" | "pdf-vision" | "image-vision" = "image-vision";
 
     if (isPdf) {
-      const base64Pdf = file.buffer.toString("base64");
-      const response = await openai.chat.completions.create({
-        model: "gpt-5.1",
-        max_completion_tokens: 4096,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Extract all data from this document and return as JSON only.",
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:application/pdf;base64,${base64Pdf}`,
-                },
-              },
-            ],
-          },
-        ],
-      });
-      extractedText = response.choices[0]?.message?.content ?? "{}";
+      // Fast path: try local PDF text extraction first.
+      // For text-based PDFs (most airline-issued MAWBs/HAWBs/B/Ls), this is
+      // 5–10x faster than sending the PDF as an image to a vision model.
+      let pdfText = "";
+      try {
+        const parsedPdf = await pdfParse(file.buffer);
+        pdfText = (parsedPdf.text ?? "").trim();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[scan-document] pdf-parse failed, falling back to vision:", msg);
+      }
+
+      if (pdfText.length >= PDF_TEXT_FAST_PATH_MIN_CHARS) {
+        // Text-based PDF: send extracted text to a faster text-only model.
+        mode = "pdf-text";
+        const response = await openai.chat.completions.create({
+          model: "gpt-5.1-mini",
+          max_completion_tokens: 4096,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: `Extract all data from this document and return as JSON only.\n\n----- DOCUMENT TEXT -----\n${pdfText}`,
+            },
+          ],
+        });
+        extractedText = response.choices[0]?.message?.content ?? "{}";
+      } else {
+        // Scanned image PDF (no text layer) — fall back to vision OCR.
+        mode = "pdf-vision";
+        const base64Pdf = file.buffer.toString("base64");
+        const response = await openai.chat.completions.create({
+          model: "gpt-5.1",
+          max_completion_tokens: 4096,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Extract all data from this document and return as JSON only." },
+                { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64Pdf}` } },
+              ],
+            },
+          ],
+        });
+        extractedText = response.choices[0]?.message?.content ?? "{}";
+      }
     } else {
+      mode = "image-vision";
       const base64Image = file.buffer.toString("base64");
       const response = await openai.chat.completions.create({
         model: "gpt-5.1",
@@ -133,16 +169,8 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
           {
             role: "user",
             content: [
-              {
-                type: "text",
-                text: "Extract all data from this document image and return as JSON only.",
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64Image}`,
-                },
-              },
+              { type: "text", text: "Extract all data from this document image and return as JSON only." },
+              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Image}` } },
             ],
           },
         ],
@@ -155,11 +183,11 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
     try {
       parsed = JSON.parse(cleanedText);
     } catch {
-      res.status(422).json({ message: "Could not parse extracted data", raw: cleanedText });
+      res.status(422).json({ message: "Could not parse extracted data", raw: cleanedText, mode });
       return;
     }
 
-    res.json({ data: parsed });
+    res.json({ data: parsed, mode });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ message: "Extraction failed", error: msg });

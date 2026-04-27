@@ -588,7 +588,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
               <div className="text-center">
                 <p className="text-sm font-medium">Mengekstrak data dengan AI...</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-xs truncate">{scanState.fileName}</p>
-                <p className="text-xs text-muted-foreground mt-2">Untuk PDF MAWB biasanya butuh 30–60 detik</p>
+                <p className="text-xs text-muted-foreground mt-2">PDF teks: ±5–10 detik · PDF/foto hasil scan: ±30–60 detik</p>
               </div>
             </div>
           )}
