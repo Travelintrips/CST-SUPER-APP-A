@@ -59,6 +59,7 @@ export type FreightFormFields = {
   portOfDischarge?: string;
   vessel?: string;
   voyage?: string;
+  containerNo?: string;
   notes?: string;
 };
 
@@ -81,8 +82,9 @@ export const FIELD_LABELS: Record<keyof FreightFormFields, string> = {
   destination: "Tujuan / Destination",
   portOfLoading: "Port / Airport of Loading",
   portOfDischarge: "Port / Airport of Discharge",
-  vessel: "Vessel / Airline / Flight No.",
-  voyage: "Voyage / Flight Date",
+  vessel: "Vessel / Freight Carrier",
+  voyage: "Voyage No. / Flight No.",
+  containerNo: "Nomor Kontainer",
   notes: "Catatan / Remarks",
 };
 
@@ -95,7 +97,7 @@ const VALID_KEYS = Object.keys(FIELD_LABELS) as (keyof FreightFormFields)[];
 type AliasMap = Partial<Record<string, (keyof FreightFormFields)[]>>;
 
 const AWB_ALIASES: AliasMap = {
-  // AWB number → Marks & Numbers field
+  // AWB number / B/L number → Marks & Numbers field
   awbNumber: ["marksAndNumbers"],
   awb_number: ["marksAndNumbers"],
   awb: ["marksAndNumbers"],
@@ -103,6 +105,17 @@ const AWB_ALIASES: AliasMap = {
   hawb: ["marksAndNumbers"],
   blNumber: ["marksAndNumbers"],
   bl_number: ["marksAndNumbers"],
+  billOfLadingNumber: ["marksAndNumbers"],
+  bl_no: ["marksAndNumbers"],
+  blNo: ["marksAndNumbers"],
+
+  // Container numbers
+  containerNo: ["containerNo"],
+  container_no: ["containerNo"],
+  containerNumber: ["containerNo"],
+  container_number: ["containerNo"],
+  containerNumbers: ["containerNo"],
+  containers: ["containerNo"],
 
   // Shipper
   shipper: ["shipperName"],

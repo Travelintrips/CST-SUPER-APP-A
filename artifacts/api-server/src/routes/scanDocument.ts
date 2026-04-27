@@ -79,6 +79,7 @@ For freight/shipment documents (Master Air Waybill / MAWB, House Air Waybill / H
   "destinationAirport": string | null,
   "vessel": string | null,
   "voyage": string | null,
+  "containerNo": string | null,
   "commodity": string | null,
   "hsCode": string | null,
   "grossWeight": number | null,
@@ -96,15 +97,19 @@ Rules:
 - Extract all monetary values as plain numbers (no currency symbols)
 - Extract all weights, pieces, and volumes as plain numbers (no units like "kg", "pcs", "cbm")
 - Dates as ISO strings (YYYY-MM-DD) or null if not found
-- For airport fields, prefer "City Name (IATA-CODE)" format, e.g., "Jakarta (CGK)" or just the IATA code if city is unknown
-- For air freight (AWB/MAWB/HAWB): set "vessel" to the airline/carrier name (e.g., "China Southern Airlines"), set "voyage" to the flight number (e.g., "CZ8353")
-- For sea freight (B/L): set "vessel" to the ship name, set "voyage" to the voyage number
-- For originAirport: look for "Airport of Departure", "From", "Origin" or "Place of Acceptance". In a MAWB, this is typically the shipper's airport (NOT the destination code printed at top-left which is the Airport of Destination)
-- For destinationAirport: look for "Airport of Destination", "To", "Destination". In a MAWB, the 3-letter IATA code printed at top-left (before the carrier code) is the Airport of Destination
+- For origin/destination of sea freight (B/L): use PORT OF LOADING as originAirport and PORT OF DISCHARGE as destinationAirport (not the shipper's city). Format as "City, Country" e.g. "Nansha, China" or "Jakarta, Indonesia"
+- For origin/destination of air freight (AWB/MAWB): use Airport of Departure as originAirport and Airport of Destination as destinationAirport. Prefer "City (IATA)" format e.g. "Jakarta (CGK)". In a MAWB, the 3-letter IATA code printed at top-left (before the carrier code) is the Airport of Destination
+- For air freight (AWB/MAWB/HAWB): set "vessel" to the airline/carrier name (e.g., "China Southern Airlines Co., Ltd."), set "voyage" to the flight number (e.g., "CZ8353")
+- For sea freight (B/L): set "vessel" to the SHIP/VESSEL NAME from the "VESSEL" row (e.g., "WADI ALRAYAN") — NOT the shipping line/carrier company name. Set "voyage" to the VOYAGE NUMBER from the "VOYAGE NUMBER" field (e.g., "0AUE9S1NC") — NOT the issue date
+- For "awbNumber": use the AWB number for air freight, or the B/L number (BILL OF LADING NUMBER) for sea freight
+- For "containerNo": list ALL container numbers from the document, comma-separated (e.g., "TCNU7361016, CMAU6579933"). Include seal numbers only if no container numbers are present
 - AWB number format: "XXX-XXXXXXX" (3-digit airline prefix + 7 or 8-digit serial), e.g., "081-12345678" or "157-43470523"
 - For shipper/consignee, copy the FULL name including company designation (PT., Pte. Ltd., Co. Ltd., etc.) and address as it appears
 - For notifyParty: extract the "Notify Party" or "Also Notify" box if present; write "Same as Consignee" if the document states that; leave null if the field is absent from the document
 - For commodity, summarize the goods description briefly (e.g., "Electronic equipment", "Garments", "Spare parts")
+- For "dimensions": for sea freight FCL/LCL use the CBM value as a string (e.g., "67.57 CBM"), for air freight use piece dimensions (e.g., "52X34X17")
+- For "grossWeight": sum all container/package weights if multiple; report as total
+- For "measurement": total CBM across all containers/packages
 - Set partyName to the shipper or consignee name (whichever is the BizPortal customer side)
 - If unsure of docType, default to "sales"
 - Use Indonesian or English field values as they appear in the document`;

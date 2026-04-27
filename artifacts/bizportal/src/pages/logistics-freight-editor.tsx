@@ -468,7 +468,7 @@ export default function LogisticsFreightEditorPage() {
       "notifyParty", "commodity", "hsCode", "grossWeight", "netWeight",
       "quantity", "packingType", "dimensions", "marksAndNumbers", "measurement",
       "origin", "destination", "portOfLoading", "portOfDischarge",
-      "vessel", "voyage", "notes",
+      "vessel", "voyage", "containerNo", "notes",
     ];
     for (const key of scanFieldKeys) {
       if (fields[key] !== undefined && fields[key] !== null) newlyScanned.add(key);
@@ -990,15 +990,20 @@ export default function LogisticsFreightEditorPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="containerNo">Nomor Kontainer</Label>
-                  <Input id="containerNo" value={form.containerNo} onChange={set("containerNo")} placeholder="MSCU1234567" />
+                  <Input id="containerNo" value={form.containerNo} onChange={set("containerNo")} placeholder="MSCU1234567" className={scannedFields.has("containerNo") ? "ring-1 ring-green-400" : ""} />
+                  {scannedFields.has("containerNo") && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      Diisi dari scan dokumen.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Informasi Bill of Lading</CardTitle>
-                <p className="text-sm text-muted-foreground">Data pengiriman laut untuk dokumen Bill of Lading</p>
+                <CardTitle>Informasi Moda Pengiriman</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1025,7 +1030,7 @@ export default function LogisticsFreightEditorPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="vessel">Vessel / Nama Kapal</Label>
+                    <Label htmlFor="vessel">Vessel / Freight Carrier</Label>
                     <Input id="vessel" value={form.vessel} onChange={set("vessel")} placeholder="MV. Contoh Kapal" className={scannedFields.has("vessel") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("vessel") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
