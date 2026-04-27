@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -54,6 +55,51 @@ import {
   getListSuppliersQueryKey,
   type Supplier,
 } from "@workspace/api-client-react";
+
+type AutofillSource = "po" | "so" | "vendor" | "catalog";
+
+const AUTOFILL_SOURCE_META: Record<AutofillSource, { label: string; icon: string; iconBg: string; iconText: string; iconHover: string; borderClass: string }> = {
+  po:      { label: "Purchase Order",        icon: "PO", iconBg: "bg-blue-100",   iconText: "text-blue-700",   iconHover: "hover:bg-blue-200",   borderClass: "border-l-2 border-l-blue-300" },
+  so:      { label: "Sales Order",           icon: "SO", iconBg: "bg-blue-100",   iconText: "text-blue-700",   iconHover: "hover:bg-blue-200",   borderClass: "border-l-2 border-l-blue-300" },
+  vendor:  { label: "katalog vendor",        icon: "V",  iconBg: "bg-purple-100", iconText: "text-purple-700", iconHover: "hover:bg-purple-200", borderClass: "border-l-2 border-l-purple-300" },
+  catalog: { label: "katalog vendor",        icon: "K",  iconBg: "bg-amber-100",  iconText: "text-amber-700",  iconHover: "hover:bg-amber-200",  borderClass: "border-l-2 border-l-amber-300" },
+};
+
+function AutofillRestoreMarker({ source, originalValue, currentValue, onRestore }: {
+  source: AutofillSource;
+  originalValue: string;
+  currentValue: string;
+  onRestore: () => void;
+}) {
+  const meta = AUTOFILL_SOURCE_META[source];
+  const isDifferent = originalValue !== currentValue;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onRestore}
+          className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded text-[10px] font-bold ${meta.iconBg} ${meta.iconText} ${meta.iconHover} transition-colors`}
+          aria-label={`Pulihkan dari ${meta.label}`}
+          data-testid={`autofill-marker-${source}`}
+        >
+          {meta.icon}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <div className="text-xs space-y-1">
+          <div className="font-semibold">Diisi otomatis dari {meta.label}</div>
+          <div className="opacity-90">Nilai asli: <span className="font-medium">"{originalValue || "(kosong)"}"</span></div>
+          {isDifferent ? (
+            <div className="italic opacity-80">Klik untuk memulihkan nilai asli.</div>
+          ) : (
+            <div className="italic opacity-80">Nilai sekarang sama dengan nilai asli.</div>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function LogisticsFreightEditorPage() {
   const params = useParams<{ id?: string }>();
@@ -894,8 +940,16 @@ export default function LogisticsFreightEditorPage() {
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
-                    <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required className={scannedFields.has("shipperName") ? "ring-1 ring-green-400" : ""} />
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
+                      {shipperNameAutoFilled && dismissedBadges.has("shipperName:po") && (
+                        <AutofillRestoreMarker source="po" originalValue={shipperNameAutoFilledValue} currentValue={form.shipperName} onRestore={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); clearDismissedBadges("shipperName:po"); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }} />
+                      )}
+                      {shipperVendorNameFilled && dismissedBadges.has("shipperName:vendor") && (
+                        <AutofillRestoreMarker source="vendor" originalValue={shipperVendorNameValue} currentValue={form.shipperName} onRestore={() => { setForm((f) => ({ ...f, shipperName: shipperVendorNameValue })); clearDismissedBadges("shipperName:vendor"); }} />
+                      )}
+                    </div>
+                    <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required className={`${scannedFields.has("shipperName") ? "ring-1 ring-green-400" : ""} ${(shipperNameAutoFilled && dismissedBadges.has("shipperName:po")) ? "border-l-2 border-l-blue-300" : (shipperVendorNameFilled && dismissedBadges.has("shipperName:vendor")) ? "border-l-2 border-l-purple-300" : ""}`.trim()} />
                     {((shipperNameAutoFilled && !dismissedBadges.has("shipperName:po")) || (shipperVendorNameFilled && !dismissedBadges.has("shipperName:vendor")) || scannedFields.has("shipperName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperNameAutoFilled && !dismissedBadges.has("shipperName:po") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO<button type="button" onClick={() => dismissBadge("shipperName:po")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
@@ -912,8 +966,19 @@ export default function LogisticsFreightEditorPage() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="shipperAddress">Alamat Shipper</Label>
-                    <Input id="shipperAddress" value={form.shipperAddress} onChange={set("shipperAddress")} placeholder="Jl. ..." className={scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} />
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="shipperAddress">Alamat Shipper</Label>
+                      {shipperAddressAutoFilled && dismissedBadges.has("shipperAddress:po") && (
+                        <AutofillRestoreMarker source="po" originalValue={shipperAddressAutoFilledValue} currentValue={form.shipperAddress} onRestore={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); clearDismissedBadges("shipperAddress:po"); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} />
+                      )}
+                      {shipperVendorAddressFilled && dismissedBadges.has("shipperAddress:vendor") && (
+                        <AutofillRestoreMarker source="vendor" originalValue={shipperVendorAddressValue} currentValue={form.shipperAddress} onRestore={() => { setForm((f) => ({ ...f, shipperAddress: shipperVendorAddressValue })); clearDismissedBadges("shipperAddress:vendor"); }} />
+                      )}
+                      {shipperCatalogAddressFilled && dismissedBadges.has("shipperAddress:catalog") && (
+                        <AutofillRestoreMarker source="catalog" originalValue={shipperCatalogAddressValue} currentValue={form.shipperAddress} onRestore={() => { setForm((f) => ({ ...f, shipperAddress: shipperCatalogAddressValue })); clearDismissedBadges("shipperAddress:catalog"); }} />
+                      )}
+                    </div>
+                    <Input id="shipperAddress" value={form.shipperAddress} onChange={set("shipperAddress")} placeholder="Jl. ..." className={`${scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} ${(shipperAddressAutoFilled && dismissedBadges.has("shipperAddress:po")) ? "border-l-2 border-l-blue-300" : (shipperVendorAddressFilled && dismissedBadges.has("shipperAddress:vendor")) ? "border-l-2 border-l-purple-300" : (shipperCatalogAddressFilled && dismissedBadges.has("shipperAddress:catalog")) ? "border-l-2 border-l-amber-300" : ""}`.trim()} />
                     {((shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po")) || (shipperVendorAddressFilled && !dismissedBadges.has("shipperAddress:vendor")) || (shipperCatalogAddressFilled && !dismissedBadges.has("shipperAddress:catalog")) || scannedFields.has("shipperAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO<button type="button" onClick={() => dismissBadge("shipperAddress:po")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
@@ -942,8 +1007,13 @@ export default function LogisticsFreightEditorPage() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
-                    <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required className={scannedFields.has("consigneeName") ? "ring-1 ring-green-400" : ""} />
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
+                      {consigneeNameAutoFilled && dismissedBadges.has("consigneeName:so") && (
+                        <AutofillRestoreMarker source="so" originalValue={consigneeNameAutoFilledValue} currentValue={form.consigneeName} onRestore={() => { setForm((f) => ({ ...f, consigneeName: consigneeNameAutoFilledValue })); clearDismissedBadges("consigneeName:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); }} />
+                      )}
+                    </div>
+                    <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required className={`${scannedFields.has("consigneeName") ? "ring-1 ring-green-400" : ""} ${(consigneeNameAutoFilled && dismissedBadges.has("consigneeName:so")) ? "border-l-2 border-l-blue-300" : ""}`.trim()} />
                     {((consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so")) || scannedFields.has("consigneeName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("consigneeName:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
@@ -956,8 +1026,13 @@ export default function LogisticsFreightEditorPage() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
-                    <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." className={scannedFields.has("consigneeAddress") ? "ring-1 ring-green-400" : ""} />
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
+                      {consigneeAddressAutoFilled && dismissedBadges.has("consigneeAddress:so") && (
+                        <AutofillRestoreMarker source="so" originalValue={consigneeAddressAutoFilledValue} currentValue={form.consigneeAddress} onRestore={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); clearDismissedBadges("consigneeAddress:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }} />
+                      )}
+                    </div>
+                    <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." className={`${scannedFields.has("consigneeAddress") ? "ring-1 ring-green-400" : ""} ${(consigneeAddressAutoFilled && dismissedBadges.has("consigneeAddress:so")) ? "border-l-2 border-l-blue-300" : ""}`.trim()} />
                     {((consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so")) || scannedFields.has("consigneeAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("consigneeAddress:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
