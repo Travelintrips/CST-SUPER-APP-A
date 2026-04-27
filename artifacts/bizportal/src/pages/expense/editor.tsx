@@ -19,6 +19,7 @@ import {
   useAddExpenseAttachment, useDeleteExpenseAttachment,
   useListExpenseCategories, useListAccounts, useListTaxes,
   useListSalesDocuments, useListFreightShipments,
+  useListSuppliers, useListCustomers,
   getListExpensesQueryKey, getGetExpenseQueryKey,
   type ExpenseAttachment,
 } from "@workspace/api-client-react";
@@ -152,6 +153,182 @@ function ReferenceCombobox<T extends { id: number }>({
   );
 }
 
+const UNIT_OPTIONS = [
+  "pcs", "unit", "set", "box", "carton", "pack", "bag",
+  "kg", "gram", "ton",
+  "liter", "ml",
+  "meter", "cm", "m²", "m³",
+  "sheet", "roll", "rim",
+  "trip", "jam", "hari", "bulan",
+];
+
+function VendorEmployeeCombobox({
+  value,
+  onChange,
+  suppliers,
+  customers,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  suppliers: { id: number; name: string }[];
+  customers: { id: number; name: string }[];
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredSuppliers = suppliers.filter((s) =>
+    s.name.toLowerCase().includes(search.toLowerCase())
+  );
+  const filteredCustomers = customers.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          disabled={disabled}
+          className="w-full justify-between font-normal"
+        >
+          <span className="truncate">
+            {value || <span className="text-muted-foreground">Pilih atau ketik nama vendor/karyawan...</span>}
+          </span>
+          <ChevronsUpDown size={13} className="ml-2 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[360px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Cari atau ketik nama..."
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            {search && (
+              <CommandItem
+                value="__custom__"
+                onSelect={() => { onChange(search); setOpen(false); setSearch(""); }}
+                className="text-primary font-medium"
+              >
+                <Check size={13} className={`mr-2 shrink-0 ${value === search ? "opacity-100" : "opacity-0"}`} />
+                Gunakan: "{search}"
+              </CommandItem>
+            )}
+            {filteredSuppliers.length > 0 && (
+              <>
+                <p className="px-3 py-1.5 text-xs text-muted-foreground font-medium">Pemasok</p>
+                {filteredSuppliers.map((s) => (
+                  <CommandItem
+                    key={`sup-${s.id}`}
+                    value={`sup-${s.id}-${s.name}`}
+                    onSelect={() => { onChange(s.name); setOpen(false); setSearch(""); }}
+                  >
+                    <Check size={13} className={`mr-2 shrink-0 ${value === s.name ? "opacity-100" : "opacity-0"}`} />
+                    {s.name}
+                  </CommandItem>
+                ))}
+              </>
+            )}
+            {filteredCustomers.length > 0 && (
+              <>
+                <p className="px-3 py-1.5 text-xs text-muted-foreground font-medium">Pelanggan</p>
+                {filteredCustomers.map((c) => (
+                  <CommandItem
+                    key={`cus-${c.id}`}
+                    value={`cus-${c.id}-${c.name}`}
+                    onSelect={() => { onChange(c.name); setOpen(false); setSearch(""); }}
+                  >
+                    <Check size={13} className={`mr-2 shrink-0 ${value === c.name ? "opacity-100" : "opacity-0"}`} />
+                    {c.name}
+                  </CommandItem>
+                ))}
+              </>
+            )}
+            {filteredSuppliers.length === 0 && filteredCustomers.length === 0 && !search && (
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                Ketik nama untuk mencari atau mengisi manual.
+              </p>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function UnitCombobox({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = UNIT_OPTIONS.filter((u) =>
+    u.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          disabled={disabled}
+          className="w-full justify-between font-normal"
+        >
+          <span className="truncate">
+            {value || <span className="text-muted-foreground">Pilih satuan...</span>}
+          </span>
+          <ChevronsUpDown size={13} className="ml-2 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[220px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Cari atau ketik satuan..."
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            {search && !UNIT_OPTIONS.includes(search) && (
+              <CommandItem
+                value="__custom__"
+                onSelect={() => { onChange(search); setOpen(false); setSearch(""); }}
+                className="text-primary font-medium"
+              >
+                <Check size={13} className={`mr-2 shrink-0 opacity-0`} />
+                Gunakan: "{search}"
+              </CommandItem>
+            )}
+            {filtered.map((u) => (
+              <CommandItem
+                key={u}
+                value={u}
+                onSelect={() => { onChange(u); setOpen(false); setSearch(""); }}
+              >
+                <Check size={13} className={`mr-2 shrink-0 ${value === u ? "opacity-100" : "opacity-0"}`} />
+                {u}
+              </CommandItem>
+            ))}
+            {filtered.length === 0 && !search && (
+              <CommandEmpty>Ketik nama satuan.</CommandEmpty>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Diajukan",
@@ -202,6 +379,8 @@ export default function ExpenseEditorPage() {
   const { data: cats = [] } = useListExpenseCategories();
   const { data: accounts = [] } = useListAccounts();
   const { data: taxes = [] } = useListTaxes();
+  const { data: suppliers = [] } = useListSuppliers();
+  const { data: customers = [] } = useListCustomers();
 
   const createMut = useCreateExpense();
   const updateMut = useUpdateExpense();
@@ -286,6 +465,7 @@ export default function ExpenseEditorPage() {
     }
   }, [expense]);
 
+  const purchaseTaxes = taxes.filter((t) => t.kind === "purchase" && t.isActive);
   const selectedTax = taxes.find((t) => t.id === form.taxRateId);
   const subtotal = Math.round(form.qty * form.unitPrice * 100) / 100;
   const taxAmount = selectedTax ? Math.round(subtotal * selectedTax.rate / 100 * 100) / 100 : 0;
@@ -510,9 +690,13 @@ export default function ExpenseEditorPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Vendor / Karyawan</Label>
-                <Input placeholder="Nama vendor atau karyawan" value={form.vendorEmployee}
+                <VendorEmployeeCombobox
+                  value={form.vendorEmployee}
+                  onChange={(v) => setForm((f) => ({ ...f, vendorEmployee: v }))}
+                  suppliers={suppliers}
+                  customers={customers}
                   disabled={locked}
-                  onChange={(e) => setForm((f) => ({ ...f, vendorEmployee: e.target.value }))} />
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Kategori</Label>
@@ -560,8 +744,11 @@ export default function ExpenseEditorPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Satuan</Label>
-                    <Input placeholder="pcs, kg, trip..." value={form.unit} disabled={locked}
-                      onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} />
+                    <UnitCombobox
+                      value={form.unit}
+                      onChange={(v) => setForm((f) => ({ ...f, unit: v }))}
+                      disabled={locked}
+                    />
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -579,7 +766,7 @@ export default function ExpenseEditorPage() {
                     <SelectTrigger><SelectValue placeholder="Tidak ada pajak" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Tidak ada pajak</SelectItem>
-                      {taxes.map((t) => (
+                      {purchaseTaxes.map((t) => (
                         <SelectItem key={t.id} value={t.id.toString()}>
                           {t.name} ({t.rate}%)
                         </SelectItem>
