@@ -65,11 +65,17 @@ export default function LogisticsFreightEditorPage() {
   const [salesDocId, setSalesDocId] = useState<number | null>(null);
   const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
   const [shipperNameAutoFilled, setShipperNameAutoFilled] = useState(false);
+  const [shipperNameAutoFilledValue, setShipperNameAutoFilledValue] = useState("");
   const [consigneeNameAutoFilled, setConsigneeNameAutoFilled] = useState(false);
+  const [consigneeNameAutoFilledValue, setConsigneeNameAutoFilledValue] = useState("");
   const [consigneeAddressAutoFilled, setConsigneeAddressAutoFilled] = useState(false);
+  const [consigneeAddressAutoFilledValue, setConsigneeAddressAutoFilledValue] = useState("");
   const [originAutoFilled, setOriginAutoFilled] = useState(false);
+  const [originAutoFilledValue, setOriginAutoFilledValue] = useState("");
   const [destinationAutoFilled, setDestinationAutoFilled] = useState(false);
+  const [destinationAutoFilledValue, setDestinationAutoFilledValue] = useState("");
   const [transportModeAutoFilled, setTransportModeAutoFilled] = useState(false);
+  const [transportModeAutoFilledValue, setTransportModeAutoFilledValue] = useState("");
   const [form, setForm] = useState({
     shipperName: "",
     shipperAddress: "",
@@ -146,11 +152,6 @@ export default function LogisticsFreightEditorPage() {
   }, [existing]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (k === "shipperName") setShipperNameAutoFilled(false);
-    if (k === "consigneeName") setConsigneeNameAutoFilled(false);
-    if (k === "consigneeAddress") setConsigneeAddressAutoFilled(false);
-    if (k === "origin") setOriginAutoFilled(false);
-    if (k === "destination") setDestinationAutoFilled(false);
     setForm((f) => ({ ...f, [k]: e.target.value }));
   };
 
@@ -165,11 +166,11 @@ export default function LogisticsFreightEditorPage() {
         const willFillOrigin = !f.origin && !!(doc.origin ?? "");
         const willFillDestination = !f.destination && !!(doc.destination ?? "");
         const willFillTransportMode = !f.transportMode && !!(doc.transportMode ?? "");
-        if (willFillConsignee) setConsigneeNameAutoFilled(true);
-        if (willFillConsigneeAddress) setConsigneeAddressAutoFilled(true);
-        if (willFillOrigin) setOriginAutoFilled(true);
-        if (willFillDestination) setDestinationAutoFilled(true);
-        if (willFillTransportMode) setTransportModeAutoFilled(true);
+        if (willFillConsignee) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(doc.customerName || ""); }
+        if (willFillConsigneeAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(doc.customerAddress ?? ""); }
+        if (willFillOrigin) { setOriginAutoFilled(true); setOriginAutoFilledValue(doc.origin ?? ""); }
+        if (willFillDestination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue(doc.destination ?? ""); }
+        if (willFillTransportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue(doc.transportMode ?? ""); }
         return {
           ...f,
           consigneeName: doc.customerName || f.consigneeName,
@@ -188,7 +189,7 @@ export default function LogisticsFreightEditorPage() {
     setPoPickerOpen(false);
     if (doc) {
       const shouldAutoFill = !form.shipperName && !!doc.supplierName;
-      if (shouldAutoFill) setShipperNameAutoFilled(true);
+      if (shouldAutoFill) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(doc.supplierName ?? ""); }
       setForm((f) => ({
         ...f,
         shipperName: f.shipperName || (doc.supplierName ?? ""),
@@ -343,11 +344,11 @@ export default function LogisticsFreightEditorPage() {
                       <Button type="button" variant="outline" size="sm" onClick={() => {
                         setForm((f) => ({
                           ...f,
-                          consigneeName: consigneeNameAutoFilled ? "" : f.consigneeName,
-                          consigneeAddress: consigneeAddressAutoFilled ? "" : f.consigneeAddress,
-                          origin: originAutoFilled ? "" : f.origin,
-                          destination: destinationAutoFilled ? "" : f.destination,
-                          transportMode: transportModeAutoFilled ? "" : f.transportMode,
+                          consigneeName: (consigneeNameAutoFilled && f.consigneeName === consigneeNameAutoFilledValue) ? "" : f.consigneeName,
+                          consigneeAddress: (consigneeAddressAutoFilled && f.consigneeAddress === consigneeAddressAutoFilledValue) ? "" : f.consigneeAddress,
+                          origin: (originAutoFilled && f.origin === originAutoFilledValue) ? "" : f.origin,
+                          destination: (destinationAutoFilled && f.destination === destinationAutoFilledValue) ? "" : f.destination,
+                          transportMode: (transportModeAutoFilled && f.transportMode === transportModeAutoFilledValue) ? "" : f.transportMode,
                         }));
                         setConsigneeNameAutoFilled(false);
                         setConsigneeAddressAutoFilled(false);
@@ -427,7 +428,7 @@ export default function LogisticsFreightEditorPage() {
                     </div>
                     <Button type="button" variant="outline" size="sm" onClick={() => {
                       if (shipperNameAutoFilled) {
-                        setForm((f) => ({ ...f, shipperName: "" }));
+                        setForm((f) => ({ ...f, shipperName: f.shipperName === shipperNameAutoFilledValue ? "" : f.shipperName }));
                         setShipperNameAutoFilled(false);
                       }
                       setPurchaseDocId(null);
@@ -483,9 +484,12 @@ export default function LogisticsFreightEditorPage() {
                   <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
                   <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required />
                   {shipperNameAutoFilled && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                       <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>
                       Diisi otomatis dari Purchase Order. Edit untuk mengubah.
+                      {form.shipperName !== shipperNameAutoFilledValue && (
+                        <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                      )}
                     </p>
                   )}
                 </div>
@@ -504,9 +508,12 @@ export default function LogisticsFreightEditorPage() {
                     <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
                     <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required />
                     {consigneeNameAutoFilled && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
                         Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                        {form.consigneeName !== consigneeNameAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeName: consigneeNameAutoFilledValue })); setConsigneeNameAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        )}
                       </p>
                     )}
                   </div>
@@ -514,9 +521,12 @@ export default function LogisticsFreightEditorPage() {
                     <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
                     <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." />
                     {consigneeAddressAutoFilled && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
                         Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                        {form.consigneeAddress !== consigneeAddressAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); setConsigneeAddressAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        )}
                       </p>
                     )}
                   </div>
@@ -574,9 +584,12 @@ export default function LogisticsFreightEditorPage() {
                     <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
                     <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required />
                     {originAutoFilled && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
                         Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                        {form.origin !== originAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, origin: originAutoFilledValue })); setOriginAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        )}
                       </p>
                     )}
                   </div>
@@ -584,9 +597,12 @@ export default function LogisticsFreightEditorPage() {
                     <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
                     <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required />
                     {destinationAutoFilled && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
                         Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                        {form.destination !== destinationAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, destination: destinationAutoFilledValue })); setDestinationAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        )}
                       </p>
                     )}
                   </div>
@@ -594,7 +610,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Moda Transportasi</Label>
-                    <Select value={form.transportMode || "__none"} onValueChange={(v) => { setTransportModeAutoFilled(false); setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v })); }}>
+                    <Select value={form.transportMode || "__none"} onValueChange={(v) => { setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v })); }}>
                       <SelectTrigger><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">— Belum ditentukan —</SelectItem>
@@ -605,9 +621,12 @@ export default function LogisticsFreightEditorPage() {
                       </SelectContent>
                     </Select>
                     {transportModeAutoFilled && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
                         Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                        {form.transportMode !== transportModeAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, transportMode: transportModeAutoFilledValue })); setTransportModeAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        )}
                       </p>
                     )}
                   </div>
