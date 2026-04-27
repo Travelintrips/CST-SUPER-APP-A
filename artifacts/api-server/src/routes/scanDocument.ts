@@ -3,6 +3,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { createRequire } from "node:module";
 import { getAuth } from "@clerk/express";
+import { logger } from "../lib/logger";
 
 const require_ = createRequire(import.meta.url);
 type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
@@ -25,6 +26,16 @@ const PDF_TEXT_FAST_PATH_MIN_CHARS = 200;
 router.use((req, res, next) => {
   const { userId } = getAuth(req);
   if (!userId) {
+    if (process.env.NODE_ENV !== "production") {
+      const authHeader = req.headers["authorization"];
+      const cookieHeader = req.headers["cookie"];
+      logger.warn({
+        authHeader: authHeader ? authHeader.slice(0, 30) + "..." : "NONE",
+        cookieKeys: cookieHeader
+          ? cookieHeader.split(";").map(c => c.trim().split("=")[0]).join(", ")
+          : "NONE",
+      }, "[scan-auth] 401 — no userId from getAuth");
+    }
     res.status(401).json({ message: "Unauthorized" });
     return;
   }

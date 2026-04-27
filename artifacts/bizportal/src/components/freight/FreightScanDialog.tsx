@@ -440,7 +440,12 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
       form.append("file", file);
       const headers: HeadersInit = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const resp = await fetch("/api/scan-document", { method: "POST", body: form, headers });
+      const resp = await fetch("/api/scan-document", {
+        method: "POST",
+        body: form,
+        headers,
+        credentials: "include",
+      });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error((err as { message?: string })?.message ?? `Error ${resp.status}`);
