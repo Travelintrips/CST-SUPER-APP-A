@@ -109,7 +109,7 @@ export default function LogisticsFreightEditorPage() {
   useEffect(() => {
     if (existing) {
       if ((existing as any).salesDocId) setSalesDocId((existing as any).salesDocId);
-      if ((existing as any).purchaseDocId) setPurchaseDocId((existing as any).purchaseDocId);
+      if ((existing as any).purchaseDocId != null) setPurchaseDocId((existing as any).purchaseDocId);
       setForm({
         shipperName: existing.shipperName ?? "",
         shipperAddress: existing.shipperAddress ?? "",
@@ -355,9 +355,6 @@ export default function LogisticsFreightEditorPage() {
                     </div>
                     <Button type="button" variant="outline" size="sm" onClick={() => setPurchaseDocId(null)}>
                       Ganti
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setPurchaseDocId(null)}>
-                      Hapus
                     </Button>
                   </div>
                 ) : (
