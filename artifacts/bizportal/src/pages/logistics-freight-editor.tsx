@@ -193,7 +193,7 @@ export default function LogisticsFreightEditorPage() {
       cargoType: (form.cargoType || undefined) as any,
       containerNo: form.containerNo || undefined,
       salesDocId: salesDocId ?? undefined,
-      purchaseDocId: purchaseDocId ?? undefined,
+      purchaseDocId: isEdit ? purchaseDocId : (purchaseDocId ?? undefined),
     } as any;
 
     if (isEdit && id) {
