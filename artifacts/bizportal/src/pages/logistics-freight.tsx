@@ -168,6 +168,7 @@ function parseParamsFromSearch(search: string) {
   }
   return {
     status: p.get("status") ?? null,
+    bl: p.get("bl") === "1",
     preset,
     from,
     to,
@@ -239,11 +240,11 @@ export default function LogisticsFreightPage() {
     const urlHasDate = urlSearch.has("date") || urlSearch.has("from") || urlSearch.has("to");
     if (urlHasDate) return fromUrl;
     const stored = loadDateFromStorage();
-    return { status: fromUrl.status, preset: stored.preset, from: stored.from, to: stored.to };
+    return { status: fromUrl.status, bl: fromUrl.bl, preset: stored.preset, from: stored.from, to: stored.to };
   })();
 
   const [statusFilter, setStatusFilterState] = useState<string | null>(initial.status);
-  const [blReadyFilter, setBlReadyFilter] = useState(false);
+  const [blReadyFilter, setBlReadyFilter] = useState(initial.bl);
   const [datePreset, setDatePresetState] = useState<DatePreset>(initial.preset);
   const [customDateFrom, setCustomDateFromState] = useState<string>(initial.from);
   const [customDateTo, setCustomDateToState] = useState<string>(initial.to);
@@ -251,6 +252,7 @@ export default function LogisticsFreightPage() {
   const syncStateFromUrl = useCallback(() => {
     const parsed = parseParamsFromSearch(window.location.search);
     setStatusFilterState(parsed.status);
+    setBlReadyFilter(parsed.bl);
     setDatePresetState(parsed.preset);
     setCustomDateFromState(parsed.from);
     setCustomDateToState(parsed.to);
@@ -264,6 +266,7 @@ export default function LogisticsFreightPage() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
+    if (blReadyFilter) params.set("bl", "1");
     if (datePreset !== "all") params.set("date", datePreset);
     if (datePreset === "custom" && customDateFrom) params.set("from", customDateFrom);
     if (datePreset === "custom" && customDateTo) params.set("to", customDateTo);
@@ -281,7 +284,7 @@ export default function LogisticsFreightPage() {
         to: datePreset === "custom" ? customDateTo : "",
       }));
     } catch {}
-  }, [statusFilter, datePreset, customDateFrom, customDateTo]);
+  }, [statusFilter, blReadyFilter, datePreset, customDateFrom, customDateTo]);
 
   const setStatusFilter = (value: string | null) => {
     setStatusFilterState(value);
