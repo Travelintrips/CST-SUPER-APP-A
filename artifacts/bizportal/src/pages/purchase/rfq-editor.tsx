@@ -161,6 +161,7 @@ export default function PurchaseDocumentEditorPage() {
   const [supplierId, setSupplierId] = useState<number | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [supplierAddress, setSupplierAddress] = useState("");
+  const [supplierAddressAutoFilled, setSupplierAddressAutoFilled] = useState(false);
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([
@@ -241,6 +242,7 @@ export default function PurchaseDocumentEditorPage() {
   const onVendorChange = (val: string) => {
     if (val === "__none") {
       setSupplierId(null);
+      setSupplierAddressAutoFilled(false);
       return;
     }
     const sid = Number(val);
@@ -249,6 +251,7 @@ export default function PurchaseDocumentEditorPage() {
     if (v) {
       setSupplierName(v.name);
       setSupplierAddress(v.address ?? "");
+      setSupplierAddressAutoFilled(!!(v.address));
       if (isNew || taxRateId === null) {
         setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
         setTaxAutoFilledFrom(v.defaultPurchaseTaxId ? "vendor" : "settings");
@@ -451,6 +454,24 @@ export default function PurchaseDocumentEditorPage() {
             <div className="grid gap-1.5">
               <Label>Nama Vendor</Label>
               <Input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} disabled={!isEditable} data-testid="input-vendor-name" />
+            </div>
+            <div className="grid gap-1.5 md:col-span-2">
+              <div className="flex items-center gap-2">
+                <Label>Alamat Supplier</Label>
+                {supplierAddressAutoFilled && (
+                  <Badge variant="secondary" className="text-xs font-normal" data-testid="badge-address-autofill">
+                    dari data vendor
+                  </Badge>
+                )}
+              </div>
+              <Textarea
+                value={supplierAddress}
+                onChange={(e) => { setSupplierAddress(e.target.value); setSupplierAddressAutoFilled(false); }}
+                disabled={!isEditable}
+                placeholder="Alamat lengkap supplier"
+                rows={2}
+                data-testid="textarea-supplier-address"
+              />
             </div>
             <div className="grid gap-1.5">
               <Label>Tanggal Diharapkan</Label>
