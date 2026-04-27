@@ -4,7 +4,7 @@ import { useClerk, useUser } from "@clerk/react";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
-  ShoppingCart,
+
   Package,
   Truck,
   Calculator,
@@ -95,7 +95,6 @@ export function AppShell({ children }: AppShellProps) {
 
   const navItems: NavItem[] = [
     { type: "flat", title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin"] },
-    { type: "flat", title: "E-Commerce", href: "/ecommerce", icon: ShoppingCart, roles: ["admin", "ecommerce"] },
     {
       type: "group",
       title: "Sales",
