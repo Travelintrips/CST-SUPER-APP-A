@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Save, Loader2, ScanLine, ChevronsUpDown, Check } from "lucide-react";
+import { ArrowLeft, Save, Loader2, ScanLine, ChevronsUpDown, Check, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { FreightScanDialog, type FreightFormFields } from "@/components/freight/FreightScanDialog";
 import {
@@ -32,12 +32,20 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   useCreateFreightShipment,
   useGetFreightShipment,
   useUpdateFreightShipment,
   useListSalesDocuments,
   useListPurchaseDocuments,
   useListSuppliers,
+  useCreateSupplier,
   getListFreightShipmentsQueryKey,
   getGetFreightShipmentQueryKey,
   getListSalesDocumentsQueryKey,
@@ -59,6 +67,7 @@ export default function LogisticsFreightEditorPage() {
 
   const create = useCreateFreightShipment();
   const update = useUpdateFreightShipment();
+  const createSupplier = useCreateSupplier();
 
   const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }) } });
   const { data: purchaseOrders = [] } = useListPurchaseDocuments({ kind: "order" }, { query: { queryKey: getListPurchaseDocumentsQueryKey({ kind: "order" }) } });
@@ -66,6 +75,9 @@ export default function LogisticsFreightEditorPage() {
   const [soPickerOpen, setSoPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
+  const [vendorSearchQuery, setVendorSearchQuery] = useState("");
+  const [addVendorDialogOpen, setAddVendorDialogOpen] = useState(false);
+  const [newVendorForm, setNewVendorForm] = useState({ name: "", country: "", address: "" });
   const [salesDocId, setSalesDocId] = useState<number | null>(null);
   const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
   const [shipperNameAutoFilled, setShipperNameAutoFilled] = useState(false);
@@ -255,6 +267,57 @@ export default function LogisticsFreightEditorPage() {
     setVendorPickerOpen(false);
     if (!vendor) return;
     setSelectedVendorId(supplierId);
+    setShipperVendorNameValue(vendor.name);
+    setShipperVendorAddressValue(vendor.address ?? "");
+    setForm((f) => {
+      const willFillName = !f.shipperName && !!vendor.name;
+      const willFillAddress = !f.shipperAddress && !!vendor.address;
+      if (willFillName) {
+        setShipperVendorNameFilled(true);
+        setShipperNameAutoFilled(false);
+        setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; });
+      }
+      if (willFillAddress) {
+        setShipperVendorAddressFilled(true);
+        setShipperAddressAutoFilled(false);
+        setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; });
+      }
+      return {
+        ...f,
+        shipperName: f.shipperName || vendor.name,
+        shipperAddress: f.shipperAddress || (vendor.address ?? ""),
+      };
+    });
+  };
+
+  const handleOpenAddVendorDialog = (prefillName: string) => {
+    setNewVendorForm({ name: prefillName, country: "", address: "" });
+    setVendorPickerOpen(false);
+    setAddVendorDialogOpen(true);
+  };
+
+  const handleSaveNewVendor = () => {
+    if (!newVendorForm.name || !newVendorForm.country) {
+      toast({ title: "Nama dan negara vendor wajib diisi", variant: "destructive" });
+      return;
+    }
+    createSupplier.mutate(
+      { data: { name: newVendorForm.name, country: newVendorForm.country, contactEmail: "", address: newVendorForm.address || undefined } },
+      {
+        onSuccess: (newSupplier) => {
+          queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+          setAddVendorDialogOpen(false);
+          setVendorSearchQuery("");
+          handleSelectVendorByData(newSupplier);
+          toast({ title: `Vendor "${newSupplier.name}" berhasil ditambahkan` });
+        },
+        onError: () => toast({ title: "Gagal menambahkan vendor", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleSelectVendorByData = (vendor: { id: number; name: string; address?: string | null }) => {
+    setSelectedVendorId(vendor.id);
     setShipperVendorNameValue(vendor.name);
     setShipperVendorAddressValue(vendor.address ?? "");
     setForm((f) => {
@@ -564,7 +627,7 @@ export default function LogisticsFreightEditorPage() {
                     <CardTitle>Informasi Shipper</CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">Pilih dari katalog vendor untuk mengisi nama dan alamat shipper secara otomatis.</p>
                   </div>
-                  <Popover open={vendorPickerOpen} onOpenChange={setVendorPickerOpen}>
+                  <Popover open={vendorPickerOpen} onOpenChange={(open) => { setVendorPickerOpen(open); if (!open) setVendorSearchQuery(""); }}>
                     <PopoverTrigger asChild>
                       <Button
                         type="button"
@@ -579,9 +642,27 @@ export default function LogisticsFreightEditorPage() {
                     </PopoverTrigger>
                     <PopoverContent className="w-[360px] p-0" align="end">
                       <Command>
-                        <CommandInput placeholder="Cari nama vendor..." />
+                        <CommandInput
+                          placeholder="Cari nama vendor..."
+                          value={vendorSearchQuery}
+                          onValueChange={setVendorSearchQuery}
+                        />
                         <CommandList>
-                          <CommandEmpty>Tidak ada vendor yang cocok.</CommandEmpty>
+                          <CommandEmpty>
+                            <div className="py-2 px-1 text-center">
+                              <p className="text-sm text-muted-foreground mb-2">Tidak ada vendor yang cocok.</p>
+                              {vendorSearchQuery.trim() && (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1.5 text-sm text-primary font-medium hover:underline"
+                                  onClick={() => handleOpenAddVendorDialog(vendorSearchQuery.trim())}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  Tambah &ldquo;{vendorSearchQuery.trim()}&rdquo; sebagai vendor baru
+                                </button>
+                              )}
+                            </div>
+                          </CommandEmpty>
                           <CommandGroup heading="Katalog Vendor">
                             {suppliers.map((s) => (
                               <CommandItem
@@ -964,6 +1045,57 @@ export default function LogisticsFreightEditorPage() {
         onOpenChange={setShowScanDialog}
         onApply={applyScannedFields}
       />
+
+      <Dialog open={addVendorDialogOpen} onOpenChange={setAddVendorDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tambah Vendor Baru</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="newVendorName">Nama Vendor <span className="text-destructive">*</span></Label>
+              <Input
+                id="newVendorName"
+                value={newVendorForm.name}
+                onChange={(e) => setNewVendorForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="PT. Contoh Vendor"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newVendorCountry">Negara <span className="text-destructive">*</span></Label>
+              <Input
+                id="newVendorCountry"
+                value={newVendorForm.country}
+                onChange={(e) => setNewVendorForm((f) => ({ ...f, country: e.target.value }))}
+                placeholder="Indonesia"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newVendorAddress">Alamat</Label>
+              <Textarea
+                id="newVendorAddress"
+                value={newVendorForm.address}
+                onChange={(e) => setNewVendorForm((f) => ({ ...f, address: e.target.value }))}
+                placeholder="Jl. Contoh No. 1, Jakarta"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAddVendorDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveNewVendor}
+              disabled={createSupplier.isPending}
+            >
+              {createSupplier.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Simpan &amp; Pilih Vendor
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
