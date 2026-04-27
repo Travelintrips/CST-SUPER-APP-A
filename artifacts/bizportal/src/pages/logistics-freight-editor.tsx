@@ -186,6 +186,7 @@ export default function LogisticsFreightEditorPage() {
 
   const autoFillSetupDone = useRef(false);
   const poUrlPreLinkDone = useRef(false);
+  const vendorRestoreDone = useRef(false);
   const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
   const [dismissedBadges, setDismissedBadges] = useState<Set<string>>(new Set());
   const dismissBadge = (key: string) => setDismissedBadges((prev) => { const next = new Set(prev); next.add(key); return next; });
@@ -194,6 +195,7 @@ export default function LogisticsFreightEditorPage() {
   useEffect(() => {
     autoFillSetupDone.current = false;
     poUrlPreLinkDone.current = false;
+    vendorRestoreDone.current = false;
     setScannedFields(new Set());
     setDismissedBadges(new Set());
     setShipperNameAutoFilled(false);
@@ -300,6 +302,22 @@ export default function LogisticsFreightEditorPage() {
     // Mark setup complete only when all linked sources are resolved
     if (soProcessed && poProcessed) autoFillSetupDone.current = true;
   }, [isEdit, existing, salesOrders, purchaseOrders, suppliersFetched, suppliers]);
+
+  // On edit load: if no PO is linked but shipperName matches a catalog vendor, pre-select that vendor
+  // and mark it as manually-chosen so unlinking a PO later won't clear it.
+  useEffect(() => {
+    if (!isEdit || !existing || !suppliersFetched || vendorRestoreDone.current) return;
+    const existingPurchaseDocId = (existing as any).purchaseDocId;
+    if (existingPurchaseDocId) return; // PO present → applyPoAutoFill will handle vendor selection
+    vendorRestoreDone.current = true;
+    if (!existing.shipperName) return;
+    const normalise = (s: string) => s.trim().toLowerCase();
+    const matchedVendor = suppliers.find((s) => normalise(s.name) === normalise(existing.shipperName ?? ""));
+    if (matchedVendor) {
+      setSelectedVendorId(matchedVendor.id);
+      setVendorWasManuallySelected(true);
+    }
+  }, [isEdit, existing, suppliersFetched, suppliers]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
