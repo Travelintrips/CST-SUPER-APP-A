@@ -438,7 +438,7 @@ export default function EmailInboxPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Kotak Masuk Email</h1>
-            <p className="text-sm text-muted-foreground">Email masuk dari {process.env.VITE_IMAP_USER ?? "admcst001@gmail.com"}</p>
+            <p className="text-sm text-muted-foreground">Email masuk dari {import.meta.env.VITE_IMAP_USER ?? "admcst001@gmail.com"}</p>
           </div>
           <Button
             variant="outline"
