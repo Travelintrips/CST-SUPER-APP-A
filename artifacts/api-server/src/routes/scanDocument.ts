@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { createRequire } from "node:module";
-import { requireAdmin } from "../lib/requireAdmin.js";
+import { getAuth } from "@clerk/express";
 
 const require_ = createRequire(import.meta.url);
 type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
@@ -22,8 +22,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 // Below this we fall back to vision OCR.
 const PDF_TEXT_FAST_PATH_MIN_CHARS = 200;
 
-router.use(async (req, res, next) => {
-  if (!(await requireAdmin(req, res))) return;
+router.use((req, res, next) => {
+  const { userId } = getAuth(req);
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
   next();
 });
 
