@@ -36,7 +36,7 @@ async function seedAgingDemoOrders(): Promise<void> {
       customerName: "PT. Maju Bersama Indonesia",
       grandTotal: "8500000",
       amountPaid: "0",
-      confirmedAt: new Date("2026-04-11"), // ~15 days ago → 0-30 bucket
+      confirmedAt: new Date(Date.now() - 15 * 86400000), // 15 days ago → 0-30 bucket
       notes: "Demo AR aging — piutang baru (0–30 hari)",
     },
     {
@@ -44,7 +44,7 @@ async function seedAgingDemoOrders(): Promise<void> {
       customerName: "CV. Karya Logistik Utama",
       grandTotal: "12000000",
       amountPaid: "3000000",
-      confirmedAt: new Date("2026-03-12"), // ~45 days ago → 31-60 bucket
+      confirmedAt: new Date(Date.now() - 45 * 86400000), // 45 days ago → 31-60 bucket
       notes: "Demo AR aging — piutang jatuh tempo (31–60 hari), dibayar sebagian",
     },
     {
@@ -52,7 +52,7 @@ async function seedAgingDemoOrders(): Promise<void> {
       customerName: "PT. Sarana Distribusi Raya",
       grandTotal: "5750000",
       amountPaid: "0",
-      confirmedAt: new Date("2026-01-21"), // ~95 days ago → 90+ bucket
+      confirmedAt: new Date(Date.now() - 95 * 86400000), // 95 days ago → 90+ bucket
       notes: "Demo AR aging — piutang lewat jatuh tempo (90+ hari)",
     },
   ];
@@ -100,7 +100,7 @@ async function seedAgingDemoOrders(): Promise<void> {
       supplierName: "PT. Samudera Shipping Lines",
       grandTotal: "6000000",
       amountPaid: "0",
-      confirmedAt: new Date("2026-04-06"), // ~20 days ago → 0-30 bucket
+      confirmedAt: new Date(Date.now() - 20 * 86400000), // 20 days ago → 0-30 bucket
       notes: "Demo AP aging — hutang baru (0–30 hari)",
     },
     {
@@ -108,7 +108,7 @@ async function seedAgingDemoOrders(): Promise<void> {
       supplierName: "PT. Graha Port Services",
       grandTotal: "9500000",
       amountPaid: "2000000",
-      confirmedAt: new Date("2026-03-02"), // ~55 days ago → 31-60 bucket
+      confirmedAt: new Date(Date.now() - 55 * 86400000), // 55 days ago → 31-60 bucket
       notes: "Demo AP aging — hutang jatuh tempo (31–60 hari), dibayar sebagian",
     },
     {
@@ -116,7 +116,7 @@ async function seedAgingDemoOrders(): Promise<void> {
       supplierName: "CV. Agen Bea Cukai Nusantara",
       grandTotal: "4250000",
       amountPaid: "0",
-      confirmedAt: new Date("2026-02-05"), // ~80 days ago → 61-90 bucket
+      confirmedAt: new Date(Date.now() - 80 * 86400000), // 80 days ago → 61-90 bucket
       notes: "Demo AP aging — hutang mendekati jatuh tempo (61–90 hari)",
     },
   ];
