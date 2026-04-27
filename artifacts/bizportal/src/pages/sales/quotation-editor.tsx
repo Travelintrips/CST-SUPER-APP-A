@@ -1154,7 +1154,7 @@ export default function SalesDocumentEditorPage() {
       )}
 
       {/* Inline add-customer dialog */}
-      <Dialog open={addCustomerOpen} onOpenChange={setAddCustomerOpen}>
+      <Dialog open={addCustomerOpen} onOpenChange={(open) => { setAddCustomerOpen(open); if (!open) setAddCustomerForm({ name: "", email: "", phone: "", address: "", taxId: "", notes: "", defaultSalesTaxId: null }); }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Tambah Customer Baru</DialogTitle>
