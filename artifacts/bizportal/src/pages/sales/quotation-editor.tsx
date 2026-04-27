@@ -348,7 +348,7 @@ export default function SalesDocumentEditorPage() {
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
-  const [addCustomerForm, setAddCustomerForm] = useState({ name: "", email: "", phone: "", address: "" });
+  const [addCustomerForm, setAddCustomerForm] = useState({ name: "", email: "", phone: "", address: "", taxId: "", notes: "", defaultSalesTaxId: null as number | null });
   const [validUntil, setValidUntil] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -466,6 +466,9 @@ export default function SalesDocumentEditorPage() {
           email: addCustomerForm.email.trim() || undefined,
           phone: addCustomerForm.phone.trim() || undefined,
           address: addCustomerForm.address.trim() || undefined,
+          taxId: addCustomerForm.taxId.trim() || undefined,
+          notes: addCustomerForm.notes.trim() || undefined,
+          defaultSalesTaxId: addCustomerForm.defaultSalesTaxId ?? undefined,
         },
       });
       qc.setQueryData<Customer[]>(getListCustomersQueryKey(), (old) =>
@@ -474,8 +477,12 @@ export default function SalesDocumentEditorPage() {
       qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
       setCustomerId(created.id);
       setCustomerName(created.name);
+      if (isNew || taxRateId === null) {
+        setTaxRateId(created.defaultSalesTaxId ?? acctSettings?.defaultSalesTaxId ?? null);
+        setTaxAutoFilledFrom(created.defaultSalesTaxId ? "customer" : "settings");
+      }
       setAddCustomerOpen(false);
-      setAddCustomerForm({ name: "", email: "", phone: "", address: "" });
+      setAddCustomerForm({ name: "", email: "", phone: "", address: "", taxId: "", notes: "", defaultSalesTaxId: null });
       toast({ title: "Customer baru berhasil ditambahkan" });
     } catch (e) {
       toast({ title: "Gagal membuat customer", description: String(e), variant: "destructive" });
@@ -1148,7 +1155,7 @@ export default function SalesDocumentEditorPage() {
 
       {/* Inline add-customer dialog */}
       <Dialog open={addCustomerOpen} onOpenChange={setAddCustomerOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Tambah Customer Baru</DialogTitle>
           </DialogHeader>
@@ -1166,8 +1173,31 @@ export default function SalesDocumentEditorPage() {
               <Input id="ac-phone" value={addCustomerForm.phone} onChange={(e) => setAddCustomerForm((f) => ({ ...f, phone: e.target.value }))} />
             </div>
             <div className="grid gap-1.5">
+              <Label htmlFor="ac-taxId">NPWP / Tax ID</Label>
+              <Input id="ac-taxId" autoComplete="off" value={addCustomerForm.taxId} onChange={(e) => setAddCustomerForm((f) => ({ ...f, taxId: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
               <Label htmlFor="ac-address">Alamat</Label>
               <Textarea id="ac-address" value={addCustomerForm.address} onChange={(e) => setAddCustomerForm((f) => ({ ...f, address: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Pajak Penjualan Default</Label>
+              <Select
+                value={addCustomerForm.defaultSalesTaxId !== null ? String(addCustomerForm.defaultSalesTaxId) : "none"}
+                onValueChange={(v) => setAddCustomerForm((f) => ({ ...f, defaultSalesTaxId: v === "none" ? null : parseInt(v) }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Pilih pajak (opsional)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Tidak ada —</SelectItem>
+                  {(taxes ?? []).filter((t) => t.kind === "sale" && t.isActive).map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.rate}%)</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ac-notes">Catatan</Label>
+              <Textarea id="ac-notes" value={addCustomerForm.notes} onChange={(e) => setAddCustomerForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
             </div>
           </div>
           <DialogFooter>
