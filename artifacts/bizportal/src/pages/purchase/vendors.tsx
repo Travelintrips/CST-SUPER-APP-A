@@ -96,13 +96,20 @@ export default function VendorsPage() {
     };
     try {
       if (editing) {
-        await updateMut.mutateAsync({ id: editing.id, data: body });
+        const updated = await updateMut.mutateAsync({ id: editing.id, data: body });
+        qc.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
+          old ? old.map((s) => (s.id === updated.id ? updated : s)) : [updated]
+        );
+        qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
         toast({ title: "Vendor diperbarui" });
       } else {
-        await createMut.mutateAsync({ data: body });
+        const created = await createMut.mutateAsync({ data: body });
+        qc.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
+          old ? [...old, created] : [created]
+        );
+        qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
         toast({ title: "Vendor dibuat" });
       }
-      qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
       reset();
       setOpen(false);
     } catch (e) {
