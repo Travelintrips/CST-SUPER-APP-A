@@ -91,6 +91,7 @@ export default function LogisticsFreightEditorPage() {
   const [shipperAddressAutoFilledValue, setShipperAddressAutoFilledValue] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
   const [vendorWasManuallySelected, setVendorWasManuallySelected] = useState(false);
+  const [prePOVendorId, setPrePOVendorId] = useState<number | null>(null);
   const [shipperVendorNameFilled, setShipperVendorNameFilled] = useState(false);
   const [shipperVendorAddressFilled, setShipperVendorAddressFilled] = useState(false);
   const [shipperVendorNameValue, setShipperVendorNameValue] = useState("");
@@ -196,6 +197,7 @@ export default function LogisticsFreightEditorPage() {
     autoFillSetupDone.current = false;
     poUrlPreLinkDone.current = false;
     vendorRestoreDone.current = false;
+    setPrePOVendorId(null);
     setScannedFields(new Set());
     setDismissedBadges(new Set());
     setShipperNameAutoFilled(false);
@@ -357,6 +359,7 @@ export default function LogisticsFreightEditorPage() {
     setPurchaseDocId(docId);
     setPoPickerOpen(false);
     if (doc) {
+      setPrePOVendorId(selectedVendorId);
       setSelectedVendorId(null);
       applyPoAutoFill(doc);
       setScannedFields((prev) => {
@@ -374,6 +377,7 @@ export default function LogisticsFreightEditorPage() {
     if (!vendor) return;
     setSelectedVendorId(supplierId);
     setVendorWasManuallySelected(true);
+    setPrePOVendorId(null);
     setShipperVendorNameValue(vendor.name);
     setShipperVendorAddressValue(vendor.address ?? "");
     setForm((f) => {
@@ -467,6 +471,7 @@ export default function LogisticsFreightEditorPage() {
   const handleSelectVendorByData = (vendor: { id: number; name: string; address?: string | null }) => {
     setSelectedVendorId(vendor.id);
     setVendorWasManuallySelected(true);
+    setPrePOVendorId(null);
     setShipperVendorNameValue(vendor.name);
     setShipperVendorAddressValue(vendor.address ?? "");
     setForm((f) => {
@@ -730,9 +735,13 @@ export default function LogisticsFreightEditorPage() {
                         setShipperCatalogAddressFilled(false);
                         setShipperCatalogAddressValue("");
                       }
-                      if (!vendorWasManuallySelected) {
+                      if (prePOVendorId !== null) {
+                        setSelectedVendorId(prePOVendorId);
+                        setVendorWasManuallySelected(true);
+                      } else if (!vendorWasManuallySelected) {
                         setSelectedVendorId(null);
                       }
+                      setPrePOVendorId(null);
                       setPurchaseDocId(null);
                     }}>
                       Ganti
