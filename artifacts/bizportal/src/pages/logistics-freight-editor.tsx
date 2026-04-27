@@ -1083,6 +1083,12 @@ export default function LogisticsFreightEditorPage() {
                   placeholder="Catatan tambahan..."
                   rows={3}
                 />
+                {scannedFields.has("notes") && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                    Diisi dari scan dokumen.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
