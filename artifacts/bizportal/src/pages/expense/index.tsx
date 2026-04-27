@@ -51,6 +51,9 @@ const TYPE_LABELS: Record<string, string> = {
   internal: "Internal",
 };
 
+const LS_STATUS_FILTER    = "expense_list_statusFilter";
+const LS_TYPE_FILTER      = "expense_list_typeFilter";
+const LS_CAT_FILTER       = "expense_list_catFilter";
 const LS_SALES_DOC_FILTER = "expense_list_salesDocFilter";
 const LS_SHIPMENT_FILTER  = "expense_list_shipmentFilter";
 
@@ -66,9 +69,24 @@ export default function ExpenseListPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [catFilter, setCatFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_STATUS_FILTER);
+      return v && (v === "all" || Object.prototype.hasOwnProperty.call(STATUS_LABELS, v)) ? v : "all";
+    } catch { return "all"; }
+  });
+  const [typeFilter, setTypeFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_TYPE_FILTER);
+      return v && (v === "all" || Object.prototype.hasOwnProperty.call(TYPE_LABELS, v)) ? v : "all";
+    } catch { return "all"; }
+  });
+  const [catFilter, setCatFilter] = useState(() => {
+    try {
+      const v = localStorage.getItem(LS_CAT_FILTER);
+      return v && (v === "all" || /^\d+$/.test(v)) ? v : "all";
+    } catch { return "all"; }
+  });
   const [salesDocFilter, setSalesDocFilter] = useState(() => {
     try {
       const v = localStorage.getItem(LS_SALES_DOC_FILTER);
@@ -139,7 +157,7 @@ export default function ExpenseListPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); try { localStorage.setItem(LS_STATUS_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Semua status" />
             </SelectTrigger>
@@ -150,7 +168,7 @@ export default function ExpenseListPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); try { localStorage.setItem(LS_TYPE_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Semua tipe" />
             </SelectTrigger>
@@ -161,7 +179,7 @@ export default function ExpenseListPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={catFilter} onValueChange={setCatFilter}>
+          <Select value={catFilter} onValueChange={(v) => { setCatFilter(v); try { localStorage.setItem(LS_CAT_FILTER, v); } catch {} }}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Semua kategori" />
             </SelectTrigger>
