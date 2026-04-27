@@ -71,7 +71,7 @@ export default function LogisticsFreightEditorPage() {
 
   const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }) } });
   const { data: purchaseOrders = [] } = useListPurchaseDocuments({ kind: "order" }, { query: { queryKey: getListPurchaseDocumentsQueryKey({ kind: "order" }) } });
-  const { data: suppliers = [] } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
+  const { data: suppliers = [], isFetched: suppliersFetched } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const [soPickerOpen, setSoPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
@@ -89,6 +89,8 @@ export default function LogisticsFreightEditorPage() {
   const [shipperVendorAddressFilled, setShipperVendorAddressFilled] = useState(false);
   const [shipperVendorNameValue, setShipperVendorNameValue] = useState("");
   const [shipperVendorAddressValue, setShipperVendorAddressValue] = useState("");
+  const [shipperCatalogAddressFilled, setShipperCatalogAddressFilled] = useState(false);
+  const [shipperCatalogAddressValue, setShipperCatalogAddressValue] = useState("");
   const [consigneeNameAutoFilled, setConsigneeNameAutoFilled] = useState(false);
   const [consigneeNameAutoFilledValue, setConsigneeNameAutoFilledValue] = useState("");
   const [consigneeAddressAutoFilled, setConsigneeAddressAutoFilled] = useState(false);
@@ -131,6 +133,8 @@ export default function LogisticsFreightEditorPage() {
       const sp = new URLSearchParams(window.location.search);
       const sid = sp.get("salesDocId");
       if (sid) setSalesDocId(Number(sid));
+      const pid = sp.get("purchaseDocId");
+      if (pid) setPurchaseDocId(Number(pid));
       setForm((f) => ({
         ...f,
         origin: sp.get("origin") ?? f.origin,
@@ -175,10 +179,59 @@ export default function LogisticsFreightEditorPage() {
   }, [existing]);
 
   const autoFillSetupDone = useRef(false);
+  const poUrlPreLinkDone = useRef(false);
 
   useEffect(() => {
     autoFillSetupDone.current = false;
+    poUrlPreLinkDone.current = false;
   }, [id]);
+
+  // Catalog-aware PO autofill helper (shared by manual selection, URL pre-link, and edit load)
+  const applyPoAutoFill = (poDoc: { supplierName?: string | null; supplierAddress?: string | null }) => {
+    const normalise = (s: string) => s.trim().toLowerCase();
+    if (poDoc.supplierName && !form.shipperName) {
+      setShipperNameAutoFilled(true);
+      setShipperNameAutoFilledValue(poDoc.supplierName);
+    }
+    if (!form.shipperAddress) {
+      if (poDoc.supplierAddress) {
+        setShipperAddressAutoFilled(true);
+        setShipperAddressAutoFilledValue(poDoc.supplierAddress);
+        setShipperCatalogAddressFilled(false);
+        setShipperCatalogAddressValue("");
+      } else if (poDoc.supplierName) {
+        const catalogMatch = suppliers.find((s) => normalise(s.name) === normalise(poDoc.supplierName ?? ""));
+        if (catalogMatch?.address) {
+          setShipperCatalogAddressFilled(true);
+          setShipperCatalogAddressValue(catalogMatch.address);
+          setShipperAddressAutoFilled(false);
+          setShipperAddressAutoFilledValue("");
+        }
+      }
+    }
+    setForm((f) => {
+      const catalogMatch = !poDoc.supplierAddress && poDoc.supplierName
+        ? suppliers.find((s) => normalise(s.name) === normalise(poDoc.supplierName ?? ""))
+        : null;
+      return {
+        ...f,
+        shipperName: f.shipperName || (poDoc.supplierName ?? ""),
+        shipperAddress: f.shipperAddress || (poDoc.supplierAddress ?? "") || (catalogMatch?.address ?? ""),
+      };
+    });
+  };
+
+  // Create mode: auto-fill shipper info when a PO is pre-linked via URL param
+  useEffect(() => {
+    if (isEdit || !purchaseDocId || purchaseOrders.length === 0 || !suppliersFetched || poUrlPreLinkDone.current) return;
+    // Only apply when purchaseDocId came from URL (not from manual selection via handleSelectPo)
+    const sp = new URLSearchParams(window.location.search);
+    if (!sp.get("purchaseDocId")) return;
+    const poDoc = purchaseOrders.find((d) => d.id === purchaseDocId);
+    if (!poDoc) return;
+    poUrlPreLinkDone.current = true;
+    applyPoAutoFill(poDoc);
+  }, [isEdit, purchaseDocId, purchaseOrders, suppliersFetched, suppliers]);
 
   useEffect(() => {
     if (!isEdit || !existing || autoFillSetupDone.current) return;
@@ -198,17 +251,16 @@ export default function LogisticsFreightEditorPage() {
         soProcessed = true;
       }
     }
-    if (existingPurchaseDocId && purchaseOrders.length > 0) {
+    if (existingPurchaseDocId && purchaseOrders.length > 0 && suppliersFetched) {
       const poDoc = purchaseOrders.find((d) => d.id === existingPurchaseDocId);
       if (poDoc) {
-        if (poDoc.supplierName) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(poDoc.supplierName); }
-        if ((poDoc as any).supplierAddress) { setShipperAddressAutoFilled(true); setShipperAddressAutoFilledValue((poDoc as any).supplierAddress); }
+        applyPoAutoFill(poDoc);
         poProcessed = true;
       }
     }
     // Mark setup complete only when all linked sources are resolved
     if (soProcessed && poProcessed) autoFillSetupDone.current = true;
-  }, [isEdit, existing, salesOrders, purchaseOrders]);
+  }, [isEdit, existing, salesOrders, purchaseOrders, suppliersFetched, suppliers]);
 
   const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
 
@@ -250,15 +302,13 @@ export default function LogisticsFreightEditorPage() {
     setPurchaseDocId(docId);
     setPoPickerOpen(false);
     if (doc) {
-      const shouldAutoFillName = !form.shipperName && !!doc.supplierName;
-      if (shouldAutoFillName) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(doc.supplierName ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }
-      const shouldAutoFillAddress = !form.shipperAddress && !!doc.supplierAddress;
-      if (shouldAutoFillAddress) { setShipperAddressAutoFilled(true); setShipperAddressAutoFilledValue(doc.supplierAddress ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }
-      setForm((f) => ({
-        ...f,
-        shipperName: f.shipperName || (doc.supplierName ?? ""),
-        shipperAddress: f.shipperAddress || (doc.supplierAddress ?? ""),
-      }));
+      applyPoAutoFill(doc);
+      setScannedFields((prev) => {
+        const next = new Set(prev);
+        next.delete("shipperName");
+        next.delete("shipperAddress");
+        return next;
+      });
     }
   };
 
@@ -574,6 +624,11 @@ export default function LogisticsFreightEditorPage() {
                         setForm((f) => ({ ...f, shipperAddress: f.shipperAddress === shipperAddressAutoFilledValue ? "" : f.shipperAddress }));
                         setShipperAddressAutoFilled(false);
                       }
+                      if (shipperCatalogAddressFilled) {
+                        setForm((f) => ({ ...f, shipperAddress: f.shipperAddress === shipperCatalogAddressValue ? "" : f.shipperAddress }));
+                        setShipperCatalogAddressFilled(false);
+                        setShipperCatalogAddressValue("");
+                      }
                       setPurchaseDocId(null);
                     }}>
                       Ganti
@@ -686,7 +741,7 @@ export default function LogisticsFreightEditorPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {purchaseDocId && !purchaseOrders.find((d) => d.id === purchaseDocId)?.supplierAddress && (
+                {purchaseDocId && !purchaseOrders.find((d) => d.id === purchaseDocId)?.supplierAddress && !shipperCatalogAddressFilled && (
                   <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                     <span className="mt-0.5 shrink-0">⚠️</span>
                     <span>Purchase Order yang dipilih tidak memiliki alamat supplier. Masukkan alamat shipper secara manual, atau gunakan tombol <strong>Pilih Vendor</strong> di atas untuk mengisinya dari katalog vendor.</span>
@@ -713,18 +768,22 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="shipperAddress">Alamat Shipper</Label>
-                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); }} placeholder="Jl. ..." />
-                    {(shipperAddressAutoFilled || shipperVendorAddressFilled || scannedFields.has("shipperAddress")) && (
+                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); if (shipperCatalogAddressFilled) setShipperCatalogAddressFilled(false); }} placeholder="Jl. ..." />
+                    {(shipperAddressAutoFilled || shipperVendorAddressFilled || shipperCatalogAddressFilled || scannedFields.has("shipperAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
                         {shipperVendorAddressFilled && <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor</span>}
+                        {shipperCatalogAddressFilled && <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor (via katalog)</span>}
                         {scannedFields.has("shipperAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
-                        {shipperAddressAutoFilled ? "Diisi otomatis dari Purchase Order." : shipperVendorAddressFilled ? "Diisi otomatis dari katalog vendor." : "Diisi dari scan dokumen."}
+                        {shipperAddressAutoFilled ? "Diisi otomatis dari Purchase Order." : shipperVendorAddressFilled ? "Diisi otomatis dari katalog vendor." : shipperCatalogAddressFilled ? "Alamat PO kosong — diisi dari katalog vendor berdasarkan nama supplier." : "Diisi dari scan dokumen."}
                         {shipperAddressAutoFilled && form.shipperAddress !== shipperAddressAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); setShipperAddressAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
                         )}
                         {shipperVendorAddressFilled && form.shipperAddress !== shipperVendorAddressValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperVendorAddressValue })); setShipperVendorAddressFilled(true); }} className="text-purple-600 hover:underline font-medium ml-1">Pulihkan dari Vendor</button>
+                        )}
+                        {shipperCatalogAddressFilled && form.shipperAddress !== shipperCatalogAddressValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperCatalogAddressValue })); setShipperCatalogAddressFilled(true); }} className="text-amber-600 hover:underline font-medium ml-1">Pulihkan dari katalog</button>
                         )}
                       </p>
                     )}
