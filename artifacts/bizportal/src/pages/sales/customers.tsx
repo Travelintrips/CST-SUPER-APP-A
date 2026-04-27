@@ -44,7 +44,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 export default function CustomersPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: customers } = useListCustomers();
+  const { data: customers } = useListCustomers({ query: { queryKey: getListCustomersQueryKey() } });
   const { data: taxes } = useListTaxes();
   const createMut = useCreateCustomer();
   const updateMut = useUpdateCustomer();
@@ -99,10 +99,16 @@ export default function CustomersPage() {
     };
     try {
       if (editing) {
-        await updateMut.mutateAsync({ id: editing.id, data: body });
+        const updated = await updateMut.mutateAsync({ id: editing.id, data: body });
+        qc.setQueryData<Customer[]>(getListCustomersQueryKey(), (old) =>
+          old ? old.map((c) => (c.id === updated.id ? updated : c)) : [updated]
+        );
         toast({ title: "Customer diperbarui" });
       } else {
-        await createMut.mutateAsync({ data: body });
+        const created = await createMut.mutateAsync({ data: body });
+        qc.setQueryData<Customer[]>(getListCustomersQueryKey(), (old) =>
+          old ? [...old, created] : [created]
+        );
         toast({ title: "Customer dibuat" });
       }
       qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
