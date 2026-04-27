@@ -218,10 +218,10 @@ export default function LogisticsFreightEditorPage() {
         setShipperAddressAutoFilledValue("");
       }
     }
-    // Pre-select the matching catalog vendor so "Edit Vendor" button appears
-    if (catalogVendor) {
-      setSelectedVendorId(catalogVendor.id);
-    }
+    // Pre-select the matching catalog vendor so "Edit Vendor" button appears.
+    // Always update (including clearing to null) so switching POs doesn't leave
+    // a stale vendor ID that could cause editing the wrong vendor.
+    setSelectedVendorId(catalogVendor ? catalogVendor.id : null);
     setForm((f) => {
       return {
         ...f,
