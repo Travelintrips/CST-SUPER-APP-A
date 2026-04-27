@@ -750,7 +750,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
-                    <Input id="shipperName" value={form.shipperName} onChange={(e) => { set("shipperName")(e); if (shipperVendorNameFilled) setShipperVendorNameFilled(false); }} placeholder="PT. Contoh Shipper" required />
+                    <Input id="shipperName" value={form.shipperName} onChange={(e) => { set("shipperName")(e); if (shipperVendorNameFilled) setShipperVendorNameFilled(false); }} placeholder="PT. Contoh Shipper" required className={scannedFields.has("shipperName") ? "ring-1 ring-green-400" : ""} />
                     {(shipperNameAutoFilled || shipperVendorNameFilled || scannedFields.has("shipperName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
@@ -768,7 +768,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="shipperAddress">Alamat Shipper</Label>
-                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); if (shipperCatalogAddressFilled) setShipperCatalogAddressFilled(false); }} placeholder="Jl. ..." />
+                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); if (shipperCatalogAddressFilled) setShipperCatalogAddressFilled(false); }} placeholder="Jl. ..." className={scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} />
                     {(shipperAddressAutoFilled || shipperVendorAddressFilled || shipperCatalogAddressFilled || scannedFields.has("shipperAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
@@ -798,7 +798,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
-                    <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required />
+                    <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required className={scannedFields.has("consigneeName") ? "ring-1 ring-green-400" : ""} />
                     {(consigneeNameAutoFilled || scannedFields.has("consigneeName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {consigneeNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
@@ -812,7 +812,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
-                    <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." />
+                    <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." className={scannedFields.has("consigneeAddress") ? "ring-1 ring-green-400" : ""} />
                     {(consigneeAddressAutoFilled || scannedFields.has("consigneeAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {consigneeAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
@@ -827,7 +827,7 @@ export default function LogisticsFreightEditorPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="notifyParty">Notify Party</Label>
-                  <Input id="notifyParty" value={form.notifyParty} onChange={set("notifyParty")} placeholder="Nama / alamat pihak yang diberitahu (jika berbeda dengan consignee)" />
+                  <Input id="notifyParty" value={form.notifyParty} onChange={set("notifyParty")} placeholder="Nama / alamat pihak yang diberitahu (jika berbeda dengan consignee)" className={scannedFields.has("notifyParty") ? "ring-1 ring-green-400" : ""} />
                   {scannedFields.has("notifyParty") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -844,7 +844,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="commodity">Komoditi <span className="text-destructive">*</span></Label>
-                    <Input id="commodity" value={form.commodity} onChange={set("commodity")} placeholder="Elektronik, Tekstil, dll." required />
+                    <Input id="commodity" value={form.commodity} onChange={set("commodity")} placeholder="Elektronik, Tekstil, dll." required className={scannedFields.has("commodity") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("commodity") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -854,7 +854,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="hsCode">HS Code</Label>
-                    <Input id="hsCode" value={form.hsCode} onChange={set("hsCode")} placeholder="8471.30.00" />
+                    <Input id="hsCode" value={form.hsCode} onChange={set("hsCode")} placeholder="8471.30.00" className={scannedFields.has("hsCode") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("hsCode") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -866,7 +866,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="grossWeight">Berat Bruto (kg)</Label>
-                    <Input id="grossWeight" type="number" step="0.01" value={form.grossWeight} onChange={set("grossWeight")} placeholder="0" />
+                    <Input id="grossWeight" type="number" step="0.01" value={form.grossWeight} onChange={set("grossWeight")} placeholder="0" className={scannedFields.has("grossWeight") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("grossWeight") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -876,7 +876,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="netWeight">Berat Neto (kg)</Label>
-                    <Input id="netWeight" type="number" step="0.01" value={form.netWeight} onChange={set("netWeight")} placeholder="0" />
+                    <Input id="netWeight" type="number" step="0.01" value={form.netWeight} onChange={set("netWeight")} placeholder="0" className={scannedFields.has("netWeight") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("netWeight") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -886,7 +886,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="quantity">Jumlah</Label>
-                    <Input id="quantity" type="number" value={form.quantity} onChange={set("quantity")} placeholder="0" />
+                    <Input id="quantity" type="number" value={form.quantity} onChange={set("quantity")} placeholder="0" className={scannedFields.has("quantity") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("quantity") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -896,7 +896,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="packingType">Jenis Packing</Label>
-                    <Input id="packingType" value={form.packingType} onChange={set("packingType")} placeholder="Karton, Pallet, dll." />
+                    <Input id="packingType" value={form.packingType} onChange={set("packingType")} placeholder="Karton, Pallet, dll." className={scannedFields.has("packingType") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("packingType") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -907,7 +907,7 @@ export default function LogisticsFreightEditorPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dimensions">Dimensi</Label>
-                  <Input id="dimensions" value={form.dimensions} onChange={set("dimensions")} placeholder="P x L x T cm" />
+                  <Input id="dimensions" value={form.dimensions} onChange={set("dimensions")} placeholder="P x L x T cm" className={scannedFields.has("dimensions") ? "ring-1 ring-green-400" : ""} />
                   {scannedFields.has("dimensions") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -924,7 +924,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
-                    <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required />
+                    <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required className={scannedFields.has("origin") ? "ring-1 ring-green-400" : ""} />
                     {(originAutoFilled || scannedFields.has("origin")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {originAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
@@ -938,7 +938,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
-                    <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required />
+                    <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required className={scannedFields.has("destination") ? "ring-1 ring-green-400" : ""} />
                     {(destinationAutoFilled || scannedFields.has("destination")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {destinationAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
@@ -1004,7 +1004,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="portOfLoading">Port of Loading</Label>
-                    <Input id="portOfLoading" value={form.portOfLoading} onChange={set("portOfLoading")} placeholder="Tanjung Priok, Jakarta" />
+                    <Input id="portOfLoading" value={form.portOfLoading} onChange={set("portOfLoading")} placeholder="Tanjung Priok, Jakarta" className={scannedFields.has("portOfLoading") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("portOfLoading") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -1014,7 +1014,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="portOfDischarge">Port of Discharge</Label>
-                    <Input id="portOfDischarge" value={form.portOfDischarge} onChange={set("portOfDischarge")} placeholder="Port of Singapore" />
+                    <Input id="portOfDischarge" value={form.portOfDischarge} onChange={set("portOfDischarge")} placeholder="Port of Singapore" className={scannedFields.has("portOfDischarge") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("portOfDischarge") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -1026,7 +1026,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="vessel">Vessel / Nama Kapal</Label>
-                    <Input id="vessel" value={form.vessel} onChange={set("vessel")} placeholder="MV. Contoh Kapal" />
+                    <Input id="vessel" value={form.vessel} onChange={set("vessel")} placeholder="MV. Contoh Kapal" className={scannedFields.has("vessel") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("vessel") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -1036,7 +1036,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="voyage">Voyage No.</Label>
-                    <Input id="voyage" value={form.voyage} onChange={set("voyage")} placeholder="VY-001" />
+                    <Input id="voyage" value={form.voyage} onChange={set("voyage")} placeholder="VY-001" className={scannedFields.has("voyage") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("voyage") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -1053,6 +1053,7 @@ export default function LogisticsFreightEditorPage() {
                     onChange={set("marksAndNumbers")}
                     placeholder="Tanda / nomor pada kemasan..."
                     rows={2}
+                    className={scannedFields.has("marksAndNumbers") ? "ring-1 ring-green-400" : ""}
                   />
                   {scannedFields.has("marksAndNumbers") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -1063,7 +1064,7 @@ export default function LogisticsFreightEditorPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="measurement">Measurement (CBM)</Label>
-                  <Input id="measurement" value={form.measurement} onChange={set("measurement")} placeholder="cth: 12.5 CBM" />
+                  <Input id="measurement" value={form.measurement} onChange={set("measurement")} placeholder="cth: 12.5 CBM" className={scannedFields.has("measurement") ? "ring-1 ring-green-400" : ""} />
                   {scannedFields.has("measurement") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
@@ -1082,6 +1083,7 @@ export default function LogisticsFreightEditorPage() {
                   onChange={set("notes")}
                   placeholder="Catatan tambahan..."
                   rows={3}
+                  className={scannedFields.has("notes") ? "ring-1 ring-green-400" : ""}
                 />
                 {scannedFields.has("notes") && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
