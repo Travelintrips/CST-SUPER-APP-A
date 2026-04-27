@@ -64,6 +64,7 @@ export default function LogisticsFreightEditorPage() {
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [salesDocId, setSalesDocId] = useState<number | null>(null);
   const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
+  const [shipperNameAutoFilled, setShipperNameAutoFilled] = useState(false);
   const [form, setForm] = useState({
     shipperName: "",
     shipperAddress: "",
@@ -139,8 +140,10 @@ export default function LogisticsFreightEditorPage() {
     }
   }, [existing]);
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (k === "shipperName") setShipperNameAutoFilled(false);
     setForm((f) => ({ ...f, [k]: e.target.value }));
+  };
 
   const handleSelectSo = (docId: number) => {
     const doc = salesOrders.find((d) => d.id === docId);
@@ -162,6 +165,8 @@ export default function LogisticsFreightEditorPage() {
     setPurchaseDocId(docId);
     setPoPickerOpen(false);
     if (doc) {
+      const shouldAutoFill = !form.shipperName && !!doc.supplierName;
+      if (shouldAutoFill) setShipperNameAutoFilled(true);
       setForm((f) => ({
         ...f,
         shipperName: f.shipperName || (doc.supplierName ?? ""),
@@ -240,6 +245,9 @@ export default function LogisticsFreightEditorPage() {
   const [showScanDialog, setShowScanDialog] = useState(false);
 
   const applyScannedFields = (fields: FreightFormFields) => {
+    if (fields.shipperName !== undefined && fields.shipperName !== null) {
+      setShipperNameAutoFilled(false);
+    }
     setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)) }));
     toast({ title: "Data berhasil diisi dari scan" });
   };
@@ -365,7 +373,13 @@ export default function LogisticsFreightEditorPage() {
                         );
                       })()}
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPurchaseDocId(null)}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => {
+                      if (shipperNameAutoFilled) {
+                        setForm((f) => ({ ...f, shipperName: "" }));
+                        setShipperNameAutoFilled(false);
+                      }
+                      setPurchaseDocId(null);
+                    }}>
                       Ganti
                     </Button>
                   </div>
