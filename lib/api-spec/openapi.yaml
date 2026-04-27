@@ -3212,6 +3212,9 @@ components:
         confirmedAt:
           type: string
           nullable: true
+        customerAddress:
+          type: string
+          nullable: true
         amountPaid:
           type: number
         createdAt:

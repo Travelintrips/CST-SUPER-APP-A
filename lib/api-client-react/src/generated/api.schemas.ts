@@ -472,6 +472,7 @@ export interface SalesDocument {
   expectedDate?: string | null;
   notes?: string | null;
   confirmedAt?: string | null;
+  customerAddress?: string | null;
   amountPaid?: number;
   createdAt: string;
   updatedAt: string;

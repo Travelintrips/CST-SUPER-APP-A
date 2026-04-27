@@ -153,6 +153,7 @@ export default function LogisticsFreightEditorPage() {
       setForm((f) => ({
         ...f,
         consigneeName: doc.customerName || f.consigneeName,
+        consigneeAddress: f.consigneeAddress || (doc.customerAddress ?? ""),
         origin: (doc.origin ?? "") || f.origin,
         destination: (doc.destination ?? "") || f.destination,
         transportMode: (doc.transportMode ?? "") || f.transportMode,

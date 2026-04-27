@@ -7,7 +7,7 @@ import {
   accountingTaxesTable,
   freightShipmentsTable,
 } from "@workspace/db";
-import { eq, sql, desc, and, count, type SQL } from "drizzle-orm";
+import { eq, sql, desc, and, count, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postSalesInvoice } from "../lib/accounting.js";
@@ -175,7 +175,15 @@ router.get("/documents", async (req, res) => {
   const rows = where
     ? await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt))
     : await db.select().from(salesDocumentsTable).orderBy(desc(salesDocumentsTable.createdAt));
-  return res.json(rows.map(serializeDoc));
+
+  const customerIds = [...new Set(rows.map((r) => r.customerId).filter((id): id is number => id != null))];
+  const customerMap = new Map<number, string | null>();
+  if (customerIds.length > 0) {
+    const customers = await db.select({ id: customersTable.id, address: customersTable.address }).from(customersTable).where(inArray(customersTable.id, customerIds));
+    for (const c of customers) customerMap.set(c.id, c.address ?? null);
+  }
+
+  return res.json(rows.map((r) => ({ ...serializeDoc(r), customerAddress: r.customerId != null ? (customerMap.get(r.customerId) ?? null) : null })));
 });
 
 async function loadDocWithLines(id: number) {
@@ -186,7 +194,12 @@ async function loadDocWithLines(id: number) {
     .from(salesDocumentLinesTable)
     .where(eq(salesDocumentLinesTable.documentId, id))
     .orderBy(salesDocumentLinesTable.id);
-  return { ...serializeDoc(doc), lines: lines.map(serializeLine) };
+  let customerAddress: string | null = null;
+  if (doc.customerId != null) {
+    const [customer] = await db.select({ address: customersTable.address }).from(customersTable).where(eq(customersTable.id, doc.customerId)).limit(1);
+    customerAddress = customer?.address ?? null;
+  }
+  return { ...serializeDoc(doc), customerAddress, lines: lines.map(serializeLine) };
 }
 
 router.get("/documents/:id", async (req, res) => {
