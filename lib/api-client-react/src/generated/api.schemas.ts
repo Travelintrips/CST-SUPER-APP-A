@@ -598,6 +598,7 @@ export interface PurchaseDocument {
   billStatus: PurchaseDocumentBillStatus;
   supplierId?: number | null;
   supplierName: string;
+  supplierAddress?: string | null;
   totalAmount: number;
   taxRateId?: number | null;
   taxAmount: number;
@@ -626,6 +627,7 @@ export interface CreatePurchaseDocumentBody {
   kind?: CreatePurchaseDocumentBodyKind;
   supplierId?: number | null;
   supplierName: string;
+  supplierAddress?: string | null;
   expectedDate?: string | null;
   notes?: string | null;
   taxRateId?: number | null;

@@ -160,6 +160,7 @@ export default function PurchaseDocumentEditorPage() {
 
   const [supplierId, setSupplierId] = useState<number | null>(null);
   const [supplierName, setSupplierName] = useState("");
+  const [supplierAddress, setSupplierAddress] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([
@@ -173,6 +174,7 @@ export default function PurchaseDocumentEditorPage() {
     if (doc) {
       setSupplierId(doc.supplierId ?? null);
       setSupplierName(doc.supplierName);
+      setSupplierAddress(doc.supplierAddress ?? "");
       setExpectedDate(doc.expectedDate ? doc.expectedDate.slice(0, 10) : "");
       setNotes(doc.notes ?? "");
       setTaxRateId(doc.taxRateId ?? null);
@@ -246,6 +248,7 @@ export default function PurchaseDocumentEditorPage() {
     const v = (vendors ?? []).find((x) => x.id === sid);
     if (v) {
       setSupplierName(v.name);
+      setSupplierAddress(v.address ?? "");
       if (isNew || taxRateId === null) {
         setTaxRateId(v.defaultPurchaseTaxId ?? acctSettings?.defaultPurchaseTaxId ?? null);
         setTaxAutoFilledFrom(v.defaultPurchaseTaxId ? "vendor" : "settings");
@@ -273,6 +276,7 @@ export default function PurchaseDocumentEditorPage() {
       kind: "rfq" as const,
       supplierId,
       supplierName,
+      supplierAddress: supplierAddress || null,
       taxRateId: taxRateId ?? null,
       expectedDate: expectedDate ? new Date(expectedDate).toISOString() : null,
       notes: notes || null,

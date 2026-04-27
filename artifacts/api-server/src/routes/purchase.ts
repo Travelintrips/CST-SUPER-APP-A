@@ -144,7 +144,7 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
-  const { kind, supplierId, supplierName, expectedDate, notes, lines, taxRateId } = req.body ?? {};
+  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -172,6 +172,7 @@ router.post("/documents", async (req, res) => {
       status: "draft",
       supplierId: supplierId ?? null,
       supplierName,
+      supplierAddress: supplierAddress ?? null,
       totalAmount: String(total),
       taxRateId: taxRateId ?? null,
       taxAmount: String(taxAmount),
@@ -203,9 +204,10 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { supplierId, supplierName, expectedDate, notes, lines, kind, taxRateId } = req.body ?? {};
+  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof supplierName === "string") patch["supplierName"] = supplierName;
+  if (supplierAddress !== undefined) patch["supplierAddress"] = supplierAddress ?? null;
   if (supplierId !== undefined) patch["supplierId"] = supplierId;
   if (expectedDate !== undefined) patch["expectedDate"] = expectedDate ? new Date(expectedDate) : null;
   if (notes !== undefined) patch["notes"] = notes;

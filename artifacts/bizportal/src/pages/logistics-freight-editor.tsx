@@ -66,6 +66,8 @@ export default function LogisticsFreightEditorPage() {
   const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
   const [shipperNameAutoFilled, setShipperNameAutoFilled] = useState(false);
   const [shipperNameAutoFilledValue, setShipperNameAutoFilledValue] = useState("");
+  const [shipperAddressAutoFilled, setShipperAddressAutoFilled] = useState(false);
+  const [shipperAddressAutoFilledValue, setShipperAddressAutoFilledValue] = useState("");
   const [consigneeNameAutoFilled, setConsigneeNameAutoFilled] = useState(false);
   const [consigneeNameAutoFilledValue, setConsigneeNameAutoFilledValue] = useState("");
   const [consigneeAddressAutoFilled, setConsigneeAddressAutoFilled] = useState(false);
@@ -188,11 +190,14 @@ export default function LogisticsFreightEditorPage() {
     setPurchaseDocId(docId);
     setPoPickerOpen(false);
     if (doc) {
-      const shouldAutoFill = !form.shipperName && !!doc.supplierName;
-      if (shouldAutoFill) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(doc.supplierName ?? ""); }
+      const shouldAutoFillName = !form.shipperName && !!doc.supplierName;
+      if (shouldAutoFillName) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(doc.supplierName ?? ""); }
+      const shouldAutoFillAddress = !form.shipperAddress && !!doc.supplierAddress;
+      if (shouldAutoFillAddress) { setShipperAddressAutoFilled(true); setShipperAddressAutoFilledValue(doc.supplierAddress ?? ""); }
       setForm((f) => ({
         ...f,
         shipperName: f.shipperName || (doc.supplierName ?? ""),
+        shipperAddress: f.shipperAddress || (doc.supplierAddress ?? ""),
       }));
     }
   };
@@ -270,6 +275,9 @@ export default function LogisticsFreightEditorPage() {
   const applyScannedFields = (fields: FreightFormFields) => {
     if (fields.shipperName !== undefined && fields.shipperName !== null) {
       setShipperNameAutoFilled(false);
+    }
+    if (fields.shipperAddress !== undefined && fields.shipperAddress !== null) {
+      setShipperAddressAutoFilled(false);
     }
     if (fields.consigneeName !== undefined && fields.consigneeName !== null) {
       setConsigneeNameAutoFilled(false);
@@ -431,6 +439,10 @@ export default function LogisticsFreightEditorPage() {
                         setForm((f) => ({ ...f, shipperName: f.shipperName === shipperNameAutoFilledValue ? "" : f.shipperName }));
                         setShipperNameAutoFilled(false);
                       }
+                      if (shipperAddressAutoFilled) {
+                        setForm((f) => ({ ...f, shipperAddress: f.shipperAddress === shipperAddressAutoFilledValue ? "" : f.shipperAddress }));
+                        setShipperAddressAutoFilled(false);
+                      }
                       setPurchaseDocId(null);
                     }}>
                       Ganti
@@ -495,7 +507,13 @@ export default function LogisticsFreightEditorPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="shipperAddress">Alamat Shipper</Label>
-                  <Input id="shipperAddress" value={form.shipperAddress} onChange={set("shipperAddress")} placeholder="Jl. ..." />
+                  <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperAddressAutoFilled) setShipperAddressAutoFilled(false); }} placeholder="Jl. ..." />
+                  {shipperAddressAutoFilled && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                      <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>
+                      Diisi otomatis dari Purchase Order. Edit untuk mengubah.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

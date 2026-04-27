@@ -39,6 +39,7 @@ export const purchaseDocumentsTable = pgTable("purchase_documents", {
   amountPaid: numeric("amount_paid", { precision: 14, scale: 2 }).notNull().default("0"),
   supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   supplierName: text("supplier_name").notNull(),
+  supplierAddress: text("supplier_address"),
   totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   taxRateId: integer("tax_rate_id"),
   taxAmount: numeric("tax_amount", { precision: 14, scale: 2 }).notNull().default("0"),
