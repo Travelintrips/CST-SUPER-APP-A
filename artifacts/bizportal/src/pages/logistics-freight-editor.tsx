@@ -497,14 +497,20 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
                     <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required />
+                    {consigneeNameAutoFilled && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
+                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
                     <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." />
                     {consigneeAddressAutoFilled && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Otomatis</span>
-                        Diisi dari data pelanggan SO. Edit untuk mengubah.
+                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
+                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
                       </p>
                     )}
                   </div>
@@ -561,10 +567,22 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
                     <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required />
+                    {originAutoFilled && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
+                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
                     <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required />
+                    {destinationAutoFilled && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
+                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -580,6 +598,12 @@ export default function LogisticsFreightEditorPage() {
                         <SelectItem value="multimodal">Multimodal</SelectItem>
                       </SelectContent>
                     </Select>
+                    {transportModeAutoFilled && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
+                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Jenis Kargo</Label>
