@@ -4,6 +4,7 @@ import { seedAccountingDefaults } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedDemoData } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
+import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 
 const rawPort = process.env["PORT"];
 
@@ -32,9 +33,10 @@ app.listen(port, (err) => {
     logger.error({ err: seedErr }, "Accounting seed failed");
   });
 
-  // Seed logistics service items, then demo data (chained so demo can reference items)
+  // Seed logistics service items, then demo data, then remediate any remaining orphan products
   seedLogisticsServiceItems()
     .then(() => seedDemoData())
+    .then(() => remediateOrphanProducts())
     .catch((seedErr) => {
       logger.error({ err: seedErr }, "Logistics/demo seed failed");
     });

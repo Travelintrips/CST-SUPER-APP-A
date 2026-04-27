@@ -1,5 +1,5 @@
 import { db, productsTable, productCategoriesTable, productCategoryMapTable } from "@workspace/db";
-import { inArray, eq, sql } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { logger } from "./logger.js";
 
 const LOGISTICS_SERVICE_ITEMS: Array<{
