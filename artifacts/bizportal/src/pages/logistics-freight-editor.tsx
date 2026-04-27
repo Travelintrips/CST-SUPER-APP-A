@@ -482,6 +482,12 @@ export default function LogisticsFreightEditorPage() {
                 <div className="space-y-2">
                   <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
                   <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required />
+                  {shipperNameAutoFilled && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>
+                      Diisi otomatis dari Purchase Order. Edit untuk mengubah.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="shipperAddress">Alamat Shipper</Label>
