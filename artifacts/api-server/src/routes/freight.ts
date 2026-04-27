@@ -144,7 +144,13 @@ router.put("/freight-shipments/:id", async (req, res) => {
   if (cargoType !== undefined) patch.cargoType = cargoType || null;
   if (containerNo !== undefined) patch.containerNo = containerNo || null;
   if (salesDocId !== undefined) patch.salesDocId = salesDocId ? Number(salesDocId) : null;
-  if (purchaseDocId !== undefined) patch.purchaseDocId = purchaseDocId ? Number(purchaseDocId) : null;
+  if (purchaseDocId !== undefined) {
+    if (purchaseDocId) {
+      const [linkedPO] = await db.select({ id: purchaseDocumentsTable.id }).from(purchaseDocumentsTable).where(eq(purchaseDocumentsTable.id, Number(purchaseDocId))).limit(1);
+      if (!linkedPO) return res.status(400).json({ message: "Purchase order not found" });
+    }
+    patch.purchaseDocId = purchaseDocId ? Number(purchaseDocId) : null;
+  }
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
   return res.json(serializeShipment(updated!));
 });
