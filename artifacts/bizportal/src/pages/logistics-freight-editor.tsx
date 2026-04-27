@@ -52,6 +52,7 @@ import {
   getListSalesDocumentsQueryKey,
   getListPurchaseDocumentsQueryKey,
   getListSuppliersQueryKey,
+  type Supplier,
 } from "@workspace/api-client-react";
 
 export default function LogisticsFreightEditorPage() {
@@ -367,6 +368,9 @@ export default function LogisticsFreightEditorPage() {
       { id: selectedVendorId, data: { name: editVendorForm.name, country: editVendorForm.country, contactEmail: "", address: editVendorForm.address || undefined } },
       {
         onSuccess: (updated) => {
+          queryClient.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
+            old ? old.map((s) => (s.id === updated.id ? updated : s)) : [updated]
+          );
           queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
           setEditVendorDialogOpen(false);
           setShipperVendorNameValue(updated.name);
@@ -392,6 +396,9 @@ export default function LogisticsFreightEditorPage() {
       { data: { name: newVendorForm.name, country: newVendorForm.country, contactEmail: "", address: newVendorForm.address || undefined } },
       {
         onSuccess: (newSupplier) => {
+          queryClient.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
+            old ? [...old, newSupplier] : [newSupplier]
+          );
           queryClient.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
           setAddVendorDialogOpen(false);
           setVendorSearchQuery("");

@@ -44,7 +44,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 export default function VendorsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: vendors } = useListSuppliers();
+  const { data: vendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
   const createMut = useCreateSupplier();
   const updateMut = useUpdateSupplier();

@@ -37,7 +37,7 @@ export default function TradingPage() {
   const { toast } = useToast();
 
   const { data: stocks, isLoading: isLoadingStocks } = useListStocks();
-  const { data: suppliers, isLoading: isLoadingSuppliers } = useListSuppliers();
+  const { data: suppliers, isLoading: isLoadingSuppliers } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
 
   const createStock = useCreateStockItem();
   const updateStock = useUpdateStockItem();
