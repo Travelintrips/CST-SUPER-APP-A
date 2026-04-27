@@ -1393,6 +1393,7 @@ export interface FreightShipment {
   approvedVendorName?: string | null;
   createdById?: string | null;
   createdAt: string;
+  approvedQuoteTotalCost?: string | null;
 }
 
 export interface FreightShipmentProfitability {

@@ -32,7 +32,6 @@ router.get("/freight-shipments", async (req, res) => {
   const rows = salesDocId
     ? await db.select().from(freightShipmentsTable).where(eq(freightShipmentsTable.salesDocId, salesDocId)).orderBy(desc(freightShipmentsTable.createdAt))
     : await db.select().from(freightShipmentsTable).orderBy(desc(freightShipmentsTable.createdAt));
-
   // Bulk-fetch approved quote costs for all shipments in one query
   const shipmentIds = rows.map((r) => r.id);
   const approvedQuotes = shipmentIds.length > 0

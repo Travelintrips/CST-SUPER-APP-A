@@ -626,6 +626,7 @@ export const ListFreightShipmentsResponseItem = zod.object({
   approvedVendorName: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
+  approvedQuoteTotalCost: zod.string().nullish(),
 });
 export const ListFreightShipmentsResponse = zod.array(
   ListFreightShipmentsResponseItem,

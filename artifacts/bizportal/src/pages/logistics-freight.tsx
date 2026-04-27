@@ -625,7 +625,7 @@ export default function LogisticsFreightPage() {
                   {/* Header: shipment number + status */}
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-sm font-semibold truncate">{s.shipmentNumber}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                       {hasBLData(s) && (
                         <span className="inline-flex items-center gap-0.5 text-xs font-medium text-sky-600 dark:text-sky-400" title="Bill of Lading tersedia">
                           <Ship className="h-3 w-3" />
