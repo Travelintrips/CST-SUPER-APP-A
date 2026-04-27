@@ -41,6 +41,7 @@ import {
   useSalesDocumentAction,
   useDeleteSalesDocument,
   useListCustomers,
+  useCreateCustomer,
   useListProducts,
   useListTaxes,
   useGetAccountingSettings,
@@ -55,7 +56,9 @@ import {
   getListAccountingPaymentsQueryKey,
   getListFreightShipmentsQueryKey,
   getListProductsQueryKey,
+  getListCustomersQueryKey,
   type Product,
+  type Customer,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare } from "lucide-react";
@@ -340,9 +343,12 @@ export default function SalesDocumentEditorPage() {
   const updateMut = useUpdateSalesDocument();
   const actionMut = useSalesDocumentAction();
   const deleteMut = useDeleteSalesDocument();
+  const createCustomerMut = useCreateCustomer();
 
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
+  const [addCustomerOpen, setAddCustomerOpen] = useState(false);
+  const [addCustomerForm, setAddCustomerForm] = useState({ name: "", email: "", phone: "", address: "" });
   const [validUntil, setValidUntil] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -445,6 +451,34 @@ export default function SalesDocumentEditorPage() {
         setTaxRateId(c.defaultSalesTaxId ?? acctSettings?.defaultSalesTaxId ?? null);
         setTaxAutoFilledFrom(c.defaultSalesTaxId ? "customer" : "settings");
       }
+    }
+  };
+
+  const handleSaveNewCustomer = async () => {
+    if (!addCustomerForm.name.trim()) {
+      toast({ title: "Nama customer wajib diisi", variant: "destructive" });
+      return;
+    }
+    try {
+      const created: Customer = await createCustomerMut.mutateAsync({
+        data: {
+          name: addCustomerForm.name.trim(),
+          email: addCustomerForm.email.trim() || undefined,
+          phone: addCustomerForm.phone.trim() || undefined,
+          address: addCustomerForm.address.trim() || undefined,
+        },
+      });
+      qc.setQueryData<Customer[]>(getListCustomersQueryKey(), (old) =>
+        old ? [...old, created] : [created]
+      );
+      qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
+      setCustomerId(created.id);
+      setCustomerName(created.name);
+      setAddCustomerOpen(false);
+      setAddCustomerForm({ name: "", email: "", phone: "", address: "" });
+      toast({ title: "Customer baru berhasil ditambahkan" });
+    } catch (e) {
+      toast({ title: "Gagal membuat customer", description: String(e), variant: "destructive" });
     }
   };
 
@@ -637,7 +671,14 @@ export default function SalesDocumentEditorPage() {
           <CardHeader><CardTitle>Informasi Customer</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="grid gap-1.5">
-              <Label>Customer</Label>
+              <div className="flex items-center justify-between">
+                <Label>Customer</Label>
+                {isEditable && (
+                  <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs text-muted-foreground" onClick={() => setAddCustomerOpen(true)}>
+                    <Plus className="h-3 w-3 mr-1" /> Tambah Baru
+                  </Button>
+                )}
+              </div>
               <Select value={customerId !== null ? String(customerId) : "__none"} onValueChange={onCustomerChange} disabled={!isEditable}>
                 <SelectTrigger data-testid="select-customer"><SelectValue placeholder="Pilih customer" /></SelectTrigger>
                 <SelectContent>
@@ -1104,6 +1145,39 @@ export default function SalesDocumentEditorPage() {
           module="sales"
         />
       )}
+
+      {/* Inline add-customer dialog */}
+      <Dialog open={addCustomerOpen} onOpenChange={setAddCustomerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tambah Customer Baru</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ac-name">Nama <span className="text-destructive">*</span></Label>
+              <Input id="ac-name" autoComplete="off" value={addCustomerForm.name} onChange={(e) => setAddCustomerForm((f) => ({ ...f, name: e.target.value }))} data-testid="input-new-customer-name" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ac-email">Email</Label>
+              <Input id="ac-email" type="email" value={addCustomerForm.email} onChange={(e) => setAddCustomerForm((f) => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ac-phone">Telepon</Label>
+              <Input id="ac-phone" value={addCustomerForm.phone} onChange={(e) => setAddCustomerForm((f) => ({ ...f, phone: e.target.value }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ac-address">Alamat</Label>
+              <Textarea id="ac-address" value={addCustomerForm.address} onChange={(e) => setAddCustomerForm((f) => ({ ...f, address: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddCustomerOpen(false)}>Batal</Button>
+            <Button onClick={handleSaveNewCustomer} disabled={createCustomerMut.isPending} data-testid="button-save-new-customer">
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
