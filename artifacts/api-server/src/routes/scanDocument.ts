@@ -142,7 +142,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
         // Text-based PDF: send extracted text to a faster text-only model.
         mode = "pdf-text";
         const response = await openai.chat.completions.create({
-          model: "gpt-5.1-mini",
+          model: "gpt-5-mini",
           max_completion_tokens: 4096,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
@@ -205,6 +205,11 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
     res.json({ data: parsed, mode });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    logger.error({
+      err: err instanceof Error ? { message: err.message, name: err.name, stack: err.stack?.slice(0, 500) } : String(err),
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ?? "NOT_SET",
+      apiKeySet: !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+    }, "[scan-document] extraction failed");
     res.status(500).json({ message: "Extraction failed", error: msg });
   }
 });
