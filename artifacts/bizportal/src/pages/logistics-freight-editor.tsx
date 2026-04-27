@@ -65,6 +65,10 @@ export default function LogisticsFreightEditorPage() {
   const [salesDocId, setSalesDocId] = useState<number | null>(null);
   const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
   const [shipperNameAutoFilled, setShipperNameAutoFilled] = useState(false);
+  const [consigneeNameAutoFilled, setConsigneeNameAutoFilled] = useState(false);
+  const [originAutoFilled, setOriginAutoFilled] = useState(false);
+  const [destinationAutoFilled, setDestinationAutoFilled] = useState(false);
+  const [transportModeAutoFilled, setTransportModeAutoFilled] = useState(false);
   const [form, setForm] = useState({
     shipperName: "",
     shipperAddress: "",
@@ -142,6 +146,9 @@ export default function LogisticsFreightEditorPage() {
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (k === "shipperName") setShipperNameAutoFilled(false);
+    if (k === "consigneeName") setConsigneeNameAutoFilled(false);
+    if (k === "origin") setOriginAutoFilled(false);
+    if (k === "destination") setDestinationAutoFilled(false);
     setForm((f) => ({ ...f, [k]: e.target.value }));
   };
 
@@ -150,14 +157,24 @@ export default function LogisticsFreightEditorPage() {
     setSalesDocId(docId);
     setSoPickerOpen(false);
     if (doc) {
-      setForm((f) => ({
-        ...f,
-        consigneeName: doc.customerName || f.consigneeName,
-        consigneeAddress: f.consigneeAddress || (doc.customerAddress ?? ""),
-        origin: (doc.origin ?? "") || f.origin,
-        destination: (doc.destination ?? "") || f.destination,
-        transportMode: (doc.transportMode ?? "") || f.transportMode,
-      }));
+      setForm((f) => {
+        const willFillConsignee = !f.consigneeName && !!doc.customerName;
+        const willFillOrigin = !f.origin && !!(doc.origin ?? "");
+        const willFillDestination = !f.destination && !!(doc.destination ?? "");
+        const willFillTransportMode = !f.transportMode && !!(doc.transportMode ?? "");
+        if (willFillConsignee) setConsigneeNameAutoFilled(true);
+        if (willFillOrigin) setOriginAutoFilled(true);
+        if (willFillDestination) setDestinationAutoFilled(true);
+        if (willFillTransportMode) setTransportModeAutoFilled(true);
+        return {
+          ...f,
+          consigneeName: doc.customerName || f.consigneeName,
+          consigneeAddress: f.consigneeAddress || (doc.customerAddress ?? ""),
+          origin: (doc.origin ?? "") || f.origin,
+          destination: (doc.destination ?? "") || f.destination,
+          transportMode: (doc.transportMode ?? "") || f.transportMode,
+        };
+      });
     }
   };
 
@@ -249,6 +266,18 @@ export default function LogisticsFreightEditorPage() {
     if (fields.shipperName !== undefined && fields.shipperName !== null) {
       setShipperNameAutoFilled(false);
     }
+    if (fields.consigneeName !== undefined && fields.consigneeName !== null) {
+      setConsigneeNameAutoFilled(false);
+    }
+    if (fields.origin !== undefined && fields.origin !== null) {
+      setOriginAutoFilled(false);
+    }
+    if (fields.destination !== undefined && fields.destination !== null) {
+      setDestinationAutoFilled(false);
+    }
+    if ((fields as any).transportMode !== undefined && (fields as any).transportMode !== null) {
+      setTransportModeAutoFilled(false);
+    }
     setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)) }));
     toast({ title: "Data berhasil diisi dari scan" });
   };
@@ -304,7 +333,20 @@ export default function LogisticsFreightEditorPage() {
                           );
                         })()}
                       </div>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setSalesDocId(null)}>
+                      <Button type="button" variant="outline" size="sm" onClick={() => {
+                        setForm((f) => ({
+                          ...f,
+                          consigneeName: consigneeNameAutoFilled ? "" : f.consigneeName,
+                          origin: originAutoFilled ? "" : f.origin,
+                          destination: destinationAutoFilled ? "" : f.destination,
+                          transportMode: transportModeAutoFilled ? "" : f.transportMode,
+                        }));
+                        setConsigneeNameAutoFilled(false);
+                        setOriginAutoFilled(false);
+                        setDestinationAutoFilled(false);
+                        setTransportModeAutoFilled(false);
+                        setSalesDocId(null);
+                      }}>
                         Ganti
                       </Button>
                     </div>
@@ -513,7 +555,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Moda Transportasi</Label>
-                    <Select value={form.transportMode || "__none"} onValueChange={(v) => setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v }))}>
+                    <Select value={form.transportMode || "__none"} onValueChange={(v) => { setTransportModeAutoFilled(false); setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v })); }}>
                       <SelectTrigger><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">— Belum ditentukan —</SelectItem>
