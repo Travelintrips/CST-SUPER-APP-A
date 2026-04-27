@@ -278,6 +278,7 @@ export default function LogisticsFreightEditorPage() {
   const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
   const [dismissedBadges, setDismissedBadges] = useState<Set<string>>(new Set());
   const dismissBadge = (key: string) => setDismissedBadges((prev) => { const next = new Set(prev); next.add(key); return next; });
+  const dismissScannedField = (key: string) => setScannedFields((prev) => { const next = new Set(prev); next.delete(key); return next; });
   const clearDismissedBadges = (...keys: string[]) => setDismissedBadges((prev) => { const next = new Set(prev); keys.forEach((k) => next.delete(k)); return next; });
 
   useEffect(() => {
@@ -995,7 +996,7 @@ export default function LogisticsFreightEditorPage() {
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperNameAutoFilled && !dismissedBadges.has("shipperName:po") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO<button type="button" onClick={() => dismissBadge("shipperName:po")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
                         {shipperVendorNameFilled && !dismissedBadges.has("shipperName:vendor") && <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor<button type="button" onClick={() => dismissBadge("shipperName:vendor")} className="hover:text-purple-900 leading-none" aria-label="Tutup">×</button></span>}
-                        {scannedFields.has("shipperName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {scannedFields.has("shipperName") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("shipperName")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
                         {shipperNameAutoFilled && !dismissedBadges.has("shipperName:po") ? "Diisi otomatis dari Purchase Order." : shipperVendorNameFilled && !dismissedBadges.has("shipperName:vendor") ? "Diisi otomatis dari katalog vendor." : "Diisi dari scan dokumen."}
                         {shipperNameAutoFilled && form.shipperName !== shipperNameAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); clearDismissedBadges("shipperName:po"); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
@@ -1025,7 +1026,7 @@ export default function LogisticsFreightEditorPage() {
                         {shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO<button type="button" onClick={() => dismissBadge("shipperAddress:po")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
                         {shipperVendorAddressFilled && !dismissedBadges.has("shipperAddress:vendor") && <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor<button type="button" onClick={() => dismissBadge("shipperAddress:vendor")} className="hover:text-purple-900 leading-none" aria-label="Tutup">×</button></span>}
                         {shipperCatalogAddressFilled && !dismissedBadges.has("shipperAddress:catalog") && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor (via katalog)<button type="button" onClick={() => dismissBadge("shipperAddress:catalog")} className="hover:text-amber-900 leading-none" aria-label="Tutup">×</button></span>}
-                        {scannedFields.has("shipperAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {scannedFields.has("shipperAddress") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("shipperAddress")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
                         {shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po") ? "Diisi otomatis dari Purchase Order." : shipperVendorAddressFilled && !dismissedBadges.has("shipperAddress:vendor") ? "Diisi otomatis dari katalog vendor." : shipperCatalogAddressFilled && !dismissedBadges.has("shipperAddress:catalog") ? "Alamat PO kosong — diisi dari katalog vendor berdasarkan nama supplier." : "Diisi dari scan dokumen."}
                         {shipperAddressAutoFilled && form.shipperAddress !== shipperAddressAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); setShipperAddressAutoFilled(true); clearDismissedBadges("shipperAddress:po"); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
@@ -1058,7 +1059,7 @@ export default function LogisticsFreightEditorPage() {
                     {((consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so")) || scannedFields.has("consigneeName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("consigneeName:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
-                        {scannedFields.has("consigneeName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {scannedFields.has("consigneeName") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("consigneeName")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
                         {consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so") ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
                         {consigneeNameAutoFilled && form.consigneeName !== consigneeNameAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeName: consigneeNameAutoFilledValue })); setConsigneeNameAutoFilled(true); clearDismissedBadges("consigneeName:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
@@ -1077,7 +1078,7 @@ export default function LogisticsFreightEditorPage() {
                     {((consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so")) || scannedFields.has("consigneeAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("consigneeAddress:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
-                        {scannedFields.has("consigneeAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {scannedFields.has("consigneeAddress") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("consigneeAddress")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
                         {consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so") ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
                         {consigneeAddressAutoFilled && form.consigneeAddress !== consigneeAddressAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); setConsigneeAddressAutoFilled(true); clearDismissedBadges("consigneeAddress:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
@@ -1091,7 +1092,7 @@ export default function LogisticsFreightEditorPage() {
                   <Input id="notifyParty" value={form.notifyParty} onChange={set("notifyParty")} placeholder="Nama / alamat pihak yang diberitahu (jika berbeda dengan consignee)" className={scannedFields.has("notifyParty") ? "ring-1 ring-green-400" : ""} />
                   {scannedFields.has("notifyParty") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("notifyParty")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                       Diisi dari scan dokumen.
                     </p>
                   )}
@@ -1108,7 +1109,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="commodity" value={form.commodity} onChange={set("commodity")} placeholder="Elektronik, Tekstil, dll." required className={scannedFields.has("commodity") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("commodity") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("commodity")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1118,7 +1119,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="hsCode" value={form.hsCode} onChange={set("hsCode")} placeholder="8471.30.00" className={scannedFields.has("hsCode") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("hsCode") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("hsCode")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1130,7 +1131,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="grossWeight" type="number" step="0.01" value={form.grossWeight} onChange={set("grossWeight")} placeholder="0" className={scannedFields.has("grossWeight") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("grossWeight") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("grossWeight")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1140,7 +1141,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="netWeight" type="number" step="0.01" value={form.netWeight} onChange={set("netWeight")} placeholder="0" className={scannedFields.has("netWeight") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("netWeight") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("netWeight")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1150,7 +1151,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="quantity" type="number" value={form.quantity} onChange={set("quantity")} placeholder="0" className={scannedFields.has("quantity") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("quantity") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("quantity")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1160,7 +1161,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="packingType" value={form.packingType} onChange={set("packingType")} placeholder="Karton, Pallet, dll." className={scannedFields.has("packingType") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("packingType") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("packingType")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1171,7 +1172,7 @@ export default function LogisticsFreightEditorPage() {
                   <Input id="dimensions" value={form.dimensions} onChange={set("dimensions")} placeholder="P x L x T cm" className={scannedFields.has("dimensions") ? "ring-1 ring-green-400" : ""} />
                   {scannedFields.has("dimensions") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("dimensions")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                       Diisi dari scan dokumen.
                     </p>
                   )}
@@ -1189,7 +1190,7 @@ export default function LogisticsFreightEditorPage() {
                     {(originAutoFilled || scannedFields.has("origin")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {originAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
-                        {scannedFields.has("origin") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {scannedFields.has("origin") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("origin")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
                         {originAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
                         {originAutoFilled && form.origin !== originAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, origin: originAutoFilledValue })); setOriginAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
@@ -1203,7 +1204,7 @@ export default function LogisticsFreightEditorPage() {
                     {(destinationAutoFilled || scannedFields.has("destination")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {destinationAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
-                        {scannedFields.has("destination") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {scannedFields.has("destination") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("destination")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
                         {destinationAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
                         {destinationAutoFilled && form.destination !== destinationAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, destination: destinationAutoFilledValue })); setDestinationAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
@@ -1228,7 +1229,7 @@ export default function LogisticsFreightEditorPage() {
                     {(transportModeAutoFilled || scannedFields.has("transportMode")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {transportModeAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
-                        {scannedFields.has("transportMode") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {scannedFields.has("transportMode") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("transportMode")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
                         {transportModeAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
                         {transportModeAutoFilled && form.transportMode !== transportModeAutoFilledValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, transportMode: transportModeAutoFilledValue })); setTransportModeAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
@@ -1254,7 +1255,7 @@ export default function LogisticsFreightEditorPage() {
                   <Input id="containerNo" value={form.containerNo} onChange={set("containerNo")} placeholder="MSCU1234567" className={scannedFields.has("containerNo") ? "ring-1 ring-green-400" : ""} />
                   {scannedFields.has("containerNo") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("containerNo")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                       Diisi dari scan dokumen.
                     </p>
                   )}
@@ -1273,7 +1274,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="portOfLoading" value={form.portOfLoading} onChange={set("portOfLoading")} placeholder="Tanjung Priok, Jakarta" className={scannedFields.has("portOfLoading") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("portOfLoading") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("portOfLoading")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1283,7 +1284,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="portOfDischarge" value={form.portOfDischarge} onChange={set("portOfDischarge")} placeholder="Port of Singapore" className={scannedFields.has("portOfDischarge") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("portOfDischarge") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("portOfDischarge")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1295,7 +1296,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="vessel" value={form.vessel} onChange={set("vessel")} placeholder="MV. Contoh Kapal" className={scannedFields.has("vessel") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("vessel") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("vessel")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1305,7 +1306,7 @@ export default function LogisticsFreightEditorPage() {
                     <Input id="voyage" value={form.voyage} onChange={set("voyage")} placeholder="VY-001" className={scannedFields.has("voyage") ? "ring-1 ring-green-400" : ""} />
                     {scannedFields.has("voyage") && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("voyage")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                         Diisi dari scan dokumen.
                       </p>
                     )}
@@ -1323,7 +1324,7 @@ export default function LogisticsFreightEditorPage() {
                   />
                   {scannedFields.has("marksAndNumbers") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("marksAndNumbers")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                       Diisi dari scan dokumen.
                     </p>
                   )}
@@ -1333,7 +1334,7 @@ export default function LogisticsFreightEditorPage() {
                   <Input id="measurement" value={form.measurement} onChange={set("measurement")} placeholder="cth: 12.5 CBM" className={scannedFields.has("measurement") ? "ring-1 ring-green-400" : ""} />
                   {scannedFields.has("measurement") && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("measurement")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                       Diisi dari scan dokumen.
                     </p>
                   )}
@@ -1353,7 +1354,7 @@ export default function LogisticsFreightEditorPage() {
                 />
                 {scannedFields.has("notes") && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("notes")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>
                     Diisi dari scan dokumen.
                   </p>
                 )}
