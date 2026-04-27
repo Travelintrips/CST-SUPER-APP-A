@@ -37,10 +37,12 @@ import {
   useUpdateFreightShipment,
   useListSalesDocuments,
   useListPurchaseDocuments,
+  useListSuppliers,
   getListFreightShipmentsQueryKey,
   getGetFreightShipmentQueryKey,
   getListSalesDocumentsQueryKey,
   getListPurchaseDocumentsQueryKey,
+  getListSuppliersQueryKey,
 } from "@workspace/api-client-react";
 
 export default function LogisticsFreightEditorPage() {
@@ -60,14 +62,21 @@ export default function LogisticsFreightEditorPage() {
 
   const { data: salesOrders = [] } = useListSalesDocuments({ kind: "order" }, { query: { queryKey: getListSalesDocumentsQueryKey({ kind: "order" }) } });
   const { data: purchaseOrders = [] } = useListPurchaseDocuments({ kind: "order" }, { query: { queryKey: getListPurchaseDocumentsQueryKey({ kind: "order" }) } });
+  const { data: suppliers = [] } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const [soPickerOpen, setSoPickerOpen] = useState(false);
   const [poPickerOpen, setPoPickerOpen] = useState(false);
+  const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
   const [salesDocId, setSalesDocId] = useState<number | null>(null);
   const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
   const [shipperNameAutoFilled, setShipperNameAutoFilled] = useState(false);
   const [shipperNameAutoFilledValue, setShipperNameAutoFilledValue] = useState("");
   const [shipperAddressAutoFilled, setShipperAddressAutoFilled] = useState(false);
   const [shipperAddressAutoFilledValue, setShipperAddressAutoFilledValue] = useState("");
+  const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+  const [shipperVendorNameFilled, setShipperVendorNameFilled] = useState(false);
+  const [shipperVendorAddressFilled, setShipperVendorAddressFilled] = useState(false);
+  const [shipperVendorNameValue, setShipperVendorNameValue] = useState("");
+  const [shipperVendorAddressValue, setShipperVendorAddressValue] = useState("");
   const [consigneeNameAutoFilled, setConsigneeNameAutoFilled] = useState(false);
   const [consigneeNameAutoFilledValue, setConsigneeNameAutoFilledValue] = useState("");
   const [consigneeAddressAutoFilled, setConsigneeAddressAutoFilled] = useState(false);
@@ -239,6 +248,34 @@ export default function LogisticsFreightEditorPage() {
         shipperAddress: f.shipperAddress || (doc.supplierAddress ?? ""),
       }));
     }
+  };
+
+  const handleSelectVendor = (supplierId: number) => {
+    const vendor = suppliers.find((s) => s.id === supplierId);
+    setVendorPickerOpen(false);
+    if (!vendor) return;
+    setSelectedVendorId(supplierId);
+    setShipperVendorNameValue(vendor.name);
+    setShipperVendorAddressValue(vendor.address ?? "");
+    setForm((f) => {
+      const willFillName = !f.shipperName && !!vendor.name;
+      const willFillAddress = !f.shipperAddress && !!vendor.address;
+      if (willFillName) {
+        setShipperVendorNameFilled(true);
+        setShipperNameAutoFilled(false);
+        setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; });
+      }
+      if (willFillAddress) {
+        setShipperVendorAddressFilled(true);
+        setShipperAddressAutoFilled(false);
+        setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; });
+      }
+      return {
+        ...f,
+        shipperName: f.shipperName || vendor.name,
+        shipperAddress: f.shipperAddress || (vendor.address ?? ""),
+      };
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -517,35 +554,96 @@ export default function LogisticsFreightEditorPage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Informasi Shipper</CardTitle></CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
-                  <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required />
-                  {(shipperNameAutoFilled || scannedFields.has("shipperName")) && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                      {shipperNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
-                      {scannedFields.has("shipperName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
-                      {shipperNameAutoFilled ? "Diisi otomatis dari Purchase Order." : "Diisi dari scan dokumen."}
-                      {shipperNameAutoFilled && form.shipperName !== shipperNameAutoFilledValue && (
-                        <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
-                      )}
-                    </p>
-                  )}
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>Informasi Shipper</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">Pilih dari katalog vendor untuk mengisi nama dan alamat shipper secara otomatis.</p>
+                  </div>
+                  <Popover open={vendorPickerOpen} onOpenChange={setVendorPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 gap-1.5"
+                        data-testid="vendor-picker-trigger"
+                      >
+                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-60" />
+                        Pilih Vendor
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[360px] p-0" align="end">
+                      <Command>
+                        <CommandInput placeholder="Cari nama vendor..." />
+                        <CommandList>
+                          <CommandEmpty>Tidak ada vendor yang cocok.</CommandEmpty>
+                          <CommandGroup heading="Katalog Vendor">
+                            {suppliers.map((s) => (
+                              <CommandItem
+                                key={s.id}
+                                value={`${s.name} ${s.country}`}
+                                onSelect={() => handleSelectVendor(s.id)}
+                              >
+                                <Check className={`mr-2 h-4 w-4 ${selectedVendorId === s.id ? "opacity-100" : "opacity-0"}`} />
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{s.name}</span>
+                                  {s.address && <span className="text-xs text-muted-foreground truncate">{s.address}</span>}
+                                  {!s.address && <span className="text-xs text-muted-foreground/60 italic">Alamat belum diisi di katalog</span>}
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="shipperAddress">Alamat Shipper</Label>
-                  <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperAddressAutoFilled) setShipperAddressAutoFilled(false); }} placeholder="Jl. ..." />
-                  {(shipperAddressAutoFilled || scannedFields.has("shipperAddress")) && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                      {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
-                      {scannedFields.has("shipperAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
-                      {shipperAddressAutoFilled ? "Diisi otomatis dari Purchase Order." : "Diisi dari scan dokumen."}
-                      {shipperAddressAutoFilled && form.shipperAddress !== shipperAddressAutoFilledValue && (
-                        <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); setShipperAddressAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
-                      )}
-                    </p>
-                  )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {purchaseDocId && !purchaseOrders.find((d) => d.id === purchaseDocId)?.supplierAddress && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <span className="mt-0.5 shrink-0">⚠️</span>
+                    <span>Purchase Order yang dipilih tidak memiliki alamat supplier. Masukkan alamat shipper secara manual, atau gunakan tombol <strong>Pilih Vendor</strong> di atas untuk mengisinya dari katalog vendor.</span>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
+                    <Input id="shipperName" value={form.shipperName} onChange={(e) => { set("shipperName")(e); if (shipperVendorNameFilled) setShipperVendorNameFilled(false); }} placeholder="PT. Contoh Shipper" required />
+                    {(shipperNameAutoFilled || shipperVendorNameFilled || scannedFields.has("shipperName")) && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                        {shipperNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
+                        {shipperVendorNameFilled && <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor</span>}
+                        {scannedFields.has("shipperName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {shipperNameAutoFilled ? "Diisi otomatis dari Purchase Order." : shipperVendorNameFilled ? "Diisi otomatis dari katalog vendor." : "Diisi dari scan dokumen."}
+                        {shipperNameAutoFilled && form.shipperName !== shipperNameAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
+                        )}
+                        {shipperVendorNameFilled && form.shipperName !== shipperVendorNameValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperVendorNameValue })); setShipperVendorNameFilled(true); }} className="text-purple-600 hover:underline font-medium ml-1">Pulihkan dari Vendor</button>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="shipperAddress">Alamat Shipper</Label>
+                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperAddressAutoFilled) setShipperAddressAutoFilled(false); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); }} placeholder="Jl. ..." />
+                    {(shipperAddressAutoFilled || shipperVendorAddressFilled || scannedFields.has("shipperAddress")) && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                        {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
+                        {shipperVendorAddressFilled && <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor</span>}
+                        {scannedFields.has("shipperAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {shipperAddressAutoFilled ? "Diisi otomatis dari Purchase Order." : shipperVendorAddressFilled ? "Diisi otomatis dari katalog vendor." : "Diisi dari scan dokumen."}
+                        {shipperAddressAutoFilled && form.shipperAddress !== shipperAddressAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); setShipperAddressAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
+                        )}
+                        {shipperVendorAddressFilled && form.shipperAddress !== shipperVendorAddressValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperVendorAddressValue })); setShipperVendorAddressFilled(true); }} className="text-purple-600 hover:underline font-medium ml-1">Pulihkan dari Vendor</button>
+                        )}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
