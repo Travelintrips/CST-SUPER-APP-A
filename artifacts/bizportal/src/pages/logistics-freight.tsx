@@ -243,6 +243,7 @@ export default function LogisticsFreightPage() {
   })();
 
   const [statusFilter, setStatusFilterState] = useState<string | null>(initial.status);
+  const [blReadyFilter, setBlReadyFilter] = useState(false);
   const [datePreset, setDatePresetState] = useState<DatePreset>(initial.preset);
   const [customDateFrom, setCustomDateFromState] = useState<string>(initial.from);
   const [customDateTo, setCustomDateToState] = useState<string>(initial.to);
@@ -322,8 +323,12 @@ export default function LogisticsFreightPage() {
       if (customTo && new Date(s.createdAt) > customTo) return false;
     }
 
+    if (blReadyFilter && !hasBLData(s)) return false;
+
     return true;
   });
+
+  const blReadyCount = (shipments ?? []).filter(hasBLData).length;
 
   const getFilterCount = (value: string | null): number => {
     if (!shipments) return 0;
@@ -348,10 +353,11 @@ export default function LogisticsFreightPage() {
     );
   };
 
-  const isFiltered = statusFilter !== null || datePreset !== "all";
+  const isFiltered = statusFilter !== null || datePreset !== "all" || blReadyFilter;
 
   const clearFilters = () => {
     setStatusFilterState(null);
+    setBlReadyFilter(false);
     setDatePreset("all");
   };
 
@@ -360,6 +366,7 @@ export default function LogisticsFreightPage() {
     const label = STATUS_FILTERS.find((f) => f.value === statusFilter)?.label ?? statusFilter;
     activeFilterParts.push(`Status: ${label}`);
   }
+  if (blReadyFilter) activeFilterParts.push("B/L Siap");
   if (datePreset === "7days") activeFilterParts.push("7 Hari Terakhir");
   else if (datePreset === "30days") activeFilterParts.push("30 Hari Terakhir");
   else if (datePreset === "custom") {
@@ -466,6 +473,21 @@ export default function LogisticsFreightPage() {
               </Button>
             );
           })}
+          <Button
+            variant={blReadyFilter ? "default" : "outline"}
+            size="sm"
+            onClick={() => setBlReadyFilter((v) => !v)}
+            className="gap-1.5"
+          >
+            B/L Siap
+            {isLoading ? (
+              <Skeleton className="h-4 w-5 rounded-full" />
+            ) : (
+              <span className={`inline-flex items-center justify-center rounded-full text-xs font-semibold min-w-[1.25rem] px-1 ${blReadyFilter ? "bg-white/20 text-inherit" : "bg-muted text-muted-foreground"} ${isFetching ? "animate-pulse" : ""}`}>
+                {blReadyCount}
+              </span>
+            )}
+          </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
