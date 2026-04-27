@@ -83,8 +83,6 @@ function _renderInvoiceDoc(doc: InstanceType<typeof PDFDocument>, data: InvoiceD
     .text(data.partyName, 48, doc.y + 2);
   if (data.partyAddress)
     doc.fontSize(9).fillColor("#475569").text(data.partyAddress, 48, doc.y + 2, { width: 240 });
-  if (data.partyEmail) doc.text(`Email: ${data.partyEmail}`, 48);
-  if (data.partyPhone) doc.text(`Telp: ${data.partyPhone}`, 48);
   if (data.partyTaxId) {
     doc
       .font("Helvetica-Bold")
@@ -93,6 +91,8 @@ function _renderInvoiceDoc(doc: InstanceType<typeof PDFDocument>, data: InvoiceD
       .font("Helvetica")
       .fillColor("#475569");
   }
+  if (data.partyEmail) doc.text(`Email: ${data.partyEmail}`, 48);
+  if (data.partyPhone) doc.text(`Telp: ${data.partyPhone}`, 48);
 
   doc
     .fontSize(9)
