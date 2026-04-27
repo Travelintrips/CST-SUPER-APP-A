@@ -153,8 +153,11 @@ export default function LogisticsFreightEditorPage() {
     }
   }, [existing]);
 
+  const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
+
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
+    setScannedFields((prev) => { const next = new Set(prev); next.delete(k); return next; });
   };
 
   const handleSelectSo = (docId: number) => {
@@ -168,11 +171,11 @@ export default function LogisticsFreightEditorPage() {
         const willFillOrigin = !f.origin && !!(doc.origin ?? "");
         const willFillDestination = !f.destination && !!(doc.destination ?? "");
         const willFillTransportMode = !f.transportMode && !!(doc.transportMode ?? "");
-        if (willFillConsignee) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(doc.customerName || ""); }
-        if (willFillConsigneeAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(doc.customerAddress ?? ""); }
-        if (willFillOrigin) { setOriginAutoFilled(true); setOriginAutoFilledValue(doc.origin ?? ""); }
-        if (willFillDestination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue(doc.destination ?? ""); }
-        if (willFillTransportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue(doc.transportMode ?? ""); }
+        if (willFillConsignee) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(doc.customerName || ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); }
+        if (willFillConsigneeAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(doc.customerAddress ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }
+        if (willFillOrigin) { setOriginAutoFilled(true); setOriginAutoFilledValue(doc.origin ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }
+        if (willFillDestination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue(doc.destination ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }
+        if (willFillTransportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue(doc.transportMode ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }
         return {
           ...f,
           consigneeName: doc.customerName || f.consigneeName,
@@ -191,9 +194,9 @@ export default function LogisticsFreightEditorPage() {
     setPoPickerOpen(false);
     if (doc) {
       const shouldAutoFillName = !form.shipperName && !!doc.supplierName;
-      if (shouldAutoFillName) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(doc.supplierName ?? ""); }
+      if (shouldAutoFillName) { setShipperNameAutoFilled(true); setShipperNameAutoFilledValue(doc.supplierName ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }
       const shouldAutoFillAddress = !form.shipperAddress && !!doc.supplierAddress;
-      if (shouldAutoFillAddress) { setShipperAddressAutoFilled(true); setShipperAddressAutoFilledValue(doc.supplierAddress ?? ""); }
+      if (shouldAutoFillAddress) { setShipperAddressAutoFilled(true); setShipperAddressAutoFilledValue(doc.supplierAddress ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }
       setForm((f) => ({
         ...f,
         shipperName: f.shipperName || (doc.supplierName ?? ""),
@@ -273,27 +276,15 @@ export default function LogisticsFreightEditorPage() {
   const [showScanDialog, setShowScanDialog] = useState(false);
 
   const applyScannedFields = (fields: FreightFormFields) => {
-    if (fields.shipperName !== undefined && fields.shipperName !== null) {
-      setShipperNameAutoFilled(false);
-    }
-    if (fields.shipperAddress !== undefined && fields.shipperAddress !== null) {
-      setShipperAddressAutoFilled(false);
-    }
-    if (fields.consigneeName !== undefined && fields.consigneeName !== null) {
-      setConsigneeNameAutoFilled(false);
-    }
-    if (fields.consigneeAddress !== undefined && fields.consigneeAddress !== null) {
-      setConsigneeAddressAutoFilled(false);
-    }
-    if (fields.origin !== undefined && fields.origin !== null) {
-      setOriginAutoFilled(false);
-    }
-    if (fields.destination !== undefined && fields.destination !== null) {
-      setDestinationAutoFilled(false);
-    }
-    if ((fields as any).transportMode !== undefined && (fields as any).transportMode !== null) {
-      setTransportModeAutoFilled(false);
-    }
+    const newlyScanned = new Set<string>();
+    if (fields.shipperName !== undefined && fields.shipperName !== null) newlyScanned.add("shipperName");
+    if (fields.shipperAddress !== undefined && fields.shipperAddress !== null) newlyScanned.add("shipperAddress");
+    if (fields.consigneeName !== undefined && fields.consigneeName !== null) newlyScanned.add("consigneeName");
+    if (fields.consigneeAddress !== undefined && fields.consigneeAddress !== null) newlyScanned.add("consigneeAddress");
+    if (fields.origin !== undefined && fields.origin !== null) newlyScanned.add("origin");
+    if (fields.destination !== undefined && fields.destination !== null) newlyScanned.add("destination");
+    if ((fields as any).transportMode !== undefined && (fields as any).transportMode !== null) newlyScanned.add("transportMode");
+    setScannedFields((prev) => new Set([...prev, ...newlyScanned]));
     setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)) }));
     toast({ title: "Data berhasil diisi dari scan" });
   };
@@ -495,12 +486,13 @@ export default function LogisticsFreightEditorPage() {
                 <div className="space-y-2">
                   <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
                   <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required />
-                  {shipperNameAutoFilled && (
+                  {(shipperNameAutoFilled || scannedFields.has("shipperName")) && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                      <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>
-                      Diisi otomatis dari Purchase Order. Edit untuk mengubah.
-                      {form.shipperName !== shipperNameAutoFilledValue && (
-                        <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                      {shipperNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
+                      {scannedFields.has("shipperName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                      {shipperNameAutoFilled ? "Diisi otomatis dari Purchase Order." : "Diisi dari scan dokumen."}
+                      {shipperNameAutoFilled && form.shipperName !== shipperNameAutoFilledValue && (
+                        <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
                       )}
                     </p>
                   )}
@@ -508,10 +500,14 @@ export default function LogisticsFreightEditorPage() {
                 <div className="space-y-2">
                   <Label htmlFor="shipperAddress">Alamat Shipper</Label>
                   <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperAddressAutoFilled) setShipperAddressAutoFilled(false); }} placeholder="Jl. ..." />
-                  {shipperAddressAutoFilled && (
+                  {(shipperAddressAutoFilled || scannedFields.has("shipperAddress")) && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                      <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>
-                      Diisi otomatis dari Purchase Order. Edit untuk mengubah.
+                      {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
+                      {scannedFields.has("shipperAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                      {shipperAddressAutoFilled ? "Diisi otomatis dari Purchase Order." : "Diisi dari scan dokumen."}
+                      {shipperAddressAutoFilled && form.shipperAddress !== shipperAddressAutoFilledValue && (
+                        <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); setShipperAddressAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
+                      )}
                     </p>
                   )}
                 </div>
@@ -525,12 +521,13 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
                     <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required />
-                    {consigneeNameAutoFilled && (
+                    {(consigneeNameAutoFilled || scannedFields.has("consigneeName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
-                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
-                        {form.consigneeName !== consigneeNameAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeName: consigneeNameAutoFilledValue })); setConsigneeNameAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        {consigneeNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {scannedFields.has("consigneeName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {consigneeNameAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {consigneeNameAutoFilled && form.consigneeName !== consigneeNameAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeName: consigneeNameAutoFilledValue })); setConsigneeNameAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
@@ -538,12 +535,13 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
                     <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." />
-                    {consigneeAddressAutoFilled && (
+                    {(consigneeAddressAutoFilled || scannedFields.has("consigneeAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
-                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
-                        {form.consigneeAddress !== consigneeAddressAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); setConsigneeAddressAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        {consigneeAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {scannedFields.has("consigneeAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {consigneeAddressAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {consigneeAddressAutoFilled && form.consigneeAddress !== consigneeAddressAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); setConsigneeAddressAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
@@ -601,12 +599,13 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
                     <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required />
-                    {originAutoFilled && (
+                    {(originAutoFilled || scannedFields.has("origin")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
-                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
-                        {form.origin !== originAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, origin: originAutoFilledValue })); setOriginAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        {originAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {scannedFields.has("origin") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {originAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {originAutoFilled && form.origin !== originAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, origin: originAutoFilledValue })); setOriginAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
@@ -614,12 +613,13 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
                     <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required />
-                    {destinationAutoFilled && (
+                    {(destinationAutoFilled || scannedFields.has("destination")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
-                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
-                        {form.destination !== destinationAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, destination: destinationAutoFilledValue })); setDestinationAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        {destinationAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {scannedFields.has("destination") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {destinationAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {destinationAutoFilled && form.destination !== destinationAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, destination: destinationAutoFilledValue })); setDestinationAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
@@ -628,7 +628,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Moda Transportasi</Label>
-                    <Select value={form.transportMode || "__none"} onValueChange={(v) => { setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v })); }}>
+                    <Select value={form.transportMode || "__none"} onValueChange={(v) => { setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v })); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }}>
                       <SelectTrigger><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">— Belum ditentukan —</SelectItem>
@@ -638,12 +638,13 @@ export default function LogisticsFreightEditorPage() {
                         <SelectItem value="multimodal">Multimodal</SelectItem>
                       </SelectContent>
                     </Select>
-                    {transportModeAutoFilled && (
+                    {(transportModeAutoFilled || scannedFields.has("transportMode")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>
-                        Diisi otomatis dari Sales Order. Edit untuk mengubah.
-                        {form.transportMode !== transportModeAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, transportMode: transportModeAutoFilledValue })); setTransportModeAutoFilled(true); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan</button>
+                        {transportModeAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {scannedFields.has("transportMode") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
+                        {transportModeAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {transportModeAutoFilled && form.transportMode !== transportModeAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, transportMode: transportModeAutoFilledValue })); setTransportModeAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
