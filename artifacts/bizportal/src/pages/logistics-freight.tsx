@@ -83,13 +83,7 @@ function ExpenseBadge({ totalExpenses, actualCost, approvedQuoteCost }: { totalE
   const quoted = approvedQuoteCost ? parseFloat(approvedQuoteCost) : null;
   const baseline = actual ?? quoted;
   const baselineLabel = actual !== null ? "Aktual" : "Kuota";
-  if (baseline === null) {
-    return (
-      <div className="inline-flex text-xs rounded px-1.5 py-1 border bg-muted/50 border-border mt-1">
-        <span className="text-muted-foreground">Biaya Op.: {idr(expenses)}</span>
-      </div>
-    );
-  }
+  if (baseline === null) return null;
   const over = expenses > baseline;
   const pct = baseline !== 0 ? Math.abs(((expenses - baseline) / baseline) * 100) : null;
   return (
