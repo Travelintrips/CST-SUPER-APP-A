@@ -118,7 +118,7 @@ export default function EcommercePage() {
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
-    syncUrl({ tab: value });
+    syncUrl({ tab: value, categories: filterCategories });
   };
 
   const { data: products, isLoading: isLoadingProducts } = useListProducts(undefined, {
