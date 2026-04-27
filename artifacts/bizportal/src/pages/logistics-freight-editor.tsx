@@ -66,6 +66,7 @@ export default function LogisticsFreightEditorPage() {
   const [purchaseDocId, setPurchaseDocId] = useState<number | null>(null);
   const [shipperNameAutoFilled, setShipperNameAutoFilled] = useState(false);
   const [consigneeNameAutoFilled, setConsigneeNameAutoFilled] = useState(false);
+  const [consigneeAddressAutoFilled, setConsigneeAddressAutoFilled] = useState(false);
   const [originAutoFilled, setOriginAutoFilled] = useState(false);
   const [destinationAutoFilled, setDestinationAutoFilled] = useState(false);
   const [transportModeAutoFilled, setTransportModeAutoFilled] = useState(false);
@@ -147,6 +148,7 @@ export default function LogisticsFreightEditorPage() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (k === "shipperName") setShipperNameAutoFilled(false);
     if (k === "consigneeName") setConsigneeNameAutoFilled(false);
+    if (k === "consigneeAddress") setConsigneeAddressAutoFilled(false);
     if (k === "origin") setOriginAutoFilled(false);
     if (k === "destination") setDestinationAutoFilled(false);
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -159,10 +161,12 @@ export default function LogisticsFreightEditorPage() {
     if (doc) {
       setForm((f) => {
         const willFillConsignee = !f.consigneeName && !!doc.customerName;
+        const willFillConsigneeAddress = !f.consigneeAddress && !!(doc.customerAddress ?? "");
         const willFillOrigin = !f.origin && !!(doc.origin ?? "");
         const willFillDestination = !f.destination && !!(doc.destination ?? "");
         const willFillTransportMode = !f.transportMode && !!(doc.transportMode ?? "");
         if (willFillConsignee) setConsigneeNameAutoFilled(true);
+        if (willFillConsigneeAddress) setConsigneeAddressAutoFilled(true);
         if (willFillOrigin) setOriginAutoFilled(true);
         if (willFillDestination) setDestinationAutoFilled(true);
         if (willFillTransportMode) setTransportModeAutoFilled(true);
@@ -269,6 +273,9 @@ export default function LogisticsFreightEditorPage() {
     if (fields.consigneeName !== undefined && fields.consigneeName !== null) {
       setConsigneeNameAutoFilled(false);
     }
+    if (fields.consigneeAddress !== undefined && fields.consigneeAddress !== null) {
+      setConsigneeAddressAutoFilled(false);
+    }
     if (fields.origin !== undefined && fields.origin !== null) {
       setOriginAutoFilled(false);
     }
@@ -337,11 +344,13 @@ export default function LogisticsFreightEditorPage() {
                         setForm((f) => ({
                           ...f,
                           consigneeName: consigneeNameAutoFilled ? "" : f.consigneeName,
+                          consigneeAddress: consigneeAddressAutoFilled ? "" : f.consigneeAddress,
                           origin: originAutoFilled ? "" : f.origin,
                           destination: destinationAutoFilled ? "" : f.destination,
                           transportMode: transportModeAutoFilled ? "" : f.transportMode,
                         }));
                         setConsigneeNameAutoFilled(false);
+                        setConsigneeAddressAutoFilled(false);
                         setOriginAutoFilled(false);
                         setDestinationAutoFilled(false);
                         setTransportModeAutoFilled(false);
@@ -492,6 +501,12 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
                     <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." />
+                    {consigneeAddressAutoFilled && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Otomatis</span>
+                        Diisi dari data pelanggan SO. Edit untuk mengubah.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
