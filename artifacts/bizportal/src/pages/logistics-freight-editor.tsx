@@ -186,11 +186,15 @@ export default function LogisticsFreightEditorPage() {
   const autoFillSetupDone = useRef(false);
   const poUrlPreLinkDone = useRef(false);
   const [scannedFields, setScannedFields] = useState<Set<string>>(new Set());
+  const [dismissedBadges, setDismissedBadges] = useState<Set<string>>(new Set());
+  const dismissBadge = (key: string) => setDismissedBadges((prev) => { const next = new Set(prev); next.add(key); return next; });
+  const clearDismissedBadges = (...keys: string[]) => setDismissedBadges((prev) => { const next = new Set(prev); keys.forEach((k) => next.delete(k)); return next; });
 
   useEffect(() => {
     autoFillSetupDone.current = false;
     poUrlPreLinkDone.current = false;
     setScannedFields(new Set());
+    setDismissedBadges(new Set());
   }, [id]);
 
   // Catalog-aware PO autofill helper (shared by manual selection, URL pre-link, and edit load)
@@ -204,6 +208,7 @@ export default function LogisticsFreightEditorPage() {
     if (poDoc.supplierName && !form.shipperName) {
       setShipperNameAutoFilled(true);
       setShipperNameAutoFilledValue(poDoc.supplierName);
+      clearDismissedBadges("shipperName:po");
     }
     if (!form.shipperAddress) {
       if (poDoc.supplierAddress) {
@@ -211,11 +216,13 @@ export default function LogisticsFreightEditorPage() {
         setShipperAddressAutoFilledValue(poDoc.supplierAddress);
         setShipperCatalogAddressFilled(false);
         setShipperCatalogAddressValue("");
+        clearDismissedBadges("shipperAddress:po");
       } else if (catalogVendor?.address) {
         setShipperCatalogAddressFilled(true);
         setShipperCatalogAddressValue(catalogVendor.address);
         setShipperAddressAutoFilled(false);
         setShipperAddressAutoFilledValue("");
+        clearDismissedBadges("shipperAddress:catalog");
       }
     }
     // Pre-select the matching catalog vendor so "Edit Vendor" button appears.
@@ -288,8 +295,8 @@ export default function LogisticsFreightEditorPage() {
         const willFillOrigin = !f.origin && !!(doc.origin ?? "");
         const willFillDestination = !f.destination && !!(doc.destination ?? "");
         const willFillTransportMode = !f.transportMode && !!(doc.transportMode ?? "");
-        if (willFillConsignee) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(doc.customerName || ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); }
-        if (willFillConsigneeAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(doc.customerAddress ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }
+        if (willFillConsignee) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(doc.customerName || ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); clearDismissedBadges("consigneeName:so"); }
+        if (willFillConsigneeAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(doc.customerAddress ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); clearDismissedBadges("consigneeAddress:so"); }
         if (willFillOrigin) { setOriginAutoFilled(true); setOriginAutoFilledValue(doc.origin ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }
         if (willFillDestination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue(doc.destination ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }
         if (willFillTransportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue(doc.transportMode ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }
@@ -334,11 +341,13 @@ export default function LogisticsFreightEditorPage() {
         setShipperVendorNameFilled(true);
         setShipperNameAutoFilled(false);
         setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; });
+        clearDismissedBadges("shipperName:vendor");
       }
       if (willFillAddress) {
         setShipperVendorAddressFilled(true);
         setShipperAddressAutoFilled(false);
         setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; });
+        clearDismissedBadges("shipperAddress:vendor");
       }
       return {
         ...f,
@@ -424,11 +433,13 @@ export default function LogisticsFreightEditorPage() {
         setShipperVendorNameFilled(true);
         setShipperNameAutoFilled(false);
         setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; });
+        clearDismissedBadges("shipperName:vendor");
       }
       if (willFillAddress) {
         setShipperVendorAddressFilled(true);
         setShipperAddressAutoFilled(false);
         setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; });
+        clearDismissedBadges("shipperAddress:vendor");
       }
       return {
         ...f,
@@ -813,14 +824,14 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
                     <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required className={scannedFields.has("shipperName") ? "ring-1 ring-green-400" : ""} />
-                    {(shipperNameAutoFilled || shipperVendorNameFilled || scannedFields.has("shipperName")) && (
+                    {((shipperNameAutoFilled && !dismissedBadges.has("shipperName:po")) || (shipperVendorNameFilled && !dismissedBadges.has("shipperName:vendor")) || scannedFields.has("shipperName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {shipperNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
-                        {shipperVendorNameFilled && <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor</span>}
+                        {shipperNameAutoFilled && !dismissedBadges.has("shipperName:po") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO<button type="button" onClick={() => dismissBadge("shipperName:po")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
+                        {shipperVendorNameFilled && !dismissedBadges.has("shipperName:vendor") && <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor<button type="button" onClick={() => dismissBadge("shipperName:vendor")} className="hover:text-purple-900 leading-none" aria-label="Tutup">×</button></span>}
                         {scannedFields.has("shipperName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
-                        {shipperNameAutoFilled ? "Diisi otomatis dari Purchase Order." : shipperVendorNameFilled ? "Diisi otomatis dari katalog vendor." : "Diisi dari scan dokumen."}
+                        {shipperNameAutoFilled && !dismissedBadges.has("shipperName:po") ? "Diisi otomatis dari Purchase Order." : shipperVendorNameFilled && !dismissedBadges.has("shipperName:vendor") ? "Diisi otomatis dari katalog vendor." : "Diisi dari scan dokumen."}
                         {shipperNameAutoFilled && form.shipperName !== shipperNameAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperNameAutoFilledValue })); setShipperNameAutoFilled(true); clearDismissedBadges("shipperName:po"); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
                         )}
                         {shipperVendorNameFilled && form.shipperName !== shipperVendorNameValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperName: shipperVendorNameValue })); setShipperVendorNameFilled(true); }} className="text-purple-600 hover:underline font-medium ml-1">Pulihkan dari Vendor</button>
@@ -831,15 +842,15 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="shipperAddress">Alamat Shipper</Label>
                     <Input id="shipperAddress" value={form.shipperAddress} onChange={set("shipperAddress")} placeholder="Jl. ..." className={scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} />
-                    {(shipperAddressAutoFilled || shipperVendorAddressFilled || shipperCatalogAddressFilled || scannedFields.has("shipperAddress")) && (
+                    {((shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po")) || (shipperVendorAddressFilled && !dismissedBadges.has("shipperAddress:vendor")) || (shipperCatalogAddressFilled && !dismissedBadges.has("shipperAddress:catalog")) || scannedFields.has("shipperAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
-                        {shipperVendorAddressFilled && <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor</span>}
-                        {shipperCatalogAddressFilled && <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor (via katalog)</span>}
+                        {shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO<button type="button" onClick={() => dismissBadge("shipperAddress:po")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
+                        {shipperVendorAddressFilled && !dismissedBadges.has("shipperAddress:vendor") && <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor<button type="button" onClick={() => dismissBadge("shipperAddress:vendor")} className="hover:text-purple-900 leading-none" aria-label="Tutup">×</button></span>}
+                        {shipperCatalogAddressFilled && !dismissedBadges.has("shipperAddress:catalog") && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">Dari Vendor (via katalog)<button type="button" onClick={() => dismissBadge("shipperAddress:catalog")} className="hover:text-amber-900 leading-none" aria-label="Tutup">×</button></span>}
                         {scannedFields.has("shipperAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
-                        {shipperAddressAutoFilled ? "Diisi otomatis dari Purchase Order." : shipperVendorAddressFilled ? "Diisi otomatis dari katalog vendor." : shipperCatalogAddressFilled ? "Alamat PO kosong — diisi dari katalog vendor berdasarkan nama supplier." : "Diisi dari scan dokumen."}
+                        {shipperAddressAutoFilled && !dismissedBadges.has("shipperAddress:po") ? "Diisi otomatis dari Purchase Order." : shipperVendorAddressFilled && !dismissedBadges.has("shipperAddress:vendor") ? "Diisi otomatis dari katalog vendor." : shipperCatalogAddressFilled && !dismissedBadges.has("shipperAddress:catalog") ? "Alamat PO kosong — diisi dari katalog vendor berdasarkan nama supplier." : "Diisi dari scan dokumen."}
                         {shipperAddressAutoFilled && form.shipperAddress !== shipperAddressAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); setShipperAddressAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperAddressAutoFilledValue })); setShipperAddressAutoFilled(true); clearDismissedBadges("shipperAddress:po"); setScannedFields((prev) => { const next = new Set(prev); next.delete("shipperAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari PO</button>
                         )}
                         {shipperVendorAddressFilled && form.shipperAddress !== shipperVendorAddressValue && (
                           <button type="button" onClick={() => { setForm((f) => ({ ...f, shipperAddress: shipperVendorAddressValue })); setShipperVendorAddressFilled(true); }} className="text-purple-600 hover:underline font-medium ml-1">Pulihkan dari Vendor</button>
@@ -861,13 +872,13 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="consigneeName">Nama Consignee <span className="text-destructive">*</span></Label>
                     <Input id="consigneeName" value={form.consigneeName} onChange={set("consigneeName")} placeholder="PT. Contoh Consignee" required className={scannedFields.has("consigneeName") ? "ring-1 ring-green-400" : ""} />
-                    {(consigneeNameAutoFilled || scannedFields.has("consigneeName")) && (
+                    {((consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so")) || scannedFields.has("consigneeName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {consigneeNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("consigneeName:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
                         {scannedFields.has("consigneeName") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
-                        {consigneeNameAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {consigneeNameAutoFilled && !dismissedBadges.has("consigneeName:so") ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
                         {consigneeNameAutoFilled && form.consigneeName !== consigneeNameAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeName: consigneeNameAutoFilledValue })); setConsigneeNameAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeName: consigneeNameAutoFilledValue })); setConsigneeNameAutoFilled(true); clearDismissedBadges("consigneeName:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
@@ -875,13 +886,13 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label htmlFor="consigneeAddress">Alamat Consignee</Label>
                     <Input id="consigneeAddress" value={form.consigneeAddress} onChange={set("consigneeAddress")} placeholder="Jl. ..." className={scannedFields.has("consigneeAddress") ? "ring-1 ring-green-400" : ""} />
-                    {(consigneeAddressAutoFilled || scannedFields.has("consigneeAddress")) && (
+                    {((consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so")) || scannedFields.has("consigneeAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {consigneeAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("consigneeAddress:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
                         {scannedFields.has("consigneeAddress") && <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan</span>}
-                        {consigneeAddressAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {consigneeAddressAutoFilled && !dismissedBadges.has("consigneeAddress:so") ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
                         {consigneeAddressAutoFilled && form.consigneeAddress !== consigneeAddressAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); setConsigneeAddressAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, consigneeAddress: consigneeAddressAutoFilledValue })); setConsigneeAddressAutoFilled(true); clearDismissedBadges("consigneeAddress:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
