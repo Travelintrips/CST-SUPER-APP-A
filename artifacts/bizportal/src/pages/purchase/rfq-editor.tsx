@@ -338,7 +338,10 @@ export default function PurchaseDocumentEditorPage() {
   const [emailOpen, setEmailOpen] = useState(false);
 
   const handleScannedData = (data: ScannedDocumentData) => {
-    if (data.partyName) setSupplierName(data.partyName);
+    if (data.partyName) {
+      setSupplierName(data.partyName);
+      setSupplierId(null);
+    }
     if (data.partyAddress) { setSupplierAddress(data.partyAddress); setSupplierAddressAutoFilled(false); }
     if (data.docDate) setExpectedDate(data.docDate.slice(0, 10));
     if (data.notes) setNotes(data.notes);
