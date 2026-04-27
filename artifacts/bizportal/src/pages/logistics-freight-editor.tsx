@@ -327,6 +327,7 @@ export default function LogisticsFreightEditorPage() {
     setPurchaseDocId(docId);
     setPoPickerOpen(false);
     if (doc) {
+      setSelectedVendorId(null);
       applyPoAutoFill(doc);
       setScannedFields((prev) => {
         const next = new Set(prev);
@@ -697,6 +698,7 @@ export default function LogisticsFreightEditorPage() {
                         setShipperCatalogAddressFilled(false);
                         setShipperCatalogAddressValue("");
                       }
+                      setSelectedVendorId(null);
                       setPurchaseDocId(null);
                     }}>
                       Ganti
