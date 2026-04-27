@@ -30,7 +30,10 @@ import {
   X,
   ChevronDown,
   FileText,
+  Upload,
+  Camera,
 } from "lucide-react";
+import { toast } from "sonner";
 
 // ── Form field types ──────────────────────────────────────────────────────────
 
@@ -235,7 +238,8 @@ const AWB_ALIASES: AliasMap = {
 type ScanState =
   | { kind: "idle" }
   | { kind: "scanning" }
-  | { kind: "json"; fields: FreightFormFields; isAwb: boolean }
+  | { kind: "uploading"; fileName: string }
+  | { kind: "json"; fields: FreightFormFields; isAwb: boolean; source?: "qr" | "upload" }
   | { kind: "text"; value: string; targetField: keyof FreightFormFields | "" };
 
 interface Props {
@@ -280,6 +284,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const readerRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [scanState, setScanState] = useState<ScanState>({ kind: "idle" });
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -420,13 +425,84 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
   function handleRescan() {
     setScanState({ kind: "idle" });
     setApplied(false);
-    startScanning();
+    setCameraError(null);
+  }
+
+  async function handleFileUpload(file: File) {
+    setScanState({ kind: "uploading", fileName: file.name });
+    setApplied(false);
+    setCameraError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const resp = await fetch("/api/scan-document", { method: "POST", body: form });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err as { message?: string })?.message ?? `Error ${resp.status}`);
+      }
+      const json = (await resp.json()) as { data: Record<string, unknown> };
+      const text = JSON.stringify(json.data ?? {});
+      const matched = parseResultFromUpload(text);
+      if (!matched) {
+        toast.error("Tidak ada field yang dapat dikenali dari dokumen");
+        setScanState({ kind: "idle" });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal memproses dokumen";
+      toast.error(msg);
+      setScanState({ kind: "idle" });
+    }
+  }
+
+  function parseResultFromUpload(text: string): boolean {
+    try {
+      const obj = JSON.parse(text);
+      if (typeof obj === "object" && obj !== null) {
+        const fields: FreightFormFields = {};
+        let matched = 0;
+        let isAwb = false;
+
+        for (const key of VALID_KEYS) {
+          if (key in obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
+            (fields as Record<string, string>)[key] = String(obj[key]);
+            matched++;
+          }
+        }
+
+        for (const [alias, targets] of Object.entries(AWB_ALIASES)) {
+          if (alias in obj && obj[alias] !== undefined && obj[alias] !== null && obj[alias] !== "") {
+            const val = String(obj[alias]);
+            for (const target of targets!) {
+              if (!(target in fields)) {
+                (fields as Record<string, string>)[target] = val;
+                matched++;
+              }
+            }
+            if (["awb", "awbNumber", "mawb", "hawb", "awb_number", "airline", "flightNo", "pcs", "gw"].includes(alias)) {
+              isAwb = true;
+            }
+          }
+        }
+
+        if (matched > 0) {
+          setScanState({ kind: "json", fields, isAwb, source: "upload" });
+          return true;
+        }
+      }
+    } catch {
+      /* not JSON */
+    }
+    return false;
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleFileUpload(file);
+    e.target.value = "";
   }
 
   useEffect(() => {
-    if (open) {
-      startScanning();
-    } else {
+    if (!open) {
       stopCamera();
       setScanState({ kind: "idle" });
       setCameraError(null);
@@ -434,7 +510,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
       setShowFormat(false);
     }
     return () => stopCamera();
-  }, [open]);
+  }, [open, stopCamera]);
 
   const isScanningOrIdle =
     scanState.kind === "idle" || scanState.kind === "scanning";
@@ -450,8 +526,44 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Action buttons — show when idle (no camera, no upload, no result) */}
+          {scanState.kind === "idle" && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Pilih cara untuk mengisi form freight: scan QR code AWB pakai kamera, atau upload file MAWB / BL / dokumen pengiriman (PDF / foto). AI akan mengekstrak data otomatis.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="h-auto flex-col gap-2 py-4"
+                  onClick={startScanning}
+                >
+                  <Camera className="h-6 w-6" />
+                  <span className="text-sm font-medium">Pakai Kamera</span>
+                  <span className="text-xs text-muted-foreground font-normal">QR / Barcode AWB</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-auto flex-col gap-2 py-4"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-6 w-6" />
+                  <span className="text-sm font-medium">Upload File</span>
+                  <span className="text-xs text-muted-foreground font-normal">PDF / Foto MAWB</span>
+                </Button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+          )}
+
           {/* Camera view */}
-          {isScanningOrIdle && (
+          {scanState.kind === "scanning" && (
             <div className="relative rounded-lg overflow-hidden bg-black aspect-video">
               <video
                 ref={videoRef}
@@ -460,24 +572,29 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                 muted
                 playsInline
               />
-              {scanState.kind === "scanning" && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <ScanLine className="h-10 w-10 text-white/80 animate-pulse" />
-                  <span className="text-white/80 text-xs mt-2 bg-black/40 px-2 py-1 rounded">
-                    Arahkan ke QR code AWB atau barcode
-                  </span>
-                </div>
-              )}
-              {scanState.kind === "idle" && !cameraError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                  <Loader2 className="h-8 w-8 text-white animate-spin" />
-                </div>
-              )}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <ScanLine className="h-10 w-10 text-white/80 animate-pulse" />
+                <span className="text-white/80 text-xs mt-2 bg-black/40 px-2 py-1 rounded">
+                  Arahkan ke QR code AWB atau barcode
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Upload progress */}
+          {scanState.kind === "uploading" && (
+            <div className="flex flex-col items-center gap-3 py-8 border rounded-lg bg-muted/30">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="text-sm font-medium">Mengekstrak data dengan AI...</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xs truncate">{scanState.fileName}</p>
+                <p className="text-xs text-muted-foreground mt-2">Untuk PDF MAWB biasanya butuh 30–60 detik</p>
+              </div>
             </div>
           )}
 
           {/* Camera error */}
-          {cameraError && (
+          {cameraError && scanState.kind !== "scanning" && (
             <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
               <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
               <div>
@@ -487,12 +604,16 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
             </div>
           )}
 
-          {/* JSON / AWB QR result */}
+          {/* JSON / AWB result (from QR scan or AI upload) */}
           {scanState.kind === "json" && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-green-600">
                 <CheckCircle className="h-4 w-4" />
-                {scanState.isAwb ? "Data AWB berhasil dibaca" : "QR berhasil dibaca"}{" "}
+                {scanState.source === "upload"
+                  ? "Data berhasil diekstrak dari dokumen"
+                  : scanState.isAwb
+                  ? "Data AWB berhasil dibaca"
+                  : "QR berhasil dibaca"}{" "}
                 — {Object.keys(scanState.fields).length} field ditemukan
               </div>
               <div className="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border p-3 bg-muted/30">
