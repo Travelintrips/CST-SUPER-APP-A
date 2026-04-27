@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -58,11 +57,11 @@ import {
 
 type AutofillSource = "po" | "so" | "vendor" | "catalog";
 
-const AUTOFILL_SOURCE_META: Record<AutofillSource, { label: string; icon: string; iconBg: string; iconText: string; iconHover: string; borderClass: string }> = {
-  po:      { label: "Purchase Order",        icon: "PO", iconBg: "bg-blue-100",   iconText: "text-blue-700",   iconHover: "hover:bg-blue-200",   borderClass: "border-l-2 border-l-blue-300" },
-  so:      { label: "Sales Order",           icon: "SO", iconBg: "bg-blue-100",   iconText: "text-blue-700",   iconHover: "hover:bg-blue-200",   borderClass: "border-l-2 border-l-blue-300" },
-  vendor:  { label: "katalog vendor",        icon: "V",  iconBg: "bg-purple-100", iconText: "text-purple-700", iconHover: "hover:bg-purple-200", borderClass: "border-l-2 border-l-purple-300" },
-  catalog: { label: "katalog vendor",        icon: "K",  iconBg: "bg-amber-100",  iconText: "text-amber-700",  iconHover: "hover:bg-amber-200",  borderClass: "border-l-2 border-l-amber-300" },
+const AUTOFILL_SOURCE_META: Record<AutofillSource, { label: string; icon: string; iconBg: string; iconText: string; iconHover: string }> = {
+  po:      { label: "Purchase Order",        icon: "PO", iconBg: "bg-blue-100",   iconText: "text-blue-700",   iconHover: "hover:bg-blue-200" },
+  so:      { label: "Sales Order",           icon: "SO", iconBg: "bg-blue-100",   iconText: "text-blue-700",   iconHover: "hover:bg-blue-200" },
+  vendor:  { label: "katalog vendor",        icon: "V",  iconBg: "bg-purple-100", iconText: "text-purple-700", iconHover: "hover:bg-purple-200" },
+  catalog: { label: "katalog vendor",        icon: "K",  iconBg: "bg-amber-100",  iconText: "text-amber-700",  iconHover: "hover:bg-amber-200" },
 };
 
 function AutofillRestoreMarker({ source, originalValue, currentValue, onRestore }: {
@@ -73,31 +72,39 @@ function AutofillRestoreMarker({ source, originalValue, currentValue, onRestore 
 }) {
   const meta = AUTOFILL_SOURCE_META[source];
   const isDifferent = originalValue !== currentValue;
+  const [open, setOpen] = useState(false);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <button
           type="button"
-          onClick={onRestore}
           className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1 rounded text-[10px] font-bold ${meta.iconBg} ${meta.iconText} ${meta.iconHover} transition-colors`}
-          aria-label={`Pulihkan dari ${meta.label}`}
+          aria-label={`Lihat nilai asli dari ${meta.label}`}
           data-testid={`autofill-marker-${source}`}
         >
           {meta.icon}
         </button>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-xs">
-        <div className="text-xs space-y-1">
-          <div className="font-semibold">Diisi otomatis dari {meta.label}</div>
-          <div className="opacity-90">Nilai asli: <span className="font-medium">"{originalValue || "(kosong)"}"</span></div>
-          {isDifferent ? (
-            <div className="italic opacity-80">Klik untuk memulihkan nilai asli.</div>
-          ) : (
-            <div className="italic opacity-80">Nilai sekarang sama dengan nilai asli.</div>
-          )}
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-72 p-3 text-xs space-y-2">
+        <div className="font-semibold">Diisi otomatis dari {meta.label}</div>
+        <div>
+          <div className="text-muted-foreground mb-0.5">Nilai asli:</div>
+          <div className="break-words font-medium">"{originalValue || "(kosong)"}"</div>
         </div>
-      </TooltipContent>
-    </Tooltip>
+        {isDifferent ? (
+          <button
+            type="button"
+            onClick={() => { onRestore(); setOpen(false); }}
+            className={`w-full inline-flex items-center justify-center rounded px-2 py-1 text-xs font-medium ${meta.iconBg} ${meta.iconText} ${meta.iconHover} transition-colors`}
+            data-testid={`autofill-restore-${source}`}
+          >
+            Pulihkan nilai asli
+          </button>
+        ) : (
+          <div className="italic text-muted-foreground">Nilai sekarang sama dengan nilai asli.</div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
