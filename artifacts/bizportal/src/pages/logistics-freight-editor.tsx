@@ -205,6 +205,16 @@ export default function LogisticsFreightEditorPage() {
     setShipperVendorNameFilled(false);
     setShipperVendorAddressFilled(false);
     setShipperCatalogAddressFilled(false);
+    setShipperNameAutoFilledValue("");
+    setShipperAddressAutoFilledValue("");
+    setConsigneeNameAutoFilledValue("");
+    setConsigneeAddressAutoFilledValue("");
+    setOriginAutoFilledValue("");
+    setDestinationAutoFilledValue("");
+    setTransportModeAutoFilledValue("");
+    setShipperVendorNameValue("");
+    setShipperVendorAddressValue("");
+    setShipperCatalogAddressValue("");
   }, [id]);
 
   // Catalog-aware PO autofill helper (shared by manual selection, URL pre-link, and edit load)
