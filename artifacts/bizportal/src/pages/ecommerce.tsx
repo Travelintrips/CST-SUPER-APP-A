@@ -74,6 +74,7 @@ export default function EcommercePage() {
   const syncUrl = (overrides: {
     tab?: string;
     search?: string;
+    orderSearch?: string;
     salesTax?: string;
     purchaseTax?: string;
     categories?: string[];
@@ -81,6 +82,7 @@ export default function EcommercePage() {
     const params = new URLSearchParams(window.location.search);
     const tab = overrides.tab ?? params.get("tab") ?? "";
     const productSearchVal = "search" in overrides ? overrides.search! : (params.get("search") ?? "");
+    const orderSearchVal = "orderSearch" in overrides ? overrides.orderSearch! : (params.get("orderSearch") ?? "");
     const salesTaxVal = "salesTax" in overrides ? overrides.salesTax! : (params.get("salesTax") ?? "all");
     const purchaseTaxVal = "purchaseTax" in overrides ? overrides.purchaseTax! : (params.get("purchaseTax") ?? "all");
     const categoriesVal = "categories" in overrides ? overrides.categories! : (params.get("categories") ? params.get("categories")!.split(",").filter(Boolean) : []);
@@ -91,6 +93,9 @@ export default function EcommercePage() {
 
     if (productSearchVal) params.set("search", productSearchVal);
     else params.delete("search");
+
+    if (orderSearchVal) params.set("orderSearch", orderSearchVal);
+    else params.delete("orderSearch");
 
     if (salesTaxVal && salesTaxVal !== "all") params.set("salesTax", salesTaxVal);
     else params.delete("salesTax");
@@ -194,7 +199,7 @@ export default function EcommercePage() {
     return c ? c.split(",").filter(Boolean) : [];
   });
   const [productSearch, setProductSearch] = useState<string>(() => initialParams.get("search") ?? "");
-  const [orderSearch, setOrderSearch] = useState<string>("");
+  const [orderSearch, setOrderSearch] = useState<string>(() => initialParams.get("orderSearch") ?? "");
 
   const filteredOrders = (orders ?? []).filter((o) => {
     if (!orderSearch.trim()) return true;
@@ -1041,7 +1046,7 @@ export default function EcommercePage() {
                 className="pl-9"
                 placeholder="Cari nama pelanggan, email, atau ID order..."
                 value={orderSearch}
-                onChange={(e) => setOrderSearch(e.target.value)}
+                onChange={(e) => { setOrderSearch(e.target.value); syncUrl({ orderSearch: e.target.value }); }}
                 data-testid="input-order-search"
               />
             </div>
