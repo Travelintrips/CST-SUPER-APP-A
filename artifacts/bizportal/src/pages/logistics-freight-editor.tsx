@@ -1217,7 +1217,7 @@ export default function LogisticsFreightEditorPage() {
                   <div className="space-y-2">
                     <Label>Moda Transportasi</Label>
                     <Select value={form.transportMode || "__none"} onValueChange={(v) => { setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v })); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }}>
-                      <SelectTrigger><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
+                      <SelectTrigger className={scannedFields.has("transportMode") ? "ring-1 ring-green-400" : ""}><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">— Belum ditentukan —</SelectItem>
                         <SelectItem value="sea">Laut (Sea)</SelectItem>
