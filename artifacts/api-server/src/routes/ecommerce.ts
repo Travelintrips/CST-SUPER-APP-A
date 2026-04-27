@@ -161,6 +161,7 @@ router.post("/products", async (req, res) => {
   } = req.body;
   if (!name || !sku || price == null) return res.status(400).json({ message: "name, sku, price are required" });
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
+  if (categoryNames.length === 0) return res.status(400).json({ message: "Produk harus memiliki setidaknya satu kategori" });
 
   let validCats: { id: number; name: string; createdAt: Date }[] = [];
   if (categoryNames.length > 0) {
@@ -214,6 +215,7 @@ router.put("/products/:id", async (req, res) => {
     itemType, unit, subcategory, isActive,
   } = req.body;
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
+  if (categoryNames.length === 0) return res.status(400).json({ message: "Produk harus memiliki setidaknya satu kategori" });
 
   let validCats: { id: number; name: string; createdAt: Date }[] = [];
   if (categoryNames.length > 0) {
