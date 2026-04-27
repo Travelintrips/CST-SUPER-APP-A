@@ -55,9 +55,29 @@ router.get("/freight-shipments", async (req, res) => {
     }
   }
 
+  // Bulk-fetch total expenses per shipment in one query
+  const expenseTotals = shipmentIds.length > 0
+    ? await db
+        .select({ shipmentId: expensesTable.shipmentId, total: sum(expensesTable.total) })
+        .from(expensesTable)
+        .where(
+          shipmentIds.length === 1
+            ? eq(expensesTable.shipmentId, shipmentIds[0]!)
+            : inArray(expensesTable.shipmentId, shipmentIds)
+        )
+        .groupBy(expensesTable.shipmentId)
+    : [];
+  const expenseTotalMap = new Map<number, string>();
+  for (const e of expenseTotals) {
+    if (e.shipmentId != null && e.total != null) {
+      expenseTotalMap.set(e.shipmentId, e.total);
+    }
+  }
+
   return res.json(rows.map((r) => ({
     ...serializeShipment(r),
     approvedQuoteCost: approvedCostMap.get(r.id) ?? null,
+    totalExpenses: expenseTotalMap.get(r.id) ?? null,
   })));
 });
 

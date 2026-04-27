@@ -76,6 +76,33 @@ function CostBadge({ actualCost, approvedQuoteCost }: { actualCost?: string | nu
   return <span className="text-xs text-muted-foreground">Kuota: {idr(quoted)}</span>;
 }
 
+function ExpenseBadge({ totalExpenses, actualCost, approvedQuoteCost }: { totalExpenses?: string | null; actualCost?: string | null; approvedQuoteCost?: string | null }) {
+  const expenses = totalExpenses ? parseFloat(totalExpenses) : null;
+  if (expenses === null || expenses === 0) return null;
+  const actual = actualCost ? parseFloat(actualCost) : null;
+  const quoted = approvedQuoteCost ? parseFloat(approvedQuoteCost) : null;
+  const baseline = actual ?? quoted;
+  const baselineLabel = actual !== null ? "Aktual" : "Kuota";
+  if (baseline === null) {
+    return (
+      <div className="inline-flex text-xs rounded px-1.5 py-1 border bg-muted/50 border-border mt-1">
+        <span className="text-muted-foreground">Biaya Op.: {idr(expenses)}</span>
+      </div>
+    );
+  }
+  const over = expenses > baseline;
+  const pct = baseline !== 0 ? Math.abs(((expenses - baseline) / baseline) * 100) : null;
+  return (
+    <div className={`inline-flex flex-col gap-0.5 text-xs rounded px-1.5 py-1 border mt-1 ${over ? "bg-red-500/5 border-red-500/20" : "bg-emerald-500/5 border-emerald-500/20"}`}>
+      <span className="text-muted-foreground leading-none">Biaya Op. vs {baselineLabel}</span>
+      <span className={`flex items-center gap-0.5 font-medium leading-none ${over ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+        {over ? <TrendingUp className="h-3 w-3 shrink-0" /> : <TrendingDown className="h-3 w-3 shrink-0" />}
+        {idr(expenses)}{pct !== null && <span className="opacity-70 ml-0.5">({pct.toFixed(0)}%{over ? " ↑" : " ↓"})</span>}
+      </span>
+    </div>
+  );
+}
+
 const FREIGHT_REFRESH_INTERVALS = [
   { label: "30 detik", value: "30" },
   { label: "1 menit", value: "60" },
@@ -561,7 +588,10 @@ export default function LogisticsFreightPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <CostBadge actualCost={s.actualCost} approvedQuoteCost={s.approvedQuoteCost} />
+                        <div className="flex flex-col items-start gap-0.5">
+                          <CostBadge actualCost={s.actualCost} approvedQuoteCost={s.approvedQuoteCost} />
+                          <ExpenseBadge totalExpenses={s.totalExpenses} actualCost={s.actualCost} approvedQuoteCost={s.approvedQuoteCost} />
+                        </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                         {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
@@ -663,9 +693,10 @@ export default function LogisticsFreightPage() {
                   )}
 
                   {/* Cost comparison */}
-                  {(s.actualCost || s.approvedQuoteCost) && (
-                    <div>
+                  {(s.actualCost || s.approvedQuoteCost || s.totalExpenses) && (
+                    <div className="flex flex-col items-start gap-1">
                       <CostBadge actualCost={s.actualCost} approvedQuoteCost={s.approvedQuoteCost} />
+                      <ExpenseBadge totalExpenses={s.totalExpenses} actualCost={s.actualCost} approvedQuoteCost={s.approvedQuoteCost} />
                     </div>
                   )}
 

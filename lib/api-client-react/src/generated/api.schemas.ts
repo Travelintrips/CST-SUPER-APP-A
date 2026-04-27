@@ -1381,6 +1381,7 @@ export interface FreightShipment {
   notes?: string | null;
   actualCost?: string | null;
   approvedQuoteCost?: string | null;
+  totalExpenses?: string | null;
   departureDate?: string | null;
   arrivalDate?: string | null;
   trackingNumber?: string | null;
