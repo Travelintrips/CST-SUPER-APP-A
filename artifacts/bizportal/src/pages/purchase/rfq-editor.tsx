@@ -339,6 +339,7 @@ export default function PurchaseDocumentEditorPage() {
 
   const handleScannedData = (data: ScannedDocumentData) => {
     if (data.partyName) setSupplierName(data.partyName);
+    if (data.partyAddress) { setSupplierAddress(data.partyAddress); setSupplierAddressAutoFilled(false); }
     if (data.docDate) setExpectedDate(data.docDate.slice(0, 10));
     if (data.notes) setNotes(data.notes);
     if (data.lines && data.lines.length > 0) {
