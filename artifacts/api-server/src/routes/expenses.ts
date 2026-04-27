@@ -492,12 +492,50 @@ router.post("/:id/action", async (req, res) => {
     await db.update(expensesTable)
       .set({ status: "posted", entryId: entry.id, updatedAt: new Date() })
       .where(eq(expensesTable.id, id));
+  } else if (action === "pay") {
+    const settings = await ensureAccountingSettings();
+    const totalN = Number(expense.total);
+
+    const effectivePayableAccountId = expense.payableAccountId ?? settings.apAccountId;
+    const effectiveBankAccountId = settings.defaultBankAccountId;
+
+    if (!effectivePayableAccountId) {
+      return res.status(400).json({ message: "Akun hutang belum dikonfigurasi." });
+    }
+    if (!effectiveBankAccountId) {
+      return res.status(400).json({ message: "Akun bank default belum dikonfigurasi." });
+    }
+
+    const [bankJournal] = await db
+      .select()
+      .from(accountingJournalsTable)
+      .where(eq(accountingJournalsTable.type, "bank"))
+      .limit(1);
+    if (!bankJournal) return res.status(400).json({ message: "Jurnal bank tidak ditemukan." });
+
+    await postEntry(
+      {
+        journalId: bankJournal.id,
+        date: new Date(),
+        ref: expense.expenseNumber,
+        description: `Pembayaran ${expense.expenseNumber} — ${expense.vendorEmployee ?? expense.description ?? "Expense"}`,
+        source: "manual",
+        lines: [
+          { accountId: effectivePayableAccountId, debit: totalN, credit: 0, description: "Pelunasan Hutang Biaya" },
+          { accountId: effectiveBankAccountId, debit: 0, credit: totalN, description: "Bank Mandiri" },
+        ],
+      },
+      bankJournal.code,
+    );
+
+    await db.update(expensesTable)
+      .set({ status: "paid", updatedAt: new Date() })
+      .where(eq(expensesTable.id, id));
   } else {
     const statusMap: Record<string, string> = {
       submit: "submitted",
       approve: "approved",
       reject: "rejected",
-      pay: "paid",
       reset: "draft",
     };
     const update: Record<string, unknown> = { status: statusMap[action]!, updatedAt: new Date() };
