@@ -108,6 +108,7 @@ type FreightRefreshValue = "30" | "60" | "300" | "off";
 
 const FREIGHT_REFRESH_LS_KEY = "freight-refresh-interval";
 const FREIGHT_DATE_LS_KEY = "freight-date-filter";
+const FREIGHT_STATUS_LS_KEY = "freight-status-filter";
 
 function getInitialRefreshInterval(): FreightRefreshValue {
   try {
@@ -238,9 +239,17 @@ export default function LogisticsFreightPage() {
     const fromUrl = parseParamsFromSearch(window.location.search);
     const urlSearch = new URLSearchParams(window.location.search);
     const urlHasDate = urlSearch.has("date") || urlSearch.has("from") || urlSearch.has("to");
-    if (urlHasDate) return fromUrl;
+    const urlHasStatus = urlSearch.has("status");
+    let status = fromUrl.status;
+    if (!urlHasStatus) {
+      try {
+        const saved = localStorage.getItem(FREIGHT_STATUS_LS_KEY);
+        if (saved) status = saved;
+      } catch {}
+    }
+    if (urlHasDate) return { ...fromUrl, status };
     const stored = loadDateFromStorage();
-    return { status: fromUrl.status, bl: fromUrl.bl, preset: stored.preset, from: stored.from, to: stored.to };
+    return { status, bl: fromUrl.bl, preset: stored.preset, from: stored.from, to: stored.to };
   })();
 
   const [statusFilter, setStatusFilterState] = useState<string | null>(initial.status);
@@ -278,6 +287,11 @@ export default function LogisticsFreightPage() {
       navigate(newUrl, { replace: true });
     }
     try {
+      if (statusFilter) {
+        localStorage.setItem(FREIGHT_STATUS_LS_KEY, statusFilter);
+      } else {
+        localStorage.removeItem(FREIGHT_STATUS_LS_KEY);
+      }
       localStorage.setItem(FREIGHT_DATE_LS_KEY, JSON.stringify({
         preset: datePreset,
         from: datePreset === "custom" ? customDateFrom : "",
