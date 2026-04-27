@@ -750,7 +750,7 @@ export default function LogisticsFreightEditorPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="shipperName">Nama Shipper <span className="text-destructive">*</span></Label>
-                    <Input id="shipperName" value={form.shipperName} onChange={(e) => { set("shipperName")(e); if (shipperVendorNameFilled) setShipperVendorNameFilled(false); }} placeholder="PT. Contoh Shipper" required className={scannedFields.has("shipperName") ? "ring-1 ring-green-400" : ""} />
+                    <Input id="shipperName" value={form.shipperName} onChange={set("shipperName")} placeholder="PT. Contoh Shipper" required className={scannedFields.has("shipperName") ? "ring-1 ring-green-400" : ""} />
                     {(shipperNameAutoFilled || shipperVendorNameFilled || scannedFields.has("shipperName")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperNameAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
@@ -768,7 +768,7 @@ export default function LogisticsFreightEditorPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="shipperAddress">Alamat Shipper</Label>
-                    <Input id="shipperAddress" value={form.shipperAddress} onChange={(e) => { set("shipperAddress")(e); if (shipperVendorAddressFilled) setShipperVendorAddressFilled(false); if (shipperCatalogAddressFilled) setShipperCatalogAddressFilled(false); }} placeholder="Jl. ..." className={scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} />
+                    <Input id="shipperAddress" value={form.shipperAddress} onChange={set("shipperAddress")} placeholder="Jl. ..." className={scannedFields.has("shipperAddress") ? "ring-1 ring-green-400" : ""} />
                     {(shipperAddressAutoFilled || shipperVendorAddressFilled || shipperCatalogAddressFilled || scannedFields.has("shipperAddress")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                         {shipperAddressAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari PO</span>}
