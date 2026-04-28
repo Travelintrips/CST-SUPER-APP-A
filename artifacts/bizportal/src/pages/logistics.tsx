@@ -135,18 +135,31 @@ export default function LogisticsPage() {
     VALID_FREIGHT_STATUSES.includes(initialStatus) ? initialStatus : "all"
   );
   const [dismissingFilter, setDismissingFilter] = useState<string | null>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleStatFilterToggle = (value: string) => {
+    if (dismissTimerRef.current !== null) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+      setDismissingFilter(null);
+    }
     if (freightStatusFilter === value) {
       setDismissingFilter(value);
-      setTimeout(() => {
+      dismissTimerRef.current = setTimeout(() => {
         setFreightStatusFilter("all");
         setDismissingFilter(null);
+        dismissTimerRef.current = null;
       }, 120);
     } else {
       setFreightStatusFilter(value);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current !== null) clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
   const [freightSortOrder, setFreightSortOrder] = useState<"newest" | "oldest">(
     initialParams.get("sort") === "oldest" ? "oldest" : "newest"
   );
