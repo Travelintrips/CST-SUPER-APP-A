@@ -831,8 +831,38 @@ export default function LogisticsFreightEditorPage() {
                       }
                       setPrePOVendorId(null);
                       setPurchaseDocId(null);
+                      setPoPickerOpen(true);
                     }}>
                       Ganti
+                    </Button>
+                    <Button type="button" variant="outline" size="sm"
+                      className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                      data-testid="clear-po-button"
+                      onClick={() => {
+                        if (shipperNameAutoFilled) {
+                          setForm((f) => ({ ...f, shipperName: f.shipperName === shipperNameAutoFilledValue ? "" : f.shipperName }));
+                          setShipperNameAutoFilled(false);
+                        }
+                        if (shipperAddressAutoFilled) {
+                          setForm((f) => ({ ...f, shipperAddress: f.shipperAddress === shipperAddressAutoFilledValue ? "" : f.shipperAddress }));
+                          setShipperAddressAutoFilled(false);
+                        }
+                        if (shipperCatalogAddressFilled) {
+                          setForm((f) => ({ ...f, shipperAddress: f.shipperAddress === shipperCatalogAddressValue ? "" : f.shipperAddress }));
+                          setShipperCatalogAddressFilled(false);
+                          setShipperCatalogAddressValue("");
+                        }
+                        if (prePOVendorId !== null) {
+                          setSelectedVendorId(prePOVendorId);
+                          setVendorWasManuallySelected(true);
+                        } else if (!vendorWasManuallySelected) {
+                          setSelectedVendorId(null);
+                        }
+                        setPrePOVendorId(null);
+                        setPurchaseDocId(null);
+                      }}>
+                      <X className="mr-1 h-3.5 w-3.5" />
+                      Hapus PO
                     </Button>
                   </div>
                 ) : (
