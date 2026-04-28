@@ -16,6 +16,13 @@ interface UploadResponse {
 interface UseUploadOptions {
   /** Base path where object storage routes are mounted (default: "/api/storage") */
   basePath?: string;
+  /**
+   * Optional callback that returns a Bearer token for authenticating the
+   * presigned-URL request against your API server.  When provided the token
+   * is included as `Authorization: Bearer <token>`.  Use this when your
+   * backend validates sessions via JWT (e.g. Clerk's getToken()).
+   */
+  getAuthToken?: () => Promise<string | null | undefined>;
   onSuccess?: (response: UploadResponse) => void;
   onError?: (error: Error) => void;
 }
@@ -59,12 +66,26 @@ export function useUpload(options: UseUploadOptions = {}) {
   const [error, setError] = useState<Error | null>(null);
   const [progress, setProgress] = useState(0);
 
+  const buildAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    if (!options.getAuthToken) return {};
+    try {
+      const token = await options.getAuthToken();
+      if (token) return { Authorization: `Bearer ${token}` };
+    } catch {
+      // ignore – fall back to cookie-based auth
+    }
+    return {};
+  }, [options]);
+
   const requestUploadUrl = useCallback(
     async (file: File): Promise<UploadResponse> => {
+      const authHeaders = await buildAuthHeaders();
       const response = await fetch(`${basePath}/uploads/request-url`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders,
         },
         body: JSON.stringify({
           name: file.name,
@@ -80,7 +101,7 @@ export function useUpload(options: UseUploadOptions = {}) {
 
       return response.json();
     },
-    []
+    [basePath, buildAuthHeaders]
   );
 
   const uploadToPresignedUrl = useCallback(
@@ -136,10 +157,13 @@ export function useUpload(options: UseUploadOptions = {}) {
       url: string;
       headers?: Record<string, string>;
     }> => {
+      const authHeaders = await buildAuthHeaders();
       const response = await fetch(`${basePath}/uploads/request-url`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders,
         },
         body: JSON.stringify({
           name: file.name,
@@ -159,7 +183,7 @@ export function useUpload(options: UseUploadOptions = {}) {
         headers: { "Content-Type": file.type || "application/octet-stream" },
       };
     },
-    []
+    [basePath, buildAuthHeaders]
   );
 
   return {
