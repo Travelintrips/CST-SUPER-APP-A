@@ -622,15 +622,19 @@ export default function ExpenseEditorPage() {
               </Button>
             )}
             {!isNew && status === "draft" && (
-              <Button
-                variant="secondary"
-                onClick={() => doAction("submit")}
-                disabled={actionMut.isPending || missingRequired}
+              <span
+                className={missingRequired ? "cursor-not-allowed" : undefined}
                 title={missingRequired ? "Harap unggah lampiran bukti sebelum mengajukan" : undefined}
               >
-                <Send size={14} className="mr-1" />
-                Ajukan
-              </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => doAction("submit")}
+                  disabled={actionMut.isPending || missingRequired}
+                >
+                  <Send size={14} className="mr-1" />
+                  Ajukan
+                </Button>
+              </span>
             )}
             {!isNew && status === "submitted" && (
               <>
