@@ -211,6 +211,7 @@ export interface Supplier {
   contactEmail: string;
   phone?: string;
   address?: string;
+  taxId?: string | null;
   defaultPurchaseTaxId?: number | null;
   createdAt: string;
 }
@@ -221,6 +222,7 @@ export interface CreateSupplierBody {
   contactEmail: string;
   phone?: string;
   address?: string;
+  taxId?: string | null;
   defaultPurchaseTaxId?: number | null;
 }
 
@@ -1278,7 +1280,6 @@ export interface Correspondence {
   supplierId?: number | null;
   tags: string[];
   attachments?: string | null;
-  attachmentCount?: number;
   emailMessageId?: string | null;
   emailThreadId?: string | null;
   correspondedAt: string;

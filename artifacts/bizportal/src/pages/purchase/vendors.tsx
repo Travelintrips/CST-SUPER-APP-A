@@ -60,12 +60,13 @@ export default function VendorsPage() {
     contactEmail: "",
     phone: "",
     address: "",
+    taxId: "",
     defaultPurchaseTaxId: null as number | null,
   });
 
   const reset = () => {
     setEditing(null);
-    setForm({ name: "", country: "", contactEmail: "", phone: "", address: "", defaultPurchaseTaxId: null });
+    setForm({ name: "", country: "", contactEmail: "", phone: "", address: "", taxId: "", defaultPurchaseTaxId: null });
   };
 
   const startEdit = (v: Supplier) => {
@@ -76,6 +77,7 @@ export default function VendorsPage() {
       contactEmail: v.contactEmail,
       phone: v.phone ?? "",
       address: v.address ?? "",
+      taxId: v.taxId ?? "",
       defaultPurchaseTaxId: v.defaultPurchaseTaxId ?? null,
     });
     setOpen(true);
@@ -92,6 +94,7 @@ export default function VendorsPage() {
       contactEmail: form.contactEmail,
       phone: form.phone || undefined,
       address: form.address || undefined,
+      taxId: form.taxId || null,
       defaultPurchaseTaxId: form.defaultPurchaseTaxId,
     };
     try {
@@ -172,6 +175,10 @@ export default function VendorsPage() {
                   <Input id="email" type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
                 </div>
                 <div className="grid gap-1.5">
+                  <Label htmlFor="taxId">NPWP</Label>
+                  <Input id="taxId" value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} placeholder="cth. 01.234.567.8-901.000" data-testid="input-vendor-npwp" />
+                </div>
+                <div className="grid gap-1.5">
                   <Label htmlFor="address">Alamat</Label>
                   <Textarea id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                 </div>
@@ -214,7 +221,7 @@ export default function VendorsPage() {
                   <TableHead>Nama</TableHead>
                   <TableHead>Negara</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Telepon</TableHead>
+                  <TableHead>NPWP</TableHead>
                   <TableHead>Pajak Default</TableHead>
                   <TableHead className="w-[120px] text-right">Aksi</TableHead>
                 </TableRow>
@@ -225,7 +232,7 @@ export default function VendorsPage() {
                     <TableCell className="font-medium">{v.name}</TableCell>
                     <TableCell>{v.country}</TableCell>
                     <TableCell>{v.contactEmail}</TableCell>
-                    <TableCell>{v.phone ?? "-"}</TableCell>
+                    <TableCell className="font-mono text-xs">{v.taxId ?? "-"}</TableCell>
                     <TableCell>{taxLabel(v.defaultPurchaseTaxId)}</TableCell>
                     <TableCell className="text-right">
                       <Button size="icon" variant="ghost" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>

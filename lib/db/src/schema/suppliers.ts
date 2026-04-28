@@ -9,6 +9,7 @@ export const suppliersTable = pgTable("suppliers", {
   contactEmail: text("contact_email").notNull(),
   phone: text("phone"),
   address: text("address"),
+  taxId: text("tax_id"),
   defaultPurchaseTaxId: integer("default_purchase_tax_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

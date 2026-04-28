@@ -448,6 +448,7 @@ export const ListSuppliersResponseItem = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
@@ -462,6 +463,7 @@ export const CreateSupplierBody = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
 });
 
@@ -478,6 +480,7 @@ export const UpdateSupplierBody = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
 });
 
@@ -488,6 +491,7 @@ export const UpdateSupplierResponse = zod.object({
   contactEmail: zod.string(),
   phone: zod.string().optional(),
   address: zod.string().optional(),
+  taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
   createdAt: zod.string(),
 });
@@ -624,6 +628,8 @@ export const ListFreightShipmentsResponseItem = zod.object({
   salesDocId: zod.number().nullish(),
   purchaseDocId: zod.number().nullish(),
   approvedVendorName: zod.string().nullish(),
+  approvedQuoteCost: zod.string().nullish(),
+  totalExpenses: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
 });
@@ -715,6 +721,8 @@ export const GetFreightShipmentResponse = zod
     salesDocId: zod.number().nullish(),
     purchaseDocId: zod.number().nullish(),
     approvedVendorName: zod.string().nullish(),
+    approvedQuoteCost: zod.string().nullish(),
+    totalExpenses: zod.string().nullish(),
     createdById: zod.string().nullish(),
     createdAt: zod.string(),
   })
@@ -858,6 +866,8 @@ export const UpdateFreightShipmentResponse = zod.object({
   salesDocId: zod.number().nullish(),
   purchaseDocId: zod.number().nullish(),
   approvedVendorName: zod.string().nullish(),
+  approvedQuoteCost: zod.string().nullish(),
+  totalExpenses: zod.string().nullish(),
   createdById: zod.string().nullish(),
   createdAt: zod.string(),
 });

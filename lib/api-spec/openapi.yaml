@@ -2868,6 +2868,9 @@ components:
           type: string
         address:
           type: string
+        taxId:
+          type: string
+          nullable: true
         defaultPurchaseTaxId:
           type: integer
           nullable: true
@@ -2888,6 +2891,9 @@ components:
           type: string
         address:
           type: string
+        taxId:
+          type: string
+          nullable: true
         defaultPurchaseTaxId:
           type: integer
           nullable: true

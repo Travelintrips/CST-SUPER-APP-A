@@ -560,6 +560,12 @@ export default function PurchaseDocumentEditorPage() {
               <Label>Nama Vendor</Label>
               <Input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} disabled={!isEditable} data-testid="input-vendor-name" />
             </div>
+            {supplierId && (vendors ?? []).find((v) => v.id === supplierId)?.taxId && (
+              <div className="grid gap-1.5">
+                <Label>NPWP Vendor</Label>
+                <Input value={(vendors ?? []).find((v) => v.id === supplierId)?.taxId ?? ""} disabled data-testid="input-vendor-npwp" />
+              </div>
+            )}
             <div className="grid gap-1.5 md:col-span-2">
               <div className="flex items-center gap-2">
                 <Label>Alamat Supplier</Label>
