@@ -909,16 +909,30 @@ export default function LogisticsFreightEditorPage() {
                     )}
                   <Popover open={vendorPickerOpen} onOpenChange={(open) => { setVendorPickerOpen(open); if (!open) setVendorSearchQuery(""); }}>
                     <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        data-testid="vendor-picker-trigger"
-                      >
-                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-60" />
-                        Pilih Vendor
-                      </Button>
+                      {(() => {
+                        const sv = selectedVendorId ? suppliers.find((s) => s.id === selectedVendorId) : null;
+                        return (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 max-w-[200px]"
+                            data-testid="vendor-picker-trigger"
+                          >
+                            {sv ? (
+                              <>
+                                <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                                <span className="truncate">{sv.name}</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChevronsUpDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                                Pilih Vendor
+                              </>
+                            )}
+                          </Button>
+                        );
+                      })()}
                     </PopoverTrigger>
                     <PopoverContent className="w-[360px] p-0" align="end">
                       <Command>
