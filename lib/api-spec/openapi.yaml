@@ -1147,6 +1147,12 @@ paths:
           schema:
             type: string
             enum: [none, to_invoice, invoiced]
+        - in: query
+          name: paymentStatus
+          required: false
+          schema:
+            type: string
+            enum: [unpaid, partial, paid]
       responses:
         "200":
           description: Sales documents
@@ -1289,6 +1295,12 @@ paths:
           schema:
             type: string
             enum: [none, to_bill, billed]
+        - in: query
+          name: paymentStatus
+          required: false
+          schema:
+            type: string
+            enum: [unpaid, partial, paid]
       responses:
         "200":
           description: Purchase documents
@@ -3215,13 +3227,16 @@ components:
         customerAddress:
           type: string
           nullable: true
+        paymentStatus:
+          type: string
+          enum: [unpaid, partial, paid]
         amountPaid:
           type: number
         createdAt:
           type: string
         updatedAt:
           type: string
-      required: [id, docNumber, kind, status, invoiceStatus, deliveryStatus, customerName, totalAmount, taxAmount, grandTotal, createdAt, updatedAt]
+      required: [id, docNumber, kind, status, invoiceStatus, deliveryStatus, paymentStatus, customerName, totalAmount, taxAmount, grandTotal, amountPaid, createdAt, updatedAt]
 
     SalesDocumentDetail:
       allOf:
@@ -3372,13 +3387,16 @@ components:
         confirmedAt:
           type: string
           nullable: true
+        paymentStatus:
+          type: string
+          enum: [unpaid, partial, paid]
         amountPaid:
           type: number
         createdAt:
           type: string
         updatedAt:
           type: string
-      required: [id, docNumber, kind, status, receiveStatus, billStatus, supplierName, totalAmount, taxAmount, grandTotal, createdAt, updatedAt]
+      required: [id, docNumber, kind, status, receiveStatus, billStatus, paymentStatus, supplierName, totalAmount, taxAmount, grandTotal, amountPaid, createdAt, updatedAt]
 
     PurchaseDocumentDetail:
       allOf:

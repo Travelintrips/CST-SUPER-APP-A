@@ -1440,6 +1440,7 @@ export const DeleteCustomerResponse = zod.object({
 export const ListSalesDocumentsQueryParams = zod.object({
   kind: zod.enum(["quote", "order"]).optional(),
   invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]).optional(),
+  paymentStatus: zod.enum(["unpaid", "partial", "paid"]).optional(),
 });
 
 export const ListSalesDocumentsResponseItem = zod.object({
@@ -1465,7 +1466,8 @@ export const ListSalesDocumentsResponseItem = zod.object({
   notes: zod.string().nullish(),
   confirmedAt: zod.string().nullish(),
   customerAddress: zod.string().nullish(),
-  amountPaid: zod.number().optional(),
+  paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+  amountPaid: zod.number(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -1531,7 +1533,8 @@ export const GetSalesDocumentResponse = zod
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
     customerAddress: zod.string().nullish(),
-    amountPaid: zod.number().optional(),
+    paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+    amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -1607,7 +1610,8 @@ export const UpdateSalesDocumentResponse = zod
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
     customerAddress: zod.string().nullish(),
-    amountPaid: zod.number().optional(),
+    paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+    amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -1681,7 +1685,8 @@ export const SalesDocumentActionResponse = zod
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
     customerAddress: zod.string().nullish(),
-    amountPaid: zod.number().optional(),
+    paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+    amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -1719,6 +1724,7 @@ export const GetPurchaseSummaryResponse = zod.object({
 export const ListPurchaseDocumentsQueryParams = zod.object({
   kind: zod.enum(["rfq", "order"]).optional(),
   billStatus: zod.enum(["none", "to_bill", "billed"]).optional(),
+  paymentStatus: zod.enum(["unpaid", "partial", "paid"]).optional(),
 });
 
 export const ListPurchaseDocumentsResponseItem = zod.object({
@@ -1738,7 +1744,8 @@ export const ListPurchaseDocumentsResponseItem = zod.object({
   expectedDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   confirmedAt: zod.string().nullish(),
-  amountPaid: zod.number().optional(),
+  paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+  amountPaid: zod.number(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -1793,7 +1800,8 @@ export const GetPurchaseDocumentResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
-    amountPaid: zod.number().optional(),
+    paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+    amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -1858,7 +1866,8 @@ export const UpdatePurchaseDocumentResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
-    amountPaid: zod.number().optional(),
+    paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+    amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })
@@ -1926,7 +1935,8 @@ export const PurchaseDocumentActionResponse = zod
     expectedDate: zod.string().nullish(),
     notes: zod.string().nullish(),
     confirmedAt: zod.string().nullish(),
-    amountPaid: zod.number().optional(),
+    paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+    amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   })

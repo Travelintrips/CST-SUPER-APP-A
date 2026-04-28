@@ -168,10 +168,13 @@ router.delete("/customers/:id", async (req, res) => {
 router.get("/documents", async (req, res) => {
   const kind = req.query["kind"] as SalesDocKind | undefined;
   const invoiceStatus = req.query["invoiceStatus"] as SalesInvoiceStatus | undefined;
+  const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
   const conds: SQL[] = [];
   if (kind === "quote" || kind === "order") conds.push(eq(salesDocumentsTable.kind, kind));
   if (invoiceStatus === "none" || invoiceStatus === "to_invoice" || invoiceStatus === "invoiced")
     conds.push(eq(salesDocumentsTable.invoiceStatus, invoiceStatus));
+  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
+    conds.push(eq(salesDocumentsTable.paymentStatus, paymentStatus));
   const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
   const rows = where
     ? await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt))

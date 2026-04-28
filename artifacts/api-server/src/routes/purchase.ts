@@ -107,10 +107,13 @@ router.get("/summary", async (_req, res) => {
 router.get("/documents", async (req, res) => {
   const kind = req.query["kind"] as PurchaseKind | undefined;
   const billStatus = req.query["billStatus"] as PurchaseBillStatus | undefined;
+  const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
   const conds: SQL[] = [];
   if (kind === "rfq" || kind === "order") conds.push(eq(purchaseDocumentsTable.kind, kind));
   if (billStatus === "none" || billStatus === "to_bill" || billStatus === "billed")
     conds.push(eq(purchaseDocumentsTable.billStatus, billStatus));
+  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
+    conds.push(eq(purchaseDocumentsTable.paymentStatus, paymentStatus));
   const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
   const rows = where
     ? await db

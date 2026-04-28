@@ -450,6 +450,15 @@ export const SalesDocumentTransportMode = {
   multimodal: "multimodal",
 } as const;
 
+export type SalesDocumentPaymentStatus =
+  (typeof SalesDocumentPaymentStatus)[keyof typeof SalesDocumentPaymentStatus];
+
+export const SalesDocumentPaymentStatus = {
+  unpaid: "unpaid",
+  partial: "partial",
+  paid: "paid",
+} as const;
+
 export interface SalesDocument {
   id: number;
   docNumber: string;
@@ -473,7 +482,8 @@ export interface SalesDocument {
   notes?: string | null;
   confirmedAt?: string | null;
   customerAddress?: string | null;
-  amountPaid?: number;
+  paymentStatus: SalesDocumentPaymentStatus;
+  amountPaid: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -589,6 +599,15 @@ export const PurchaseDocumentBillStatus = {
   billed: "billed",
 } as const;
 
+export type PurchaseDocumentPaymentStatus =
+  (typeof PurchaseDocumentPaymentStatus)[keyof typeof PurchaseDocumentPaymentStatus];
+
+export const PurchaseDocumentPaymentStatus = {
+  unpaid: "unpaid",
+  partial: "partial",
+  paid: "paid",
+} as const;
+
 export interface PurchaseDocument {
   id: number;
   docNumber: string;
@@ -606,7 +625,8 @@ export interface PurchaseDocument {
   expectedDate?: string | null;
   notes?: string | null;
   confirmedAt?: string | null;
-  amountPaid?: number;
+  paymentStatus: PurchaseDocumentPaymentStatus;
+  amountPaid: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1382,8 +1402,6 @@ export interface FreightShipment {
   status: FreightShipmentStatus;
   notes?: string | null;
   actualCost?: string | null;
-  approvedQuoteCost?: string | null;
-  totalExpenses?: string | null;
   departureDate?: string | null;
   arrivalDate?: string | null;
   trackingNumber?: string | null;
@@ -1968,6 +1986,7 @@ export type ListFreightQuotesParams = {
 export type ListSalesDocumentsParams = {
   kind?: ListSalesDocumentsKind;
   invoiceStatus?: ListSalesDocumentsInvoiceStatus;
+  paymentStatus?: ListSalesDocumentsPaymentStatus;
 };
 
 export type ListSalesDocumentsKind =
@@ -1987,9 +2006,19 @@ export const ListSalesDocumentsInvoiceStatus = {
   invoiced: "invoiced",
 } as const;
 
+export type ListSalesDocumentsPaymentStatus =
+  (typeof ListSalesDocumentsPaymentStatus)[keyof typeof ListSalesDocumentsPaymentStatus];
+
+export const ListSalesDocumentsPaymentStatus = {
+  unpaid: "unpaid",
+  partial: "partial",
+  paid: "paid",
+} as const;
+
 export type ListPurchaseDocumentsParams = {
   kind?: ListPurchaseDocumentsKind;
   billStatus?: ListPurchaseDocumentsBillStatus;
+  paymentStatus?: ListPurchaseDocumentsPaymentStatus;
 };
 
 export type ListPurchaseDocumentsKind =
@@ -2007,6 +2036,15 @@ export const ListPurchaseDocumentsBillStatus = {
   none: "none",
   to_bill: "to_bill",
   billed: "billed",
+} as const;
+
+export type ListPurchaseDocumentsPaymentStatus =
+  (typeof ListPurchaseDocumentsPaymentStatus)[keyof typeof ListPurchaseDocumentsPaymentStatus];
+
+export const ListPurchaseDocumentsPaymentStatus = {
+  unpaid: "unpaid",
+  partial: "partial",
+  paid: "paid",
 } as const;
 
 export type GetSalesReportParams = {

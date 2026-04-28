@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,14 +29,34 @@ const statusVariant = (s: string): "default" | "secondary" | "outline" | "destru
   }
 };
 
+type PaymentFilter = "all" | "unpaid" | "partial" | "paid";
+
+const PAYMENT_LABELS: Record<PaymentFilter, string> = {
+  all: "Semua",
+  unpaid: "Belum Bayar",
+  partial: "Sebagian",
+  paid: "Lunas",
+};
+
+function PaymentBadge({ status }: { status: string }) {
+  if (status === "paid") return <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700">Lunas</Badge>;
+  if (status === "partial") return <Badge className="bg-amber-900/50 text-amber-300 border-amber-700">Sebagian</Badge>;
+  return <Badge variant="outline" className="text-slate-400 border-slate-600">Belum Bayar</Badge>;
+}
+
 interface Props {
   kind: "quote" | "order";
 }
 
 export default function SalesDocumentsListPage({ kind }: Props) {
-  const { data: docs } = useListSalesDocuments({ kind });
-
   const isQuote = kind === "quote";
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+
+  const { data: docs } = useListSalesDocuments({
+    kind,
+    ...(!isQuote && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
+  });
+
   const title = isQuote ? "Quotations" : "Sales Orders";
   const desc = isQuote ? "Penawaran ke pelanggan." : "Pesanan penjualan terkonfirmasi.";
   const detailBase = isQuote ? "/sales/quotations" : "/sales/orders";
@@ -60,6 +81,25 @@ export default function SalesDocumentsListPage({ kind }: Props) {
         <Card>
           <CardHeader>
             <CardTitle>Daftar {title}</CardTitle>
+            {!isQuote && (
+              <div className="flex flex-wrap gap-2 mt-2" data-testid="payment-status-filter">
+                {(Object.keys(PAYMENT_LABELS) as PaymentFilter[]).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setPaymentFilter(f)}
+                    data-testid={`filter-payment-${f}`}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors border ${
+                      paymentFilter === f
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
+                    }`}
+                  >
+                    {PAYMENT_LABELS[f]}
+                  </button>
+                ))}
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             <Table>
@@ -70,6 +110,7 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                   <TableHead>Status</TableHead>
                   {!isQuote && <TableHead>Invoice</TableHead>}
                   {!isQuote && <TableHead>Delivery</TableHead>}
+                  {!isQuote && <TableHead>Bayar</TableHead>}
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Tanggal</TableHead>
                 </TableRow>
@@ -84,14 +125,15 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                     <TableCell><Badge variant={statusVariant(d.status)} className="capitalize">{d.status}</Badge></TableCell>
                     {!isQuote && <TableCell><Badge variant="outline" className="capitalize">{d.invoiceStatus.replace("_", " ")}</Badge></TableCell>}
                     {!isQuote && <TableCell><Badge variant="outline" className="capitalize">{d.deliveryStatus.replace("_", " ")}</Badge></TableCell>}
+                    {!isQuote && <TableCell><PaymentBadge status={d.paymentStatus} /></TableCell>}
                     <TableCell className="text-right font-medium">{idr(Number(d.totalAmount))}</TableCell>
                     <TableCell className="text-right text-sm text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("id-ID")}</TableCell>
                   </TableRow>
                 ))}
                 {(!docs || docs.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={isQuote ? 5 : 7} className="text-center text-muted-foreground py-8">
-                      Belum ada dokumen.
+                    <TableCell colSpan={isQuote ? 5 : 8} className="text-center text-muted-foreground py-8">
+                      {paymentFilter !== "all" ? `Tidak ada order dengan status pembayaran "${PAYMENT_LABELS[paymentFilter]}".` : "Belum ada dokumen."}
                     </TableCell>
                   </TableRow>
                 )}
