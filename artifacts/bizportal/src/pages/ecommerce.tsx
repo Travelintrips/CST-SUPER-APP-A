@@ -121,6 +121,8 @@ export default function EcommercePage() {
     const next = t === "orders" || t === "categories" || t === "products" ? t : "products";
     setActiveTab((prev) => (prev !== next ? next : prev));
     setProductSearch(params.get("search") ?? "");
+    setOrderSearch(params.get("orderSearch") ?? "");
+    setOrderStatusFilter(params.get("orderStatus") ?? "all");
     setFilterSalesTaxId(params.get("salesTax") ?? "all");
     setFilterPurchaseTaxId(params.get("purchaseTax") ?? "all");
     setFilterCategories(params.get("categories") ? params.get("categories")!.split(",").filter(Boolean) : []);
