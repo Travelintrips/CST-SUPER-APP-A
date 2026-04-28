@@ -134,6 +134,19 @@ export default function LogisticsPage() {
   const [freightStatusFilter, setFreightStatusFilter] = useState<string>(
     VALID_FREIGHT_STATUSES.includes(initialStatus) ? initialStatus : "all"
   );
+  const [dismissingFilter, setDismissingFilter] = useState<string | null>(null);
+
+  const handleStatFilterToggle = (value: string) => {
+    if (freightStatusFilter === value) {
+      setDismissingFilter(value);
+      setTimeout(() => {
+        setFreightStatusFilter("all");
+        setDismissingFilter(null);
+      }, 120);
+    } else {
+      setFreightStatusFilter(value);
+    }
+  };
   const [freightSortOrder, setFreightSortOrder] = useState<"newest" | "oldest">(
     initialParams.get("sort") === "oldest" ? "oldest" : "newest"
   );
@@ -327,12 +340,12 @@ export default function LogisticsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFreightStatusFilter(freightStatusFilter === "rfq_sent" ? "all" : "rfq_sent")}
-                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "rfq_sent" ? "ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-950/20" : ""}`}
+                  onClick={() => handleStatFilterToggle("rfq_sent")}
+                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${(freightStatusFilter === "rfq_sent" || dismissingFilter === "rfq_sent") ? "ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-950/20" : ""}`}
                   title={freightStatusFilter === "rfq_sent" ? "Klik untuk hapus filter" : "Filter: Menunggu Persetujuan Quote"}
                 >
-                  {freightStatusFilter === "rfq_sent" && (
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white animate-in zoom-in-0 duration-150" aria-label="Hapus filter">
+                  {(freightStatusFilter === "rfq_sent" || dismissingFilter === "rfq_sent") && (
+                    <span className={`absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-white ${dismissingFilter === "rfq_sent" ? "animate-out zoom-out-50 fade-out-0 duration-100 [animation-fill-mode:forwards]" : "animate-in zoom-in-0 duration-150"}`} aria-label="Hapus filter">
                       <X className="h-2.5 w-2.5" />
                     </span>
                   )}
@@ -346,12 +359,12 @@ export default function LogisticsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFreightStatusFilter(freightStatusFilter === "confirmed" ? "all" : "confirmed")}
-                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "confirmed" ? "ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-950/20" : ""}`}
+                  onClick={() => handleStatFilterToggle("confirmed")}
+                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${(freightStatusFilter === "confirmed" || dismissingFilter === "confirmed") ? "ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-950/20" : ""}`}
                   title={freightStatusFilter === "confirmed" ? "Klik untuk hapus filter" : "Filter: Dikonfirmasi"}
                 >
-                  {freightStatusFilter === "confirmed" && (
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400 text-white animate-in zoom-in-0 duration-150" aria-label="Hapus filter">
+                  {(freightStatusFilter === "confirmed" || dismissingFilter === "confirmed") && (
+                    <span className={`absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-400 text-white ${dismissingFilter === "confirmed" ? "animate-out zoom-out-50 fade-out-0 duration-100 [animation-fill-mode:forwards]" : "animate-in zoom-in-0 duration-150"}`} aria-label="Hapus filter">
                       <X className="h-2.5 w-2.5" />
                     </span>
                   )}
@@ -365,12 +378,12 @@ export default function LogisticsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFreightStatusFilter(freightStatusFilter === "in_transit" ? "all" : "in_transit")}
-                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${freightStatusFilter === "in_transit" ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950/20" : ""}`}
+                  onClick={() => handleStatFilterToggle("in_transit")}
+                  className={`relative space-y-1 text-left rounded-md p-2 -m-2 transition-colors cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${(freightStatusFilter === "in_transit" || dismissingFilter === "in_transit") ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950/20" : ""}`}
                   title={freightStatusFilter === "in_transit" ? "Klik untuk hapus filter" : "Filter: Dalam Perjalanan"}
                 >
-                  {freightStatusFilter === "in_transit" && (
-                    <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-400 text-white animate-in zoom-in-0 duration-150" aria-label="Hapus filter">
+                  {(freightStatusFilter === "in_transit" || dismissingFilter === "in_transit") && (
+                    <span className={`absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-400 text-white ${dismissingFilter === "in_transit" ? "animate-out zoom-out-50 fade-out-0 duration-100 [animation-fill-mode:forwards]" : "animate-in zoom-in-0 duration-150"}`} aria-label="Hapus filter">
                       <X className="h-2.5 w-2.5" />
                     </span>
                   )}
