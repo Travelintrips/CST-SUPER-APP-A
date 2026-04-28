@@ -4124,6 +4124,8 @@ components:
         salesDocId: { type: integer, nullable: true }
         purchaseDocId: { type: integer, nullable: true }
         approvedVendorName: { type: string, nullable: true }
+        approvedQuoteCost: { type: string, nullable: true }
+        totalExpenses: { type: string, nullable: true }
         createdById: { type: string, nullable: true }
         createdAt: { type: string }
       required: [id, shipmentNumber, shipperName, consigneeName, commodity, origin, destination, status, createdAt]

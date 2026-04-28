@@ -1412,6 +1412,8 @@ export interface FreightShipment {
   salesDocId?: number | null;
   purchaseDocId?: number | null;
   approvedVendorName?: string | null;
+  approvedQuoteCost?: string | null;
+  totalExpenses?: string | null;
   createdById?: string | null;
   createdAt: string;
 }
