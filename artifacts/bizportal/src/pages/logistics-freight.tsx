@@ -683,7 +683,12 @@ export default function LogisticsFreightPage() {
             </Card>
           ) : (
             filteredShipments.map((s) => (
-              <Card key={s.id} data-testid={`card-shipment-${s.id}`}>
+              <Card
+                key={s.id}
+                data-testid={`card-shipment-${s.id}`}
+                className="cursor-pointer hover:bg-muted/40 transition-colors"
+                onClick={() => navigate(`/logistics/freight/${s.id}`)}
+              >
                 <CardContent className="p-4 space-y-2">
                   {/* Header: shipment number + status */}
                   <div className="flex items-center justify-between gap-2">
@@ -717,7 +722,10 @@ export default function LogisticsFreightPage() {
 
                   {/* SO ref badge */}
                   {s.salesDocId && (
-                    <Link href={`/sales/orders/${s.salesDocId}`}>
+                    <Link
+                      href={`/sales/orders/${s.salesDocId}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
                         <ShoppingCart size={10} />
                         {soMap[s.salesDocId] ?? `SO #${s.salesDocId}`}
@@ -733,28 +741,21 @@ export default function LogisticsFreightPage() {
                     </div>
                   )}
 
-                  {/* Date + actions */}
+                  {/* Date + delete action */}
                   <div className="flex items-center justify-between pt-1 border-t border-border">
                     <span className="text-xs text-muted-foreground">
                       {new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
                     </span>
-                    <div className="flex gap-1">
-                      <Link href={`/logistics/freight/${s.id}`}>
-                        <Button variant="ghost" size="icon" title="Detail" data-testid={`button-view-shipment-${s.id}`}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Hapus"
-                        onClick={() => handleDelete(s.id, s.shipmentNumber)}
-                        disabled={deleteShipment.isPending}
-                        data-testid={`button-delete-shipment-${s.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Hapus"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(s.id, s.shipmentNumber); }}
+                      disabled={deleteShipment.isPending}
+                      data-testid={`button-delete-shipment-${s.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
