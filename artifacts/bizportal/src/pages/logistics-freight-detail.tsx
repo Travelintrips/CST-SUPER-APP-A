@@ -27,6 +27,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { FreightAttachmentsPanel } from "@/components/freight/FreightAttachmentsPanel";
+import { FreightCustomsPanel } from "@/components/freight/FreightCustomsPanel";
 import { useToast } from "@/hooks/use-toast";
 import {
   useGetFreightShipment,
@@ -1137,6 +1138,19 @@ export default function LogisticsFreightDetailPage() {
                 });
               }}
             />
+          </CardContent>
+        </Card>
+
+        {/* Customs Documents Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText className="h-4 w-4" />
+              Dokumen Kepabeanan
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FreightCustomsPanel shipmentId={id} />
           </CardContent>
         </Card>
 

@@ -17,3 +17,4 @@ export * from "./shipmentStages";
 export * from "./apiResponseTimes";
 export * from "./expenses";
 export * from "./emailCorrespondences";
+export * from "./freightCustomsDocs";

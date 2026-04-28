@@ -109,6 +109,35 @@ For freight/shipment documents (Master Air Waybill / MAWB, House Air Waybill / H
   "lines": []
 }
 
+For Indonesian customs documents (PIB, PEB, SPPB, NPE, BC 2.3, PP, SPTNP, etc.):
+{
+  "docType": "customs",
+  "customsDocType": "PIB" | "PEB" | "SPPB" | "NPE" | "BC23" | "PP" | "SPTNP" | "other",
+  "nomorAju": string | null,
+  "nomorDokumen": string | null,
+  "tanggalDokumen": string | null,
+  "namaPerusahaan": string | null,
+  "npwpPerusahaan": string | null,
+  "kantorPabean": string | null,
+  "posHS": string | null,
+  "uraianBarang": string | null,
+  "jumlahKoli": number | null,
+  "beratBersih": number | null,
+  "beratKotor": number | null,
+  "negaraAsal": string | null,
+  "negaraTujuan": string | null,
+  "pelabuhan": string | null,
+  "nilaiPabean": number | null,
+  "beaMasuk": number | null,
+  "ppnImpor": number | null,
+  "pphImpor": number | null,
+  "totalTagihan": number | null,
+  "nilaiEkspor": number | null,
+  "nomorPIBTerkait": string | null,
+  "nomorPEBTerkait": string | null,
+  "keteranganTambahan": string | null
+}
+
 Rules:
 - Extract all monetary values as plain numbers (no currency symbols)
 - Extract all weights, pieces, and volumes as plain numbers (no units like "kg", "pcs", "cbm")
