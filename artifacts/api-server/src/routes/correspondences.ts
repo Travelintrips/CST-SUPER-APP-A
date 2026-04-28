@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { db, correspondencesTable, correspondenceAttachmentsTable, customersTable, suppliersTable } from "@workspace/db";
-import { eq, desc, ilike, or, and } from "drizzle-orm";
+import { eq, desc, ilike, or, and, count, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { syncImapEmails } from "../lib/imapPoller.js";
@@ -150,7 +150,24 @@ router.get("/", async (req, res) => {
     .from(correspondencesTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(correspondencesTable.correspondedAt));
-  return res.json(rows.map(serializeCorrespondence));
+
+  const ids = rows.map((r) => r.id);
+  const countMap: Record<number, number> = {};
+  if (ids.length > 0) {
+    const counts = await db
+      .select({
+        correspondenceId: correspondenceAttachmentsTable.correspondenceId,
+        total: count(),
+      })
+      .from(correspondenceAttachmentsTable)
+      .where(inArray(correspondenceAttachmentsTable.correspondenceId, ids))
+      .groupBy(correspondenceAttachmentsTable.correspondenceId);
+    for (const row of counts) {
+      countMap[row.correspondenceId] = Number(row.total);
+    }
+  }
+
+  return res.json(rows.map((r) => ({ ...serializeCorrespondence(r), attachmentCount: countMap[r.id] ?? 0 })));
 });
 
 // GET /api/correspondences/:id

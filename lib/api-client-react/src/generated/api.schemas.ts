@@ -1278,6 +1278,7 @@ export interface Correspondence {
   supplierId?: number | null;
   tags: string[];
   attachments?: string | null;
+  attachmentCount?: number;
   emailMessageId?: string | null;
   emailThreadId?: string | null;
   correspondedAt: string;

@@ -638,6 +638,12 @@ export default function CorrespondencesPage() {
                             {KIND_ICONS[c.kind]}{KIND_LABELS[c.kind]}
                           </Badge>
                           <StatusBadge status={c.status} />
+                          {(c.attachmentCount ?? 0) > 0 && (
+                            <Badge variant="outline" className="gap-1 text-xs shrink-0 text-muted-foreground">
+                              <Paperclip className="h-3 w-3" />
+                              {c.attachmentCount}
+                            </Badge>
+                          )}
                           {c.tags.length > 0 && c.tags.slice(0, 2).map((t) => (
                             <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
                           ))}
