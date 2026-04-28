@@ -3,7 +3,8 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Printer, ArrowLeft, Download, Loader2 } from "lucide-react";
-import { useGetFreightShipment } from "@workspace/api-client-react";
+import { useGetFreightShipment, useCreateFreightAttachment } from "@workspace/api-client-react";
+import { useUpload } from "@workspace/object-storage-web";
 import { useToast } from "@/hooks/use-toast";
 
 const BL_ALLOWED_STATUSES = ["confirmed", "in_transit", "completed"];
@@ -41,6 +42,13 @@ export default function LogisticsFreightBLPage() {
   const { toast } = useToast();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
+  const createAttachment = useCreateFreightAttachment();
+  const { uploadFile } = useUpload({
+    onError: (err) => {
+      toast({ title: `Gagal mengunggah BL: ${err.message}`, variant: "destructive" });
+    },
+  });
+  const [isSavingAttachment, setIsSavingAttachment] = useState(false);
 
   const handleDownloadPDF = async () => {
     if (!blRef.current || !shipment) return;
@@ -77,11 +85,54 @@ export default function LogisticsFreightBLPage() {
         }
       }
 
-      pdf.save(`BL-${shipment.shipmentNumber}.pdf`);
+      const fileName = `BL-${shipment.shipmentNumber}.pdf`;
+      pdf.save(fileName);
+
+      setIsGeneratingPDF(false);
+      setIsSavingAttachment(true);
+      try {
+        const blob = pdf.output("blob");
+        const file = new File([blob], fileName, { type: "application/pdf" });
+        const result = await uploadFile(file);
+        if (result) {
+          await new Promise<void>((resolve, reject) => {
+            createAttachment.mutate(
+              {
+                shipmentId: id,
+                data: {
+                  objectPath: result.objectPath,
+                  fileName,
+                  contentType: "application/pdf",
+                  fileType: "document",
+                  docType: "BL",
+                  docNumber: shipment.shipmentNumber,
+                  docStatus: "issued",
+                  label: `Bill of Lading — ${shipment.shipmentNumber}`,
+                },
+              },
+              {
+                onSuccess: () => {
+                  toast({ title: "BL disimpan sebagai lampiran", description: "File tersedia di tab Lampiran pada detail pengiriman." });
+                  resolve();
+                },
+                onError: () => {
+                  toast({ title: "Gagal menyimpan lampiran BL", variant: "destructive" });
+                  reject(new Error("attachment save failed"));
+                },
+              }
+            );
+          });
+        }
+      } catch {
+      } finally {
+        setIsSavingAttachment(false);
+      }
+      return;
     } catch {
       toast({ title: "Gagal membuat PDF", description: "Terjadi kesalahan saat membuat file PDF. Silakan coba lagi.", variant: "destructive" });
     } finally {
       setIsGeneratingPDF(false);
+      setIsSavingAttachment(false);
     }
   };
 
@@ -134,15 +185,15 @@ export default function LogisticsFreightBLPage() {
           <Button
             variant="outline"
             onClick={handleDownloadPDF}
-            disabled={isGeneratingPDF}
+            disabled={isGeneratingPDF || isSavingAttachment}
             data-testid="button-download-pdf"
           >
-            {isGeneratingPDF ? (
+            {(isGeneratingPDF || isSavingAttachment) ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
-            {isGeneratingPDF ? "Membuat PDF..." : "Unduh PDF"}
+            {isGeneratingPDF ? "Membuat PDF..." : isSavingAttachment ? "Menyimpan lampiran..." : "Unduh PDF"}
           </Button>
           <Button onClick={() => window.print()} data-testid="button-print-bl">
             <Printer className="h-4 w-4 mr-2" />
