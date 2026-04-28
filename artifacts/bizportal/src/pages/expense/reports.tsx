@@ -34,7 +34,7 @@ import {
   Tooltip,
 } from "recharts";
 import { Download, TrendingUp, Receipt, Users, BarChart2, Printer } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ArrowLeft } from "lucide-react";
 
 const idr = (n: number) =>
@@ -77,6 +77,7 @@ export default function ExpenseReportsPage() {
   const [from, setFrom] = useState(thisYearFrom());
   const [to, setTo] = useState(today());
   const [status, setStatus] = useState("all");
+  const [, navigate] = useLocation();
 
   const params = {
     from,
@@ -94,12 +95,24 @@ export default function ExpenseReportsPage() {
             ? c.categoryName.slice(0, 16) + "…"
             : c.categoryName,
         fullName: c.categoryName,
+        categoryId: c.categoryId ?? null,
         total: c.total,
         count: c.count,
         fill: BAR_COLORS[i % BAR_COLORS.length],
       })),
     [data],
   );
+
+  function navigateToCategoryDrill(categoryId: number | null) {
+    const params = new URLSearchParams({ from, to });
+    if (categoryId != null) params.set("categoryId", String(categoryId));
+    navigate(`/expense?${params.toString()}`);
+  }
+
+  function navigateToVendorDrill(vendor: string) {
+    const params = new URLSearchParams({ from, to, search: vendor });
+    navigate(`/expense?${params.toString()}`);
+  }
 
   const monthData = useMemo(
     () =>
@@ -295,6 +308,11 @@ export default function ExpenseReportsPage() {
                     data={categoryData}
                     layout="vertical"
                     margin={{ top: 0, right: 12, left: 4, bottom: 0 }}
+                    style={{ cursor: "pointer" }}
+                    onClick={(d) => {
+                      const entry = d?.activePayload?.[0]?.payload;
+                      if (entry) navigateToCategoryDrill(entry.categoryId);
+                    }}
                   >
                     <CartesianGrid horizontal={false} strokeDasharray="3 3" />
                     <XAxis
@@ -319,7 +337,7 @@ export default function ExpenseReportsPage() {
                         />
                       }
                     />
-                    <Bar dataKey="total" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="total" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} cursor="pointer" />
                   </BarChart>
                 </ChartContainer>
               )}
@@ -451,7 +469,12 @@ export default function ExpenseReportsPage() {
                           ? ((v.total / data!.grandTotal) * 100).toFixed(1)
                           : "0.0";
                       return (
-                        <tr key={v.vendor} className="border-b last:border-0 hover:bg-muted/30">
+                        <tr
+                          key={v.vendor}
+                          className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
+                          onClick={() => navigateToVendorDrill(v.vendor)}
+                          title={`Lihat expenses dari ${v.vendor}`}
+                        >
                           <td className="py-2.5 pr-4 text-muted-foreground">{i + 1}</td>
                           <td className="py-2.5 pr-4 font-medium">{v.vendor}</td>
                           <td className="py-2.5 pr-4 text-right tabular-nums">{idr(v.total)}</td>

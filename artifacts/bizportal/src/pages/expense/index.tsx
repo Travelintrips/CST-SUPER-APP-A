@@ -18,7 +18,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2 } from "lucide-react";
+import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -68,7 +68,10 @@ function StatusBadge({ status }: { status: string }) {
 export default function ExpenseListPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [search, setSearch] = useState("");
+  const _urlParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const [search, setSearch] = useState(() => _urlParams.get("search") ?? "");
+  const [fromFilter, setFromFilter] = useState(() => _urlParams.get("from") ?? "");
+  const [toFilter, setToFilter] = useState(() => _urlParams.get("to") ?? "");
   const [statusFilter, setStatusFilter] = useState(() => {
     try {
       const v = localStorage.getItem(LS_STATUS_FILTER);
@@ -82,6 +85,8 @@ export default function ExpenseListPage() {
     } catch { return "all"; }
   });
   const [catFilter, setCatFilter] = useState(() => {
+    const urlCat = _urlParams.get("categoryId");
+    if (urlCat && /^\d+$/.test(urlCat)) return urlCat;
     try {
       const v = localStorage.getItem(LS_CAT_FILTER);
       return v && (v === "all" || /^\d+$/.test(v)) ? v : "all";
@@ -107,6 +112,8 @@ export default function ExpenseListPage() {
     salesDocId: salesDocFilter !== "all" ? Number(salesDocFilter) : undefined,
     shipmentId: shipmentFilter !== "all" ? Number(shipmentFilter) : undefined,
     search: search || undefined,
+    from: fromFilter || undefined,
+    to: toFilter || undefined,
   });
   const { data: cats = [] } = useListExpenseCategories();
   const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });
@@ -139,13 +146,34 @@ export default function ExpenseListPage() {
               <p className="text-sm text-muted-foreground">Kelola seluruh expense & biaya operasional bisnis</p>
             </div>
           </div>
-          <Link href="/expense/new">
-            <Button size="sm">
-              <Plus size={14} className="mr-1" />
-              Buat Expense
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/expense/new">
+              <Button size="sm">
+                <Plus size={14} className="mr-1" />
+                Buat Expense
+              </Button>
+            </Link>
+          </div>
         </div>
+
+        {(fromFilter || toFilter) && (
+          <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
+            <CalendarRange size={14} className="shrink-0" />
+            <span>
+              Filter dari laporan:{" "}
+              <strong>{fromFilter || "—"}</strong>
+              {" s/d "}
+              <strong>{toFilter || "—"}</strong>
+            </span>
+            <button
+              className="ml-auto rounded hover:bg-blue-100 dark:hover:bg-blue-900 p-0.5"
+              onClick={() => { setFromFilter(""); setToFilter(""); }}
+              title="Hapus filter tanggal"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[180px]">
