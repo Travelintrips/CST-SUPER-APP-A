@@ -74,7 +74,7 @@ function getInitialOrderRefreshInterval(): OrderRefreshValue {
   return "60000";
 }
 
-const fmtIDR = (v: number) =>
+const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
 
 function ProductAutocomplete({
@@ -128,7 +128,7 @@ function ProductAutocomplete({
               }}
             >
               <span className="truncate max-w-[140px]">{p.name}</span>
-              <span className="ml-2 shrink-0 text-xs text-muted-foreground tabular-nums">{fmtIDR(p.price)}</span>
+              <span className="ml-2 shrink-0 text-xs text-muted-foreground tabular-nums">{formatIDR(p.price)}</span>
             </button>
           ))}
         </div>
@@ -381,9 +381,6 @@ export default function EcommercePage() {
     if (url.startsWith("/api/")) return url;
     return url;
   };
-
-  const formatIDR = (value: number) =>
-    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 
   const getOrderStatusColor = (status: string) => {
     switch (status) {
