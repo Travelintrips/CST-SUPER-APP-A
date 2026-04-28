@@ -23,6 +23,7 @@ Balas HANYA dengan JSON valid, tanpa markdown, tanpa blok kode, tanpa teks penje
 
 Format JSON:
 {
+  "kind": "email" | "whatsapp" | "letter" | "other" | null,
   "subject": string | null,
   "senderName": string | null,
   "senderEmail": string | null,
@@ -33,6 +34,12 @@ Format JSON:
 }
 
 Aturan:
+- kind: jenis dokumen korespondensi:
+    "email" jika terlihat seperti tampilan antarmuka email (Gmail, Outlook, Thunderbird, dsb.) atau berisi header From/To/Subject khas email
+    "whatsapp" jika terlihat seperti percakapan WhatsApp, Telegram, atau aplikasi chat lainnya
+    "letter" jika terlihat seperti surat fisik, memo, faks, atau dokumen formal tercetak/bertanda tangan
+    "other" untuk jenis lainnya
+    null jika tidak dapat ditentukan
 - subject: subjek atau judul email/surat (contoh: "Penawaran Harga Freight April 2025")
 - senderName: nama lengkap pengirim jika ada
 - senderEmail: alamat email pengirim jika ada (format: user@domain.com)

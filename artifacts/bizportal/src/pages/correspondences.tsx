@@ -133,6 +133,7 @@ type FormState = {
 };
 
 type ScanPendingFields = {
+  kind: string;
   subject: string;
   senderName: string;
   senderEmail: string;
@@ -312,6 +313,7 @@ export default function CorrespondencesPage() {
       }
       const json = await resp.json() as {
         data: {
+          kind?: string | null;
           subject?: string | null;
           senderName?: string | null;
           senderEmail?: string | null;
@@ -326,9 +328,12 @@ export default function CorrespondencesPage() {
       if (d.correspondedAt) {
         try { parsedDate = new Date(d.correspondedAt).toISOString().slice(0, 16); } catch {}
       }
+      const validKinds = ["email", "whatsapp", "letter", "other"];
+      const detectedKind = d.kind && validKinds.includes(d.kind) ? d.kind : "";
       const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
       setScanPending({
         fields: {
+          kind: detectedKind,
           subject: d.subject ?? "",
           senderName: d.senderName ?? "",
           senderEmail: d.senderEmail ?? "",
@@ -353,6 +358,7 @@ export default function CorrespondencesPage() {
     const { fields, file, previewUrl } = scanPending;
     setForm((prev) => ({
       ...prev,
+      ...(fields.kind ? { kind: fields.kind as "email" | "whatsapp" | "letter" | "other" } : {}),
       ...(fields.subject ? { subject: fields.subject } : {}),
       ...(fields.senderName ? { senderName: fields.senderName } : {}),
       ...(fields.senderEmail ? { senderEmail: fields.senderEmail } : {}),
@@ -713,6 +719,24 @@ export default function CorrespondencesPage() {
                     </div>
                   )}
                   <div className="grid gap-2">
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Jenis</Label>
+                      <Select
+                        value={scanPending.fields.kind || "__none"}
+                        onValueChange={(v) => setScanPending((p) => p ? { ...p, fields: { ...p.fields, kind: v === "__none" ? "" : v } } : null)}
+                      >
+                        <SelectTrigger className="h-8 text-sm" data-testid="scan-select-kind">
+                          <SelectValue placeholder="— Tidak Terdeteksi —" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">— Tidak Terdeteksi —</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                          <SelectItem value="letter">Surat</SelectItem>
+                          <SelectItem value="other">Lainnya</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="grid gap-1">
                       <Label className="text-xs">Subjek</Label>
                       <Input
