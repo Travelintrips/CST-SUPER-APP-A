@@ -44,6 +44,17 @@ function PaymentBadge({ status }: { status: string }) {
   return <Badge variant="outline" className="text-slate-400 border-slate-600">Belum Bayar</Badge>;
 }
 
+function isOverduePurchase(
+  expectedDate: string | null | undefined,
+  paymentStatus: string,
+  billStatus: string,
+): boolean {
+  if (!expectedDate) return false;
+  if (paymentStatus === "paid") return false;
+  if (billStatus === "none") return false;
+  return new Date(expectedDate) < new Date(new Date().toDateString());
+}
+
 interface Props {
   kind: "rfq" | "order";
 }
@@ -119,7 +130,12 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
                 {(docs ?? []).map((d) => (
                   <TableRow key={d.id} data-testid={`row-doc-${d.id}`}>
                     <TableCell className="font-medium">
-                      <Link href={`${detailBase}/${d.id}`} className="hover:underline">{d.docNumber}</Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={`${detailBase}/${d.id}`} className="hover:underline">{d.docNumber}</Link>
+                        {!isRfq && isOverduePurchase(d.expectedDate, d.paymentStatus, d.billStatus) && (
+                          <Badge className="bg-red-900/50 text-red-300 border-red-700 text-xs" data-testid="badge-overdue">Jatuh Tempo</Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{d.supplierName}</TableCell>
                     <TableCell><Badge variant={statusVariant(d.status)} className="capitalize">{d.status}</Badge></TableCell>

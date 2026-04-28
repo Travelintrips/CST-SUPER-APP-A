@@ -627,6 +627,13 @@ export default function SalesDocumentEditorPage() {
                           return <Badge className="bg-amber-900/50 text-amber-300 border-amber-700" data-testid="badge-payment-status">Bayar: Sebagian</Badge>;
                         return <Badge variant="outline" className="text-slate-400 border-slate-600" data-testid="badge-payment-status">Bayar: Belum Bayar</Badge>;
                       })()}
+                      {(() => {
+                        if (!doc.expectedDate) return null;
+                        if (doc.paymentStatus === "paid") return null;
+                        if (doc.invoiceStatus === "none") return null;
+                        if (new Date(doc.expectedDate) >= new Date(new Date().toDateString())) return null;
+                        return <Badge className="bg-red-900/50 text-red-300 border-red-700" data-testid="badge-overdue">Jatuh Tempo</Badge>;
+                      })()}
                     </>
                   )}
                 </div>
