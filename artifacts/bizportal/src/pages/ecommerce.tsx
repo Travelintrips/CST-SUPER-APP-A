@@ -75,6 +75,7 @@ export default function EcommercePage() {
     tab?: string;
     search?: string;
     orderSearch?: string;
+    orderStatus?: string;
     salesTax?: string;
     purchaseTax?: string;
     categories?: string[];
@@ -83,6 +84,7 @@ export default function EcommercePage() {
     const tab = overrides.tab ?? params.get("tab") ?? "";
     const productSearchVal = "search" in overrides ? overrides.search! : (params.get("search") ?? "");
     const orderSearchVal = "orderSearch" in overrides ? overrides.orderSearch! : (params.get("orderSearch") ?? "");
+    const orderStatusVal = "orderStatus" in overrides ? overrides.orderStatus! : (params.get("orderStatus") ?? "all");
     const salesTaxVal = "salesTax" in overrides ? overrides.salesTax! : (params.get("salesTax") ?? "all");
     const purchaseTaxVal = "purchaseTax" in overrides ? overrides.purchaseTax! : (params.get("purchaseTax") ?? "all");
     const categoriesVal = "categories" in overrides ? overrides.categories! : (params.get("categories") ? params.get("categories")!.split(",").filter(Boolean) : []);
@@ -96,6 +98,9 @@ export default function EcommercePage() {
 
     if (orderSearchVal) params.set("orderSearch", orderSearchVal);
     else params.delete("orderSearch");
+
+    if (orderStatusVal && orderStatusVal !== "all") params.set("orderStatus", orderStatusVal);
+    else params.delete("orderStatus");
 
     if (salesTaxVal && salesTaxVal !== "all") params.set("salesTax", salesTaxVal);
     else params.delete("salesTax");
@@ -200,8 +205,10 @@ export default function EcommercePage() {
   });
   const [productSearch, setProductSearch] = useState<string>(() => initialParams.get("search") ?? "");
   const [orderSearch, setOrderSearch] = useState<string>(() => initialParams.get("orderSearch") ?? "");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>(() => initialParams.get("orderStatus") ?? "all");
 
   const filteredOrders = (orders ?? []).filter((o) => {
+    if (orderStatusFilter !== "all" && o.status !== orderStatusFilter) return false;
     if (!orderSearch.trim()) return true;
     const q = orderSearch.trim().toLowerCase();
     const orderId = `#ORD-${o.id.toString().padStart(4, "0")}`.toLowerCase();
@@ -1051,6 +1058,33 @@ export default function EcommercePage() {
               />
             </div>
 
+            <div className="flex flex-wrap gap-2" data-testid="order-status-filters">
+              {(["all", "pending", "processing", "shipped", "delivered", "cancelled"] as const).map((s) => {
+                const labels: Record<string, string> = { all: "Semua", pending: "Pending", processing: "Processing", shipped: "Shipped", delivered: "Delivered", cancelled: "Dibatalkan" };
+                const active = orderStatusFilter === s;
+                return (
+                  <button
+                    key={s}
+                    data-testid={`filter-order-status-${s}`}
+                    onClick={() => { setOrderStatusFilter(s); syncUrl({ orderStatus: s }); }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      active
+                        ? s === "all"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : s === "pending" ? "bg-amber-500/20 text-amber-400 border-amber-500/50"
+                          : s === "processing" ? "bg-blue-500/20 text-blue-400 border-blue-500/50"
+                          : s === "shipped" ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/50"
+                          : s === "delivered" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50"
+                          : "bg-destructive/20 text-destructive border-destructive/50"
+                        : "bg-transparent text-muted-foreground border-border hover:border-muted-foreground"
+                    }`}
+                  >
+                    {labels[s]}
+                  </button>
+                );
+              })}
+            </div>
+
             <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
@@ -1081,7 +1115,7 @@ export default function EcommercePage() {
                         <TableCell colSpan={6} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <ShoppingBag className="h-8 w-8 mb-2 opacity-50" />
-                            <p>{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : "Belum ada order."}</p>
+                            <p>{orderSearch.trim() || orderStatusFilter !== "all" ? "Tidak ada order yang cocok dengan filter ini." : "Belum ada order."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1138,7 +1172,7 @@ export default function EcommercePage() {
               ) : filteredOrders.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <ShoppingBag className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : "Belum ada order."}</p>
+                  <p className="text-sm text-muted-foreground">{orderSearch.trim() || orderStatusFilter !== "all" ? "Tidak ada order yang cocok dengan filter ini." : "Belum ada order."}</p>
                 </CardContent></Card>
               ) : (
                 filteredOrders.map((order) => (
