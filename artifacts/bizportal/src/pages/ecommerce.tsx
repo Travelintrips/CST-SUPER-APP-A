@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X } from "lucide-react";
+import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -56,6 +56,23 @@ import { ImagePlus, ImageIcon, Loader2 } from "lucide-react";
 const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
 type OrderStatus = typeof ORDER_STATUSES[number];
 type LineItemRow = { id: string; name: string; qty: number; unitPrice: number };
+
+const ORDER_REFRESH_LS_KEY = "ecommerce-order-refresh-interval";
+const ORDER_REFRESH_OPTIONS = [
+  { label: "30 detik", value: "30000" },
+  { label: "1 menit", value: "60000" },
+  { label: "5 menit", value: "300000" },
+  { label: "Mati", value: "off" },
+] as const;
+type OrderRefreshValue = typeof ORDER_REFRESH_OPTIONS[number]["value"];
+
+function getInitialOrderRefreshInterval(): OrderRefreshValue {
+  try {
+    const stored = localStorage.getItem(ORDER_REFRESH_LS_KEY);
+    if (stored && ORDER_REFRESH_OPTIONS.some((o) => o.value === stored)) return stored as OrderRefreshValue;
+  } catch { /* ignore */ }
+  return "60000";
+}
 
 export default function EcommercePage() {
   const queryClient = useQueryClient();
@@ -151,9 +168,42 @@ export default function EcommercePage() {
   const [createCategoryName, setCreateCategoryName] = useState("");
   const [editCategoryName, setEditCategoryName] = useState("");
 
-  const { data: orders, isLoading: isLoadingOrders } = useListOrders({
-    query: { queryKey: getListOrdersQueryKey() }
+  const [orderRefreshInterval, setOrderRefreshInterval] = useState<OrderRefreshValue>(getInitialOrderRefreshInterval);
+  const [orderSecondsLeft, setOrderSecondsLeft] = useState<number | null>(null);
+  const orderRefetchIntervalMs = orderRefreshInterval === "off" ? false : Number(orderRefreshInterval);
+
+  const { data: orders, isLoading: isLoadingOrders, isFetching: isOrdersFetching, refetch: refetchOrders, dataUpdatedAt: ordersUpdatedAt } = useListOrders({
+    query: { queryKey: getListOrdersQueryKey(), refetchInterval: orderRefetchIntervalMs }
   });
+
+  useEffect(() => {
+    if (orderRefreshInterval === "off" || !ordersUpdatedAt) {
+      setOrderSecondsLeft(null);
+      return;
+    }
+    const intervalMs = Number(orderRefreshInterval);
+    const tick = () => {
+      const remaining = Math.round((ordersUpdatedAt + intervalMs - Date.now()) / 1000);
+      setOrderSecondsLeft(Math.max(0, remaining));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [ordersUpdatedAt, orderRefreshInterval]);
+
+  const formatOrderCountdown = (secs: number): string => {
+    if (secs <= 0) return "sebentar lagi";
+    if (secs < 60) return `${secs}d`;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return s > 0 ? `${m}m ${s}d` : `${m}m`;
+  };
+
+  const handleOrderRefreshIntervalChange = (value: string) => {
+    const v = value as OrderRefreshValue;
+    setOrderRefreshInterval(v);
+    try { localStorage.setItem(ORDER_REFRESH_LS_KEY, v); } catch { /* ignore */ }
+  };
 
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -926,9 +976,47 @@ export default function EcommercePage() {
 
           {/* ORDERS TAB */}
           <TabsContent value="orders" className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Order Terbaru</h2>
-              <Dialog open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen}>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Order Terbaru</h2>
+                {ordersUpdatedAt > 0 && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <span>Diperbarui: {new Date(ordersUpdatedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                    {orderSecondsLeft !== null && (
+                      <>
+                        <span className="text-muted-foreground/40">·</span>
+                        <span className="flex items-center gap-0.5">
+                          <Clock className="h-3 w-3" />
+                          Refresh dalam {formatOrderCountdown(orderSecondsLeft)}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Select value={orderRefreshInterval} onValueChange={handleOrderRefreshIntervalChange}>
+                  <SelectTrigger className="h-8 w-[120px] text-xs" data-testid="order-refresh-interval-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ORDER_REFRESH_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchOrders()}
+                  disabled={isOrdersFetching}
+                  data-testid="order-refresh-btn"
+                  className="gap-1.5 h-8"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isOrdersFetching ? "animate-spin" : ""}`} />
+                  {isOrdersFetching ? "Memuat..." : "Refresh"}
+                </Button>
+                <Dialog open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="button-add-order"><Plus className="mr-2 h-4 w-4" /> Tambah Order</Button>
                 </DialogTrigger>
@@ -1047,6 +1135,7 @@ export default function EcommercePage() {
                   </form>
                 </DialogContent>
               </Dialog>
+              </div>
             </div>
 
             <div className="relative">
