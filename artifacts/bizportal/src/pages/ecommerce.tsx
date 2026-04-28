@@ -1115,7 +1115,7 @@ export default function EcommercePage() {
                         <TableCell colSpan={6} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <ShoppingBag className="h-8 w-8 mb-2 opacity-50" />
-                            <p>{orderSearch.trim() || orderStatusFilter !== "all" ? "Tidak ada order yang cocok dengan filter ini." : "Belum ada order."}</p>
+                            <p>{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : orderStatusFilter !== "all" ? "Tidak ada order dengan status ini." : "Belum ada order."}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1172,7 +1172,7 @@ export default function EcommercePage() {
               ) : filteredOrders.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <ShoppingBag className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">{orderSearch.trim() || orderStatusFilter !== "all" ? "Tidak ada order yang cocok dengan filter ini." : "Belum ada order."}</p>
+                  <p className="text-sm text-muted-foreground">{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : orderStatusFilter !== "all" ? "Tidak ada order dengan status ini." : "Belum ada order."}</p>
                 </CardContent></Card>
               ) : (
                 filteredOrders.map((order) => (
