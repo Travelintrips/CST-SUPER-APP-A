@@ -376,9 +376,9 @@ export default function LogisticsFreightEditorPage() {
       if (soDoc) {
         if (soDoc.customerName) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(soDoc.customerName); }
         if (soDoc.customerAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(soDoc.customerAddress); }
-        if ((soDoc as any).origin) { setOriginAutoFilled(true); setOriginAutoFilledValue((soDoc as any).origin); }
-        if ((soDoc as any).destination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue((soDoc as any).destination); }
-        if ((soDoc as any).transportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue((soDoc as any).transportMode); }
+        if ((soDoc as any).origin) { setOriginAutoFilled(true); setOriginAutoFilledValue((soDoc as any).origin); clearDismissedBadges("origin:so"); }
+        if ((soDoc as any).destination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue((soDoc as any).destination); clearDismissedBadges("destination:so"); }
+        if ((soDoc as any).transportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue((soDoc as any).transportMode); clearDismissedBadges("transportMode:so"); }
         soProcessed = true;
       }
     }
@@ -427,9 +427,9 @@ export default function LogisticsFreightEditorPage() {
         const willFillTransportMode = !f.transportMode && !!(doc.transportMode ?? "");
         if (willFillConsignee) { setConsigneeNameAutoFilled(true); setConsigneeNameAutoFilledValue(doc.customerName || ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeName"); return next; }); clearDismissedBadges("consigneeName:so"); }
         if (willFillConsigneeAddress) { setConsigneeAddressAutoFilled(true); setConsigneeAddressAutoFilledValue(doc.customerAddress ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("consigneeAddress"); return next; }); clearDismissedBadges("consigneeAddress:so"); }
-        if (willFillOrigin) { setOriginAutoFilled(true); setOriginAutoFilledValue(doc.origin ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }
-        if (willFillDestination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue(doc.destination ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }
-        if (willFillTransportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue(doc.transportMode ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }
+        if (willFillOrigin) { setOriginAutoFilled(true); setOriginAutoFilledValue(doc.origin ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); clearDismissedBadges("origin:so"); }
+        if (willFillDestination) { setDestinationAutoFilled(true); setDestinationAutoFilledValue(doc.destination ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); clearDismissedBadges("destination:so"); }
+        if (willFillTransportMode) { setTransportModeAutoFilled(true); setTransportModeAutoFilledValue(doc.transportMode ?? ""); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); clearDismissedBadges("transportMode:so"); }
         return {
           ...f,
           consigneeName: doc.customerName || f.consigneeName,
@@ -1219,29 +1219,39 @@ export default function LogisticsFreightEditorPage() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
-                    <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required className={scannedFields.has("origin") ? "ring-1 ring-green-400" : ""} />
-                    {(originAutoFilled || scannedFields.has("origin")) && (
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="origin">Asal <span className="text-destructive">*</span></Label>
+                      {originAutoFilled && dismissedBadges.has("origin:so") && (
+                        <AutofillRestoreMarker source="so" fieldKey="origin" originalValue={originAutoFilledValue} currentValue={form.origin} onRestore={() => { setForm((f) => ({ ...f, origin: originAutoFilledValue })); clearDismissedBadges("origin:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }} />
+                      )}
+                    </div>
+                    <Input id="origin" value={form.origin} onChange={set("origin")} placeholder="Jakarta, Indonesia" required className={`${scannedFields.has("origin") ? "ring-1 ring-green-400" : ""} ${(originAutoFilled && dismissedBadges.has("origin:so")) ? "border-l-2 border-l-blue-300" : ""}`.trim()} />
+                    {((originAutoFilled && !dismissedBadges.has("origin:so")) || scannedFields.has("origin")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {originAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {originAutoFilled && !dismissedBadges.has("origin:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("origin:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
                         {scannedFields.has("origin") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("origin")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
-                        {originAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
-                        {originAutoFilled && form.origin !== originAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, origin: originAutoFilledValue })); setOriginAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
+                        {originAutoFilled && !dismissedBadges.has("origin:so") ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {originAutoFilled && !dismissedBadges.has("origin:so") && form.origin !== originAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, origin: originAutoFilledValue })); setOriginAutoFilled(true); clearDismissedBadges("origin:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("origin"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
-                    <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required className={scannedFields.has("destination") ? "ring-1 ring-green-400" : ""} />
-                    {(destinationAutoFilled || scannedFields.has("destination")) && (
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="destination">Tujuan <span className="text-destructive">*</span></Label>
+                      {destinationAutoFilled && dismissedBadges.has("destination:so") && (
+                        <AutofillRestoreMarker source="so" fieldKey="destination" originalValue={destinationAutoFilledValue} currentValue={form.destination} onRestore={() => { setForm((f) => ({ ...f, destination: destinationAutoFilledValue })); clearDismissedBadges("destination:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }} />
+                      )}
+                    </div>
+                    <Input id="destination" value={form.destination} onChange={set("destination")} placeholder="Singapore" required className={`${scannedFields.has("destination") ? "ring-1 ring-green-400" : ""} ${(destinationAutoFilled && dismissedBadges.has("destination:so")) ? "border-l-2 border-l-blue-300" : ""}`.trim()} />
+                    {((destinationAutoFilled && !dismissedBadges.has("destination:so")) || scannedFields.has("destination")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {destinationAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {destinationAutoFilled && !dismissedBadges.has("destination:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("destination:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
                         {scannedFields.has("destination") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("destination")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
-                        {destinationAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
-                        {destinationAutoFilled && form.destination !== destinationAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, destination: destinationAutoFilledValue })); setDestinationAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
+                        {destinationAutoFilled && !dismissedBadges.has("destination:so") ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {destinationAutoFilled && !dismissedBadges.has("destination:so") && form.destination !== destinationAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, destination: destinationAutoFilledValue })); setDestinationAutoFilled(true); clearDismissedBadges("destination:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("destination"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
@@ -1249,9 +1259,14 @@ export default function LogisticsFreightEditorPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Moda Transportasi</Label>
+                    <div className="flex items-center gap-2">
+                      <Label>Moda Transportasi</Label>
+                      {transportModeAutoFilled && dismissedBadges.has("transportMode:so") && (
+                        <AutofillRestoreMarker source="so" fieldKey="transportMode" originalValue={transportModeAutoFilledValue} currentValue={form.transportMode} onRestore={() => { setForm((f) => ({ ...f, transportMode: transportModeAutoFilledValue })); clearDismissedBadges("transportMode:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }} />
+                      )}
+                    </div>
                     <Select value={form.transportMode || "__none"} onValueChange={(v) => { setForm((f) => ({ ...f, transportMode: v === "__none" ? "" : v })); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }}>
-                      <SelectTrigger className={scannedFields.has("transportMode") ? "ring-1 ring-green-400" : ""}><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
+                      <SelectTrigger className={`${scannedFields.has("transportMode") ? "ring-1 ring-green-400" : ""} ${(transportModeAutoFilled && dismissedBadges.has("transportMode:so")) ? "border-l-2 border-l-blue-300" : ""}`.trim()}><SelectValue placeholder="Pilih moda..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">— Belum ditentukan —</SelectItem>
                         <SelectItem value="sea">Laut (Sea)</SelectItem>
@@ -1260,13 +1275,13 @@ export default function LogisticsFreightEditorPage() {
                         <SelectItem value="multimodal">Multimodal</SelectItem>
                       </SelectContent>
                     </Select>
-                    {(transportModeAutoFilled || scannedFields.has("transportMode")) && (
+                    {((transportModeAutoFilled && !dismissedBadges.has("transportMode:so")) || scannedFields.has("transportMode")) && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                        {transportModeAutoFilled && <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO</span>}
+                        {transportModeAutoFilled && !dismissedBadges.has("transportMode:so") && <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-medium">Dari SO<button type="button" onClick={() => dismissBadge("transportMode:so")} className="hover:text-blue-900 leading-none" aria-label="Tutup">×</button></span>}
                         {scannedFields.has("transportMode") && <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">Dari Scan<button type="button" onClick={() => dismissScannedField("transportMode")} className="hover:text-green-900 leading-none" aria-label="Tutup">×</button></span>}
-                        {transportModeAutoFilled ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
-                        {transportModeAutoFilled && form.transportMode !== transportModeAutoFilledValue && (
-                          <button type="button" onClick={() => { setForm((f) => ({ ...f, transportMode: transportModeAutoFilledValue })); setTransportModeAutoFilled(true); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
+                        {transportModeAutoFilled && !dismissedBadges.has("transportMode:so") ? "Diisi otomatis dari Sales Order." : "Diisi dari scan dokumen."}
+                        {transportModeAutoFilled && !dismissedBadges.has("transportMode:so") && form.transportMode !== transportModeAutoFilledValue && (
+                          <button type="button" onClick={() => { setForm((f) => ({ ...f, transportMode: transportModeAutoFilledValue })); setTransportModeAutoFilled(true); clearDismissedBadges("transportMode:so"); setScannedFields((prev) => { const next = new Set(prev); next.delete("transportMode"); return next; }); }} className="text-blue-600 hover:underline font-medium ml-1">Pulihkan dari SO</button>
                         )}
                       </p>
                     )}
