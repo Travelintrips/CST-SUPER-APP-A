@@ -589,6 +589,10 @@ export default function ExpenseEditorPage() {
 
   const status = expense?.status ?? "draft";
 
+  const _attachments = expense?.attachments ?? [];
+  const _selectedCat = cats.find((c) => c.id === form.categoryId);
+  const missingRequired = (_selectedCat?.requiresAttachment === true) && _attachments.length === 0;
+
   return (
     <AppShell>
       <div className="p-6 space-y-5 max-w-4xl mx-auto">
@@ -618,7 +622,12 @@ export default function ExpenseEditorPage() {
               </Button>
             )}
             {!isNew && status === "draft" && (
-              <Button variant="secondary" onClick={() => doAction("submit")} disabled={actionMut.isPending}>
+              <Button
+                variant="secondary"
+                onClick={() => doAction("submit")}
+                disabled={actionMut.isPending || missingRequired}
+                title={missingRequired ? "Harap unggah lampiran bukti sebelum mengajukan" : undefined}
+              >
                 <Send size={14} className="mr-1" />
                 Ajukan
               </Button>

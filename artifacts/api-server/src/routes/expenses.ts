@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc, and, gte, lte, like, or, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, count } from "drizzle-orm";
 import {
   db,
   expenseCategoriesTable,
@@ -437,6 +437,24 @@ router.post("/:id/action", async (req, res) => {
   if (!allowed) return res.status(400).json({ message: `Unknown action: ${action}` });
   if (!allowed.includes(expense.status)) {
     return res.status(400).json({ message: `Cannot ${action} from status '${expense.status}'` });
+  }
+
+  if (action === "submit" && expense.categoryId) {
+    const [cat] = await db
+      .select({ requiresAttachment: expenseCategoriesTable.requiresAttachment })
+      .from(expenseCategoriesTable)
+      .where(eq(expenseCategoriesTable.id, expense.categoryId));
+    if (cat?.requiresAttachment) {
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(expenseAttachmentsTable)
+        .where(eq(expenseAttachmentsTable.expenseId, id));
+      if (Number(total) === 0) {
+        return res.status(400).json({
+          message: "Kategori ini mewajibkan lampiran bukti. Harap unggah dokumen pendukung sebelum mengajukan.",
+        });
+      }
+    }
   }
 
   if (action === "post") {
