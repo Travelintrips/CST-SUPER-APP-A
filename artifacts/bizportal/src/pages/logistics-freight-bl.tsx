@@ -123,7 +123,8 @@ export default function LogisticsFreightBLPage() {
             );
           });
         }
-      } catch {
+      } catch (err) {
+        console.error("[BL] attachment save failed:", err);
       } finally {
         setIsSavingAttachment(false);
       }
