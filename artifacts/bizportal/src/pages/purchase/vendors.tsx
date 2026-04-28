@@ -221,6 +221,7 @@ export default function VendorsPage() {
                   <TableHead>Nama</TableHead>
                   <TableHead>Negara</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Telepon</TableHead>
                   <TableHead>NPWP</TableHead>
                   <TableHead>Pajak Default</TableHead>
                   <TableHead className="w-[120px] text-right">Aksi</TableHead>
@@ -232,6 +233,7 @@ export default function VendorsPage() {
                     <TableCell className="font-medium">{v.name}</TableCell>
                     <TableCell>{v.country}</TableCell>
                     <TableCell>{v.contactEmail}</TableCell>
+                    <TableCell>{v.phone ?? "-"}</TableCell>
                     <TableCell className="font-mono text-xs">{v.taxId ?? "-"}</TableCell>
                     <TableCell>{taxLabel(v.defaultPurchaseTaxId)}</TableCell>
                     <TableCell className="text-right">
