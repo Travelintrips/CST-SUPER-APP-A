@@ -941,6 +941,16 @@ export default function LogisticsFreightEditorPage() {
                                   setSelectedVendorId(null);
                                   setVendorPickerOpen(false);
                                   setVendorSearchQuery("");
+                                  if (shipperVendorNameFilled) {
+                                    setForm((f) => ({ ...f, shipperName: f.shipperName === shipperVendorNameValue ? "" : f.shipperName }));
+                                    setShipperVendorNameFilled(false);
+                                    setShipperVendorNameValue("");
+                                  }
+                                  if (shipperVendorAddressFilled) {
+                                    setForm((f) => ({ ...f, shipperAddress: f.shipperAddress === shipperVendorAddressValue ? "" : f.shipperAddress }));
+                                    setShipperVendorAddressFilled(false);
+                                    setShipperVendorAddressValue("");
+                                  }
                                 }}
                                 className="text-destructive aria-selected:text-destructive"
                                 data-testid="clear-vendor-item"
