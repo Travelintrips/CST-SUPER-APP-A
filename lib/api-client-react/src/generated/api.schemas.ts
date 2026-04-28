@@ -738,6 +738,8 @@ export interface AgingItem {
   docNumber: string;
   customerName?: string | null;
   supplierName?: string | null;
+  grandTotal: number;
+  amountPaid: number;
   amount: number;
   daysOld: number;
   bucket: string;

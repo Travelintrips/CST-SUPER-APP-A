@@ -60,12 +60,14 @@ export default function ApAgingPage() {
                       <TableHead>Vendor</TableHead>
                       <TableHead>Sejak</TableHead>
                       <TableHead className="text-right">Umur</TableHead>
+                      <TableHead className="text-right">Total Hutang</TableHead>
+                      <TableHead className="text-right">Dibayar</TableHead>
                       <TableHead className="text-right">Sisa Hutang</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.items.length === 0 ? (
-                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Tidak ada hutang</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">Tidak ada hutang</TableCell></TableRow>
                     ) : data.items.map((it) => (
                       <TableRow key={it.id}>
                         <TableCell>
@@ -81,6 +83,8 @@ export default function ApAgingPage() {
                         <TableCell className="text-right">
                           <Badge className={bucketColor(it.bucket)}>{it.daysOld} hari</Badge>
                         </TableCell>
+                        <TableCell className="text-right text-muted-foreground">{idr(it.grandTotal)}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{idr(it.amountPaid)}</TableCell>
                         <TableCell className="text-right font-medium">{idr(it.amount)}</TableCell>
                       </TableRow>
                     ))}

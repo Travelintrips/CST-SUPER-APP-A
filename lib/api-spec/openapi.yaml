@@ -3550,11 +3550,13 @@ components:
         docNumber: { type: string }
         customerName: { type: string, nullable: true }
         supplierName: { type: string, nullable: true }
+        grandTotal: { type: number }
+        amountPaid: { type: number }
         amount: { type: number }
         daysOld: { type: integer }
         bucket: { type: string }
         confirmedAt: { type: string, format: date-time }
-      required: [id, docNumber, amount, daysOld, bucket, confirmedAt]
+      required: [id, docNumber, grandTotal, amountPaid, amount, daysOld, bucket, confirmedAt]
 
     AgingReport:
       type: object
