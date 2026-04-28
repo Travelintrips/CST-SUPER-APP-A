@@ -74,6 +74,69 @@ function getInitialOrderRefreshInterval(): OrderRefreshValue {
   return "60000";
 }
 
+const fmtIDR = (v: number) =>
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+
+function ProductAutocomplete({
+  value,
+  onChange,
+  onSelect,
+  products,
+  placeholder,
+  className,
+  "data-testid": testId,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  onSelect: (name: string, price: number) => void;
+  products: Product[];
+  placeholder?: string;
+  className?: string;
+  "data-testid"?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const filtered = value.trim()
+    ? products.filter((p) => p.name.toLowerCase().includes(value.trim().toLowerCase())).slice(0, 8)
+    : [];
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 100)}
+        placeholder={placeholder}
+        className={className}
+        data-testid={testId}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 left-0 top-full mt-0.5 w-56 rounded-md border bg-popover shadow-md overflow-hidden">
+          {filtered.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="flex w-full items-center justify-between px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer text-left"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onSelect(p.name, p.price);
+                setOpen(false);
+              }}
+            >
+              <span className="truncate max-w-[140px]">{p.name}</span>
+              <span className="ml-2 shrink-0 text-xs text-muted-foreground tabular-nums">{fmtIDR(p.price)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EcommercePage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1045,9 +1108,11 @@ export default function EcommercePage() {
                               {createLineItems.map((li, idx) => (
                                 <tr key={li.id} className="border-t">
                                   <td className="px-2 py-1">
-                                    <Input
+                                    <ProductAutocomplete
                                       value={li.name}
-                                      onChange={(e) => setCreateLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name: e.target.value } : r))}
+                                      onChange={(name) => setCreateLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name } : r))}
+                                      onSelect={(name, price) => setCreateLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name, unitPrice: price } : r))}
+                                      products={products ?? []}
                                       placeholder="Nama produk"
                                       className="h-7 text-sm border-0 shadow-none px-0 focus-visible:ring-0"
                                       data-testid={`input-order-item-name-${idx}`}
@@ -1541,9 +1606,11 @@ export default function EcommercePage() {
                         {editLineItems.map((li, idx) => (
                           <tr key={li.id} className="border-t">
                             <td className="px-2 py-1">
-                              <Input
+                              <ProductAutocomplete
                                 value={li.name}
-                                onChange={(e) => { setEditLineItemsTouched(true); setEditLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name: e.target.value } : r)); }}
+                                onChange={(name) => { setEditLineItemsTouched(true); setEditLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name } : r)); }}
+                                onSelect={(name, price) => { setEditLineItemsTouched(true); setEditLineItems((prev) => prev.map((r) => r.id === li.id ? { ...r, name, unitPrice: price } : r)); }}
+                                products={products ?? []}
                                 placeholder="Nama produk"
                                 className="h-7 text-sm border-0 shadow-none px-0 focus-visible:ring-0"
                                 data-testid={`input-edit-order-item-name-${idx}`}
