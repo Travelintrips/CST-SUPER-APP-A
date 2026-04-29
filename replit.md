@@ -138,6 +138,15 @@ Document numbering follows the pattern `PREFIX/YYYY/NNNNNN` (e.g., `SHP/2026/123
 - All frontend API calls go through Orval-generated hooks in `@workspace/api-client-react`.
 - After backend schema or route changes, run `pnpm --filter @workspace/api-client-react run codegen` to regenerate.
 
+### Customer Portal Admin CMS
+- Route: `/customer-portal/admin` — accessible only after login.
+- **Claim admin**: any logged-in user can enter `PORTAL_ADMIN_KEY` (set as Replit Secret) to promote their account to `role = 'admin'` and receive a refreshed JWT.
+- **Admin tabs**: "Konten Website" (hero/about/contact text), "Kelola Layanan" (edit service name/desc/image), "Kelola Produk" (edit product name/desc/price/image).
+- **Image upload**: admin can upload images via presigned URL from `POST /api/portal/admin/upload-url`; images stored in Replit Object Storage and served at `/api/storage/public-objects/...`.
+- **Dynamic content**: homepage (`home.tsx`) loads from `GET /api/portal/content` and falls back to hardcoded defaults. Editable keys: `hero_title`, `hero_subtitle`, `hero_cta`, `about_title`, `about_body`, `contact_phone`, `contact_email`, `contact_address`, `footer_tagline`.
+- DB tables: `portal_customers.role` (default `'customer'`), `portal_content` (key/value/updated_at).
+- JWT payload now includes `role` field; `isPortalAdmin()` helper in `auth.ts` decodes it client-side.
+
 ### Object Storage
 - Product images and document attachments use Replit Object Storage.
 - Private objects require a signed URL; public objects are served directly.
