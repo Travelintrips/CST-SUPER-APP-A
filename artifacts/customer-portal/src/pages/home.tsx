@@ -1,13 +1,28 @@
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight } from "lucide-react";
 import { assetUrl } from "@/lib/utils";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function usePortalContent() {
+  const [content, setContent] = useState<Record<string, string>>({});
+  useEffect(() => {
+    void fetch(`${BASE}/api/portal/content`)
+      .then((r) => r.json())
+      .then((data) => setContent(data as Record<string, string>))
+      .catch(() => {});
+  }, []);
+  return content;
+}
+
 export default function Home() {
   const { data: company } = useGetPortalCompany({
     query: { queryKey: ["getPortalCompany"] }
   });
+  const content = usePortalContent();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -25,15 +40,16 @@ export default function Home() {
             {company?.tagline || "Solusi Logistik Terintegrasi & Berbasis Teknologi"}
           </span>
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-display font-bold tracking-tight mb-6 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-700 delay-100">
-            Logistik Global,<br />Presisi Tanpa Kompromi.
+            {content["hero_title"] || "Logistik Global,"}
+            {!content["hero_title"] && <><br />Presisi Tanpa Kompromi.</>}
           </h1>
           <p className="text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
-            Solusi ekspor, impor, dan kepabeanan yang andal — menghubungkan bisnis Anda ke seluruh dunia dengan aman dan tepat waktu.
+            {content["hero_subtitle"] || "Solusi ekspor, impor, dan kepabeanan yang andal — menghubungkan bisnis Anda ke seluruh dunia dengan aman dan tepat waktu."}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
             <Link href="/services">
               <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground h-12 px-8 text-base gap-2">
-                Lihat Layanan <ArrowRight className="h-4 w-4" />
+                {content["hero_cta"] || "Lihat Layanan"} <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/register">
@@ -263,7 +279,7 @@ export default function Home() {
                     </div>
                   </li>
                 )}
-                {/* Fallback jika data kontak belum diisi di BizPortal */}
+                {/* Fallback dari konten CMS atau default */}
                 {!company?.email && !company?.phone && (
                   <>
                     <li className="flex gap-4 items-center">
@@ -272,7 +288,7 @@ export default function Home() {
                       </div>
                       <div>
                         <p className="font-semibold mb-0.5">Email</p>
-                        <p className="text-muted-foreground">info@cstlogistic.co.id</p>
+                        <p className="text-muted-foreground">{content["contact_email"] || "info@cstlogistic.co.id"}</p>
                       </div>
                     </li>
                     <li className="flex gap-4 items-center">
@@ -281,10 +297,21 @@ export default function Home() {
                       </div>
                       <div>
                         <p className="font-semibold mb-0.5">Telepon</p>
-                        <p className="text-muted-foreground">+62 21 1234 5678</p>
+                        <p className="text-muted-foreground">{content["contact_phone"] || "+62 21 1234 5678"}</p>
                       </div>
                     </li>
                   </>
+                )}
+                {content["contact_address"] && (
+                  <li className="flex gap-4 items-start">
+                    <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
+                      <MapPin className="h-5 w-5 text-accent" />
+                    </div>
+                    <div>
+                      <p className="font-semibold mb-0.5">Alamat</p>
+                      <p className="text-muted-foreground whitespace-pre-line">{content["contact_address"]}</p>
+                    </div>
+                  </li>
                 )}
               </ul>
             </div>

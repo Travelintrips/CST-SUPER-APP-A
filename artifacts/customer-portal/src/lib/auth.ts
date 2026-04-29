@@ -23,3 +23,28 @@ export function getAuthHeaders(): { Authorization?: string } {
 export function isAuthenticated(): boolean {
   return !!getAuthToken();
 }
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payload = parts[1];
+    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
+    const decoded = atob(padded);
+    return JSON.parse(decoded) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function getPortalRole(): string {
+  const token = getAuthToken();
+  if (!token) return "guest";
+  const payload = decodeJwtPayload(token);
+  if (!payload) return "guest";
+  return typeof payload.role === "string" ? payload.role : "customer";
+}
+
+export function isPortalAdmin(): boolean {
+  return getPortalRole() === "admin";
+}

@@ -1,7 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable } from "@workspace/db";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import crypto from "crypto";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
 
@@ -31,6 +32,8 @@ function verifyToken(token: string): Record<string, unknown> | null {
   }
 }
 
+type PortalAuthReq = Request & { portalCustomerId: number; portalRole: string };
+
 function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers["authorization"];
   if (!auth?.startsWith("Bearer ")) {
@@ -43,7 +46,29 @@ function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
     res.status(401).json({ message: "Invalid or expired token" });
     return;
   }
-  (req as Request & { portalCustomerId: number }).portalCustomerId = payload.customerId;
+  (req as PortalAuthReq).portalCustomerId = payload.customerId;
+  (req as PortalAuthReq).portalRole = (payload.role as string) ?? "customer";
+  next();
+}
+
+function requirePortalAdmin(req: Request, res: Response, next: NextFunction) {
+  const auth = req.headers["authorization"];
+  if (!auth?.startsWith("Bearer ")) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+  const token = auth.slice(7);
+  const payload = verifyToken(token);
+  if (!payload || typeof payload.customerId !== "number") {
+    res.status(401).json({ message: "Invalid or expired token" });
+    return;
+  }
+  if (payload.role !== "admin") {
+    res.status(403).json({ message: "Akses admin diperlukan" });
+    return;
+  }
+  (req as PortalAuthReq).portalCustomerId = payload.customerId;
+  (req as PortalAuthReq).portalRole = "admin";
   next();
 }
 
@@ -118,7 +143,7 @@ router.post("/auth/login", async (req, res) => {
     return res.status(401).json({ message: "Email atau password tidak valid" });
   }
   const serviceIds = await getServiceIds(customer.id);
-  const token = signToken({ customerId: customer.id });
+  const token = signToken({ customerId: customer.id, role: customer.role });
   return res.json({
     token,
     customer: {
@@ -127,6 +152,7 @@ router.post("/auth/login", async (req, res) => {
       email: customer.email,
       phone: customer.phone,
       company: customer.company,
+      role: customer.role,
       serviceIds,
       createdAt: customer.createdAt.toISOString(),
     },
@@ -156,7 +182,7 @@ router.post("/auth/register", async (req, res) => {
     );
   }
   const selectedServiceIds = Array.isArray(serviceIds) ? (serviceIds as number[]).map(Number) : [];
-  const token = signToken({ customerId: customer!.id });
+  const token = signToken({ customerId: customer!.id, role: customer!.role });
   return res.status(201).json({
     token,
     customer: {
@@ -165,6 +191,7 @@ router.post("/auth/register", async (req, res) => {
       email: customer!.email,
       phone: customer!.phone,
       company: customer!.company,
+      role: customer!.role,
       serviceIds: selectedServiceIds,
       createdAt: customer!.createdAt.toISOString(),
     },
@@ -173,7 +200,7 @@ router.post("/auth/register", async (req, res) => {
 
 // GET /api/portal/auth/me
 router.get("/auth/me", requirePortalAuth, async (req, res) => {
-  const customerId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const customerId = (req as PortalAuthReq).portalCustomerId;
   const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
   if (!customer) return res.status(401).json({ message: "Customer not found" });
   const serviceIds = await getServiceIds(customer.id);
@@ -183,9 +210,95 @@ router.get("/auth/me", requirePortalAuth, async (req, res) => {
     email: customer.email,
     phone: customer.phone,
     company: customer.company,
+    role: customer.role,
     serviceIds,
     createdAt: customer.createdAt.toISOString(),
   });
+});
+
+// ── PORTAL CONTENT (Public) ───────────────────────────────────────────────
+// GET /api/portal/content
+router.get("/content", async (_req, res) => {
+  const rows = await db.select().from(portalContentTable);
+  const content: Record<string, string> = {};
+  for (const r of rows) content[r.key] = r.value;
+  return res.json(content);
+});
+
+// ── PORTAL ADMIN ENDPOINTS ─────────────────────────────────────────────────
+const PORTAL_ADMIN_KEY = process.env.PORTAL_ADMIN_KEY ?? "";
+
+// POST /api/portal/admin/claim  — claim admin role using secret key
+router.post("/admin/claim", requirePortalAuth, async (req, res) => {
+  const { key } = req.body ?? {};
+  if (!PORTAL_ADMIN_KEY || String(key) !== PORTAL_ADMIN_KEY) {
+    return res.status(403).json({ message: "Kunci admin tidak valid" });
+  }
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  await db.update(portalCustomersTable).set({ role: "admin" }).where(eq(portalCustomersTable.id, customerId));
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+  const token = signToken({ customerId: customer!.id, role: "admin" });
+  return res.json({ token, role: "admin" });
+});
+
+// PUT /api/portal/admin/content  — update CMS content (admin only)
+router.put("/admin/content", requirePortalAdmin, async (req, res) => {
+  const updates = req.body as Record<string, string>;
+  if (!updates || typeof updates !== "object") {
+    return res.status(400).json({ message: "Body harus berupa objek key-value" });
+  }
+  for (const [key, value] of Object.entries(updates)) {
+    await db
+      .insert(portalContentTable)
+      .values({ key, value: String(value), updatedAt: new Date() })
+      .onConflictDoUpdate({ target: portalContentTable.key, set: { value: String(value), updatedAt: new Date() } });
+  }
+  return res.json({ ok: true });
+});
+
+// PUT /api/portal/admin/services/:id  — update service (admin only)
+router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { name, description, price, imageUrl } = req.body ?? {};
+  const updates: Record<string, unknown> = {};
+  if (name !== undefined) updates.name = String(name);
+  if (description !== undefined) updates.description = String(description);
+  if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
+  if (imageUrl !== undefined) updates.imageUrl = imageUrl ? String(imageUrl) : null;
+  if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
+  return res.json(updated);
+});
+
+// PUT /api/portal/admin/products/:id  — update product (admin only)
+router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { name, description, price, imageUrl } = req.body ?? {};
+  const updates: Record<string, unknown> = {};
+  if (name !== undefined) updates.name = String(name);
+  if (description !== undefined) updates.description = String(description);
+  if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
+  if (imageUrl !== undefined) updates.imageUrl = imageUrl ? String(imageUrl) : null;
+  if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
+  return res.json(updated);
+});
+
+// POST /api/portal/admin/upload-url  — get presigned upload URL (admin only)
+const _objectStorage = new ObjectStorageService();
+router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {
+  const { contentType } = req.body ?? {};
+  if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
+  if (!contentType.startsWith("image/")) return res.status(415).json({ message: "Hanya file gambar yang diizinkan" });
+  try {
+    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
+    const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
+    return res.json({ uploadURL, objectPath });
+  } catch (_err) {
+    return res.status(500).json({ message: "Gagal membuat URL upload" });
+  }
 });
 
 // Shared helper: find or create CRM customer by email

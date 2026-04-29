@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Package, LogOut, LayoutDashboard, ShoppingCart } from "lucide-react";
-import { isAuthenticated, removeAuthToken } from "@/lib/auth";
+import { Menu, X, Package, LogOut, LayoutDashboard, ShoppingCart, Shield } from "lucide-react";
+import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useCart } from "@/lib/cart";
 
@@ -11,6 +11,7 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [location, setLocation] = useLocation();
   const isAuth = isAuthenticated();
+  const isAdmin = isPortalAdmin();
   const { count, openCart } = useCart();
 
   const { data: company } = useGetPortalCompany({
@@ -117,6 +118,14 @@ export function Navbar() {
 
               {isAuth ? (
                 <>
+                  {isAdmin && (
+                    <Link href="/admin">
+                      <Button variant="ghost" size="sm" className="gap-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50">
+                        <Shield className="h-4 w-4" />
+                        Admin
+                      </Button>
+                    </Link>
+                  )}
                   <Link href="/dashboard">
                     <Button variant="ghost" size="sm" className="gap-2">
                       <LayoutDashboard className="h-4 w-4" />
@@ -185,6 +194,14 @@ export function Navbar() {
             <div className="my-4 border-t border-border pt-4">
               {isAuth ? (
                 <div className="space-y-2">
+                  {isAdmin && (
+                    <Link href="/admin" onClick={() => setIsOpen(false)}>
+                      <Button variant="outline" className="w-full justify-start gap-2 text-amber-600 border-amber-200">
+                        <Shield className="h-4 w-4" />
+                        Admin Panel
+                      </Button>
+                    </Link>
+                  )}
                   <Link href="/dashboard" onClick={() => setIsOpen(false)}>
                     <Button variant="outline" className="w-full justify-start gap-2">
                       <LayoutDashboard className="h-4 w-4" />

@@ -1,0 +1,601 @@
+import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
+import { isAuthenticated, isPortalAdmin, getAuthHeaders, setAuthToken } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Shield,
+  Save,
+  Upload,
+  Loader2,
+  Image as ImageIcon,
+  FileText,
+  Box,
+  Settings,
+  CheckCircle,
+} from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+type Service = {
+  id: number;
+  name: string;
+  description: string | null;
+  price: number;
+  imageUrl: string | null;
+};
+
+type Product = {
+  id: number;
+  name: string;
+  description: string | null;
+  price: number;
+  imageUrl: string | null;
+};
+
+type ContentMap = Record<string, string>;
+
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<T>;
+}
+
+async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<T>;
+}
+
+async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<T>;
+}
+
+function ImageUploader({
+  currentUrl,
+  onUpload,
+}: {
+  currentUrl: string | null;
+  onUpload: (url: string) => void;
+}) {
+  const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<string | null>(currentUrl);
+
+  useEffect(() => {
+    setPreview(currentUrl);
+  }, [currentUrl]);
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Hanya file gambar", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const { uploadURL, objectPath } = await apiPost<{ uploadURL: string; objectPath: string }>(
+        "/api/portal/admin/upload-url",
+        { contentType: file.type }
+      );
+      await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      const publicUrl = `${BASE}/api/storage/public-objects/${objectPath}`;
+      setPreview(publicUrl);
+      onUpload(publicUrl);
+      toast({ title: "Gambar berhasil diunggah" });
+    } catch (err) {
+      toast({ title: "Gagal mengunggah gambar", description: String(err), variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {preview && (
+        <div className="relative rounded-lg overflow-hidden border border-border bg-muted h-40 flex items-center justify-center">
+          <img src={preview} alt="preview" className="h-full w-full object-cover" />
+        </div>
+      )}
+      {!preview && (
+        <div className="rounded-lg border-2 border-dashed border-border h-40 flex flex-col items-center justify-center text-muted-foreground gap-2">
+          <ImageIcon className="h-8 w-8" />
+          <span className="text-sm">Belum ada gambar</span>
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleFile(file);
+        }}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-2"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+        {uploading ? "Mengunggah..." : "Unggah Gambar"}
+      </Button>
+    </div>
+  );
+}
+
+function ContentTab() {
+  const { toast } = useToast();
+  const [content, setContent] = useState<ContentMap>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [changed, setChanged] = useState<ContentMap>({});
+
+  const FIELDS: Array<{ key: string; label: string; multi?: boolean }> = [
+    { key: "hero_title", label: "Judul Hero" },
+    { key: "hero_subtitle", label: "Subjudul Hero", multi: true },
+    { key: "hero_cta", label: "Teks Tombol CTA Hero" },
+    { key: "about_title", label: "Judul Tentang Kami" },
+    { key: "about_body", label: "Deskripsi Tentang Kami", multi: true },
+    { key: "contact_phone", label: "Nomor Telepon" },
+    { key: "contact_email", label: "Email Kontak" },
+    { key: "contact_address", label: "Alamat", multi: true },
+    { key: "footer_tagline", label: "Tagline Footer" },
+  ];
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiGet<ContentMap>("/api/portal/content");
+        setContent(data);
+      } catch {
+        toast({ title: "Gagal memuat konten", variant: "destructive" });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  function handleChange(key: string, value: string) {
+    setChanged((prev) => ({ ...prev, [key]: value }));
+    setContent((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSave() {
+    if (Object.keys(changed).length === 0) return;
+    setSaving(true);
+    try {
+      await apiPut("/api/portal/admin/content", changed);
+      setChanged({});
+      toast({ title: "Konten berhasil disimpan", description: "Perubahan akan segera tampil di website." });
+    } catch (err) {
+      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-5">
+        {FIELDS.map((f) => (
+          <div key={f.key} className="space-y-1.5">
+            <Label className="text-sm font-medium">{f.label}</Label>
+            {f.multi ? (
+              <Textarea
+                value={content[f.key] ?? ""}
+                onChange={(e) => handleChange(f.key, e.target.value)}
+                rows={3}
+                placeholder={`Masukkan ${f.label.toLowerCase()}...`}
+              />
+            ) : (
+              <Input
+                value={content[f.key] ?? ""}
+                onChange={(e) => handleChange(f.key, e.target.value)}
+                placeholder={`Masukkan ${f.label.toLowerCase()}...`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      <Button onClick={handleSave} disabled={saving || Object.keys(changed).length === 0} className="gap-2">
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        {saving ? "Menyimpan..." : `Simpan Perubahan${Object.keys(changed).length > 0 ? ` (${Object.keys(changed).length})` : ""}`}
+      </Button>
+    </div>
+  );
+}
+
+function ItemEditCard({
+  item,
+  onSave,
+  type,
+}: {
+  item: Service | Product;
+  onSave: (id: number, data: Partial<Service>) => Promise<void>;
+  type: "services" | "products";
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState(item.name);
+  const [description, setDescription] = useState(item.description ?? "");
+  const [price, setPrice] = useState(String(item.price));
+  const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(item.id, { name, description: description || null, price: parseFloat(price) || 0, imageUrl });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      toast({ title: `${type === "services" ? "Layanan" : "Produk"} berhasil diperbarui` });
+    } catch (err) {
+      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">{item.name}</CardTitle>
+          <Badge variant="outline" className="text-xs">ID #{item.id}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-sm">Nama</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Deskripsi</Label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Deskripsi singkat..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Harga (0 = Negosiasi)</Label>
+              <Input
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0"
+                min="0"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Gambar</Label>
+            <ImageUploader
+              currentUrl={imageUrl}
+              onUpload={(url) => setImageUrl(url)}
+            />
+          </div>
+        </div>
+        <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : saved ? (
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ServicesTab() {
+  const { toast } = useToast();
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiGet<Service[]>("/api/portal/services");
+        setServices(data);
+      } catch {
+        toast({ title: "Gagal memuat layanan", variant: "destructive" });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  async function handleSave(id: number, data: Partial<Service>) {
+    await apiPut(`/api/portal/admin/services/${id}`, data);
+    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...data } : s)));
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Kelola {services.length} layanan yang tampil di halaman Layanan.
+      </p>
+      {services.map((s) => (
+        <ItemEditCard key={s.id} item={s} onSave={handleSave} type="services" />
+      ))}
+      {services.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          Belum ada layanan. Tambahkan layanan melalui BizPortal.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductsTab() {
+  const { toast } = useToast();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiGet<Product[]>("/api/portal/products");
+        setProducts(data);
+      } catch {
+        toast({ title: "Gagal memuat produk", variant: "destructive" });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  async function handleSave(id: number, data: Partial<Product>) {
+    await apiPut(`/api/portal/admin/products/${id}`, data);
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Kelola {products.length} produk yang tampil di halaman Produk.
+      </p>
+      {products.map((p) => (
+        <ItemEditCard key={p.id} item={p} onSave={handleSave} type="products" />
+      ))}
+      {products.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          Belum ada produk. Tambahkan produk melalui BizPortal.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClaimAdminTab() {
+  const { toast } = useToast();
+  const [key, setKey] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [, setLocation] = useLocation();
+  const alreadyAdmin = isPortalAdmin();
+
+  async function handleClaim() {
+    setLoading(true);
+    try {
+      const result = await apiPost<{ token: string; role: string }>("/api/portal/admin/claim", { key });
+      setAuthToken(result.token);
+      toast({ title: "Berhasil! Anda sekarang adalah admin.", description: "Halaman akan dimuat ulang." });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch {
+      toast({ title: "Kunci admin tidak valid", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (alreadyAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <CheckCircle className="h-12 w-12 text-green-500" />
+        <p className="text-lg font-semibold">Anda sudah menjadi Admin</p>
+        <p className="text-muted-foreground text-sm">Semua fitur admin telah aktif.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-md space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Masukkan kunci rahasia admin untuk mengaktifkan akses admin pada akun Anda.
+        Kunci ini diatur oleh administrator sistem.
+      </p>
+      <div className="space-y-1.5">
+        <Label>Kunci Admin</Label>
+        <Input
+          type="password"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder="Masukkan kunci admin..."
+          onKeyDown={(e) => { if (e.key === "Enter") void handleClaim(); }}
+        />
+      </div>
+      <Button onClick={handleClaim} disabled={loading || !key} className="gap-2">
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+        {loading ? "Memverifikasi..." : "Aktifkan Admin"}
+      </Button>
+    </div>
+  );
+}
+
+export default function AdminPage() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      setLocation("/login");
+    }
+  }, []);
+
+  if (!isAuthenticated()) return null;
+
+  const isAdmin = isPortalAdmin();
+
+  return (
+    <div className="min-h-screen bg-muted/20">
+      {/* Header */}
+      <div className="bg-background border-b border-border">
+        <div className="container mx-auto px-4 md:px-6 py-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-amber-100 text-amber-700 p-2.5 rounded-lg">
+              <Shield className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Admin Panel</h1>
+              <p className="text-muted-foreground text-sm">
+                Kelola konten website PT. Cahaya Sejati Teknologi
+              </p>
+            </div>
+            {isAdmin && (
+              <Badge className="ml-auto bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100">
+                Admin Aktif
+              </Badge>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 md:px-6 py-8">
+        <Tabs defaultValue={isAdmin ? "content" : "claim"}>
+          <TabsList className="mb-6">
+            {isAdmin && (
+              <>
+                <TabsTrigger value="content" className="gap-2">
+                  <FileText className="h-4 w-4" />
+                  Konten Website
+                </TabsTrigger>
+                <TabsTrigger value="services" className="gap-2">
+                  <Settings className="h-4 w-4" />
+                  Kelola Layanan
+                </TabsTrigger>
+                <TabsTrigger value="products" className="gap-2">
+                  <Box className="h-4 w-4" />
+                  Kelola Produk
+                </TabsTrigger>
+              </>
+            )}
+            <TabsTrigger value="claim" className="gap-2">
+              <Shield className="h-4 w-4" />
+              Aktivasi Admin
+            </TabsTrigger>
+          </TabsList>
+
+          {isAdmin && (
+            <>
+              <TabsContent value="content">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Konten Website</CardTitle>
+                    <CardDescription>
+                      Edit teks yang tampil di berbagai bagian website publik.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ContentTab />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="services">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Kelola Layanan</CardTitle>
+                    <CardDescription>
+                      Edit nama, deskripsi, harga, dan gambar untuk setiap layanan.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ServicesTab />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="products">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Kelola Produk</CardTitle>
+                    <CardDescription>
+                      Edit nama, deskripsi, harga, dan gambar untuk setiap produk.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ProductsTab />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </>
+          )}
+
+          <TabsContent value="claim">
+            <Card>
+              <CardHeader>
+                <CardTitle>Aktivasi Admin</CardTitle>
+                <CardDescription>
+                  Aktifkan hak akses admin menggunakan kunci rahasia.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ClaimAdminTab />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}

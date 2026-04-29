@@ -9,6 +9,7 @@ export const portalCustomersTable = pgTable("portal_customers", {
   passwordHash: text("password_hash").notNull(),
   phone: text("phone"),
   company: text("company"),
+  role: text("role").notNull().default("customer"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -19,6 +20,14 @@ export const portalCustomerServicesTable = pgTable("portal_customer_services", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const portalContentTable = pgTable("portal_content", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull().default(""),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertPortalCustomerSchema = createInsertSchema(portalCustomersTable).omit({ id: true, createdAt: true });
 export type InsertPortalCustomer = z.infer<typeof insertPortalCustomerSchema>;
 export type PortalCustomer = typeof portalCustomersTable.$inferSelect;
+export type PortalContent = typeof portalContentTable.$inferSelect;
