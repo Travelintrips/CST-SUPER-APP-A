@@ -11,7 +11,7 @@ const formatIDR = (v: number) =>
 type Step = "cart" | "checkout" | "success";
 
 export function CartDrawer() {
-  const { items, removeItem, updateQty, clearCart, total, count, isOpen, closeCart } = useCart();
+  const { items, removeItem, updateQty, updatePrice, clearCart, total, count, isOpen, closeCart } = useCart();
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<Step>("cart");
   const [notes, setNotes] = useState("");
@@ -21,6 +21,7 @@ export function CartDrawer() {
   const [successOrder, setSuccessOrder] = useState<{ docNumber: string; id: number } | null>(null);
 
   const token = getAuthToken();
+  const hasNegotiatedItems = items.some((i) => i.unitPrice === 0);
 
   function resetAndClose() {
     closeCart();
@@ -113,6 +114,7 @@ export function CartDrawer() {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
+
           {/* ── STEP: CART ── */}
           {step === "cart" && (
             <div className="p-6 space-y-4">
@@ -129,17 +131,19 @@ export function CartDrawer() {
                     className="flex gap-4 items-start bg-gray-50 rounded-xl p-4"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start gap-2">
-                        <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                          item.itemType === "jasa"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-orange-100 text-orange-700"
-                        }`}>
-                          {item.itemType === "jasa" ? "Layanan" : "Produk"}
-                        </span>
-                      </div>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        item.itemType === "jasa"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-orange-100 text-orange-700"
+                      }`}>
+                        {item.itemType === "jasa" ? "Layanan" : "Produk"}
+                      </span>
                       <p className="font-semibold mt-1 text-sm leading-tight">{item.name}</p>
-                      <p className="text-accent font-bold text-sm mt-1">{formatIDR(item.unitPrice)}</p>
+                      {item.unitPrice > 0 ? (
+                        <p className="text-accent font-bold text-sm mt-1">{formatIDR(item.unitPrice)}</p>
+                      ) : (
+                        <p className="text-amber-600 font-medium text-xs mt-1">Harga akan dikonfirmasi</p>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <button
@@ -163,9 +167,11 @@ export function CartDrawer() {
                           <Plus className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {formatIDR(item.unitPrice * item.quantity)}
-                      </p>
+                      {item.unitPrice > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {formatIDR(item.unitPrice * item.quantity)}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))
@@ -176,20 +182,47 @@ export function CartDrawer() {
           {/* ── STEP: CHECKOUT ── */}
           {step === "checkout" && (
             <div className="p-6 space-y-5">
-              {/* Order summary */}
-              <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                <p className="font-semibold text-sm text-muted-foreground mb-3">Ringkasan Pesanan</p>
+              {/* Order summary + price editing */}
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                <p className="font-semibold text-sm text-muted-foreground">Ringkasan & Konfirmasi Harga</p>
                 {items.map((item) => (
-                  <div key={item.productId} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground truncate max-w-[200px]">
-                      {item.name} × {item.quantity}
-                    </span>
-                    <span className="font-medium shrink-0">{formatIDR(item.unitPrice * item.quantity)}</span>
+                  <div key={item.productId} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground truncate max-w-[180px]">
+                        {item.name} × {item.quantity}
+                      </span>
+                      {item.unitPrice > 0 && (
+                        <span className="font-medium shrink-0">{formatIDR(item.unitPrice * item.quantity)}</span>
+                      )}
+                    </div>
+                    {/* Editable price field */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground shrink-0">Harga satuan (Rp):</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        placeholder={item.unitPrice === 0 ? "Masukkan harga estimasi..." : ""}
+                        value={item.unitPrice === 0 ? "" : item.unitPrice}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          updatePrice(item.productId, isNaN(v) ? 0 : v);
+                        }}
+                        className="flex-1 text-xs rounded-md border border-input bg-white px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent/50"
+                      />
+                    </div>
+                    {item.unitPrice === 0 && (
+                      <p className="text-xs text-amber-600">
+                        Kosongkan jika ingin harga dikonfirmasi oleh tim kami.
+                      </p>
+                    )}
                   </div>
                 ))}
-                <div className="border-t border-border pt-2 mt-2 flex justify-between font-bold">
-                  <span>Total</span>
-                  <span className="text-accent">{formatIDR(total)}</span>
+                <div className="border-t border-border pt-2 mt-1 flex justify-between font-bold text-sm">
+                  <span>Total Estimasi</span>
+                  <span className="text-accent">
+                    {total > 0 ? formatIDR(total) : "Akan dikonfirmasi"}
+                  </span>
                 </div>
               </div>
 
@@ -200,7 +233,7 @@ export function CartDrawer() {
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Asal & tujuan pengiriman, spesifikasi khusus, dll..."
+                  placeholder="Asal & tujuan pengiriman, spesifikasi muatan, jadwal, dll..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
@@ -221,6 +254,13 @@ export function CartDrawer() {
                 />
               </div>
 
+              {hasNegotiatedItems && (
+                <div className="flex gap-2 items-start p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>Pesanan dengan harga 0 akan diproses sebagai permintaan penawaran. Tim kami akan menghubungi Anda untuk konfirmasi harga.</span>
+                </div>
+              )}
+
               {errorMsg && (
                 <div className="flex gap-2 items-start p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
                   <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -237,9 +277,7 @@ export function CartDrawer() {
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
               <h3 className="font-display font-bold text-xl mb-2">Pesanan Diterima!</h3>
-              <p className="text-muted-foreground mb-2">
-                Nomor pesanan Anda:
-              </p>
+              <p className="text-muted-foreground mb-2">Nomor pesanan Anda:</p>
               <p className="font-bold text-accent text-lg mb-4">{successOrder.docNumber}</p>
               <p className="text-sm text-muted-foreground">
                 Tim kami akan segera memproses pesanan Anda dan menghubungi Anda dalam waktu 1×24 jam kerja.
@@ -254,7 +292,9 @@ export function CartDrawer() {
             <>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Total Estimasi</span>
-                <span className="font-bold text-lg text-accent">{formatIDR(total)}</span>
+                <span className="font-bold text-lg text-accent">
+                  {total > 0 ? formatIDR(total) : "Akan dikonfirmasi"}
+                </span>
               </div>
               <Button className="w-full h-11 gap-2" onClick={handleCheckout}>
                 {token ? "Lanjut ke Konfirmasi" : "Masuk untuk Memesan"}
@@ -296,10 +336,7 @@ export function CartDrawer() {
               >
                 Lihat Riwayat
               </Button>
-              <Button
-                className="flex-1"
-                onClick={resetAndClose}
-              >
+              <Button className="flex-1" onClick={resetAndClose}>
                 Tutup
               </Button>
             </div>

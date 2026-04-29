@@ -13,6 +13,7 @@ interface CartContextValue {
   addItem: (item: Omit<CartItem, "quantity">) => void;
   removeItem: (productId: number) => void;
   updateQty: (productId: number, qty: number) => void;
+  updatePrice: (productId: number, price: number) => void;
   clearCart: () => void;
   total: number;
   count: number;
@@ -54,6 +55,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const updatePrice = useCallback((productId: number, price: number) => {
+    setItems((prev) =>
+      prev.map((i) => (i.productId === productId ? { ...i, unitPrice: price } : i))
+    );
+  }, []);
+
   const clearCart = useCallback(() => setItems([]), []);
   const openCart = useCallback(() => setIsOpen(true), []);
   const closeCart = useCallback(() => setIsOpen(false), []);
@@ -63,7 +70,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQty, clearCart, total, count, isOpen, openCart, closeCart }}
+      value={{ items, addItem, removeItem, updateQty, updatePrice, clearCart, total, count, isOpen, openCart, closeCart }}
     >
       {children}
     </CartContext.Provider>

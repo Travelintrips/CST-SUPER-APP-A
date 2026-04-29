@@ -125,7 +125,11 @@ export default function Products() {
                 <CardContent className="mt-auto pt-0 space-y-3">
                   <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Harga</span>
-                    <span className="font-bold text-lg text-primary">{formatIDR(product.price)}</span>
+                    {product.price > 0 ? (
+                      <span className="font-bold text-lg text-primary">{formatIDR(product.price)}</span>
+                    ) : (
+                      <span className="font-semibold text-amber-600 text-sm">Harga Negosiasi</span>
+                    )}
                   </div>
                   <Button
                     className="w-full gap-2"
