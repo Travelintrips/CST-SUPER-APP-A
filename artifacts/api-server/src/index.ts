@@ -5,6 +5,7 @@ import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedDemoData } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
+import { runPortalMigration } from "./lib/portalMigration";
 
 const rawPort = process.env["PORT"];
 
@@ -27,6 +28,11 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Jalankan portal schema migration (idempotent — aman untuk prod)
+  runPortalMigration().catch((err) => {
+    logger.error({ err }, "Portal migration error");
+  });
 
   // Run idempotent accounting seed (no-op if accounts already exist)
   seedAccountingDefaults().catch((seedErr) => {
