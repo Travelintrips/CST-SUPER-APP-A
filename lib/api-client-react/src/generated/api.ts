@@ -100,6 +100,13 @@ import type {
   PartnerBalances,
   Payment,
   PaymentLinkResponse,
+  PortalCompany,
+  PortalCustomer,
+  PortalLoginBody,
+  PortalOrder,
+  PortalRegisterBody,
+  PortalService,
+  PortalSession,
   PosSummary,
   Product,
   ProductCategory,
@@ -8727,6 +8734,478 @@ export const useVoidAccountingPayment = <
 > => {
   return useMutation(getVoidAccountingPaymentMutationOptions(options));
 };
+
+/**
+ * @summary Get public company info (name, tagline, logo) for the customer portal
+ */
+export const getGetPortalCompanyUrl = () => {
+  return `/api/portal/company`;
+};
+
+export const getPortalCompany = async (
+  options?: RequestInit,
+): Promise<PortalCompany> => {
+  return customFetch<PortalCompany>(getGetPortalCompanyUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPortalCompanyQueryKey = () => {
+  return [`/api/portal/company`] as const;
+};
+
+export const getGetPortalCompanyQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPortalCompany>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPortalCompany>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPortalCompanyQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPortalCompany>>
+  > = ({ signal }) => getPortalCompany({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPortalCompany>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPortalCompanyQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPortalCompany>>
+>;
+export type GetPortalCompanyQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get public company info (name, tagline, logo) for the customer portal
+ */
+
+export function useGetPortalCompany<
+  TData = Awaited<ReturnType<typeof getPortalCompany>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPortalCompany>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPortalCompanyQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List active products/services from the catalog for the public portal
+ */
+export const getListPortalServicesUrl = () => {
+  return `/api/portal/services`;
+};
+
+export const listPortalServices = async (
+  options?: RequestInit,
+): Promise<PortalService[]> => {
+  return customFetch<PortalService[]>(getListPortalServicesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPortalServicesQueryKey = () => {
+  return [`/api/portal/services`] as const;
+};
+
+export const getListPortalServicesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPortalServices>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalServices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPortalServicesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPortalServices>>
+  > = ({ signal }) => listPortalServices({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalServices>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPortalServicesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPortalServices>>
+>;
+export type ListPortalServicesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List active products/services from the catalog for the public portal
+ */
+
+export function useListPortalServices<
+  TData = Awaited<ReturnType<typeof listPortalServices>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalServices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPortalServicesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Customer portal login — returns a session token
+ */
+export const getPortalLoginUrl = () => {
+  return `/api/portal/auth/login`;
+};
+
+export const portalLogin = async (
+  portalLoginBody: PortalLoginBody,
+  options?: RequestInit,
+): Promise<PortalSession> => {
+  return customFetch<PortalSession>(getPortalLoginUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(portalLoginBody),
+  });
+};
+
+export const getPortalLoginMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalLogin>>,
+    TError,
+    { data: BodyType<PortalLoginBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof portalLogin>>,
+  TError,
+  { data: BodyType<PortalLoginBody> },
+  TContext
+> => {
+  const mutationKey = ["portalLogin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof portalLogin>>,
+    { data: BodyType<PortalLoginBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return portalLogin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PortalLoginMutationResult = NonNullable<
+  Awaited<ReturnType<typeof portalLogin>>
+>;
+export type PortalLoginMutationBody = BodyType<PortalLoginBody>;
+export type PortalLoginMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Customer portal login — returns a session token
+ */
+export const usePortalLogin = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalLogin>>,
+    TError,
+    { data: BodyType<PortalLoginBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof portalLogin>>,
+  TError,
+  { data: BodyType<PortalLoginBody> },
+  TContext
+> => {
+  return useMutation(getPortalLoginMutationOptions(options));
+};
+
+/**
+ * @summary Customer portal sign-up — pick services and create account
+ */
+export const getPortalRegisterUrl = () => {
+  return `/api/portal/auth/register`;
+};
+
+export const portalRegister = async (
+  portalRegisterBody: PortalRegisterBody,
+  options?: RequestInit,
+): Promise<PortalSession> => {
+  return customFetch<PortalSession>(getPortalRegisterUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(portalRegisterBody),
+  });
+};
+
+export const getPortalRegisterMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalRegister>>,
+    TError,
+    { data: BodyType<PortalRegisterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof portalRegister>>,
+  TError,
+  { data: BodyType<PortalRegisterBody> },
+  TContext
+> => {
+  const mutationKey = ["portalRegister"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof portalRegister>>,
+    { data: BodyType<PortalRegisterBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return portalRegister(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PortalRegisterMutationResult = NonNullable<
+  Awaited<ReturnType<typeof portalRegister>>
+>;
+export type PortalRegisterMutationBody = BodyType<PortalRegisterBody>;
+export type PortalRegisterMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Customer portal sign-up — pick services and create account
+ */
+export const usePortalRegister = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof portalRegister>>,
+    TError,
+    { data: BodyType<PortalRegisterBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof portalRegister>>,
+  TError,
+  { data: BodyType<PortalRegisterBody> },
+  TContext
+> => {
+  return useMutation(getPortalRegisterMutationOptions(options));
+};
+
+/**
+ * @summary Get current portal customer profile
+ */
+export const getGetPortalMeUrl = () => {
+  return `/api/portal/auth/me`;
+};
+
+export const getPortalMe = async (
+  options?: RequestInit,
+): Promise<PortalCustomer> => {
+  return customFetch<PortalCustomer>(getGetPortalMeUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPortalMeQueryKey = () => {
+  return [`/api/portal/auth/me`] as const;
+};
+
+export const getGetPortalMeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPortalMe>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPortalMe>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPortalMeQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalMe>>> = ({
+    signal,
+  }) => getPortalMe({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPortalMe>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPortalMeQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPortalMe>>
+>;
+export type GetPortalMeQueryError = ErrorType<void>;
+
+/**
+ * @summary Get current portal customer profile
+ */
+
+export function useGetPortalMe<
+  TData = Awaited<ReturnType<typeof getPortalMe>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPortalMe>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPortalMeQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List orders for the authenticated portal customer
+ */
+export const getListPortalOrdersUrl = () => {
+  return `/api/portal/orders`;
+};
+
+export const listPortalOrders = async (
+  options?: RequestInit,
+): Promise<PortalOrder[]> => {
+  return customFetch<PortalOrder[]>(getListPortalOrdersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPortalOrdersQueryKey = () => {
+  return [`/api/portal/orders`] as const;
+};
+
+export const getListPortalOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPortalOrders>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPortalOrdersQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPortalOrders>>
+  > = ({ signal }) => listPortalOrders({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPortalOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPortalOrders>>
+>;
+export type ListPortalOrdersQueryError = ErrorType<void>;
+
+/**
+ * @summary List orders for the authenticated portal customer
+ */
+
+export function useListPortalOrders<
+  TData = Awaited<ReturnType<typeof listPortalOrders>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPortalOrdersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get accounting settings (account mappings)

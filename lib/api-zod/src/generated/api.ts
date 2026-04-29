@@ -2639,6 +2639,92 @@ export const VoidAccountingPaymentResponse = zod
   );
 
 /**
+ * @summary Get public company info (name, tagline, logo) for the customer portal
+ */
+export const GetPortalCompanyResponse = zod.object({
+  name: zod.string(),
+  tagline: zod.string().nullish(),
+  logoUrl: zod.string().nullish(),
+  address: zod.string().nullish(),
+  email: zod.string().nullish(),
+  phone: zod.string().nullish(),
+});
+
+/**
+ * @summary List active products/services from the catalog for the public portal
+ */
+export const ListPortalServicesResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  price: zod.number(),
+  imageUrl: zod.string().nullish(),
+  categories: zod.array(zod.string()),
+});
+export const ListPortalServicesResponse = zod.array(
+  ListPortalServicesResponseItem,
+);
+
+/**
+ * @summary Customer portal login — returns a session token
+ */
+export const PortalLoginBody = zod.object({
+  email: zod.string(),
+  password: zod.string(),
+});
+
+export const PortalLoginResponse = zod.object({
+  token: zod.string(),
+  customer: zod.object({
+    id: zod.number(),
+    name: zod.string(),
+    email: zod.string(),
+    phone: zod.string().nullish(),
+    company: zod.string().nullish(),
+    serviceIds: zod.array(zod.number()),
+    createdAt: zod.string(),
+  }),
+});
+
+/**
+ * @summary Customer portal sign-up — pick services and create account
+ */
+export const PortalRegisterBody = zod.object({
+  name: zod.string(),
+  email: zod.string(),
+  password: zod.string(),
+  phone: zod.string().nullish(),
+  company: zod.string().nullish(),
+  serviceIds: zod.array(zod.number()),
+});
+
+/**
+ * @summary Get current portal customer profile
+ */
+export const GetPortalMeResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  email: zod.string(),
+  phone: zod.string().nullish(),
+  company: zod.string().nullish(),
+  serviceIds: zod.array(zod.number()),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary List orders for the authenticated portal customer
+ */
+export const ListPortalOrdersResponseItem = zod.object({
+  id: zod.number(),
+  docNumber: zod.string(),
+  status: zod.string(),
+  grandTotal: zod.number(),
+  createdAt: zod.string(),
+  items: zod.string().nullish(),
+});
+export const ListPortalOrdersResponse = zod.array(ListPortalOrdersResponseItem);
+
+/**
  * @summary Get accounting settings (account mappings)
  */
 export const GetAccountingSettingsResponse = zod.object({

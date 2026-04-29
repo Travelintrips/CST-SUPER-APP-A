@@ -1,0 +1,26 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "XXSyoWx3ZJFSNXNKTHbla"
+uri = "file://artifacts/customer-portal/public/images/hero-bg.png"
+type = "image"
+title = "cargo ship at sea"
+
+[[generated]]
+id = "TR8XATi42P-30s9_FHNPi"
+uri = "file://artifacts/customer-portal/public/images/port-operations.png"
+type = "image"
+title = "busy shipping port"
+
+[[generated]]
+id = "7x3V3x8iPkE69Vcyq6eHQ"
+uri = "file://artifacts/customer-portal/public/images/warehouse.png"
+type = "image"
+title = "modern logistics warehouse"
+
+[[generated]]
+id = "zJZVpLJT9Dr19qiah9rtn"
+uri = "file://artifacts/customer-portal/public/images/customs.png"
+type = "image"
+title = "customs clearance documents"

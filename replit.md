@@ -19,6 +19,7 @@ BizPortal is an Odoo-style, multi-module ERP built as a **pnpm workspace monorep
 ├── artifacts/
 │   ├── api-server/         Express 5 REST API backend (TypeScript)
 │   ├── bizportal/          React + Vite frontend (TypeScript)
+│   ├── customer-portal/    Public-facing customer portal (React + Vite, port 23434, path /customer-portal/)
 │   └── mockup-sandbox/     Component preview / design sandbox
 ├── lib/
 │   └── db/                 Drizzle ORM schema + migrations (PostgreSQL)
@@ -66,6 +67,7 @@ BizPortal is an Odoo-style, multi-module ERP built as a **pnpm workspace monorep
 | `shipments.ts` | `shipments` — Ecommerce shipments |
 | `transactions.ts` | `transactions` — POS / trading transactions |
 | `apiResponseTimes.ts` | `apiResponseTimes` — Internal API latency logging |
+| `portalCustomers.ts` | `portal_customers` — Public portal customer accounts (separate from Clerk users); `portal_customer_services` — service subscriptions |
 
 ## API Routes (`artifacts/api-server/src/routes/`)
 

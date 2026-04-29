@@ -32,6 +32,8 @@ tags:
     description: Payments — Paylabs payment links and webhooks
   - name: accounting
     description: Accounting — chart of accounts, journals, journal entries, financial reports
+  - name: portal
+    description: Customer portal — public website, customer auth, and order lookup
 
 paths:
   /healthz:
@@ -1879,6 +1881,116 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /portal/company:
+    get:
+      operationId: getPortalCompany
+      tags: [portal]
+      summary: Get public company info (name, tagline, logo) for the customer portal
+      responses:
+        "200":
+          description: Company info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCompany"
+
+  /portal/services:
+    get:
+      operationId: listPortalServices
+      tags: [portal]
+      summary: List active products/services from the catalog for the public portal
+      responses:
+        "200":
+          description: Services list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalService"
+
+  /portal/auth/login:
+    post:
+      operationId: portalLogin
+      tags: [portal]
+      summary: Customer portal login — returns a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalLoginBody"
+      responses:
+        "200":
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /portal/auth/register:
+    post:
+      operationId: portalRegister
+      tags: [portal]
+      summary: Customer portal sign-up — pick services and create account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalRegisterBody"
+      responses:
+        "201":
+          description: Registration success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSession"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /portal/auth/me:
+    get:
+      operationId: getPortalMe
+      tags: [portal]
+      summary: Get current portal customer profile
+      responses:
+        "200":
+          description: Portal customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCustomer"
+        "401":
+          description: Unauthorized
+
+  /portal/orders:
+    get:
+      operationId: listPortalOrders
+      tags: [portal]
+      summary: List orders for the authenticated portal customer
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalOrder"
+        "401":
+          description: Unauthorized
 
   /accounting/settings:
     get:
@@ -4558,3 +4670,75 @@ components:
           type: array
           items: { $ref: "#/components/schemas/EmailAttachment" }
       required: [link, attachments]
+
+    PortalCompany:
+      type: object
+      properties:
+        name: { type: string }
+        tagline: { type: string, nullable: true }
+        logoUrl: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+      required: [name]
+
+    PortalService:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        price: { type: number }
+        imageUrl: { type: string, nullable: true }
+        categories: { type: array, items: { type: string } }
+      required: [id, name, price, categories]
+
+    PortalLoginBody:
+      type: object
+      properties:
+        email: { type: string }
+        password: { type: string }
+      required: [email, password]
+
+    PortalRegisterBody:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        password: { type: string }
+        phone: { type: string, nullable: true }
+        company: { type: string, nullable: true }
+        serviceIds:
+          type: array
+          items: { type: integer }
+      required: [name, email, password, serviceIds]
+
+    PortalSession:
+      type: object
+      properties:
+        token: { type: string }
+        customer: { $ref: "#/components/schemas/PortalCustomer" }
+      required: [token, customer]
+
+    PortalCustomer:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string, nullable: true }
+        company: { type: string, nullable: true }
+        serviceIds: { type: array, items: { type: integer } }
+        createdAt: { type: string }
+      required: [id, name, email, serviceIds, createdAt]
+
+    PortalOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        docNumber: { type: string }
+        status: { type: string }
+        grandTotal: { type: number }
+        createdAt: { type: string }
+        items: { type: string, nullable: true }
+      required: [id, docNumber, status, grandTotal, createdAt]

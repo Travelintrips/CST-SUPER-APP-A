@@ -1970,6 +1970,62 @@ export interface TransactionEmailCorrespondence {
   attachments: EmailAttachment[];
 }
 
+export interface PortalCompany {
+  name: string;
+  tagline?: string | null;
+  logoUrl?: string | null;
+  address?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
+export interface PortalService {
+  id: number;
+  name: string;
+  description?: string | null;
+  price: number;
+  imageUrl?: string | null;
+  categories: string[];
+}
+
+export interface PortalLoginBody {
+  email: string;
+  password: string;
+}
+
+export interface PortalRegisterBody {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string | null;
+  company?: string | null;
+  serviceIds: number[];
+}
+
+export interface PortalCustomer {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string | null;
+  company?: string | null;
+  serviceIds: number[];
+  createdAt: string;
+}
+
+export interface PortalSession {
+  token: string;
+  customer: PortalCustomer;
+}
+
+export interface PortalOrder {
+  id: number;
+  docNumber: string;
+  status: string;
+  grandTotal: number;
+  createdAt: string;
+  items?: string | null;
+}
+
 export type ListProductsParams = {
   search?: string;
   itemType?: string;
