@@ -19,3 +19,4 @@ export * from "./expenses";
 export * from "./emailCorrespondences";
 export * from "./freightCustomsDocs";
 export * from "./portalCustomers";
+export * from "./logisticOrders";

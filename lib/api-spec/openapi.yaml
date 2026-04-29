@@ -34,6 +34,8 @@ tags:
     description: Accounting — chart of accounts, journals, journal entries, financial reports
   - name: portal
     description: Customer portal — public website, customer auth, and order lookup
+  - name: logistic-orders
+    description: Export Import & Logistic Ordering System — public booking and admin dashboard
 
 paths:
   /healthz:
@@ -2665,6 +2667,125 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /logistic/orders:
+    post:
+      operationId: createLogisticOrder
+      tags: [logistic-orders]
+      summary: Submit a new logistic order (public)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLogisticOrderBody" }
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticOrderDetail" }
+    get:
+      operationId: listLogisticOrders
+      tags: [logistic-orders]
+      summary: List logistic orders (admin)
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: shipmentType
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: dateFrom
+          schema: { type: string }
+        - in: query
+          name: dateTo
+          schema: { type: string }
+      responses:
+        "200":
+          description: Order list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LogisticOrder" }
+
+  /logistic/orders/summary:
+    get:
+      operationId: getLogisticOrderSummary
+      tags: [logistic-orders]
+      summary: Get dashboard summary stats (admin)
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticOrderSummary" }
+
+  /logistic/orders/by-number/{orderNumber}:
+    parameters:
+      - { name: orderNumber, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getLogisticOrderByNumber
+      tags: [logistic-orders]
+      summary: Get order by order number (public customer lookup)
+      responses:
+        "200":
+          description: Order detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticOrderDetail" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /logistic/orders/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getLogisticOrder
+      tags: [logistic-orders]
+      summary: Get order detail with items (admin)
+      responses:
+        "200":
+          description: Order detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticOrderDetail" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /logistic/orders/{id}/status:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: updateLogisticOrderStatus
+      tags: [logistic-orders]
+      summary: Update order status (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateLogisticOrderStatusBody" }
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticOrder" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
 components:
   schemas:
     HealthStatus:
@@ -4742,3 +4863,112 @@ components:
         createdAt: { type: string }
         items: { type: string, nullable: true }
       required: [id, docNumber, status, grandTotal, createdAt]
+
+    LogisticOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        orderNumber: { type: string }
+        companyName: { type: string }
+        customerName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        shipmentType: { type: string }
+        origin: { type: string }
+        destination: { type: string }
+        commodity: { type: string, nullable: true }
+        cargoDescription: { type: string, nullable: true }
+        grossWeight: { type: number, nullable: true }
+        volumeCbm: { type: number, nullable: true }
+        requiredDate: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        subtotal: { type: number }
+        tax: { type: number }
+        grandTotal: { type: number }
+        status: { type: string }
+        createdAt: { type: string }
+      required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, subtotal, tax, grandTotal, status, createdAt]
+
+    LogisticOrderItem:
+      type: object
+      properties:
+        id: { type: integer }
+        orderId: { type: integer }
+        category: { type: string }
+        serviceName: { type: string }
+        calculatorType: { type: string }
+        inputData: {}
+        calculationResult: {}
+        subtotal: { type: number }
+        createdAt: { type: string }
+      required: [id, orderId, category, serviceName, calculatorType, inputData, calculationResult, subtotal, createdAt]
+
+    LogisticOrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/LogisticOrder"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/LogisticOrderItem" }
+          required: [items]
+
+    CreateLogisticOrderItemBody:
+      type: object
+      properties:
+        category: { type: string }
+        serviceName: { type: string }
+        calculatorType: { type: string }
+        inputData: {}
+        calculationResult: {}
+        subtotal: { type: number }
+      required: [category, serviceName, calculatorType, inputData, calculationResult, subtotal]
+
+    CreateLogisticOrderBody:
+      type: object
+      properties:
+        companyName: { type: string }
+        customerName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        shipmentType: { type: string }
+        origin: { type: string }
+        destination: { type: string }
+        commodity: { type: string, nullable: true }
+        cargoDescription: { type: string, nullable: true }
+        grossWeight: { type: number, nullable: true }
+        volumeCbm: { type: number, nullable: true }
+        requiredDate: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        subtotal: { type: number }
+        tax: { type: number }
+        grandTotal: { type: number }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CreateLogisticOrderItemBody" }
+      required: [companyName, customerName, email, phone, shipmentType, origin, destination, subtotal, tax, grandTotal, items]
+
+    UpdateLogisticOrderStatusBody:
+      type: object
+      properties:
+        status: { type: string }
+      required: [status]
+
+    LogisticOrderSummary:
+      type: object
+      properties:
+        totalOrders: { type: integer }
+        newOrders: { type: integer }
+        confirmedOrders: { type: integer }
+        completedOrders: { type: integer }
+        totalEstimatedRevenue: { type: number }
+      required: [totalOrders, newOrders, confirmedOrders, completedOrders, totalEstimatedRevenue]
+
+    ListLogisticOrdersQueryParams:
+      type: object
+      properties:
+        status: { type: string }
+        shipmentType: { type: string }
+        search: { type: string }
+        dateFrom: { type: string }
+        dateTo: { type: string }

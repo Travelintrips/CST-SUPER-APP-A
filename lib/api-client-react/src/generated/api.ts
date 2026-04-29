@@ -45,6 +45,7 @@ import type {
   CreateFreightRfqBody,
   CreateFreightShipmentBody,
   CreateJournalBody,
+  CreateLogisticOrderBody,
   CreateOrderBody,
   CreateProductBody,
   CreateProductCategoryBody,
@@ -92,9 +93,13 @@ import type {
   ListFreightQuotesParams,
   ListFreightRfqsParams,
   ListFreightShipmentsParams,
+  ListLogisticOrdersParams,
   ListProductsParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
+  LogisticOrder,
+  LogisticOrderDetail,
+  LogisticOrderSummary,
   MessageResponse,
   Order,
   PartnerBalances,
@@ -138,6 +143,7 @@ import type {
   UpdateFreightAttachmentBody,
   UpdateFreightShipmentBody,
   UpdateJournalBody,
+  UpdateLogisticOrderStatusBody,
   UpdateOrderBody,
   UpdateShipmentStatusBody,
   UpdateTaxBody,
@@ -12969,4 +12975,533 @@ export const useDeleteExpenseAttachment = <
   TContext
 > => {
   return useMutation(getDeleteExpenseAttachmentMutationOptions(options));
+};
+
+/**
+ * @summary Submit a new logistic order (public)
+ */
+export const getCreateLogisticOrderUrl = () => {
+  return `/api/logistic/orders`;
+};
+
+export const createLogisticOrder = async (
+  createLogisticOrderBody: CreateLogisticOrderBody,
+  options?: RequestInit,
+): Promise<LogisticOrderDetail> => {
+  return customFetch<LogisticOrderDetail>(getCreateLogisticOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createLogisticOrderBody),
+  });
+};
+
+export const getCreateLogisticOrderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLogisticOrder>>,
+    TError,
+    { data: BodyType<CreateLogisticOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createLogisticOrder>>,
+  TError,
+  { data: BodyType<CreateLogisticOrderBody> },
+  TContext
+> => {
+  const mutationKey = ["createLogisticOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createLogisticOrder>>,
+    { data: BodyType<CreateLogisticOrderBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createLogisticOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateLogisticOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createLogisticOrder>>
+>;
+export type CreateLogisticOrderMutationBody = BodyType<CreateLogisticOrderBody>;
+export type CreateLogisticOrderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Submit a new logistic order (public)
+ */
+export const useCreateLogisticOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLogisticOrder>>,
+    TError,
+    { data: BodyType<CreateLogisticOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createLogisticOrder>>,
+  TError,
+  { data: BodyType<CreateLogisticOrderBody> },
+  TContext
+> => {
+  return useMutation(getCreateLogisticOrderMutationOptions(options));
+};
+
+/**
+ * @summary List logistic orders (admin)
+ */
+export const getListLogisticOrdersUrl = (params?: ListLogisticOrdersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/logistic/orders?${stringifiedParams}`
+    : `/api/logistic/orders`;
+};
+
+export const listLogisticOrders = async (
+  params?: ListLogisticOrdersParams,
+  options?: RequestInit,
+): Promise<LogisticOrder[]> => {
+  return customFetch<LogisticOrder[]>(getListLogisticOrdersUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListLogisticOrdersQueryKey = (
+  params?: ListLogisticOrdersParams,
+) => {
+  return [`/api/logistic/orders`, ...(params ? [params] : [])] as const;
+};
+
+export const getListLogisticOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listLogisticOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListLogisticOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLogisticOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListLogisticOrdersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listLogisticOrders>>
+  > = ({ signal }) => listLogisticOrders(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listLogisticOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListLogisticOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listLogisticOrders>>
+>;
+export type ListLogisticOrdersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List logistic orders (admin)
+ */
+
+export function useListLogisticOrders<
+  TData = Awaited<ReturnType<typeof listLogisticOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListLogisticOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLogisticOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListLogisticOrdersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get dashboard summary stats (admin)
+ */
+export const getGetLogisticOrderSummaryUrl = () => {
+  return `/api/logistic/orders/summary`;
+};
+
+export const getLogisticOrderSummary = async (
+  options?: RequestInit,
+): Promise<LogisticOrderSummary> => {
+  return customFetch<LogisticOrderSummary>(getGetLogisticOrderSummaryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetLogisticOrderSummaryQueryKey = () => {
+  return [`/api/logistic/orders/summary`] as const;
+};
+
+export const getGetLogisticOrderSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLogisticOrderSummary>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLogisticOrderSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetLogisticOrderSummaryQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getLogisticOrderSummary>>
+  > = ({ signal }) => getLogisticOrderSummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLogisticOrderSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLogisticOrderSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLogisticOrderSummary>>
+>;
+export type GetLogisticOrderSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get dashboard summary stats (admin)
+ */
+
+export function useGetLogisticOrderSummary<
+  TData = Awaited<ReturnType<typeof getLogisticOrderSummary>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getLogisticOrderSummary>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLogisticOrderSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get order by order number (public customer lookup)
+ */
+export const getGetLogisticOrderByNumberUrl = (orderNumber: string) => {
+  return `/api/logistic/orders/by-number/${orderNumber}`;
+};
+
+export const getLogisticOrderByNumber = async (
+  orderNumber: string,
+  options?: RequestInit,
+): Promise<LogisticOrderDetail> => {
+  return customFetch<LogisticOrderDetail>(
+    getGetLogisticOrderByNumberUrl(orderNumber),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetLogisticOrderByNumberQueryKey = (orderNumber: string) => {
+  return [`/api/logistic/orders/by-number/${orderNumber}`] as const;
+};
+
+export const getGetLogisticOrderByNumberQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLogisticOrderByNumber>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  orderNumber: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLogisticOrderByNumber>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetLogisticOrderByNumberQueryKey(orderNumber);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getLogisticOrderByNumber>>
+  > = ({ signal }) =>
+    getLogisticOrderByNumber(orderNumber, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!orderNumber,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLogisticOrderByNumber>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLogisticOrderByNumberQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLogisticOrderByNumber>>
+>;
+export type GetLogisticOrderByNumberQueryError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Get order by order number (public customer lookup)
+ */
+
+export function useGetLogisticOrderByNumber<
+  TData = Awaited<ReturnType<typeof getLogisticOrderByNumber>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  orderNumber: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLogisticOrderByNumber>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLogisticOrderByNumberQueryOptions(
+    orderNumber,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get order detail with items (admin)
+ */
+export const getGetLogisticOrderUrl = (id: number) => {
+  return `/api/logistic/orders/${id}`;
+};
+
+export const getLogisticOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<LogisticOrderDetail> => {
+  return customFetch<LogisticOrderDetail>(getGetLogisticOrderUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetLogisticOrderQueryKey = (id: number) => {
+  return [`/api/logistic/orders/${id}`] as const;
+};
+
+export const getGetLogisticOrderQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLogisticOrder>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLogisticOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetLogisticOrderQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getLogisticOrder>>
+  > = ({ signal }) => getLogisticOrder(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLogisticOrder>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLogisticOrderQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getLogisticOrder>>
+>;
+export type GetLogisticOrderQueryError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Get order detail with items (admin)
+ */
+
+export function useGetLogisticOrder<
+  TData = Awaited<ReturnType<typeof getLogisticOrder>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getLogisticOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLogisticOrderQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update order status (admin)
+ */
+export const getUpdateLogisticOrderStatusUrl = (id: number) => {
+  return `/api/logistic/orders/${id}/status`;
+};
+
+export const updateLogisticOrderStatus = async (
+  id: number,
+  updateLogisticOrderStatusBody: UpdateLogisticOrderStatusBody,
+  options?: RequestInit,
+): Promise<LogisticOrder> => {
+  return customFetch<LogisticOrder>(getUpdateLogisticOrderStatusUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateLogisticOrderStatusBody),
+  });
+};
+
+export const getUpdateLogisticOrderStatusMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateLogisticOrderStatus>>,
+    TError,
+    { id: number; data: BodyType<UpdateLogisticOrderStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateLogisticOrderStatus>>,
+  TError,
+  { id: number; data: BodyType<UpdateLogisticOrderStatusBody> },
+  TContext
+> => {
+  const mutationKey = ["updateLogisticOrderStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateLogisticOrderStatus>>,
+    { id: number; data: BodyType<UpdateLogisticOrderStatusBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateLogisticOrderStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateLogisticOrderStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateLogisticOrderStatus>>
+>;
+export type UpdateLogisticOrderStatusMutationBody =
+  BodyType<UpdateLogisticOrderStatusBody>;
+export type UpdateLogisticOrderStatusMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Update order status (admin)
+ */
+export const useUpdateLogisticOrderStatus = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateLogisticOrderStatus>>,
+    TError,
+    { id: number; data: BodyType<UpdateLogisticOrderStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateLogisticOrderStatus>>,
+  TError,
+  { id: number; data: BodyType<UpdateLogisticOrderStatusBody> },
+  TContext
+> => {
+  return useMutation(getUpdateLogisticOrderStatusMutationOptions(options));
 };

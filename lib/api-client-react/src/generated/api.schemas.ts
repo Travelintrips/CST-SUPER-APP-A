@@ -2026,6 +2026,94 @@ export interface PortalOrder {
   items?: string | null;
 }
 
+export interface LogisticOrder {
+  id: number;
+  orderNumber: string;
+  companyName: string;
+  customerName: string;
+  email: string;
+  phone: string;
+  shipmentType: string;
+  origin: string;
+  destination: string;
+  commodity?: string | null;
+  cargoDescription?: string | null;
+  grossWeight?: number | null;
+  volumeCbm?: number | null;
+  requiredDate?: string | null;
+  notes?: string | null;
+  subtotal: number;
+  tax: number;
+  grandTotal: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface LogisticOrderItem {
+  id: number;
+  orderId: number;
+  category: string;
+  serviceName: string;
+  calculatorType: string;
+  inputData: unknown;
+  calculationResult: unknown;
+  subtotal: number;
+  createdAt: string;
+}
+
+export type LogisticOrderDetail = LogisticOrder & {
+  items: LogisticOrderItem[];
+};
+
+export interface CreateLogisticOrderItemBody {
+  category: string;
+  serviceName: string;
+  calculatorType: string;
+  inputData: unknown;
+  calculationResult: unknown;
+  subtotal: number;
+}
+
+export interface CreateLogisticOrderBody {
+  companyName: string;
+  customerName: string;
+  email: string;
+  phone: string;
+  shipmentType: string;
+  origin: string;
+  destination: string;
+  commodity?: string | null;
+  cargoDescription?: string | null;
+  grossWeight?: number | null;
+  volumeCbm?: number | null;
+  requiredDate?: string | null;
+  notes?: string | null;
+  subtotal: number;
+  tax: number;
+  grandTotal: number;
+  items: CreateLogisticOrderItemBody[];
+}
+
+export interface UpdateLogisticOrderStatusBody {
+  status: string;
+}
+
+export interface LogisticOrderSummary {
+  totalOrders: number;
+  newOrders: number;
+  confirmedOrders: number;
+  completedOrders: number;
+  totalEstimatedRevenue: number;
+}
+
+export interface ListLogisticOrdersQueryParams {
+  status?: string;
+  shipmentType?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export type ListProductsParams = {
   search?: string;
   itemType?: string;
@@ -2321,4 +2409,12 @@ export const ExpenseActionBodyAction = {
 export type ExpenseActionBody = {
   action: ExpenseActionBodyAction;
   reason?: string | null;
+};
+
+export type ListLogisticOrdersParams = {
+  status?: string;
+  shipmentType?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
 };

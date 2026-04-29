@@ -18,6 +18,7 @@ import emailCorrespondencesRouter from "./emailCorrespondences";
 import scanDocumentRouter from "./scanDocument";
 import expensesRouter from "./expenses";
 import portalRouter from "./portal";
+import { logisticOrdersRouter } from "./logisticOrders";
 
 const router: IRouter = Router();
 
@@ -39,6 +40,7 @@ router.use("/email-correspondences", emailCorrespondencesRouter);
 router.use("/scan-document", scanDocumentRouter);
 router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
+router.use("/logistic/orders", logisticOrdersRouter);
 router.use(storageRouter);
 
 export default router;

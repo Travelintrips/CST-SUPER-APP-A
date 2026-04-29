@@ -4029,3 +4029,213 @@ export const DeleteExpenseAttachmentParams = zod.object({
 export const DeleteExpenseAttachmentResponse = zod.object({
   message: zod.string(),
 });
+
+/**
+ * @summary Submit a new logistic order (public)
+ */
+export const CreateLogisticOrderBody = zod.object({
+  companyName: zod.string(),
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
+  commodity: zod.string().nullish(),
+  cargoDescription: zod.string().nullish(),
+  grossWeight: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  requiredDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  subtotal: zod.number(),
+  tax: zod.number(),
+  grandTotal: zod.number(),
+  items: zod.array(
+    zod.object({
+      category: zod.string(),
+      serviceName: zod.string(),
+      calculatorType: zod.string(),
+      inputData: zod.unknown(),
+      calculationResult: zod.unknown(),
+      subtotal: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary List logistic orders (admin)
+ */
+export const ListLogisticOrdersQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  shipmentType: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+  dateFrom: zod.coerce.string().optional(),
+  dateTo: zod.coerce.string().optional(),
+});
+
+export const ListLogisticOrdersResponseItem = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  companyName: zod.string(),
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
+  commodity: zod.string().nullish(),
+  cargoDescription: zod.string().nullish(),
+  grossWeight: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  requiredDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  subtotal: zod.number(),
+  tax: zod.number(),
+  grandTotal: zod.number(),
+  status: zod.string(),
+  createdAt: zod.string(),
+});
+export const ListLogisticOrdersResponse = zod.array(
+  ListLogisticOrdersResponseItem,
+);
+
+/**
+ * @summary Get dashboard summary stats (admin)
+ */
+export const GetLogisticOrderSummaryResponse = zod.object({
+  totalOrders: zod.number(),
+  newOrders: zod.number(),
+  confirmedOrders: zod.number(),
+  completedOrders: zod.number(),
+  totalEstimatedRevenue: zod.number(),
+});
+
+/**
+ * @summary Get order by order number (public customer lookup)
+ */
+export const GetLogisticOrderByNumberParams = zod.object({
+  orderNumber: zod.coerce.string(),
+});
+
+export const GetLogisticOrderByNumberResponse = zod
+  .object({
+    id: zod.number(),
+    orderNumber: zod.string(),
+    companyName: zod.string(),
+    customerName: zod.string(),
+    email: zod.string(),
+    phone: zod.string(),
+    shipmentType: zod.string(),
+    origin: zod.string(),
+    destination: zod.string(),
+    commodity: zod.string().nullish(),
+    cargoDescription: zod.string().nullish(),
+    grossWeight: zod.number().nullish(),
+    volumeCbm: zod.number().nullish(),
+    requiredDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    subtotal: zod.number(),
+    tax: zod.number(),
+    grandTotal: zod.number(),
+    status: zod.string(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      items: zod.array(
+        zod.object({
+          id: zod.number(),
+          orderId: zod.number(),
+          category: zod.string(),
+          serviceName: zod.string(),
+          calculatorType: zod.string(),
+          inputData: zod.unknown(),
+          calculationResult: zod.unknown(),
+          subtotal: zod.number(),
+          createdAt: zod.string(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Get order detail with items (admin)
+ */
+export const GetLogisticOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetLogisticOrderResponse = zod
+  .object({
+    id: zod.number(),
+    orderNumber: zod.string(),
+    companyName: zod.string(),
+    customerName: zod.string(),
+    email: zod.string(),
+    phone: zod.string(),
+    shipmentType: zod.string(),
+    origin: zod.string(),
+    destination: zod.string(),
+    commodity: zod.string().nullish(),
+    cargoDescription: zod.string().nullish(),
+    grossWeight: zod.number().nullish(),
+    volumeCbm: zod.number().nullish(),
+    requiredDate: zod.string().nullish(),
+    notes: zod.string().nullish(),
+    subtotal: zod.number(),
+    tax: zod.number(),
+    grandTotal: zod.number(),
+    status: zod.string(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      items: zod.array(
+        zod.object({
+          id: zod.number(),
+          orderId: zod.number(),
+          category: zod.string(),
+          serviceName: zod.string(),
+          calculatorType: zod.string(),
+          inputData: zod.unknown(),
+          calculationResult: zod.unknown(),
+          subtotal: zod.number(),
+          createdAt: zod.string(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Update order status (admin)
+ */
+export const UpdateLogisticOrderStatusParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateLogisticOrderStatusBody = zod.object({
+  status: zod.string(),
+});
+
+export const UpdateLogisticOrderStatusResponse = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  companyName: zod.string(),
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
+  commodity: zod.string().nullish(),
+  cargoDescription: zod.string().nullish(),
+  grossWeight: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  requiredDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  subtotal: zod.number(),
+  tax: zod.number(),
+  grandTotal: zod.number(),
+  status: zod.string(),
+  createdAt: zod.string(),
+});
