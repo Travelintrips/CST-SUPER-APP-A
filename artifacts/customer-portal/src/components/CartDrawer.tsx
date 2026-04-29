@@ -1,0 +1,311 @@
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { X, Minus, Plus, Trash2, ShoppingCart, ArrowRight, CheckCircle, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useCart } from "@/lib/cart";
+import { getAuthToken, getAuthHeaders } from "@/lib/auth";
+
+const formatIDR = (v: number) =>
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+
+type Step = "cart" | "checkout" | "success";
+
+export function CartDrawer() {
+  const { items, removeItem, updateQty, clearCart, total, count, isOpen, closeCart } = useCart();
+  const [, setLocation] = useLocation();
+  const [step, setStep] = useState<Step>("cart");
+  const [notes, setNotes] = useState("");
+  const [expectedDate, setExpectedDate] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successOrder, setSuccessOrder] = useState<{ docNumber: string; id: number } | null>(null);
+
+  const token = getAuthToken();
+
+  function resetAndClose() {
+    closeCart();
+    setTimeout(() => {
+      setStep("cart");
+      setNotes("");
+      setExpectedDate("");
+      setErrorMsg("");
+      setSuccessOrder(null);
+    }, 300);
+  }
+
+  async function handleCheckout() {
+    if (!token) {
+      closeCart();
+      setLocation("/login");
+      return;
+    }
+    setStep("checkout");
+  }
+
+  async function submitOrder() {
+    setIsSubmitting(true);
+    setErrorMsg("");
+    try {
+      const headers = getAuthHeaders() as Record<string, string>;
+      const res = await fetch("/api/portal/orders", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            productId: i.productId,
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+          })),
+          notes: notes || undefined,
+          expectedDate: expectedDate || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.message ?? "Gagal membuat pesanan");
+        return;
+      }
+      setSuccessOrder({ docNumber: data.docNumber, id: data.id });
+      clearCart();
+      setStep("success");
+    } catch {
+      setErrorMsg("Terjadi kesalahan jaringan. Silakan coba lagi.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/40 z-40 transition-opacity"
+        onClick={resetAndClose}
+      />
+
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-background shadow-2xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <ShoppingCart className="h-5 w-5 text-accent" />
+            <h2 className="font-display font-bold text-lg">
+              {step === "cart" && "Keranjang Pesanan"}
+              {step === "checkout" && "Konfirmasi Pesanan"}
+              {step === "success" && "Pesanan Berhasil"}
+            </h2>
+            {step === "cart" && count > 0 && (
+              <span className="bg-accent text-accent-foreground text-xs font-bold px-2 py-0.5 rounded-full">
+                {count}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={resetAndClose}
+            className="p-2 rounded-lg hover:bg-muted transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+          {/* ── STEP: CART ── */}
+          {step === "cart" && (
+            <div className="p-6 space-y-4">
+              {items.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <p className="font-medium">Keranjang Anda kosong</p>
+                  <p className="text-sm mt-1">Tambahkan layanan atau produk untuk mulai memesan</p>
+                </div>
+              ) : (
+                items.map((item) => (
+                  <div
+                    key={item.productId}
+                    className="flex gap-4 items-start bg-gray-50 rounded-xl p-4"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-2">
+                        <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                          item.itemType === "jasa"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-orange-100 text-orange-700"
+                        }`}>
+                          {item.itemType === "jasa" ? "Layanan" : "Produk"}
+                        </span>
+                      </div>
+                      <p className="font-semibold mt-1 text-sm leading-tight">{item.name}</p>
+                      <p className="text-accent font-bold text-sm mt-1">{formatIDR(item.unitPrice)}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <button
+                        onClick={() => removeItem(item.productId)}
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                      <div className="flex items-center gap-2 border border-border rounded-lg bg-white">
+                        <button
+                          className="p-1.5 hover:bg-muted transition-colors rounded-l-lg"
+                          onClick={() => updateQty(item.productId, item.quantity - 1)}
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
+                        <button
+                          className="p-1.5 hover:bg-muted transition-colors rounded-r-lg"
+                          onClick={() => updateQty(item.productId, item.quantity + 1)}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formatIDR(item.unitPrice * item.quantity)}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── STEP: CHECKOUT ── */}
+          {step === "checkout" && (
+            <div className="p-6 space-y-5">
+              {/* Order summary */}
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                <p className="font-semibold text-sm text-muted-foreground mb-3">Ringkasan Pesanan</p>
+                {items.map((item) => (
+                  <div key={item.productId} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground truncate max-w-[200px]">
+                      {item.name} × {item.quantity}
+                    </span>
+                    <span className="font-medium shrink-0">{formatIDR(item.unitPrice * item.quantity)}</span>
+                  </div>
+                ))}
+                <div className="border-t border-border pt-2 mt-2 flex justify-between font-bold">
+                  <span>Total</span>
+                  <span className="text-accent">{formatIDR(total)}</span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Catatan Pesanan <span className="text-muted-foreground font-normal">(opsional)</span>
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Asal & tujuan pengiriman, spesifikasi khusus, dll..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
+                />
+              </div>
+
+              {/* Expected date */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Tanggal yang Diharapkan <span className="text-muted-foreground font-normal">(opsional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={expectedDate}
+                  min={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setExpectedDate(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                />
+              </div>
+
+              {errorMsg && (
+                <div className="flex gap-2 items-start p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP: SUCCESS ── */}
+          {step === "success" && successOrder && (
+            <div className="p-6 text-center py-16">
+              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="font-display font-bold text-xl mb-2">Pesanan Diterima!</h3>
+              <p className="text-muted-foreground mb-2">
+                Nomor pesanan Anda:
+              </p>
+              <p className="font-bold text-accent text-lg mb-4">{successOrder.docNumber}</p>
+              <p className="text-sm text-muted-foreground">
+                Tim kami akan segera memproses pesanan Anda dan menghubungi Anda dalam waktu 1×24 jam kerja.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-border space-y-3">
+          {step === "cart" && items.length > 0 && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Estimasi</span>
+                <span className="font-bold text-lg text-accent">{formatIDR(total)}</span>
+              </div>
+              <Button className="w-full h-11 gap-2" onClick={handleCheckout}>
+                {token ? "Lanjut ke Konfirmasi" : "Masuk untuk Memesan"}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+              {!token && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Anda harus masuk atau daftar terlebih dahulu
+                </p>
+              )}
+            </>
+          )}
+
+          {step === "checkout" && (
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setStep("cart")}>
+                Kembali
+              </Button>
+              <Button
+                className="flex-1 gap-2"
+                onClick={submitOrder}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Mengirim..." : "Kirim Pesanan"}
+                {!isSubmitting && <ArrowRight className="h-4 w-4" />}
+              </Button>
+            </div>
+          )}
+
+          {step === "success" && (
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  resetAndClose();
+                  setLocation("/orders");
+                }}
+              >
+                Lihat Riwayat
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={resetAndClose}
+              >
+                Tutup
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}

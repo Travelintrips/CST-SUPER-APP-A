@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, accountingSettingsTable, salesDocumentsTable, customersTable } from "@workspace/db";
-import { eq, inArray, and } from "drizzle-orm";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable } from "@workspace/db";
+import { eq, inArray, and, sql } from "drizzle-orm";
 import crypto from "crypto";
 
 const router = Router();
@@ -188,22 +188,122 @@ router.get("/auth/me", requirePortalAuth, async (req, res) => {
   });
 });
 
+// Shared helper: find or create CRM customer by email
+async function findOrCreateCrmCustomer(portalCustomer: { name: string; email: string; phone: string | null; company: string | null }) {
+  const [existing] = await db.select().from(customersTable).where(eq(customersTable.email, portalCustomer.email));
+  if (existing) return existing;
+  const [created] = await db.insert(customersTable).values({
+    name: portalCustomer.company ? `${portalCustomer.name} (${portalCustomer.company})` : portalCustomer.name,
+    email: portalCustomer.email,
+    phone: portalCustomer.phone,
+  }).returning();
+  return created!;
+}
+
+// Generate portal order number: PO/YYYY/NNNNN
+async function nextPortalOrderNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const pattern = `PO/${year}/%`;
+  const [row] = await db
+    .select({ maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(doc_number, '/', 3) AS int)), 0)` })
+    .from(salesDocumentsTable)
+    .where(sql`doc_number LIKE ${pattern}`);
+  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
+  return `PO/${year}/${seq}`;
+}
+
 // GET /api/portal/orders  — returns sales orders linked to the portal customer via email → customers table
 router.get("/orders", requirePortalAuth, async (req, res) => {
   const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
   const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
   if (!customer) return res.status(401).json({ message: "Customer not found" });
-  // Find matching CRM customer by email
   const [crmCustomer] = await db.select().from(customersTable).where(eq(customersTable.email, customer.email));
   if (!crmCustomer) return res.json([]);
-  const orders = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.customerId, crmCustomer.id));
-  return res.json(orders.map((o) => ({
-    id: o.id,
-    docNumber: o.docNumber,
-    status: o.status,
-    grandTotal: Number(o.grandTotal ?? 0),
-    createdAt: o.createdAt.toISOString(),
-  })));
+  const orders = await db
+    .select()
+    .from(salesDocumentsTable)
+    .where(eq(salesDocumentsTable.customerId, crmCustomer.id));
+  return res.json(
+    orders.map((o) => ({
+      id: o.id,
+      docNumber: o.docNumber,
+      status: o.status,
+      grandTotal: Number(o.grandTotal ?? 0),
+      createdAt: o.createdAt.toISOString(),
+    }))
+  );
+});
+
+// POST /api/portal/orders  — place a new order from the portal
+router.post("/orders", requirePortalAuth, async (req, res) => {
+  const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const [portalCustomer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
+  if (!portalCustomer) return res.status(401).json({ message: "Customer not found" });
+
+  const { items, notes, expectedDate } = req.body ?? {};
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ message: "Pesanan harus memiliki minimal satu item" });
+  }
+
+  type OrderItem = { productId?: number; name: string; quantity: number; unitPrice: number };
+  const orderItems = items as OrderItem[];
+
+  // Validate items
+  for (const item of orderItems) {
+    if (!item.name || typeof item.quantity !== "number" || item.quantity <= 0) {
+      return res.status(400).json({ message: "Setiap item harus memiliki nama dan jumlah yang valid" });
+    }
+  }
+
+  // Find or create CRM customer
+  const crmCustomer = await findOrCreateCrmCustomer(portalCustomer);
+
+  // Generate doc number
+  const docNumber = await nextPortalOrderNumber();
+
+  // Calculate totals
+  const totalAmount = orderItems.reduce((sum, item) => sum + item.quantity * (item.unitPrice ?? 0), 0);
+
+  // Create sales document
+  const [doc] = await db
+    .insert(salesDocumentsTable)
+    .values({
+      docNumber,
+      kind: "order",
+      status: "draft",
+      customerId: crmCustomer.id,
+      customerName: crmCustomer.name,
+      totalAmount: totalAmount.toFixed(2),
+      grandTotal: totalAmount.toFixed(2),
+      taxAmount: "0",
+      notes: notes ? String(notes) : null,
+      expectedDate: expectedDate ? new Date(String(expectedDate)) : null,
+      createdById: `portal:${portalCustomer.id}`,
+    })
+    .returning();
+
+  // Create lines
+  if (doc) {
+    await db.insert(salesDocumentLinesTable).values(
+      orderItems.map((item) => ({
+        documentId: doc.id,
+        productId: item.productId ?? null,
+        name: item.name,
+        quantity: item.quantity.toFixed(2),
+        unitPrice: (item.unitPrice ?? 0).toFixed(2),
+        subtotal: (item.quantity * (item.unitPrice ?? 0)).toFixed(2),
+      }))
+    );
+  }
+
+  return res.status(201).json({
+    id: doc!.id,
+    docNumber: doc!.docNumber,
+    status: doc!.status,
+    grandTotal: Number(doc!.grandTotal),
+    createdAt: doc!.createdAt.toISOString(),
+  });
 });
 
 export default router;

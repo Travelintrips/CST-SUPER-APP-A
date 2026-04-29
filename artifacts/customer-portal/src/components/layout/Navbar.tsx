@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Package, LogOut, LayoutDashboard } from "lucide-react";
+import { Menu, X, Package, LogOut, LayoutDashboard, ShoppingCart } from "lucide-react";
 import { isAuthenticated, removeAuthToken } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
+import { useCart } from "@/lib/cart";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [location, setLocation] = useLocation();
   const isAuth = isAuthenticated();
+  const { count, openCart } = useCart();
 
   const { data: company } = useGetPortalCompany({
     query: { queryKey: ["getPortalCompany"] }
@@ -99,6 +101,20 @@ export function Navbar() {
             </div>
 
             <div className="flex items-center gap-3 border-l border-border pl-6">
+              {/* Cart button */}
+              <button
+                onClick={openCart}
+                className="relative p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                aria-label="Keranjang"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {count > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-accent text-accent-foreground text-[10px] font-bold w-4.5 h-4.5 min-w-[1.1rem] min-h-[1.1rem] flex items-center justify-center rounded-full leading-none px-1">
+                    {count}
+                  </span>
+                )}
+              </button>
+
               {isAuth ? (
                 <>
                   <Link href="/dashboard">

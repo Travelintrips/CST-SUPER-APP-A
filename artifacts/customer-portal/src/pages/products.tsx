@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ShoppingBag, Search } from "lucide-react";
-import { assetUrl } from "@/lib/utils";
+import { ShoppingBag, Search, ShoppingCart } from "lucide-react";
+import { useCart } from "@/lib/cart";
 
 interface Product {
   id: number;
@@ -14,17 +15,19 @@ interface Product {
   categories: string[];
 }
 
+const formatIDR = (v: number) =>
+  new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { addItem, items } = useCart();
 
   useEffect(() => {
     fetch("/api/portal/products")
       .then((r) => r.json())
-      .then((data) => {
-        setProducts(Array.isArray(data) ? data : []);
-      })
+      .then((data) => setProducts(Array.isArray(data) ? data : []))
       .catch(() => setProducts([]))
       .finally(() => setIsLoading(false));
   }, []);
@@ -36,8 +39,9 @@ export default function Products() {
       p.categories.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const formatIDR = (v: number) =>
-    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+  function isInCart(id: number) {
+    return items.some((i) => i.productId === id);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -118,12 +122,25 @@ export default function Products() {
                   )}
                 </CardHeader>
 
-                <div className="mt-auto p-6 pt-0">
+                <CardContent className="mt-auto pt-0 space-y-3">
                   <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Harga</span>
                     <span className="font-bold text-lg text-primary">{formatIDR(product.price)}</span>
                   </div>
-                </div>
+                  <Button
+                    className="w-full gap-2"
+                    variant={isInCart(product.id) ? "outline" : "default"}
+                    onClick={() => addItem({
+                      productId: product.id,
+                      name: product.name,
+                      unitPrice: product.price,
+                      itemType: "barang",
+                    })}
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    {isInCart(product.id) ? "Tambah Lagi" : "Pesan Sekarang"}
+                  </Button>
+                </CardContent>
               </Card>
             ))}
           </div>
