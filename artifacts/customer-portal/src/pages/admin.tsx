@@ -21,8 +21,6 @@ import {
   CheckCircle,
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 type Service = {
   id: number;
   name: string;
@@ -42,13 +40,13 @@ type Product = {
 type ContentMap = Record<string, string>;
 
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { headers: getAuthHeaders() });
+  const res = await fetch(path, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(await res.text());
   return res.json() as Promise<T>;
 }
 
 async function apiPut<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(body),
@@ -58,7 +56,7 @@ async function apiPut<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(body),
@@ -99,7 +97,7 @@ function ImageUploader({
         headers: { "Content-Type": file.type },
         body: file,
       });
-      const publicUrl = `${BASE}/api/storage/public-objects/${objectPath}`;
+      const publicUrl = `/api/storage/public-objects/${objectPath}`;
       setPreview(publicUrl);
       onUpload(publicUrl);
       toast({ title: "Gambar berhasil diunggah" });

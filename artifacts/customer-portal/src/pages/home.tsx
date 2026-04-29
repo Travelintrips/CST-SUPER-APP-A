@@ -5,12 +5,10 @@ import { useGetPortalCompany } from "@workspace/api-client-react";
 import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight } from "lucide-react";
 import { assetUrl } from "@/lib/utils";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 function usePortalContent() {
   const [content, setContent] = useState<Record<string, string>>({});
   useEffect(() => {
-    void fetch(`${BASE}/api/portal/content`)
+    void fetch(`/api/portal/content`)
       .then((r) => r.json())
       .then((data) => setContent(data as Record<string, string>))
       .catch(() => {});
