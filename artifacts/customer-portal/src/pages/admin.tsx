@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated, isPortalAdmin, getAuthHeaders, setAuthToken } from "@/lib/auth";
+import { resolveImageUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,10 +76,10 @@ function ImageUploader({
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<string | null>(currentUrl);
+  const [preview, setPreview] = useState<string | null>(resolveImageUrl(currentUrl));
 
   useEffect(() => {
-    setPreview(currentUrl);
+    setPreview(resolveImageUrl(currentUrl));
   }, [currentUrl]);
 
   async function handleFile(file: File) {
@@ -97,7 +98,7 @@ function ImageUploader({
         headers: { "Content-Type": file.type },
         body: file,
       });
-      const publicUrl = `/api/storage/public-objects/${objectPath}`;
+      const publicUrl = `/api/storage${objectPath}`;
       setPreview(publicUrl);
       onUpload(publicUrl);
       toast({ title: "Gambar berhasil diunggah" });

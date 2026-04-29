@@ -274,6 +274,12 @@ router.put("/admin/content", requirePortalAdmin, async (req, res) => {
   return res.json({ ok: true });
 });
 
+function sanitizeText(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  return s === "" || s === "null" ? null : s;
+}
+
 // PUT /api/portal/admin/services/:id  — update service (admin only)
 router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -281,9 +287,9 @@ router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   const { name, description, price, imageUrl } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
-  if (description !== undefined) updates.description = String(description);
+  if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
-  if (imageUrl !== undefined) updates.imageUrl = imageUrl ? String(imageUrl) : null;
+  if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);
@@ -296,9 +302,9 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const { name, description, price, imageUrl } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
-  if (description !== undefined) updates.description = String(description);
+  if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
-  if (imageUrl !== undefined) updates.imageUrl = imageUrl ? String(imageUrl) : null;
+  if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);

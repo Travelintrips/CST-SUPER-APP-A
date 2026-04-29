@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { resolveImageUrl } from "@/lib/utils";
 import { ShoppingBag, Search, ShoppingCart } from "lucide-react";
 import { useCart } from "@/lib/cart";
 
@@ -92,7 +93,7 @@ export default function Products() {
                 <div className="aspect-video w-full overflow-hidden bg-gray-100 relative">
                   {product.imageUrl ? (
                     <img
-                      src={product.imageUrl}
+                      src={resolveImageUrl(product.imageUrl) ?? ""}
                       alt={product.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />

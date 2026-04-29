@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Package, Search, ShoppingCart } from "lucide-react";
+import { resolveImageUrl } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useCart } from "@/lib/cart";
@@ -78,7 +79,7 @@ export default function Services() {
                 <div className="aspect-video w-full overflow-hidden bg-gray-100 relative">
                   {service.imageUrl ? (
                     <img
-                      src={service.imageUrl}
+                      src={resolveImageUrl(service.imageUrl) ?? ""}
                       alt={service.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
