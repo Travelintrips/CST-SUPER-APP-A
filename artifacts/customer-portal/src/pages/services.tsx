@@ -26,15 +26,16 @@ export default function Services() {
       <div className="bg-primary text-primary-foreground py-16 md:py-24">
         <div className="container px-4 md:px-6">
           <div className="max-w-2xl">
-            <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">Our Services Catalog</h1>
+            <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">Katalog Jasa</p>
+            <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">Layanan Kami</h1>
             <p className="text-lg text-primary-foreground/80 mb-8">
-              Browse our comprehensive suite of logistics, freight, and customs clearance services tailored to your business needs.
+              Temukan layanan logistik, kepabeanan, dan pengiriman internasional kami yang dirancang sesuai kebutuhan bisnis Anda.
             </p>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary-foreground/50" />
-              <Input 
+              <Input
                 type="text"
-                placeholder="Search services, categories..." 
+                placeholder="Cari layanan atau kategori..."
                 className="w-full h-12 pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -104,8 +105,10 @@ export default function Services() {
         ) : (
           <div className="text-center py-24 bg-white rounded-xl border border-dashed border-border">
             <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
-            <h3 className="text-xl font-medium mb-2">No services found</h3>
-            <p className="text-muted-foreground">We couldn't find any services matching your search.</p>
+            <h3 className="text-xl font-medium mb-2">Tidak ada layanan ditemukan</h3>
+            <p className="text-muted-foreground">
+              {searchQuery ? "Coba kata kunci yang berbeda." : "Belum ada layanan yang tersedia saat ini."}
+            </p>
           </div>
         )}
       </div>

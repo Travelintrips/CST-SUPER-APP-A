@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, accountingSettingsTable, salesDocumentsTable, customersTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import crypto from "crypto";
 
 const router = Router();
@@ -80,19 +80,31 @@ router.get("/company", async (_req, res) => {
   });
 });
 
-// GET /api/portal/services
-router.get("/services", async (_req, res) => {
-  const products = await db.select().from(productsTable).where(eq(productsTable.isActive, true));
-  const ids = products.map((p) => p.id);
+async function listByType(type: string) {
+  const rows = await db
+    .select()
+    .from(productsTable)
+    .where(and(eq(productsTable.isActive, true), eq(productsTable.itemType, type)));
+  const ids = rows.map((p) => p.id);
   const catMap = await getProductCategories(ids);
-  return res.json(products.map((p) => ({
+  return rows.map((p) => ({
     id: p.id,
     name: p.name,
     description: p.description ?? null,
     price: Number(p.price),
     imageUrl: p.imageUrl ?? null,
     categories: catMap[p.id] ?? [],
-  })));
+  }));
+}
+
+// GET /api/portal/services  — item_type = 'jasa'
+router.get("/services", async (_req, res) => {
+  return res.json(await listByType("jasa"));
+});
+
+// GET /api/portal/products  — item_type = 'barang'
+router.get("/products", async (_req, res) => {
+  return res.json(await listByType("barang"));
 });
 
 // POST /api/portal/auth/login

@@ -44,7 +44,7 @@ export function Navbar() {
   > = [
     { name: "Beranda", type: "link", path: "/" },
     { name: "Layanan", type: "link", path: "/services" },
-    { name: "Produk", type: "link", path: "/services" },
+    { name: "Produk", type: "link", path: "/products" },
     { name: "Tentang Kami", type: "scroll", anchor: "tentang" },
     { name: "Kontak", type: "scroll", anchor: "kontak" },
   ];
