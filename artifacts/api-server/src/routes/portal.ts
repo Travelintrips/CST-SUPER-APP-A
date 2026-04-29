@@ -132,6 +132,12 @@ router.get("/products", async (_req, res) => {
   return res.json(await listByType("barang"));
 });
 
+// Emails yang otomatis mendapat role admin saat login (comma-separated)
+const PORTAL_ADMIN_EMAILS = (process.env.PORTAL_ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
 // POST /api/portal/auth/login
 router.post("/auth/login", async (req, res) => {
   const { email, password } = req.body ?? {};
@@ -142,8 +148,16 @@ router.post("/auth/login", async (req, res) => {
   if (!customer || customer.passwordHash !== hashPassword(String(password))) {
     return res.status(401).json({ message: "Email atau password tidak valid" });
   }
+
+  // Auto-promote ke admin jika email ada di daftar PORTAL_ADMIN_EMAILS
+  let effectiveRole = customer.role;
+  if (PORTAL_ADMIN_EMAILS.includes(String(email).toLowerCase()) && customer.role !== "admin") {
+    await db.update(portalCustomersTable).set({ role: "admin" }).where(eq(portalCustomersTable.id, customer.id));
+    effectiveRole = "admin";
+  }
+
   const serviceIds = await getServiceIds(customer.id);
-  const token = signToken({ customerId: customer.id, role: customer.role });
+  const token = signToken({ customerId: customer.id, role: effectiveRole });
   return res.json({
     token,
     customer: {
@@ -152,7 +166,7 @@ router.post("/auth/login", async (req, res) => {
       email: customer.email,
       phone: customer.phone,
       company: customer.company,
-      role: customer.role,
+      role: effectiveRole,
       serviceIds,
       createdAt: customer.createdAt.toISOString(),
     },
@@ -169,12 +183,16 @@ router.post("/auth/register", async (req, res) => {
   if (existing.length > 0) {
     return res.status(409).json({ message: "Email sudah terdaftar" });
   }
+  // Tentukan role awal — admin jika email ada di daftar
+  const initialRole = PORTAL_ADMIN_EMAILS.includes(String(email).toLowerCase()) ? "admin" : "customer";
+
   const [customer] = await db.insert(portalCustomersTable).values({
     name: String(name),
     email: String(email),
     passwordHash: hashPassword(String(password)),
     phone: phone ? String(phone) : null,
     company: company ? String(company) : null,
+    role: initialRole,
   }).returning();
   if (Array.isArray(serviceIds) && serviceIds.length > 0) {
     await db.insert(portalCustomerServicesTable).values(

@@ -63,6 +63,7 @@ IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = "993"
 IMAP_USER = "admcst001@gmail.com"
 ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com"
+PORTAL_ADMIN_EMAILS = "divatranssoetta@gmail.com"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
