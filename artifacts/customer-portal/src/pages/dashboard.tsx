@@ -133,24 +133,34 @@ export default function Dashboard() {
 
   const customer = userResponse;
 
+  const LOGISTIC_STATUS_MAP: Record<string, string> = {
+    "New Order":   "pending",
+    "In Progress": "processing",
+    "Completed":   "delivered",
+  };
+
   const crmOrders = (Array.isArray(ordersResponse) ? ordersResponse : []).map((o) => ({
     _key: `crm-${o.id}`,
     id: o.id,
     displayNumber: o.docNumber,
     status: o.status,
+    displayStatus: o.status,
     grandTotal: o.grandTotal,
     createdAt: o.createdAt,
     subtitle: null as string | null,
+    trackUrl: null as string | null,
   }));
 
   const logisticOrders = (Array.isArray(logisticOrdersResponse) ? logisticOrdersResponse : []).map((o) => ({
     _key: `log-${o.id}`,
     id: o.id,
     displayNumber: o.orderNumber,
-    status: o.status,
+    status: LOGISTIC_STATUS_MAP[o.status] ?? o.status,
+    displayStatus: o.status,
     grandTotal: o.grandTotal,
     createdAt: o.createdAt,
     subtitle: `${o.shipmentType} • ${o.origin} → ${o.destination}`,
+    trackUrl: `/track?order=${encodeURIComponent(o.orderNumber)}`,
   }));
 
   const orders = [...logisticOrders, ...crmOrders].sort(
@@ -158,7 +168,7 @@ export default function Dashboard() {
   );
 
   const isLoadingOrders = isLoadingCrmOrders || isLoadingLogisticOrders;
-  const activeOrders = orders.filter((o) => o.status === "processing" || o.status === "shipped" || o.status === "In Progress");
+  const activeOrders = orders.filter((o) => o.status === "processing" || o.status === "shipped");
 
   function filterByMetric(metric: string) {
     if (!metric || metric === "total") return orders;
@@ -253,7 +263,11 @@ export default function Dashboard() {
                 ) : displayOrders.length > 0 ? (
                   <div className="space-y-4">
                     {displayOrders.map((order) => (
-                      <div key={order._key} className="flex items-center justify-between p-4 rounded-lg border border-border/50 hover:bg-gray-50 transition-colors">
+                      <div
+                        key={order._key}
+                        className={`flex items-center justify-between p-4 rounded-lg border border-border/50 transition-colors ${order.trackUrl ? "cursor-pointer hover:bg-blue-50/60 hover:border-blue-200" : "hover:bg-gray-50"}`}
+                        onClick={() => order.trackUrl && setLocation(order.trackUrl)}
+                      >
                         <div className="flex items-start gap-4">
                           <div className="bg-primary/5 p-3 rounded-full">
                             <Package className="h-5 w-5 text-primary" />
@@ -274,7 +288,7 @@ export default function Dashboard() {
                             variant="secondary"
                             className={STATUS_BADGE[order.status] || "bg-gray-100 text-gray-800"}
                           >
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                            {order.displayStatus}
                           </Badge>
                           <span className="font-semibold text-sm">
                             {formatCurrency(order.grandTotal)}

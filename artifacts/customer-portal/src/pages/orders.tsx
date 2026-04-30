@@ -4,20 +4,23 @@ import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Package, Search, Calendar, FileText } from "lucide-react";
+import { Package, Search, Calendar, FileText, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 
 const STATUS_COLOR: Record<string, string> = {
-  pending:       "bg-yellow-100 text-yellow-800",
-  processing:    "bg-blue-100 text-blue-800",
-  shipped:       "bg-purple-100 text-purple-800",
-  delivered:     "bg-green-100 text-green-800",
-  cancelled:     "bg-red-100 text-red-800",
-  "New Order":   "bg-yellow-100 text-yellow-800",
-  "In Progress": "bg-blue-100 text-blue-800",
-  "Completed":   "bg-green-100 text-green-800",
+  pending:    "bg-yellow-100 text-yellow-800",
+  processing: "bg-blue-100 text-blue-800",
+  shipped:    "bg-purple-100 text-purple-800",
+  delivered:  "bg-green-100 text-green-800",
+  cancelled:  "bg-red-100 text-red-800",
+};
+
+const LOGISTIC_STATUS_MAP: Record<string, string> = {
+  "New Order":   "pending",
+  "In Progress": "processing",
+  "Completed":   "delivered",
 };
 
 export default function Orders() {
@@ -48,17 +51,21 @@ export default function Orders() {
     displayNumber: o.docNumber,
     subtitle: "Sales Order",
     status: o.status,
+    displayStatus: o.status,
     grandTotal: o.grandTotal,
     createdAt: o.createdAt,
+    trackUrl: null as string | null,
   }));
 
   const logisticOrders = (Array.isArray(logisticResponse) ? logisticResponse : []).map((o) => ({
     _key: `log-${o.id}`,
     displayNumber: o.orderNumber,
     subtitle: `${o.shipmentType} • ${o.origin} → ${o.destination}`,
-    status: o.status,
+    status: LOGISTIC_STATUS_MAP[o.status] ?? o.status,
+    displayStatus: o.status,
     grandTotal: o.grandTotal,
     createdAt: o.createdAt,
+    trackUrl: `/track?order=${encodeURIComponent(o.orderNumber)}`,
   }));
 
   const allOrders = [...logisticOrders, ...crmOrders].sort(
@@ -121,14 +128,21 @@ export default function Orders() {
                   ))
                 ) : filtered.length > 0 ? (
                   filtered.map((order) => (
-                    <tr key={order._key} className="hover:bg-gray-50/50 transition-colors">
+                    <tr
+                      key={order._key}
+                      className={`transition-colors ${order.trackUrl ? "cursor-pointer hover:bg-blue-50/60" : "hover:bg-gray-50/50"}`}
+                      onClick={() => order.trackUrl && setLocation(order.trackUrl)}
+                    >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="bg-primary/5 p-2 rounded-lg">
                             <Package className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                            <div className="font-semibold text-primary">{order.displayNumber}</div>
+                            <div className="font-semibold text-primary flex items-center gap-1.5">
+                              {order.displayNumber}
+                              {order.trackUrl && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
+                            </div>
                             <div className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">
                               {order.subtitle}
                             </div>
@@ -143,7 +157,7 @@ export default function Orders() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <Badge variant="secondary" className={`${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-800"} font-medium border-0`}>
-                          {order.status}
+                          {order.displayStatus}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
