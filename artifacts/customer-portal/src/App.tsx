@@ -15,6 +15,7 @@ import Home from "@/pages/home";
 import Services from "@/pages/services";
 import Products from "@/pages/products";
 import Jasa from "@/pages/jasa";
+import JasaDetail from "@/pages/jasa-detail";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -44,6 +45,7 @@ function AppShell() {
       <Route path="/services" component={Services} />
       <Route path="/products" component={Products} />
       <Route path="/jasa" component={Jasa} />
+      <Route path="/jasa/:id" component={JasaDetail} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/dashboard" component={Dashboard} />

@@ -34,6 +34,22 @@ export interface CategoryInfo {
   icon: string;
 }
 
+export interface CategoryColors {
+  bg: string;
+  text: string;
+  badge: string;
+}
+
+export const CATEGORY_COLORS_DETAIL: Record<ServiceCategory, CategoryColors> = {
+  Freight:    { bg: "bg-blue-50",    text: "text-blue-700",   badge: "bg-blue-100 text-blue-700" },
+  Customs:    { bg: "bg-orange-50",  text: "text-orange-700", badge: "bg-orange-100 text-orange-700" },
+  Handling:   { bg: "bg-purple-50",  text: "text-purple-700", badge: "bg-purple-100 text-purple-700" },
+  Storage:    { bg: "bg-teal-50",    text: "text-teal-700",   badge: "bg-teal-100 text-teal-700" },
+  Trucking:   { bg: "bg-amber-50",   text: "text-amber-700",  badge: "bg-amber-100 text-amber-700" },
+  Document:   { bg: "bg-indigo-50",  text: "text-indigo-700", badge: "bg-indigo-100 text-indigo-700" },
+  Additional: { bg: "bg-pink-50",    text: "text-pink-700",   badge: "bg-pink-100 text-pink-700" },
+};
+
 export const CATEGORIES: CategoryInfo[] = [
   { name: "Freight", description: "Air & sea freight forwarding, domestic delivery", icon: "Ship" },
   { name: "Customs", description: "Import/export customs clearance & documentation", icon: "FileCheck" },

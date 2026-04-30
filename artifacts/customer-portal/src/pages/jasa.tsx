@@ -152,7 +152,7 @@ export default function Jasa() {
                       <span className="text-sm text-muted-foreground">Harga</span>
                       <span className="font-semibold text-amber-600 text-sm">Negosiasi / Quotation</span>
                     </div>
-                    <Link href={`/book?service=${item.id}`}>
+                    <Link href={`/jasa/${item.id}`}>
                       <Button className="w-full gap-2">
                         <ArrowRight className="h-4 w-4" />
                         Pesan Sekarang
