@@ -68,26 +68,60 @@ export default function ArAgingPage() {
                   <TableBody>
                     {data.items.length === 0 ? (
                       <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">Tidak ada piutang</TableCell></TableRow>
-                    ) : data.items.map((it) => (
-                      <TableRow key={it.id}>
-                        <TableCell>
-                          <Link href={`/sales/orders/${it.id}`}>
-                            <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
-                              <ShoppingCart size={10} />
-                              {it.docNumber}
-                            </span>
-                          </Link>
-                        </TableCell>
-                        <TableCell>{it.customerName ?? "-"}</TableCell>
-                        <TableCell>{new Date(it.confirmedAt).toLocaleDateString("id-ID")}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge className={bucketColor(it.bucket)}>{it.daysOld} hari</Badge>
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">{idr(it.grandTotal)}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{idr(it.amountPaid)}</TableCell>
-                        <TableCell className="text-right font-medium">{idr(it.amount)}</TableCell>
-                      </TableRow>
-                    ))}
+                    ) : data.items.map((it) => {
+                      const isPartial = it.amountPaid > 0;
+                      const pctPaid = it.grandTotal > 0 ? Math.round((it.amountPaid / it.grandTotal) * 100) : 0;
+                      return (
+                        <TableRow key={it.id}>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <Link href={`/sales/orders/${it.id}`}>
+                                <span className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-mono">
+                                  <ShoppingCart size={10} />
+                                  {it.docNumber}
+                                </span>
+                              </Link>
+                              {isPartial && (
+                                <span className="inline-flex w-fit">
+                                  <Badge className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0 font-medium border border-amber-200">
+                                    Dibayar sebagian
+                                  </Badge>
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{it.customerName ?? "-"}</TableCell>
+                          <TableCell>{new Date(it.confirmedAt).toLocaleDateString("id-ID")}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge className={bucketColor(it.bucket)}>{it.daysOld} hari</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="text-muted-foreground">{idr(it.grandTotal)}</span>
+                              {isPartial && (
+                                <div className="w-24 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-amber-400"
+                                    style={{ width: `${pctPaid}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isPartial ? (
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span className="text-amber-700 font-medium">{idr(it.amountPaid)}</span>
+                                <span className="text-[10px] text-amber-600">{pctPaid}% terbayar</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">{idr(it.amountPaid)}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{idr(it.amount)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>
