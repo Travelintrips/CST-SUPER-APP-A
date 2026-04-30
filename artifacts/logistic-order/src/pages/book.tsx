@@ -365,7 +365,7 @@ export default function BookPage() {
       toast({ title: "Tambahkan minimal 1 layanan ke pesanan", variant: "destructive" });
       return;
     }
-    createOrder.mutate({
+    createOrder.mutate({ data: {
       companyName,
       customerName,
       email,
@@ -390,7 +390,7 @@ export default function BookPage() {
         calculationResult: c.calculationResult,
         subtotal: c.subtotal,
       })),
-    }, {
+    }}, {
       onSuccess: (data) => {
         localStorage.setItem("last_order", JSON.stringify(data));
         localStorage.removeItem("logistic_cart");
