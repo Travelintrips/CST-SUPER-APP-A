@@ -8,7 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useCreateLogisticOrder } from "@workspace/api-client-react";
+import { useCreateLogisticOrder, useGetPortalMe } from "@workspace/api-client-react";
+import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 import { useCart, CartItem } from "@/lib/logistic-cart";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -324,11 +325,30 @@ export default function BookPage() {
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
 
+  const token = getAuthToken();
+  const headers = getAuthHeaders() as any;
+  const { data: portalUser } = useGetPortalMe({
+    query: { queryKey: ["portalMe", token], enabled: !!token },
+    request: { headers },
+  });
+
   const [customerForm, setCustomerForm] = useState({
     companyName: "", customerName: "", email: "", phone: "",
     origin: "", destination: "", commodity: "", cargoDescription: "",
     grossWeight: "", volumeCbm: "", requiredDate: "", notes: "",
   });
+
+  // Pre-fill form with logged-in user's profile data (only once, when data loads)
+  useEffect(() => {
+    if (!portalUser) return;
+    setCustomerForm((prev) => ({
+      ...prev,
+      email:        prev.email        || (portalUser.email        ?? ""),
+      customerName: prev.customerName || (portalUser.name         ?? ""),
+      companyName:  prev.companyName  || (portalUser.company      ?? ""),
+      phone:        prev.phone        || (portalUser.phone        ?? ""),
+    }));
+  }, [portalUser]);
 
   const itemsByCategory = useMemo(() =>
     (cat: ServiceCategory) => SERVICE_ITEMS.filter((i) => i.category === cat),
