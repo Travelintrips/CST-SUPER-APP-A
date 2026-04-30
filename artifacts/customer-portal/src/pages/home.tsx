@@ -1,26 +1,17 @@
-import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight } from "lucide-react";
 import { assetUrl } from "@/lib/utils";
-
-function usePortalContent() {
-  const [content, setContent] = useState<Record<string, string>>({});
-  useEffect(() => {
-    void fetch(`/api/portal/content`)
-      .then((r) => r.json())
-      .then((data) => setContent(data as Record<string, string>))
-      .catch(() => {});
-  }, []);
-  return content;
-}
+import { useEditMode } from "@/contexts/EditModeContext";
+import { EditableText } from "@/components/EditableText";
+import { EditableImage } from "@/components/EditableImage";
 
 export default function Home() {
   const { data: company } = useGetPortalCompany({
     query: { queryKey: ["getPortalCompany"] }
   });
-  const content = usePortalContent();
+  const { content } = useEditMode();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -28,26 +19,35 @@ export default function Home() {
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="relative w-full h-[85vh] min-h-[600px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-black/60 z-10" />
-        <img
-          src={assetUrl("/images/hero-bg.png")}
+        <EditableImage
+          contentKey="hero_bg"
+          defaultSrc={assetUrl("/images/hero-bg.png")}
           alt="Cargo ship at sea"
           className="absolute inset-0 w-full h-full object-cover z-0"
         />
         <div className="container relative z-20 px-4 md:px-6 text-center text-white">
-          <span className="inline-block py-1 px-3 rounded-full bg-accent/20 border border-accent/50 text-accent-foreground text-sm font-medium mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {company?.tagline || "Solusi Logistik Terintegrasi & Berbasis Teknologi"}
+          <span className="inline-block py-1 px-3 rounded-full bg-accent/20 border border-accent/50 text-accent-foreground text-sm font-medium mb-6">
+            <EditableText contentKey="hero_tagline" defaultValue={company?.tagline || "Solusi Logistik Terintegrasi & Berbasis Teknologi"} />
           </span>
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-display font-bold tracking-tight mb-6 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-700 delay-100">
-            {content["hero_title"] || "Logistik Global,"}
-            {!content["hero_title"] && <><br />Presisi Tanpa Kompromi.</>}
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-display font-bold tracking-tight mb-6 max-w-4xl mx-auto">
+            <EditableText
+              contentKey="hero_title"
+              defaultValue="Logistik Global, Presisi Tanpa Kompromi."
+              as="span"
+              multiline
+            />
           </h1>
-          <p className="text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
-            {content["hero_subtitle"] || "Solusi ekspor, impor, dan kepabeanan yang andal — menghubungkan bisnis Anda ke seluruh dunia dengan aman dan tepat waktu."}
+          <p className="text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto">
+            <EditableText
+              contentKey="hero_subtitle"
+              defaultValue="Solusi ekspor, impor, dan kepabeanan yang andal — menghubungkan bisnis Anda ke seluruh dunia dengan aman dan tepat waktu."
+              multiline
+            />
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/services">
               <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground h-12 px-8 text-base gap-2">
-                {content["hero_cta"] || "Lihat Layanan"} <ArrowRight className="h-4 w-4" />
+                <EditableText contentKey="hero_cta" defaultValue="Lihat Layanan" /> <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/register">
@@ -118,15 +118,17 @@ export default function Home() {
 
             <div className="relative pb-12">
               <div className="relative aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl">
-                <img
-                  src={assetUrl("/images/port-operations.png")}
+                <EditableImage
+                  contentKey="about_img1"
+                  defaultSrc={assetUrl("/images/port-operations.png")}
                   alt="Operasi Pelabuhan"
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="absolute -bottom-4 -left-6 aspect-square w-2/3 rounded-2xl overflow-hidden shadow-2xl border-4 border-white">
-                <img
-                  src={assetUrl("/images/customs.png")}
+                <EditableImage
+                  contentKey="about_img2"
+                  defaultSrc={assetUrl("/images/customs.png")}
                   alt="Dokumen Kepabeanan"
                   className="w-full h-full object-cover"
                 />

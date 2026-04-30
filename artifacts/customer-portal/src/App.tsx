@@ -7,6 +7,8 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { CartProvider } from "@/lib/cart";
 import { CartDrawer } from "@/components/CartDrawer";
+import { EditModeProvider } from "@/contexts/EditModeContext";
+import { AdminToolbar } from "@/components/AdminToolbar";
 
 // Portal pages
 import Home from "@/pages/home";
@@ -67,6 +69,7 @@ function AppShell() {
       <main className="flex-1">{routes}</main>
       <Footer />
       <CartDrawer />
+      <AdminToolbar />
     </div>
   );
 }
@@ -77,7 +80,9 @@ function App() {
       <TooltipProvider>
         <CartProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <AppShell />
+            <EditModeProvider>
+              <AppShell />
+            </EditModeProvider>
           </WouterRouter>
         </CartProvider>
         <Toaster />

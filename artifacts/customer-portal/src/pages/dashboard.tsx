@@ -11,14 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
-
-const STATUS_CONFIG: { status: string; label: string; bg: string; border: string; text: string; num: string }[] = [
-  { status: "pending",    label: "Pending",    bg: "bg-yellow-50",  border: "border-yellow-200",  text: "text-yellow-700",  num: "text-yellow-800" },
-  { status: "processing", label: "Processing", bg: "bg-blue-50",    border: "border-blue-200",    text: "text-blue-700",    num: "text-blue-800" },
-  { status: "shipped",    label: "Shipped",    bg: "bg-purple-50",  border: "border-purple-200",  text: "text-purple-700",  num: "text-purple-800" },
-  { status: "delivered",  label: "Delivered",  bg: "bg-green-50",   border: "border-green-200",   text: "text-green-700",   num: "text-green-800" },
-  { status: "cancelled",  label: "Cancelled",  bg: "bg-red-50",     border: "border-red-200",     text: "text-red-700",     num: "text-red-800" },
-];
+import { StatCardManagerPanel } from "@/components/StatCardManager";
 
 const STATUS_BADGE: Record<string, string> = {
   pending:    "bg-yellow-100 text-yellow-800",
@@ -133,7 +126,14 @@ export default function Dashboard() {
   const customer = userResponse;
   const orders = Array.isArray(ordersResponse) ? ordersResponse : [];
   const activeOrders = orders.filter((o) => o.status === "processing" || o.status === "shipped");
-  const filteredOrders = statusFilter ? orders.filter((o) => o.status === statusFilter) : orders;
+
+  function filterByMetric(metric: string) {
+    if (!metric || metric === "total") return orders;
+    if (metric === "active") return activeOrders;
+    return orders.filter((o) => o.status === metric);
+  }
+
+  const filteredOrders = filterByMetric(statusFilter);
   const displayOrders = filteredOrders.slice(0, 8);
 
   return (
@@ -173,23 +173,14 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Status filter cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
-          {STATUS_CONFIG.map(({ status, label, bg, border, text, num }) => {
-            const count = isLoadingOrders ? 0 : orders.filter((o) => o.status === status).length;
-            const isActive = statusFilter === status;
-            return (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(isActive ? "" : status)}
-                className={`${bg} border ${border} rounded-lg p-3 text-left transition-all hover:shadow-sm ${isActive ? "ring-2 ring-offset-1 ring-current" : ""}`}
-              >
-                <p className={`text-2xl font-bold ${num}`}>{count}</p>
-                <p className={`text-xs font-medium mt-0.5 ${text} leading-tight`}>{label}</p>
-              </button>
-            );
-          })}
-        </div>
+        {/* Status filter cards — managed via admin edit mode */}
+        {!isLoadingOrders && (
+          <StatCardManagerPanel
+            orders={orders}
+            statusFilter={statusFilter}
+            onFilterChange={setStatusFilter}
+          />
+        )}
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -200,7 +191,7 @@ export default function Dashboard() {
               <CardHeader className="flex flex-row items-center justify-between border-b border-border/40 pb-4">
                 <div>
                   <CardTitle>
-                    {statusFilter ? `${STATUS_CONFIG.find(s => s.status === statusFilter)?.label} Orders` : "Recent Orders"}
+                    {statusFilter ? `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Orders` : "Recent Orders"}
                   </CardTitle>
                   <CardDescription>
                     {statusFilter ? `Showing ${filteredOrders.length} orders` : "Your most recent logistics requests"}
