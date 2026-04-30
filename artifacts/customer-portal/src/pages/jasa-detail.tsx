@@ -20,6 +20,7 @@ import {
 } from "@/lib/services-data";
 import { useCart } from "@/lib/logistic-cart";
 import { formatCurrency } from "@/lib/utils";
+import { AirportCombobox } from "@/components/AirportCombobox";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
@@ -217,8 +218,22 @@ export default function JasaDetail() {
               <div className="p-6 space-y-4">
                 {ct === "air_freight" && <>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label>Origin Airport</Label><Input placeholder="CGK" className="mt-1" value={state.originAirport || ""} onChange={e => set("originAirport", e.target.value)} /></div>
-                    <div><Label>Destination Airport</Label><Input placeholder="SIN" className="mt-1" value={state.destinationAirport || ""} onChange={e => set("destinationAirport", e.target.value)} /></div>
+                    <div>
+                      <Label>Origin Airport</Label>
+                      <AirportCombobox
+                        value={state.originAirport || ""}
+                        onChange={(v) => set("originAirport", v)}
+                        placeholder="CGK — Jakarta"
+                      />
+                    </div>
+                    <div>
+                      <Label>Destination Airport</Label>
+                      <AirportCombobox
+                        value={state.destinationAirport || ""}
+                        onChange={(v) => set("destinationAirport", v)}
+                        placeholder="SIN — Singapore"
+                      />
+                    </div>
                   </div>
 
                   {/* Multi-row quantity list */}
