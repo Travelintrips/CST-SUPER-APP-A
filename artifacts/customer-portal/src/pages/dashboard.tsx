@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useGetPortalMe, useListPortalOrders } from "@workspace/api-client-react";
+import { useGetPortalMe, useListPortalOrders, useListPortalLogisticOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,11 +14,14 @@ import { formatCurrency } from "@/lib/utils";
 import { StatCardManagerPanel } from "@/components/StatCardManager";
 
 const STATUS_BADGE: Record<string, string> = {
-  pending:    "bg-yellow-100 text-yellow-800",
-  processing: "bg-blue-100 text-blue-800",
-  shipped:    "bg-purple-100 text-purple-800",
-  delivered:  "bg-green-100 text-green-800",
-  cancelled:  "bg-red-100 text-red-800",
+  pending:       "bg-yellow-100 text-yellow-800",
+  processing:    "bg-blue-100 text-blue-800",
+  shipped:       "bg-purple-100 text-purple-800",
+  delivered:     "bg-green-100 text-green-800",
+  cancelled:     "bg-red-100 text-red-800",
+  "New Order":   "bg-yellow-100 text-yellow-800",
+  "In Progress": "bg-blue-100 text-blue-800",
+  "Completed":   "bg-green-100 text-green-800",
 };
 
 const ICON_OPTIONS = [
@@ -112,8 +115,13 @@ export default function Dashboard() {
     request: { headers }
   });
 
-  const { data: ordersResponse, isLoading: isLoadingOrders } = useListPortalOrders({
+  const { data: ordersResponse, isLoading: isLoadingCrmOrders } = useListPortalOrders({
     query: { queryKey: ["listPortalOrders", token], enabled: !!token },
+    request: { headers }
+  });
+
+  const { data: logisticOrdersResponse, isLoading: isLoadingLogisticOrders } = useListPortalLogisticOrders({
+    query: { queryKey: ["listPortalLogisticOrders", token], enabled: !!token },
     request: { headers }
   });
 
@@ -124,8 +132,33 @@ export default function Dashboard() {
   if (!token) return null;
 
   const customer = userResponse;
-  const orders = Array.isArray(ordersResponse) ? ordersResponse : [];
-  const activeOrders = orders.filter((o) => o.status === "processing" || o.status === "shipped");
+
+  const crmOrders = (Array.isArray(ordersResponse) ? ordersResponse : []).map((o) => ({
+    _key: `crm-${o.id}`,
+    id: o.id,
+    displayNumber: o.docNumber,
+    status: o.status,
+    grandTotal: o.grandTotal,
+    createdAt: o.createdAt,
+    subtitle: null as string | null,
+  }));
+
+  const logisticOrders = (Array.isArray(logisticOrdersResponse) ? logisticOrdersResponse : []).map((o) => ({
+    _key: `log-${o.id}`,
+    id: o.id,
+    displayNumber: o.orderNumber,
+    status: o.status,
+    grandTotal: o.grandTotal,
+    createdAt: o.createdAt,
+    subtitle: `${o.shipmentType} • ${o.origin} → ${o.destination}`,
+  }));
+
+  const orders = [...logisticOrders, ...crmOrders].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const isLoadingOrders = isLoadingCrmOrders || isLoadingLogisticOrders;
+  const activeOrders = orders.filter((o) => o.status === "processing" || o.status === "shipped" || o.status === "In Progress");
 
   function filterByMetric(metric: string) {
     if (!metric || metric === "total") return orders;
@@ -220,13 +253,16 @@ export default function Dashboard() {
                 ) : displayOrders.length > 0 ? (
                   <div className="space-y-4">
                     {displayOrders.map((order) => (
-                      <div key={order.id} className="flex items-center justify-between p-4 rounded-lg border border-border/50 hover:bg-gray-50 transition-colors">
+                      <div key={order._key} className="flex items-center justify-between p-4 rounded-lg border border-border/50 hover:bg-gray-50 transition-colors">
                         <div className="flex items-start gap-4">
                           <div className="bg-primary/5 p-3 rounded-full">
                             <Package className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                            <p className="font-medium">{order.docNumber}</p>
+                            <p className="font-medium">{order.displayNumber}</p>
+                            {order.subtitle && (
+                              <p className="text-xs text-muted-foreground">{order.subtitle}</p>
+                            )}
                             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                               <Calendar className="h-3.5 w-3.5" />
                               {new Date(order.createdAt).toLocaleDateString("id-ID")}

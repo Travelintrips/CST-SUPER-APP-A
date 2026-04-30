@@ -108,6 +108,7 @@ import type {
   PortalCompany,
   PortalCustomer,
   PortalLoginBody,
+  PortalLogisticOrder,
   PortalOrder,
   PortalRegisterBody,
   PortalService,
@@ -9205,6 +9206,82 @@ export function useListPortalOrders<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListPortalOrdersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List logistic orders for the authenticated portal customer
+ */
+export const getListPortalLogisticOrdersUrl = () => {
+  return `/api/portal/logistic-orders`;
+};
+
+export const listPortalLogisticOrders = async (
+  options?: RequestInit,
+): Promise<PortalLogisticOrder[]> => {
+  return customFetch<PortalLogisticOrder[]>(getListPortalLogisticOrdersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPortalLogisticOrdersQueryKey = () => {
+  return [`/api/portal/logistic-orders`] as const;
+};
+
+export const getListPortalLogisticOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPortalLogisticOrders>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalLogisticOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPortalLogisticOrdersQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPortalLogisticOrders>>
+  > = ({ signal }) => listPortalLogisticOrders({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalLogisticOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPortalLogisticOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPortalLogisticOrders>>
+>;
+export type ListPortalLogisticOrdersQueryError = ErrorType<void>;
+
+/**
+ * @summary List logistic orders for the authenticated portal customer
+ */
+
+export function useListPortalLogisticOrders<
+  TData = Awaited<ReturnType<typeof listPortalLogisticOrders>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalLogisticOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPortalLogisticOrdersQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

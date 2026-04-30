@@ -2725,6 +2725,23 @@ export const ListPortalOrdersResponseItem = zod.object({
 export const ListPortalOrdersResponse = zod.array(ListPortalOrdersResponseItem);
 
 /**
+ * @summary List logistic orders for the authenticated portal customer
+ */
+export const ListPortalLogisticOrdersResponseItem = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  status: zod.string(),
+  grandTotal: zod.number(),
+  createdAt: zod.string(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
+});
+export const ListPortalLogisticOrdersResponse = zod.array(
+  ListPortalLogisticOrdersResponseItem,
+);
+
+/**
  * @summary Get accounting settings (account mappings)
  */
 export const GetAccountingSettingsResponse = zod.object({

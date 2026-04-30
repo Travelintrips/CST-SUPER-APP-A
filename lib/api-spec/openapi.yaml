@@ -1994,6 +1994,23 @@ paths:
         "401":
           description: Unauthorized
 
+  /portal/logistic-orders:
+    get:
+      operationId: listPortalLogisticOrders
+      tags: [portal]
+      summary: List logistic orders for the authenticated portal customer
+      responses:
+        "200":
+          description: Logistic orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalLogisticOrder"
+        "401":
+          description: Unauthorized
+
   /accounting/settings:
     get:
       operationId: getAccountingSettings
@@ -4863,6 +4880,19 @@ components:
         createdAt: { type: string }
         items: { type: string, nullable: true }
       required: [id, docNumber, status, grandTotal, createdAt]
+
+    PortalLogisticOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        orderNumber: { type: string }
+        status: { type: string }
+        grandTotal: { type: number }
+        createdAt: { type: string }
+        shipmentType: { type: string }
+        origin: { type: string }
+        destination: { type: string }
+      required: [id, orderNumber, status, grandTotal, createdAt, shipmentType, origin, destination]
 
     LogisticOrder:
       type: object

@@ -2026,6 +2026,17 @@ export interface PortalOrder {
   items?: string | null;
 }
 
+export interface PortalLogisticOrder {
+  id: number;
+  orderNumber: string;
+  status: string;
+  grandTotal: number;
+  createdAt: string;
+  shipmentType: string;
+  origin: string;
+  destination: string;
+}
+
 export interface LogisticOrder {
   id: number;
   orderNumber: string;

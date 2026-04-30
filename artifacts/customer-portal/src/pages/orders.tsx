@@ -1,46 +1,79 @@
-import { useListPortalOrders } from "@workspace/api-client-react";
+import { useState } from "react";
+import { useListPortalOrders, useListPortalLogisticOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Package, Search, Calendar, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/utils";
+
+const STATUS_COLOR: Record<string, string> = {
+  pending:       "bg-yellow-100 text-yellow-800",
+  processing:    "bg-blue-100 text-blue-800",
+  shipped:       "bg-purple-100 text-purple-800",
+  delivered:     "bg-green-100 text-green-800",
+  cancelled:     "bg-red-100 text-red-800",
+  "New Order":   "bg-yellow-100 text-yellow-800",
+  "In Progress": "bg-blue-100 text-blue-800",
+  "Completed":   "bg-green-100 text-green-800",
+};
 
 export default function Orders() {
   const [, setLocation] = useLocation();
   const token = getAuthToken();
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
-    if (!token) {
-      setLocation("/login");
-    }
+    if (!token) setLocation("/login");
   }, [token, setLocation]);
 
   const headers = getAuthHeaders() as any;
 
-  const { data: ordersResponse, isLoading } = useListPortalOrders({
-    query: { 
-      queryKey: ["listPortalOrders", token], 
-      enabled: !!token 
-    },
-    request: { headers }
+  const { data: crmResponse, isLoading: isLoadingCrm } = useListPortalOrders({
+    query: { queryKey: ["listPortalOrders", token], enabled: !!token },
+    request: { headers },
   });
 
-  const orders = Array.isArray(ordersResponse) ? ordersResponse : [];
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending": return "bg-yellow-100 text-yellow-800";
-      case "processing": return "bg-blue-100 text-blue-800";
-      case "shipped": return "bg-purple-100 text-purple-800";
-      case "delivered": return "bg-green-100 text-green-800";
-      case "cancelled": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
+  const { data: logisticResponse, isLoading: isLoadingLogistic } = useListPortalLogisticOrders({
+    query: { queryKey: ["listPortalLogisticOrders", token], enabled: !!token },
+    request: { headers },
+  });
 
   if (!token) return null;
+
+  const crmOrders = (Array.isArray(crmResponse) ? crmResponse : []).map((o) => ({
+    _key: `crm-${o.id}`,
+    displayNumber: o.docNumber,
+    subtitle: "Sales Order",
+    status: o.status,
+    grandTotal: o.grandTotal,
+    createdAt: o.createdAt,
+  }));
+
+  const logisticOrders = (Array.isArray(logisticResponse) ? logisticResponse : []).map((o) => ({
+    _key: `log-${o.id}`,
+    displayNumber: o.orderNumber,
+    subtitle: `${o.shipmentType} • ${o.origin} → ${o.destination}`,
+    status: o.status,
+    grandTotal: o.grandTotal,
+    createdAt: o.createdAt,
+  }));
+
+  const allOrders = [...logisticOrders, ...crmOrders].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const isLoading = isLoadingCrm || isLoadingLogistic;
+
+  const filtered = search.trim()
+    ? allOrders.filter(
+        (o) =>
+          o.displayNumber.toLowerCase().includes(search.toLowerCase()) ||
+          o.subtitle.toLowerCase().includes(search.toLowerCase())
+      )
+    : allOrders;
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gray-50 py-8">
@@ -55,10 +88,12 @@ export default function Orders() {
           </div>
           <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
+            <Input
               type="text"
-              placeholder="Search by order number..." 
+              placeholder="Search by order number..."
               className="pl-9 bg-white"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
         </div>
@@ -84,18 +119,18 @@ export default function Orders() {
                       <td className="px-6 py-4"><div className="h-4 bg-gray-100 rounded w-24 ml-auto" /></td>
                     </tr>
                   ))
-                ) : orders.length > 0 ? (
-                  orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                ) : filtered.length > 0 ? (
+                  filtered.map((order) => (
+                    <tr key={order._key} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="bg-primary/5 p-2 rounded-lg">
                             <Package className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                            <div className="font-semibold text-primary">{order.docNumber}</div>
+                            <div className="font-semibold text-primary">{order.displayNumber}</div>
                             <div className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">
-                              {order.items || "Standard Shipping"}
+                              {order.subtitle}
                             </div>
                           </div>
                         </div>
@@ -103,17 +138,17 @@ export default function Orders() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Calendar className="h-4 w-4" />
-                          {new Date(order.createdAt).toLocaleDateString()}
+                          {new Date(order.createdAt).toLocaleDateString("id-ID")}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge variant="secondary" className={`${getStatusColor(order.status)} font-medium border-0`}>
-                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                        <Badge variant="secondary" className={`${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-800"} font-medium border-0`}>
+                          {order.status}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <span className="font-semibold text-base">
-                          {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(order.grandTotal)}
+                          {formatCurrency(order.grandTotal)}
                         </span>
                       </td>
                     </tr>
@@ -122,8 +157,10 @@ export default function Orders() {
                   <tr>
                     <td colSpan={4} className="px-6 py-16 text-center text-muted-foreground">
                       <FileText className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-                      <p className="text-lg font-medium text-foreground">No orders found</p>
-                      <p>You haven't placed any orders yet.</p>
+                      <p className="text-lg font-medium text-foreground">
+                        {search ? "Tidak ada hasil" : "Belum ada pesanan"}
+                      </p>
+                      <p>{search ? "Coba kata kunci lain." : "Anda belum membuat pesanan apapun."}</p>
                     </td>
                   </tr>
                 )}

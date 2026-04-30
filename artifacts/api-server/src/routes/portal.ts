@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable } from "@workspace/db";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -367,6 +367,30 @@ router.get("/orders", requirePortalAuth, async (req, res) => {
       status: o.status,
       grandTotal: Number(o.grandTotal ?? 0),
       createdAt: o.createdAt.toISOString(),
+    }))
+  );
+});
+
+// GET /api/portal/logistic-orders — returns logistic orders for the authenticated portal customer (by email)
+router.get("/logistic-orders", requirePortalAuth, async (req, res) => {
+  const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
+  if (!customer) return res.status(401).json({ message: "Customer not found" });
+  const orders = await db
+    .select()
+    .from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.email, customer.email))
+    .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
+  return res.json(
+    orders.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      status: o.status,
+      grandTotal: parseFloat(o.grandTotal),
+      createdAt: o.createdAt.toISOString(),
+      shipmentType: o.shipmentType,
+      origin: o.origin,
+      destination: o.destination,
     }))
   );
 });
