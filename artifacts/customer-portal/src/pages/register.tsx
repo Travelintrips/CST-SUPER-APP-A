@@ -132,11 +132,11 @@ export default function Register() {
 
         <CardContent className="pt-8">
           {returnTo && (
-            <Alert className="mb-6 border-accent/40 bg-accent/5 text-accent-foreground">
-              <Check className="h-4 w-4 text-accent" />
-              <AlertDescription className="text-sm">
+            <Alert className="mb-6 border-primary/30 bg-primary/5">
+              <Check className="h-4 w-4 text-primary" />
+              <AlertDescription className="text-sm text-foreground">
                 Buat akun untuk melanjutkan pemesanan layanan logistik Anda.
-                Setelah daftar, Anda langsung masuk ke halaman checkout.
+                Setelah daftar, Anda langsung diarahkan ke halaman checkout.
               </AlertDescription>
             </Alert>
           )}

@@ -28,11 +28,10 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 const STEPS = [
-  "Shipment Type",
-  "Select Service",
-  "Calculator",
-  "Order Summary",
-  "Customer Form",
+  "Tipe Pengiriman",
+  "Pilih Layanan",
+  "Ringkasan",
+  "Data Pemesan",
 ];
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -349,7 +348,7 @@ export default function BookPage() {
         setStep(1);
       }
     } else if (cartItems.length > 0) {
-      setStep(3);
+      setStep(2);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
