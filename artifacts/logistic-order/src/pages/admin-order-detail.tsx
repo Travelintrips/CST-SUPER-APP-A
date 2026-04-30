@@ -197,7 +197,7 @@ export default function AdminOrderDetail() {
               <span>{formatCurrency(order.subtotal)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">PPN 11%</span>
+              <span className="text-muted-foreground">PPN {order.subtotal > 0 && Math.round(order.tax / order.subtotal * 1000) === 11 ? "1,1%" : "11%"}</span>
               <span>{formatCurrency(order.tax)}</span>
             </div>
             <Separator />

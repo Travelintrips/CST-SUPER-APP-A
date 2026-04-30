@@ -44,9 +44,11 @@ export function useCart() {
     setItems([]);
   }
 
+  const hasAirFreight = items.some((i) => i.calculatorType === "air_freight");
+  const taxRate = hasAirFreight ? 0.011 : 0.11;
   const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
-  const tax = subtotal * 0.11;
+  const tax = subtotal * taxRate;
   const grandTotal = subtotal + tax;
 
-  return { items, addItem, removeItem, updateItem, clearCart, subtotal, tax, grandTotal };
+  return { items, addItem, removeItem, updateItem, clearCart, subtotal, tax, grandTotal, taxRate, hasAirFreight };
 }
