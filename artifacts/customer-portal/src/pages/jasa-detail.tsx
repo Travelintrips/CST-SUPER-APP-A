@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import {
 import { useCart } from "@/lib/logistic-cart";
 import { formatCurrency } from "@/lib/utils";
 import { AirportCombobox } from "@/components/AirportCombobox";
+import { LocationCombobox, type GeoLocation } from "@/components/LocationCombobox";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
@@ -122,6 +123,9 @@ export default function JasaDetail() {
   const [state, setState] = useState<CalcState>({});
   const [airRows, setAirRows] = useState<AirRow[]>([newAirRow()]);
   const [added, setAdded] = useState(false);
+  const [pickupGeo, setPickupGeo] = useState<GeoLocation | undefined>();
+  const [destGeo, setDestGeo] = useState<GeoLocation | undefined>();
+  const [calcDist, setCalcDist] = useState(false);
 
   const item = SERVICE_ITEMS.find((i) => i.id === params.id);
   if (!item) {
@@ -155,6 +159,36 @@ export default function JasaDetail() {
   }
   function addAirRow() { setAirRows((prev) => [...prev, newAirRow()]); }
   function removeAirRow(id: string) { setAirRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== id) : prev); }
+
+  const fetchDistance = useCallback(async (from: GeoLocation, to: GeoLocation) => {
+    setCalcDist(true);
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
+      const res = await fetch(url);
+      const data = await res.json() as { routes?: Array<{ distance: number }> };
+      if (data.routes && data.routes.length > 0) {
+        const km = Math.round(data.routes[0].distance / 1000);
+        set("distance", String(km));
+        toast({ title: `Jarak otomatis: ${km} km`, description: `${from.label.split(",")[0]} → ${to.label.split(",")[0]}` });
+      }
+    } catch {
+      toast({ title: "Gagal menghitung jarak", description: "Isi jarak secara manual", variant: "destructive" });
+    } finally {
+      setCalcDist(false);
+    }
+  }, [toast]);
+
+  function handlePickupChange(label: string, geo?: GeoLocation) {
+    set("pickupCity", label);
+    setPickupGeo(geo);
+    if (geo && destGeo) fetchDistance(geo, destGeo);
+  }
+
+  function handleDestChange(label: string, geo?: GeoLocation) {
+    set("destCity", label);
+    setDestGeo(geo);
+    if (geo && pickupGeo) fetchDistance(pickupGeo, geo);
+  }
 
   function handleAddToCart() {
     if (!item) return;
@@ -358,8 +392,22 @@ export default function JasaDetail() {
 
                 {ct === "trucking" && <>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label>Pickup City</Label><Input placeholder="Jakarta" className="mt-1" value={state.pickupCity || ""} onChange={e => set("pickupCity", e.target.value)} /></div>
-                    <div><Label>Destination City</Label><Input placeholder="Surabaya" className="mt-1" value={state.destCity || ""} onChange={e => set("destCity", e.target.value)} /></div>
+                    <div>
+                      <Label>Pickup City</Label>
+                      <LocationCombobox
+                        value={state.pickupCity || ""}
+                        onChange={handlePickupChange}
+                        placeholder="Cari kota asal..."
+                      />
+                    </div>
+                    <div>
+                      <Label>Destination City</Label>
+                      <LocationCombobox
+                        value={state.destCity || ""}
+                        onChange={handleDestChange}
+                        placeholder="Cari kota tujuan..."
+                      />
+                    </div>
                   </div>
                   <div><Label>Vehicle Type</Label>
                     <Select value={state.vehicleType || ""} onValueChange={v => set("vehicleType", v)}>
@@ -368,8 +416,15 @@ export default function JasaDetail() {
                     </Select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label>Distance (km)</Label><Input type="number" placeholder="0" className="mt-1" value={state.distance || ""} onChange={e => set("distance", e.target.value)} /></div>
-                    <div><Label>Trucking Rate (IDR)</Label><Input type="number" placeholder="0" className="mt-1" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)} /></div>
+                    <div>
+                      <Label className="flex items-center gap-1.5">
+                        Distance (km)
+                        {calcDist && <span className="text-xs text-blue-600 font-normal flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>menghitung...</span>}
+                        {!calcDist && pickupGeo && destGeo && state.distance && <span className="text-xs text-green-600 font-normal">✓ otomatis</span>}
+                      </Label>
+                      <Input type="number" placeholder="0" className="mt-1" value={state.distance || ""} onChange={e => set("distance", e.target.value)} disabled={calcDist} />
+                    </div>
+                    <div><Label>Trucking Rate (IDR/km)</Label><Input type="number" placeholder="0" className="mt-1" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)} /></div>
                   </div>
                   <div><Label>Loading Fee (IDR)</Label><Input type="number" placeholder="0" className="mt-1" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)} /></div>
                   {(parseFloat(state.distance) || 0) > 0 && (parseFloat(state.truckingRate) || 0) > 0 && (
