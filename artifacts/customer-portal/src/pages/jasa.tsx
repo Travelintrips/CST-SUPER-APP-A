@@ -41,21 +41,20 @@ export default function Jasa() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-primary text-primary-foreground py-16 md:py-24">
+      {/* Header — compact */}
+      <div className="bg-primary text-primary-foreground py-8 md:py-10">
         <div className="container px-4 md:px-6">
-          <div className="max-w-2xl">
-            <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">Katalog Jasa</p>
-            <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">Jasa / Services</h1>
-            <p className="text-lg text-primary-foreground/80 mb-8">
-              Temukan layanan logistik, kepabeanan, dan pengiriman internasional kami yang dirancang sesuai kebutuhan bisnis Anda.
-            </p>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary-foreground/50" />
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-1">Katalog Jasa</p>
+              <h1 className="text-2xl md:text-3xl font-display font-bold">Jasa / Services</h1>
+            </div>
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary-foreground/50" />
               <Input
                 type="text"
                 placeholder="Cari jasa atau kategori..."
-                className="w-full h-12 pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
+                className="h-10 pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -64,9 +63,9 @@ export default function Jasa() {
         </div>
       </div>
 
-      <div className="container px-4 md:px-6 mt-10">
+      <div className="container px-4 md:px-6 mt-6">
         {/* Category filter tabs */}
-        <div className="flex flex-wrap gap-2 mb-8">
+        <div className="flex flex-wrap gap-2 mb-6">
           <button
             onClick={() => setActiveCategory("All")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
@@ -97,28 +96,6 @@ export default function Jasa() {
             );
           })}
         </div>
-
-        {/* Category overview cards (shown when no search + All selected) */}
-        {!searchQuery && activeCategory === "All" && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-10">
-            {CATEGORIES.map((cat) => {
-              const IconComp = ICON_MAP[cat.icon] ?? Package;
-              const colors = CATEGORY_COLORS[cat.name];
-              const count = SERVICE_ITEMS.filter((i) => i.category === cat.name).length;
-              return (
-                <button
-                  key={cat.name}
-                  onClick={() => setActiveCategory(cat.name)}
-                  className={`${colors.bg} rounded-xl p-4 text-left hover:shadow-md transition-all border border-transparent hover:border-${colors.text.replace("text-", "")}/20 group`}
-                >
-                  <IconComp className={`h-7 w-7 ${colors.text} mb-2 group-hover:scale-110 transition-transform`} />
-                  <p className={`text-sm font-semibold ${colors.text}`}>{cat.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{count} jasa</p>
-                </button>
-              );
-            })}
-          </div>
-        )}
 
         {/* Service grid */}
         {filtered.length > 0 ? (
