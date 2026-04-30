@@ -13,6 +13,7 @@ import {
   Ship, Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Calculator, ArrowLeft, ArrowRight, ShoppingCart, CheckCircle2,
+  Plus, Trash2,
 } from "lucide-react";
 import {
   CATEGORIES, SERVICE_ITEMS, CATEGORY_COLORS_DETAIL,
@@ -27,18 +28,39 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 
 type CalcState = Record<string, string>;
 
-function calcSubtotal(calcType: string, state: CalcState): number {
+type AirRow = {
+  id: string;
+  grossWeight: string;
+  quantity: string;
+  length: string;
+  width: string;
+  height: string;
+};
+
+function newAirRow(): AirRow {
+  return { id: crypto.randomUUID(), grossWeight: "", quantity: "1", length: "", width: "", height: "" };
+}
+
+function rowChargeableWeight(row: AirRow): number {
+  const gw = parseFloat(row.grossWeight) || 0;
+  const qty = parseFloat(row.quantity) || 1;
+  const vw = ((parseFloat(row.length) || 0) * (parseFloat(row.width) || 0) * (parseFloat(row.height) || 0) * qty) / 6000;
+  return Math.max(gw * qty, vw);
+}
+
+function rowVolumeWeight(row: AirRow): number {
+  const qty = parseFloat(row.quantity) || 1;
+  return ((parseFloat(row.length) || 0) * (parseFloat(row.width) || 0) * (parseFloat(row.height) || 0) * qty) / 6000;
+}
+
+function calcSubtotal(calcType: string, state: CalcState, airRows?: AirRow[]): number {
   try {
     switch (calcType) {
       case "air_freight": {
-        const gw = parseFloat(state.grossWeight) || 0;
-        const l = parseFloat(state.length) || 0;
-        const w = parseFloat(state.width) || 0;
-        const h = parseFloat(state.height) || 0;
-        const qty = parseFloat(state.quantity) || 1;
         const rate = parseFloat(state.ratePerKg) || 0;
-        const vw = (l * w * h * qty) / 6000;
-        return Math.max(gw, vw) * rate;
+        const rows = airRows && airRows.length > 0 ? airRows : [];
+        const totalCW = rows.reduce((sum, row) => sum + rowChargeableWeight(row), 0);
+        return totalCW * rate;
       }
       case "sea_fcl": {
         return (parseFloat(state.freightRate) || 0) + (parseFloat(state.handlingFee) || 0);
@@ -74,17 +96,19 @@ function calcSubtotal(calcType: string, state: CalcState): number {
   }
 }
 
-function calcResult(calcType: string, state: CalcState): Record<string, unknown> {
+function calcResult(calcType: string, state: CalcState, airRows?: AirRow[]): Record<string, unknown> {
   if (calcType === "air_freight") {
-    const gw = parseFloat(state.grossWeight) || 0;
-    const l = parseFloat(state.length) || 0;
-    const w = parseFloat(state.width) || 0;
-    const h = parseFloat(state.height) || 0;
-    const qty = parseFloat(state.quantity) || 1;
     const rate = parseFloat(state.ratePerKg) || 0;
-    const vw = (l * w * h * qty) / 6000;
-    const cw = Math.max(gw, vw);
-    return { volumeWeight: vw.toFixed(2), chargeableWeight: cw.toFixed(2), ratePerKg: rate, total: (cw * rate).toFixed(2) };
+    const rows = airRows ?? [];
+    const totalCW = rows.reduce((sum, row) => sum + rowChargeableWeight(row), 0);
+    const totalVW = rows.reduce((sum, row) => sum + rowVolumeWeight(row), 0);
+    return {
+      totalVolumeWeight: totalVW.toFixed(2),
+      totalChargeableWeight: totalCW.toFixed(2),
+      ratePerKg: rate,
+      total: (totalCW * rate).toFixed(2),
+      rows: rows.length,
+    };
   }
   return { total: calcSubtotal(calcType, state).toFixed(2) };
 }
@@ -95,6 +119,7 @@ export default function JasaDetail() {
   const { toast } = useToast();
   const { addItem } = useCart();
   const [state, setState] = useState<CalcState>({});
+  const [airRows, setAirRows] = useState<AirRow[]>([newAirRow()]);
   const [added, setAdded] = useState(false);
 
   const item = SERVICE_ITEMS.find((i) => i.id === params.id);
@@ -121,8 +146,14 @@ export default function JasaDetail() {
     setState((prev) => ({ ...prev, [key]: val }));
   }
 
-  const subtotal = calcSubtotal(item.calculatorType, state);
+  const subtotal = calcSubtotal(item.calculatorType, state, airRows);
   const ct = item.calculatorType;
+
+  function setAirRow(id: string, field: keyof Omit<AirRow, "id">, val: string) {
+    setAirRows((prev) => prev.map((r) => r.id === id ? { ...r, [field]: val } : r));
+  }
+  function addAirRow() { setAirRows((prev) => [...prev, newAirRow()]); }
+  function removeAirRow(id: string) { setAirRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== id) : prev); }
 
   function handleAddToCart() {
     if (!item) return;
@@ -134,8 +165,8 @@ export default function JasaDetail() {
       category: item.category,
       serviceName: item.name,
       calculatorType: item.calculatorType,
-      inputData: { ...state },
-      calculationResult: calcResult(item.calculatorType, state),
+      inputData: { ...state, ...(item.calculatorType === "air_freight" ? { airRows: JSON.stringify(airRows) } : {}) },
+      calculationResult: calcResult(item.calculatorType, state, airRows),
       subtotal,
     });
     setAdded(true);
@@ -189,21 +220,80 @@ export default function JasaDetail() {
                     <div><Label>Origin Airport</Label><Input placeholder="CGK" className="mt-1" value={state.originAirport || ""} onChange={e => set("originAirport", e.target.value)} /></div>
                     <div><Label>Destination Airport</Label><Input placeholder="SIN" className="mt-1" value={state.destinationAirport || ""} onChange={e => set("destinationAirport", e.target.value)} /></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><Label>Gross Weight (kg)</Label><Input type="number" placeholder="0" className="mt-1" value={state.grossWeight || ""} onChange={e => set("grossWeight", e.target.value)} /></div>
-                    <div><Label>Quantity (pcs)</Label><Input type="number" placeholder="1" className="mt-1" value={state.quantity || ""} onChange={e => set("quantity", e.target.value)} /></div>
+
+                  {/* Multi-row quantity list */}
+                  <div className="space-y-3">
+                    {airRows.map((row, idx) => {
+                      const vw = rowVolumeWeight(row);
+                      const cw = rowChargeableWeight(row);
+                      const hasData = (parseFloat(row.grossWeight) || 0) > 0;
+                      return (
+                        <div key={row.id} className="border border-border rounded-xl p-4 space-y-3 bg-gray-50/50 relative">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold text-foreground">Quantity #{idx + 1}</p>
+                            {airRows.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeAirRow(row.id)}
+                                className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs">Gross Weight (kg)</Label>
+                              <Input type="number" placeholder="0" className="mt-1 h-9" value={row.grossWeight} onChange={e => setAirRow(row.id, "grossWeight", e.target.value)} />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Quantity (pcs)</Label>
+                              <Input type="number" placeholder="1" className="mt-1 h-9" value={row.quantity} onChange={e => setAirRow(row.id, "quantity", e.target.value)} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <Label className="text-xs">Length (cm)</Label>
+                              <Input type="number" placeholder="0" className="mt-1 h-9" value={row.length} onChange={e => setAirRow(row.id, "length", e.target.value)} />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Width (cm)</Label>
+                              <Input type="number" placeholder="0" className="mt-1 h-9" value={row.width} onChange={e => setAirRow(row.id, "width", e.target.value)} />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Height (cm)</Label>
+                              <Input type="number" placeholder="0" className="mt-1 h-9" value={row.height} onChange={e => setAirRow(row.id, "height", e.target.value)} />
+                            </div>
+                          </div>
+                          {hasData && (
+                            <div className="flex gap-4 text-xs text-muted-foreground pt-1 border-t border-border">
+                              <span>Vol. Weight: <span className="font-semibold text-foreground">{vw.toFixed(2)} kg</span></span>
+                              <span>Chargeable: <span className="font-semibold text-blue-700">{cw.toFixed(2)} kg</span></span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div><Label>Length (cm)</Label><Input type="number" placeholder="0" className="mt-1" value={state.length || ""} onChange={e => set("length", e.target.value)} /></div>
-                    <div><Label>Width (cm)</Label><Input type="number" placeholder="0" className="mt-1" value={state.width || ""} onChange={e => set("width", e.target.value)} /></div>
-                    <div><Label>Height (cm)</Label><Input type="number" placeholder="0" className="mt-1" value={state.height || ""} onChange={e => set("height", e.target.value)} /></div>
-                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 w-full border-dashed"
+                    onClick={addAirRow}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Tambah Quantity Lain
+                  </Button>
+
                   <div><Label>Rate per Kg (IDR)</Label><Input type="number" placeholder="0" className="mt-1" value={state.ratePerKg || ""} onChange={e => set("ratePerKg", e.target.value)} /></div>
-                  {(parseFloat(state.grossWeight) || 0) > 0 && (parseFloat(state.ratePerKg) || 0) > 0 && (
+
+                  {subtotal > 0 && (
                     <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm space-y-1.5">
-                      <p className="text-blue-700 font-medium">Hasil Kalkulasi:</p>
-                      <p className="text-muted-foreground">Volume Weight: <span className="font-semibold text-foreground">{((parseFloat(state.length) || 0) * (parseFloat(state.width) || 0) * (parseFloat(state.height) || 0) * (parseFloat(state.quantity) || 1) / 6000).toFixed(2)} kg</span></p>
-                      <p className="text-muted-foreground">Chargeable Weight: <span className="font-semibold text-foreground">{Math.max(parseFloat(state.grossWeight) || 0, (parseFloat(state.length) || 0) * (parseFloat(state.width) || 0) * (parseFloat(state.height) || 0) * (parseFloat(state.quantity) || 1) / 6000).toFixed(2)} kg</span></p>
+                      <p className="text-blue-700 font-medium">Ringkasan Kalkulasi ({airRows.length} jenis quantity):</p>
+                      <p className="text-muted-foreground">Total Vol. Weight: <span className="font-semibold text-foreground">{airRows.reduce((s, r) => s + rowVolumeWeight(r), 0).toFixed(2)} kg</span></p>
+                      <p className="text-muted-foreground">Total Chargeable Weight: <span className="font-semibold text-foreground">{airRows.reduce((s, r) => s + rowChargeableWeight(r), 0).toFixed(2)} kg</span></p>
                     </div>
                   )}
                 </>}
@@ -338,7 +428,7 @@ export default function JasaDetail() {
                       {item.name} berhasil ditambahkan ke pesanan
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <Button variant="outline" onClick={() => { setAdded(false); setState({}); }} className="gap-1.5">
+                      <Button variant="outline" onClick={() => { setAdded(false); setState({}); setAirRows([newAirRow()]); }} className="gap-1.5">
                         <Calculator className="h-4 w-4" /> Hitung Ulang
                       </Button>
                       <Button onClick={handleProceed} className="gap-1.5">
