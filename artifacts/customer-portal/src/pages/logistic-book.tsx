@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -335,6 +335,20 @@ export default function BookPage() {
     (cat: ServiceCategory) => SERVICE_ITEMS.filter((i) => i.category === cat),
     []
   );
+
+  // Jump directly to calculator if ?service=<id> is in the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const serviceId = params.get("service");
+    if (serviceId) {
+      const found = SERVICE_ITEMS.find((i) => i.id === serviceId);
+      if (found) {
+        setSelectedItem(found);
+        setSelectedCategory(found.category);
+        setStep(1);
+      }
+    }
+  }, []);
 
   function handleShipmentSelect(type: ShipmentType) {
     setShipmentType(type);
