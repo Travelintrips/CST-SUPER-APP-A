@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetPortalMe, useListPortalOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
-import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Package, Truck, ArrowRight, Activity, Calendar, Ship, Plus } from "lucide-react";
+import {
+  Package, Truck, ArrowRight, Activity, Calendar, Ship, Plus,
+  Plane, Box, Archive, BarChart2, Layers, Navigation,
+  ClipboardList, Globe, Anchor,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
@@ -25,9 +28,84 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled:  "bg-red-100 text-red-800",
 };
 
+const ICON_OPTIONS = [
+  { key: "Package",       Icon: Package },
+  { key: "Box",           Icon: Box },
+  { key: "Archive",       Icon: Archive },
+  { key: "Layers",        Icon: Layers },
+  { key: "ClipboardList", Icon: ClipboardList },
+  { key: "BarChart2",     Icon: BarChart2 },
+  { key: "Truck",         Icon: Truck },
+  { key: "Ship",          Icon: Ship },
+  { key: "Plane",         Icon: Plane },
+  { key: "Navigation",    Icon: Navigation },
+  { key: "Globe",         Icon: Globe },
+  { key: "Anchor",        Icon: Anchor },
+];
+
+const ICON_MAP = Object.fromEntries(ICON_OPTIONS.map(({ key, Icon }) => [key, Icon]));
+
+function useCardIcon(storageKey: string, defaultIcon: string) {
+  const [iconKey, setIconKey] = useState(() => localStorage.getItem(storageKey) || defaultIcon);
+  const save = (key: string) => {
+    setIconKey(key);
+    localStorage.setItem(storageKey, key);
+  };
+  return [iconKey, save] as const;
+}
+
+function IconPicker({ currentKey, onSelect, className }: {
+  currentKey: string;
+  onSelect: (key: string) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const IconComp = ICON_MAP[currentKey] ?? Package;
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((p) => !p)}
+        title="Klik untuk ganti ikon"
+        className={`opacity-20 hover:opacity-50 transition-opacity cursor-pointer ${className ?? ""}`}
+      >
+        <IconComp className="w-10 h-10" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-12 z-50 bg-white rounded-xl shadow-xl border border-border p-3 grid grid-cols-4 gap-1.5 w-52">
+          <p className="col-span-4 text-xs text-muted-foreground font-medium mb-1 px-1">Pilih ikon</p>
+          {ICON_OPTIONS.map(({ key, Icon }) => (
+            <button
+              key={key}
+              onClick={() => { onSelect(key); setOpen(false); }}
+              className={`p-2 rounded-lg flex items-center justify-center transition-colors hover:bg-primary/10 ${
+                currentKey === key ? "bg-primary/20 text-primary" : "text-muted-foreground"
+              }`}
+              title={key}
+            >
+              <Icon className="h-5 w-5" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [card1Icon, setCard1Icon] = useCardIcon("dash_card1_icon", "Package");
+  const [card2Icon, setCard2Icon] = useCardIcon("dash_card2_icon", "Truck");
   const token = getAuthToken();
 
   useEffect(() => {
@@ -84,14 +162,14 @@ export default function Dashboard() {
               <p className="text-xs text-primary-foreground/60 mb-1">Total Orders</p>
               <p className="text-4xl font-bold">{isLoadingOrders ? "-" : orders.length}</p>
             </div>
-            <Package className="w-10 h-10 opacity-20" />
+            <IconPicker currentKey={card1Icon} onSelect={setCard1Icon} />
           </div>
           <div className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between">
             <div>
               <p className="text-xs text-accent-foreground/70 mb-1">Active Shipments</p>
               <p className="text-4xl font-bold">{isLoadingOrders ? "-" : activeOrders.length}</p>
             </div>
-            <Truck className="w-10 h-10 opacity-20" />
+            <IconPicker currentKey={card2Icon} onSelect={setCard2Icon} />
           </div>
         </div>
 

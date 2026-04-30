@@ -12,6 +12,7 @@ import { CartDrawer } from "@/components/CartDrawer";
 import Home from "@/pages/home";
 import Services from "@/pages/services";
 import Products from "@/pages/products";
+import Jasa from "@/pages/jasa";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -40,6 +41,7 @@ function AppShell() {
       <Route path="/" component={Home} />
       <Route path="/services" component={Services} />
       <Route path="/products" component={Products} />
+      <Route path="/jasa" component={Jasa} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/dashboard" component={Dashboard} />
