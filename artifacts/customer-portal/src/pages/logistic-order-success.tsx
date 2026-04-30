@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Ship, Search, ArrowRight } from "lucide-react";
+import { CheckCircle2, Search, LayoutDashboard, Boxes } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { LogisticOrderDetail } from "@workspace/api-client-react";
 
@@ -23,9 +23,16 @@ export default function OrderSuccessPage() {
   if (!order) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center space-y-3">
           <p className="text-muted-foreground mb-4">Data pesanan tidak ditemukan.</p>
-          <Button onClick={() => setLocation("/book")}>Buat Pesanan Baru</Button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button variant="outline" onClick={() => setLocation("/jasa")}>
+              <Boxes className="w-4 h-4 mr-2" /> Lihat Jasa
+            </Button>
+            <Button onClick={() => setLocation("/dashboard")}>
+              <LayoutDashboard className="w-4 h-4 mr-2" /> Ke Dashboard
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -111,10 +118,17 @@ export default function OrderSuccessPage() {
             <Search className="w-4 h-4 mr-2" /> Lacak Pesanan
           </Button>
           <Button
-            className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
-            onClick={() => setLocation("/book")}
+            variant="outline"
+            className="flex-1"
+            onClick={() => setLocation("/jasa")}
           >
-            <Ship className="w-4 h-4 mr-2" /> Buat Pesanan Baru <ArrowRight className="w-4 h-4 ml-1" />
+            <Boxes className="w-4 h-4 mr-2" /> Lihat Jasa Lainnya
+          </Button>
+          <Button
+            className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+            onClick={() => setLocation("/dashboard")}
+          >
+            <LayoutDashboard className="w-4 h-4 mr-2" /> Ke Dashboard Saya
           </Button>
         </div>
       </div>
