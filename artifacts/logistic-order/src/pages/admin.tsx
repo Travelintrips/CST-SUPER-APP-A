@@ -1,10 +1,16 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useListLogisticOrders, useGetLogisticOrderSummary, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  useListLogisticOrders, useGetLogisticOrderSummary,
+  useUpdateLogisticOrderStatus,
+  getListLogisticOrdersQueryKey, getGetLogisticOrderSummaryQueryKey,
+} from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, SHIPMENT_TYPES, OrderStatus } from "@/lib/services-data";
 import {
@@ -19,6 +25,9 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(() => localStorage.getItem(ADMIN_KEY) === "1");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const updateStatus = useUpdateLogisticOrderStatus();
 
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("");
@@ -58,6 +67,20 @@ export default function AdminPage() {
     localStorage.removeItem(ADMIN_KEY);
     setAuthed(false);
     setPassword("");
+  }
+
+  function handleInlineStatusChange(orderId: number, status: string) {
+    updateStatus.mutate(
+      { id: orderId, data: { status } },
+      {
+        onSuccess: () => {
+          toast({ title: `Status diperbarui: ${status}` });
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetLogisticOrderSummaryQueryKey() });
+        },
+        onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
+      }
+    );
   }
 
   if (!authed) {
@@ -192,8 +215,7 @@ export default function AdminPage() {
                   {orders.map((order) => (
                     <tr
                       key={order.id}
-                      className="border-b border-border hover:bg-muted/20 cursor-pointer transition-colors"
-                      onClick={() => setLocation(`/admin/orders/${order.id}`)}
+                      className="border-b border-border hover:bg-muted/20 transition-colors"
                     >
                       <td className="px-4 py-3 text-sm font-mono font-semibold text-foreground">{order.orderNumber}</td>
                       <td className="px-4 py-3 text-sm text-foreground">{order.companyName}</td>
@@ -201,13 +223,23 @@ export default function AdminPage() {
                       <td className="px-4 py-3 text-sm text-muted-foreground">{order.shipmentType}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{order.origin} → {order.destination}</td>
                       <td className="px-4 py-3 text-sm font-bold text-accent">{formatCurrency(order.grandTotal)}</td>
-                      <td className="px-4 py-3">
-                        <Badge className={STATUS_COLORS[order.status as OrderStatus] || "bg-gray-100 text-gray-800"}>
-                          {order.status}
-                        </Badge>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          value={order.status}
+                          onValueChange={(val) => handleInlineStatusChange(order.id, val)}
+                        >
+                          <SelectTrigger className={`h-7 text-xs border-0 px-2 font-medium w-36 ${STATUS_COLORS[order.status as OrderStatus] || "bg-gray-100 text-gray-800"}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {STATUS_OPTIONS.map((s) => (
+                              <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(order.createdAt)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 cursor-pointer" onClick={() => setLocation(`/admin/orders/${order.id}`)}>
                         <ChevronRight className="w-4 h-4 text-muted-foreground" />
                       </td>
                     </tr>
