@@ -5,6 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
+}
+
+export function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 export function assetUrl(path: string): string {
   return `${BASE}${path}`;

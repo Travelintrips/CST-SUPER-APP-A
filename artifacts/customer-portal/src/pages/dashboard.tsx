@@ -1,140 +1,156 @@
+import { useState } from "react";
 import { useGetPortalMe, useListPortalOrders } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders, removeAuthToken } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Package, Truck, FileText, ArrowRight, Activity, Calendar } from "lucide-react";
+import { Package, Truck, ArrowRight, Activity, Calendar, Ship, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/utils";
+
+const STATUS_CONFIG: { status: string; label: string; bg: string; border: string; text: string; num: string }[] = [
+  { status: "pending",    label: "Pending",    bg: "bg-yellow-50",  border: "border-yellow-200",  text: "text-yellow-700",  num: "text-yellow-800" },
+  { status: "processing", label: "Processing", bg: "bg-blue-50",    border: "border-blue-200",    text: "text-blue-700",    num: "text-blue-800" },
+  { status: "shipped",    label: "Shipped",    bg: "bg-purple-50",  border: "border-purple-200",  text: "text-purple-700",  num: "text-purple-800" },
+  { status: "delivered",  label: "Delivered",  bg: "bg-green-50",   border: "border-green-200",   text: "text-green-700",   num: "text-green-800" },
+  { status: "cancelled",  label: "Cancelled",  bg: "bg-red-50",     border: "border-red-200",     text: "text-red-700",     num: "text-red-800" },
+];
+
+const STATUS_BADGE: Record<string, string> = {
+  pending:    "bg-yellow-100 text-yellow-800",
+  processing: "bg-blue-100 text-blue-800",
+  shipped:    "bg-purple-100 text-purple-800",
+  delivered:  "bg-green-100 text-green-800",
+  cancelled:  "bg-red-100 text-red-800",
+};
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const token = getAuthToken();
 
   useEffect(() => {
-    if (!token) {
-      setLocation("/login");
-    }
+    if (!token) setLocation("/login");
   }, [token, setLocation]);
 
   const headers = getAuthHeaders() as any;
 
   const { data: userResponse, isLoading: isLoadingUser, error: userError } = useGetPortalMe({
-    query: { 
-      queryKey: ["getPortalMe", token], 
-      enabled: !!token,
-      retry: 1
-    },
+    query: { queryKey: ["getPortalMe", token], enabled: !!token, retry: 1 },
     request: { headers }
   });
 
   const { data: ordersResponse, isLoading: isLoadingOrders } = useListPortalOrders({
-    query: { 
-      queryKey: ["listPortalOrders", token], 
-      enabled: !!token 
-    },
+    query: { queryKey: ["listPortalOrders", token], enabled: !!token },
     request: { headers }
   });
 
-  // Handle auth error by redirecting
   useEffect(() => {
-    if (userError) {
-      removeAuthToken();
-      setLocation("/login");
-    }
+    if (userError) { removeAuthToken(); setLocation("/login"); }
   }, [userError, setLocation]);
 
   if (!token) return null;
 
   const customer = userResponse;
   const orders = Array.isArray(ordersResponse) ? ordersResponse : [];
-  const recentOrders = orders.slice(0, 5);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending": return "bg-yellow-100 text-yellow-800";
-      case "processing": return "bg-blue-100 text-blue-800";
-      case "shipped": return "bg-purple-100 text-purple-800";
-      case "delivered": return "bg-green-100 text-green-800";
-      case "cancelled": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
+  const activeOrders = orders.filter((o) => o.status === "processing" || o.status === "shipped");
+  const filteredOrders = statusFilter ? orders.filter((o) => o.status === statusFilter) : orders;
+  const displayOrders = filteredOrders.slice(0, 8);
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gray-50 py-8">
       <div className="container px-4 md:px-6">
-        
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-display font-bold">
-            Welcome back, {isLoadingUser ? "..." : customer?.name?.split(' ')[0]}
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Here's an overview of your logistics and shipping activities.
-          </p>
+
+        {/* Welcome */}
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-display font-bold">
+              Welcome back, {isLoadingUser ? "..." : customer?.name?.split(" ")[0]}
+            </h1>
+            <p className="text-muted-foreground mt-1">Here's an overview of your logistics activities.</p>
+          </div>
+          <Link href="/book">
+            <Button className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground">
+              <Plus className="h-4 w-4" /> Buat Pesanan Baru
+            </Button>
+          </Link>
         </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="border-none shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Orders</CardTitle>
-              <Package className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{isLoadingOrders ? "-" : orders.length}</div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Active Shipments</CardTitle>
-              <Truck className="h-4 w-4 text-accent" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                {isLoadingOrders ? "-" : orders.filter(o => o.status === 'processing' || o.status === 'shipped').length}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Documents Pending</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">0</div>
-            </CardContent>
-          </Card>
+        {/* Hero stat cards */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-primary-foreground/60 mb-1">Total Orders</p>
+              <p className="text-4xl font-bold">{isLoadingOrders ? "-" : orders.length}</p>
+            </div>
+            <Package className="w-10 h-10 opacity-20" />
+          </div>
+          <div className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-accent-foreground/70 mb-1">Active Shipments</p>
+              <p className="text-4xl font-bold">{isLoadingOrders ? "-" : activeOrders.length}</p>
+            </div>
+            <Truck className="w-10 h-10 opacity-20" />
+          </div>
         </div>
 
-        {/* Main Content Grid */}
+        {/* Status filter cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+          {STATUS_CONFIG.map(({ status, label, bg, border, text, num }) => {
+            const count = isLoadingOrders ? 0 : orders.filter((o) => o.status === status).length;
+            const isActive = statusFilter === status;
+            return (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(isActive ? "" : status)}
+                className={`${bg} border ${border} rounded-lg p-3 text-left transition-all hover:shadow-sm ${isActive ? "ring-2 ring-offset-1 ring-current" : ""}`}
+              >
+                <p className={`text-2xl font-bold ${num}`}>{count}</p>
+                <p className={`text-xs font-medium mt-0.5 ${text} leading-tight`}>{label}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Recent Orders List */}
+
+          {/* Orders list */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between border-b border-border/40 pb-4">
                 <div>
-                  <CardTitle>Recent Orders</CardTitle>
-                  <CardDescription>Your most recent logistics requests</CardDescription>
+                  <CardTitle>
+                    {statusFilter ? `${STATUS_CONFIG.find(s => s.status === statusFilter)?.label} Orders` : "Recent Orders"}
+                  </CardTitle>
+                  <CardDescription>
+                    {statusFilter ? `Showing ${filteredOrders.length} orders` : "Your most recent logistics requests"}
+                  </CardDescription>
                 </div>
-                <Link href="/orders">
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    View All <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
+                <div className="flex items-center gap-2">
+                  {statusFilter && (
+                    <Button variant="ghost" size="sm" onClick={() => setStatusFilter("")} className="text-xs">
+                      Clear filter
+                    </Button>
+                  )}
+                  <Link href="/orders">
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      View All <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
               </CardHeader>
               <CardContent className="pt-6">
                 {isLoadingOrders ? (
                   <div className="space-y-4">
-                    {[1,2,3].map(i => (
+                    {[1, 2, 3].map((i) => (
                       <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
                     ))}
                   </div>
-                ) : recentOrders.length > 0 ? (
+                ) : displayOrders.length > 0 ? (
                   <div className="space-y-4">
-                    {recentOrders.map((order) => (
+                    {displayOrders.map((order) => (
                       <div key={order.id} className="flex items-center justify-between p-4 rounded-lg border border-border/50 hover:bg-gray-50 transition-colors">
                         <div className="flex items-start gap-4">
                           <div className="bg-primary/5 p-3 rounded-full">
@@ -144,16 +160,19 @@ export default function Dashboard() {
                             <p className="font-medium">{order.docNumber}</p>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                               <Calendar className="h-3.5 w-3.5" />
-                              {new Date(order.createdAt).toLocaleDateString()}
+                              {new Date(order.createdAt).toLocaleDateString("id-ID")}
                             </div>
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          <Badge variant="secondary" className={getStatusColor(order.status)}>
+                          <Badge
+                            variant="secondary"
+                            className={STATUS_BADGE[order.status] || "bg-gray-100 text-gray-800"}
+                          >
                             {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                           </Badge>
                           <span className="font-semibold text-sm">
-                            {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(order.grandTotal)}
+                            {formatCurrency(order.grandTotal)}
                           </span>
                         </div>
                       </div>
@@ -162,18 +181,24 @@ export default function Dashboard() {
                 ) : (
                   <div className="text-center py-12">
                     <Activity className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium">No orders yet</h3>
-                    <p className="text-muted-foreground mb-6">You haven't created any orders or shipments.</p>
-                    <Link href="/services">
-                      <Button>Browse Services</Button>
-                    </Link>
+                    <h3 className="text-lg font-medium">
+                      {statusFilter ? `No ${statusFilter} orders` : "No orders yet"}
+                    </h3>
+                    <p className="text-muted-foreground mb-6">
+                      {statusFilter ? "Try another status filter." : "You haven't created any orders."}
+                    </p>
+                    {!statusFilter && (
+                      <Link href="/book">
+                        <Button>Buat Pesanan Logistik</Button>
+                      </Link>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Profile Sidebar */}
+          {/* Sidebar */}
           <div className="space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader>
@@ -207,15 +232,22 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card className="border-none shadow-sm bg-accent text-accent-foreground">
+            <Card className="border-none shadow-sm bg-primary text-primary-foreground">
               <CardHeader>
-                <CardTitle>Need Support?</CardTitle>
-                <CardDescription className="text-accent-foreground/80">Our logistics team is available 24/7</CardDescription>
+                <CardTitle>Logistic Ordering</CardTitle>
+                <CardDescription className="text-primary-foreground/70">Book export, import & freight services</CardDescription>
               </CardHeader>
-              <CardContent>
-                <Button variant="secondary" className="w-full bg-white text-accent hover:bg-gray-100">
-                  Contact Support
-                </Button>
+              <CardContent className="space-y-2">
+                <Link href="/book">
+                  <Button variant="secondary" className="w-full bg-white text-primary hover:bg-gray-100 gap-2">
+                    <Ship className="h-4 w-4" /> Buat Pesanan
+                  </Button>
+                </Link>
+                <Link href="/track">
+                  <Button variant="ghost" className="w-full text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 gap-2">
+                    Lacak Pesanan
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           </div>

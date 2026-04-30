@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Package, LogOut, LayoutDashboard, ShoppingCart, Shield } from "lucide-react";
+import { Menu, X, Package, LogOut, LayoutDashboard, ShoppingCart, Shield, Ship, Search } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useCart } from "@/lib/cart";
@@ -50,6 +50,8 @@ export function Navbar() {
     { name: "Produk", type: "link", path: "/products" },
     { name: "Tentang Kami", type: "scroll", anchor: "tentang" },
     { name: "Kontak", type: "scroll", anchor: "kontak" },
+    { name: "Buat Pesanan", type: "link", path: "/book" },
+    { name: "Lacak Pesanan", type: "link", path: "/track" },
   ];
 
   return (
