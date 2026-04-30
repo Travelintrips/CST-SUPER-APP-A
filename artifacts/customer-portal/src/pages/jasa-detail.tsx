@@ -77,7 +77,7 @@ function calcSubtotal(calcType: string, state: CalcState, airRows?: AirRow[]): n
           (parseFloat(state.pibPebFee) || 0) + (parseFloat(state.permitFee) || 0);
       }
       case "trucking": {
-        return (parseFloat(state.truckingRate) || 0) + (parseFloat(state.loadingFee) || 0);
+        return (parseFloat(state.distance) || 0) * (parseFloat(state.truckingRate) || 0) + (parseFloat(state.loadingFee) || 0);
       }
       case "storage": {
         return (parseFloat(state.days) || 0) * (parseFloat(state.quantity) || 1) * (parseFloat(state.ratePerDay) || 0);
@@ -372,6 +372,17 @@ export default function JasaDetail() {
                     <div><Label>Trucking Rate (IDR)</Label><Input type="number" placeholder="0" className="mt-1" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)} /></div>
                   </div>
                   <div><Label>Loading Fee (IDR)</Label><Input type="number" placeholder="0" className="mt-1" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)} /></div>
+                  {(parseFloat(state.distance) || 0) > 0 && (parseFloat(state.truckingRate) || 0) > 0 && (
+                    <div className="bg-orange-50 border border-orange-100 rounded-lg p-4 text-sm space-y-1.5">
+                      <p className="text-orange-700 font-medium">Rincian Kalkulasi:</p>
+                      <p className="text-muted-foreground">
+                        Jarak × Rate: <span className="font-semibold text-foreground">{parseFloat(state.distance) || 0} km × {formatCurrency(parseFloat(state.truckingRate) || 0)}/km = {formatCurrency((parseFloat(state.distance) || 0) * (parseFloat(state.truckingRate) || 0))}</span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        Loading Fee: <span className="font-semibold text-foreground">{formatCurrency(parseFloat(state.loadingFee) || 0)}</span>
+                      </p>
+                    </div>
+                  )}
                 </>}
 
                 {ct === "storage" && <>
