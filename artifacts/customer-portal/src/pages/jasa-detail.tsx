@@ -306,7 +306,7 @@ export default function JasaDetail() {
                   <div><Label>Container Type</Label>
                     <Select value={state.containerType || ""} onValueChange={v => set("containerType", v)}>
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih container" /></SelectTrigger>
-                      <SelectContent>{["20FT", "40FT", "40HC"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                      <SelectContent>{["20 ft", "40 ft", "40 ft (High Cube)", "20 ft Suspensi", "40 ft Suspensi"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -349,7 +349,7 @@ export default function JasaDetail() {
                   <div><Label>Vehicle Type</Label>
                     <Select value={state.vehicleType || ""} onValueChange={v => set("vehicleType", v)}>
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
-                      <SelectContent>{["CDE", "CDD", "Fuso", "Wingbox", "Trailer"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                      <SelectContent>{["20 ft", "40 ft", "40 ft (High Cube)", "20 ft Suspensi", "40 ft Suspensi"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
