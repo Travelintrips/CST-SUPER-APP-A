@@ -4959,10 +4959,14 @@ components:
       properties:
         totalOrders: { type: integer }
         newOrders: { type: integer }
+        underReviewOrders: { type: integer }
+        quotationSentOrders: { type: integer }
         confirmedOrders: { type: integer }
+        inProgressOrders: { type: integer }
         completedOrders: { type: integer }
+        cancelledOrders: { type: integer }
         totalEstimatedRevenue: { type: number }
-      required: [totalOrders, newOrders, confirmedOrders, completedOrders, totalEstimatedRevenue]
+      required: [totalOrders, newOrders, underReviewOrders, quotationSentOrders, confirmedOrders, inProgressOrders, completedOrders, cancelledOrders, totalEstimatedRevenue]
 
     ListLogisticOrdersQueryParams:
       type: object

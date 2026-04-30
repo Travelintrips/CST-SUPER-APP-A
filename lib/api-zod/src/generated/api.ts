@@ -4105,8 +4105,12 @@ export const ListLogisticOrdersResponse = zod.array(
 export const GetLogisticOrderSummaryResponse = zod.object({
   totalOrders: zod.number(),
   newOrders: zod.number(),
+  underReviewOrders: zod.number(),
+  quotationSentOrders: zod.number(),
   confirmedOrders: zod.number(),
+  inProgressOrders: zod.number(),
   completedOrders: zod.number(),
+  cancelledOrders: zod.number(),
   totalEstimatedRevenue: zod.number(),
 });
 

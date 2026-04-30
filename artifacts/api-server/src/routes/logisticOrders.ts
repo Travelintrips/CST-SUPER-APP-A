@@ -157,20 +157,17 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
 // GET /api/logistic/orders/summary — dashboard stats (admin)
 logisticOrdersRouter.get("/summary", async (_req: Request, res: Response) => {
   const rows = await db.select().from(logisticOrdersTable);
-  const totalOrders = rows.length;
-  const newOrders = rows.filter((r) => r.status === "New Order").length;
-  const confirmedOrders = rows.filter((r) => r.status === "Confirmed").length;
-  const completedOrders = rows.filter((r) => r.status === "Completed").length;
-  const totalEstimatedRevenue = rows.reduce(
-    (acc, r) => acc + parseFloat(r.grandTotal),
-    0
-  );
+  const count = (status: string) => rows.filter((r) => r.status === status).length;
   return res.json({
-    totalOrders,
-    newOrders,
-    confirmedOrders,
-    completedOrders,
-    totalEstimatedRevenue,
+    totalOrders: rows.length,
+    newOrders: count("New Order"),
+    underReviewOrders: count("Under Review"),
+    quotationSentOrders: count("Quotation Sent"),
+    confirmedOrders: count("Confirmed"),
+    inProgressOrders: count("In Progress"),
+    completedOrders: count("Completed"),
+    cancelledOrders: count("Cancelled"),
+    totalEstimatedRevenue: rows.reduce((acc, r) => acc + parseFloat(r.grandTotal), 0),
   });
 });
 

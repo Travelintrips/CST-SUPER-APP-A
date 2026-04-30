@@ -14,8 +14,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, SHIPMENT_TYPES, OrderStatus } from "@/lib/services-data";
 import {
-  Package, Ship, CheckCircle, TrendingUp, Search, LogOut, Filter,
-  ChevronRight, Users, Clock,
+  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight,
 } from "lucide-react";
 
 const ADMIN_KEY = "logistic_admin_auth";
@@ -134,22 +133,46 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* Summary Stats */}
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {[
-              { label: "Total Orders", value: summary.totalOrders, icon: Package, color: "text-foreground" },
-              { label: "New Orders", value: summary.newOrders, icon: Clock, color: "text-blue-600" },
-              { label: "Confirmed", value: summary.confirmedOrders, icon: CheckCircle, color: "text-emerald-600" },
-              { label: "Completed", value: summary.completedOrders, icon: Users, color: "text-green-600" },
-              { label: "Est. Revenue", value: formatCurrency(summary.totalEstimatedRevenue), icon: TrendingUp, color: "text-accent", isText: true },
-            ].map(({ label, value, icon: Icon, color, isText }) => (
-              <div key={label} className="bg-card border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <Icon className={`w-4 h-4 ${color}`} />
+          <div className="space-y-3">
+            {/* Top row: Total + Revenue */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-primary-foreground/60 mb-1">Total Pesanan</p>
+                  <p className="text-4xl font-bold">{summary.totalOrders}</p>
                 </div>
-                <p className={`font-bold ${isText ? "text-base" : "text-2xl"} ${color}`}>{value}</p>
+                <Package className="w-10 h-10 opacity-20" />
               </div>
-            ))}
+              <div className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-accent-foreground/70 mb-1">Estimasi Revenue</p>
+                  <p className="text-xl font-bold leading-tight">{formatCurrency(summary.totalEstimatedRevenue)}</p>
+                </div>
+                <TrendingUp className="w-10 h-10 opacity-20" />
+              </div>
+            </div>
+
+            {/* Status breakdown */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+              {[
+                { label: "New Order", value: summary.newOrders, bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", num: "text-blue-800" },
+                { label: "Under Review", value: summary.underReviewOrders, bg: "bg-yellow-50", border: "border-yellow-200", text: "text-yellow-700", num: "text-yellow-800" },
+                { label: "Quotation Sent", value: summary.quotationSentOrders, bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700", num: "text-purple-800" },
+                { label: "Confirmed", value: summary.confirmedOrders, bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", num: "text-emerald-800" },
+                { label: "In Progress", value: summary.inProgressOrders, bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700", num: "text-orange-800" },
+                { label: "Completed", value: summary.completedOrders, bg: "bg-green-50", border: "border-green-200", text: "text-green-700", num: "text-green-800" },
+                { label: "Cancelled", value: summary.cancelledOrders, bg: "bg-red-50", border: "border-red-200", text: "text-red-700", num: "text-red-800" },
+              ].map(({ label, value, bg, border, text, num }) => (
+                <button
+                  key={label}
+                  onClick={() => setStatusFilter(statusFilter === label ? "" : label)}
+                  className={`${bg} border ${border} rounded-lg p-3 text-left transition-all hover:shadow-sm ${statusFilter === label ? "ring-2 ring-offset-1 ring-current" : ""}`}
+                >
+                  <p className={`text-2xl font-bold ${num}`}>{value}</p>
+                  <p className={`text-xs font-medium mt-0.5 ${text} leading-tight`}>{label}</p>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

@@ -2101,8 +2101,12 @@ export interface UpdateLogisticOrderStatusBody {
 export interface LogisticOrderSummary {
   totalOrders: number;
   newOrders: number;
+  underReviewOrders: number;
+  quotationSentOrders: number;
   confirmedOrders: number;
+  inProgressOrders: number;
   completedOrders: number;
+  cancelledOrders: number;
   totalEstimatedRevenue: number;
 }
 
