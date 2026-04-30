@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,10 +7,9 @@ import { usePortalRegister, useListPortalServices } from "@workspace/api-client-
 import { setAuthToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, ArrowLeft, Package } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const registerSchema = z.object({
@@ -24,15 +23,51 @@ const registerSchema = z.object({
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+interface SimpleItem {
+  id: number;
+  name: string;
+  itemType: "jasa" | "barang";
+}
+
+function deriveRedirect(selectedIds: number[], allItems: SimpleItem[]): string {
+  if (selectedIds.length === 0) return "/dashboard";
+  const selected = allItems.filter((i) => selectedIds.includes(i.id));
+  const hasJasa = selected.some((i) => i.itemType === "jasa");
+  const hasBarang = selected.some((i) => i.itemType === "barang");
+  if (hasJasa && !hasBarang) return "/jasa";
+  if (hasBarang && !hasJasa) return "/products";
+  return "/dashboard";
+}
+
 export default function Register() {
   const [, setLocation] = useLocation();
   const [errorMsg, setErrorMsg] = useState("");
   const [step, setStep] = useState<1 | 2>(1);
+  const [products, setProducts] = useState<SimpleItem[]>([]);
 
   const { data: servicesData } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
   });
-  const services = Array.isArray(servicesData) ? servicesData : [];
+  const services: SimpleItem[] = (Array.isArray(servicesData) ? servicesData : []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    itemType: "jasa" as const,
+  }));
+
+  useEffect(() => {
+    fetch("/api/portal/products")
+      .then((r) => r.json())
+      .then((data) =>
+        setProducts(
+          Array.isArray(data)
+            ? data.map((p: any) => ({ id: p.id, name: p.name, itemType: "barang" as const }))
+            : []
+        )
+      )
+      .catch(() => setProducts([]));
+  }, []);
+
+  const allItems: SimpleItem[] = [...services, ...products];
 
   const registerMutation = usePortalRegister();
 
@@ -48,13 +83,25 @@ export default function Register() {
     },
   });
 
+  const selectedIds = form.watch("serviceIds");
+
+  const toggleItem = (id: number) => {
+    const current = form.getValues("serviceIds");
+    if (current.includes(id)) {
+      form.setValue("serviceIds", current.filter((v) => v !== id), { shouldDirty: true });
+    } else {
+      form.setValue("serviceIds", [...current, id], { shouldDirty: true });
+    }
+  };
+
   const onSubmit = (data: RegisterFormValues) => {
     setErrorMsg("");
     registerMutation.mutate({ data }, {
       onSuccess: (res) => {
         if (res.token) {
           setAuthToken(res.token);
-          setLocation("/dashboard");
+          const redirect = deriveRedirect(data.serviceIds, allItems);
+          setLocation(redirect);
         }
       },
       onError: (err: any) => {
@@ -65,9 +112,7 @@ export default function Register() {
 
   const handleNextStep = async () => {
     const isValid = await form.trigger(["name", "email", "password", "company", "phone"]);
-    if (isValid) {
-      setStep(2);
-    }
+    if (isValid) setStep(2);
   };
 
   return (
@@ -82,6 +127,7 @@ export default function Register() {
           </div>
           <CardDescription>Join our platform to manage your logistics easily</CardDescription>
         </CardHeader>
+
         <CardContent className="pt-8">
           {errorMsg && (
             <Alert variant="destructive" className="mb-6">
@@ -92,7 +138,8 @@ export default function Register() {
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              
+
+              {/* Step 1 — Personal info */}
               <div className={step === 1 ? "block space-y-6" : "hidden"}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
@@ -100,7 +147,7 @@ export default function Register() {
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Full Name</FormLabel>
+                        <label className="text-sm font-medium">Full Name</label>
                         <FormControl><Input placeholder="John Doe" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -111,7 +158,7 @@ export default function Register() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email Address</FormLabel>
+                        <label className="text-sm font-medium">Email Address</label>
                         <FormControl><Input type="email" placeholder="john@company.com" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -122,7 +169,7 @@ export default function Register() {
                     name="company"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Company Name</FormLabel>
+                        <label className="text-sm font-medium">Company Name</label>
                         <FormControl><Input placeholder="Acme Logistics Inc." {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -133,8 +180,8 @@ export default function Register() {
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Phone Number</FormLabel>
-                        <FormControl><Input placeholder="+1 (555) 000-0000" {...field} /></FormControl>
+                        <label className="text-sm font-medium">Phone Number</label>
+                        <FormControl><Input placeholder="+62 812 0000 0000" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -146,7 +193,7 @@ export default function Register() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <label className="text-sm font-medium">Password</label>
                       <FormControl><Input type="password" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
@@ -158,58 +205,56 @@ export default function Register() {
                 </Button>
               </div>
 
+              {/* Step 2 — Service selection */}
               <div className={step === 2 ? "block space-y-6" : "hidden"}>
                 <div>
-                  <h3 className="text-lg font-medium mb-4">What services are you interested in?</h3>
-                  <p className="text-sm text-muted-foreground mb-6">Select all that apply so we can tailor your experience.</p>
-                  
-                  <FormField
-                    control={form.control}
-                    name="serviceIds"
-                    render={() => (
-                      <FormItem>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {services.map((service) => (
-                            <FormField
-                              key={service.id}
-                              control={form.control}
-                              name="serviceIds"
-                              render={({ field }) => {
-                                return (
-                                  <FormItem
-                                    key={service.id}
-                                    className="flex flex-row items-start space-x-3 space-y-0 border p-4 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                                  >
-                                    <FormControl>
-                                      <Checkbox
-                                        checked={field.value?.includes(service.id)}
-                                        onCheckedChange={(checked) => {
-                                          return checked
-                                            ? field.onChange([...field.value, service.id])
-                                            : field.onChange(
-                                                field.value?.filter((value) => value !== service.id)
-                                              )
-                                        }}
-                                      />
-                                    </FormControl>
-                                    <div className="space-y-1 leading-none">
-                                      <FormLabel className="font-medium cursor-pointer">
-                                        {service.name}
-                                      </FormLabel>
-                                    </div>
-                                  </FormItem>
-                                )
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <FormMessage />
-                      </FormItem>
+                  <h3 className="text-lg font-semibold mb-1">What services are you interested in?</h3>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Select all that apply so we can tailor your experience.
+                    {selectedIds.length > 0 && (
+                      <span className="ml-2 font-medium text-accent">{selectedIds.length} dipilih</span>
                     )}
-                  />
+                  </p>
+
+                  {allItems.length === 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {[1, 2, 3, 4, 5, 6].map((i) => (
+                        <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
+                      {allItems.map((item) => {
+                        const isSelected = selectedIds.includes(item.id);
+                        return (
+                          <button
+                            key={`${item.itemType}-${item.id}`}
+                            type="button"
+                            onClick={() => toggleItem(item.id)}
+                            className={`w-full text-left flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-150 select-none ${
+                              isSelected
+                                ? "border-primary bg-primary/5 shadow-sm"
+                                : "border-border bg-white hover:border-primary/40 hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                              isSelected
+                                ? "bg-primary border-primary"
+                                : "border-muted-foreground/40 bg-white"
+                            }`}>
+                              {isSelected && <Check className="h-3 w-3 text-white" />}
+                            </div>
+                            <span className={`text-sm font-medium leading-tight ${isSelected ? "text-primary" : "text-foreground"}`}>
+                              {item.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex gap-4 pt-4">
+                <div className="flex gap-4 pt-2">
                   <Button type="button" variant="outline" className="w-1/3 h-12" onClick={() => setStep(1)}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back
                   </Button>
