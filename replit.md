@@ -20,6 +20,7 @@ BizPortal is an Odoo-style, multi-module ERP built as a **pnpm workspace monorep
 │   ├── api-server/         Express 5 REST API backend (TypeScript)
 │   ├── bizportal/          React + Vite frontend (TypeScript)
 │   ├── customer-portal/    Public-facing customer portal (React + Vite, port 23434, path /customer-portal/)
+│   ├── logistic-order/     Export Import & Logistic Ordering System (React + Vite, port 19368, path /logistic-order/)
 │   └── mockup-sandbox/     Component preview / design sandbox
 ├── lib/
 │   └── db/                 Drizzle ORM schema + migrations (PostgreSQL)
