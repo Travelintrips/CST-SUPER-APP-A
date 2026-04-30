@@ -336,7 +336,8 @@ export default function BookPage() {
     []
   );
 
-  // Jump directly to calculator if ?service=<id> is in the URL
+  // Jump directly to cart/order summary if cart already has items (coming from jasa-detail)
+  // or jump to calculator if ?service=<id> is in the URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const serviceId = params.get("service");
@@ -347,7 +348,10 @@ export default function BookPage() {
         setSelectedCategory(found.category);
         setStep(1);
       }
+    } else if (cartItems.length > 0) {
+      setStep(3);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleShipmentSelect(type: ShipmentType) {

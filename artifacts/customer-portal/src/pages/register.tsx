@@ -42,6 +42,7 @@ function deriveRedirect(selectedIds: number[], allItems: SimpleItem[]): string {
 export default function Register() {
   const [, setLocation] = useLocation();
   const [errorMsg, setErrorMsg] = useState("");
+  const returnTo = new URLSearchParams(window.location.search).get("returnTo");
   const [step, setStep] = useState<1 | 2>(1);
   const [products, setProducts] = useState<SimpleItem[]>([]);
 
@@ -100,7 +101,8 @@ export default function Register() {
       onSuccess: (res) => {
         if (res.token) {
           setAuthToken(res.token);
-          const redirect = deriveRedirect(data.serviceIds, allItems);
+          const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+          const redirect = returnTo || deriveRedirect(data.serviceIds, allItems);
           setLocation(redirect);
         }
       },
@@ -129,6 +131,15 @@ export default function Register() {
         </CardHeader>
 
         <CardContent className="pt-8">
+          {returnTo && (
+            <Alert className="mb-6 border-accent/40 bg-accent/5 text-accent-foreground">
+              <Check className="h-4 w-4 text-accent" />
+              <AlertDescription className="text-sm">
+                Buat akun untuk melanjutkan pemesanan layanan logistik Anda.
+                Setelah daftar, Anda langsung masuk ke halaman checkout.
+              </AlertDescription>
+            </Alert>
+          )}
           {errorMsg && (
             <Alert variant="destructive" className="mb-6">
               <AlertCircle className="h-4 w-4" />
@@ -270,7 +281,7 @@ export default function Register() {
           {step === 1 && (
             <div className="mt-8 text-center text-sm text-muted-foreground">
               Already have an account?{" "}
-              <Link href="/login" className="font-medium text-primary hover:underline">
+              <Link href={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"} className="font-medium text-primary hover:underline">
                 Sign in
               </Link>
             </div>

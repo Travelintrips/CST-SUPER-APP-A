@@ -23,6 +23,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function Login() {
   const [, setLocation] = useLocation();
   const [errorMsg, setErrorMsg] = useState("");
+  const returnTo = new URLSearchParams(window.location.search).get("returnTo");
 
   const loginMutation = usePortalLogin();
 
@@ -40,7 +41,8 @@ export default function Login() {
       onSuccess: (res) => {
         if (res.token) {
           setAuthToken(res.token);
-          setLocation("/dashboard");
+          const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+          setLocation(returnTo || "/dashboard");
         }
       },
       onError: (err: any) => {
@@ -81,6 +83,14 @@ export default function Login() {
             <CardDescription>Enter your credentials to access your portal</CardDescription>
           </CardHeader>
           <CardContent>
+            {returnTo && (
+              <Alert className="mb-4 border-accent/40 bg-accent/5">
+                <AlertCircle className="h-4 w-4 text-accent" />
+                <AlertDescription className="text-sm">
+                  Login terlebih dahulu untuk melanjutkan ke halaman checkout.
+                </AlertDescription>
+              </Alert>
+            )}
             {errorMsg && (
               <Alert variant="destructive" className="mb-6">
                 <AlertCircle className="h-4 w-4" />
@@ -135,7 +145,7 @@ export default function Login() {
 
             <div className="mt-8 text-center text-sm text-muted-foreground">
               Don't have an account?{" "}
-              <Link href="/register" className="font-medium text-primary hover:underline">
+              <Link href={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : "/register"} className="font-medium text-primary hover:underline">
                 Create an account
               </Link>
             </div>

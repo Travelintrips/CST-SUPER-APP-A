@@ -20,6 +20,7 @@ import {
 } from "@/lib/services-data";
 import { useCart } from "@/lib/logistic-cart";
 import { formatCurrency } from "@/lib/utils";
+import { isAuthenticated } from "@/lib/auth";
 import { AirportCombobox } from "@/components/AirportCombobox";
 import { LocationCombobox, type GeoLocation } from "@/components/LocationCombobox";
 
@@ -208,8 +209,16 @@ export default function JasaDetail() {
     toast({ title: `${item.name} ditambahkan ke keranjang pesanan!` });
   }
 
+  function requireAuthThenBook() {
+    if (!isAuthenticated()) {
+      setLocation("/register?returnTo=/book");
+    } else {
+      setLocation("/book");
+    }
+  }
+
   function handleProceed() {
-    setLocation("/book");
+    requireAuthThenBook();
   }
 
   const otherServices = SERVICE_ITEMS.filter(
@@ -543,12 +552,10 @@ export default function JasaDetail() {
                   <span className="font-semibold">{subtotal > 0 ? formatCurrency(subtotal) : "—"}</span>
                 </div>
               </div>
-              <Link href="/book">
-                <Button variant="outline" className="w-full gap-2 mt-2">
-                  <ShoppingCart className="h-4 w-4" />
-                  Lihat Keranjang Pesanan
-                </Button>
-              </Link>
+              <Button variant="outline" className="w-full gap-2 mt-2" onClick={requireAuthThenBook}>
+                <ShoppingCart className="h-4 w-4" />
+                Lihat Keranjang Pesanan
+              </Button>
             </div>
 
             {/* Related services */}
