@@ -17,6 +17,8 @@ export function CartDrawer() {
   const [notes, setNotes] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");
+  const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
+  const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successOrder, setSuccessOrder] = useState<{ docNumber: string; id: number } | null>(null);
@@ -31,6 +33,8 @@ export function CartDrawer() {
       setNotes("");
       setExpectedDate("");
       setPaymentType("");
+      setPaymentTerm("");
+      setDpNext("");
       setErrorMsg("");
       setSuccessOrder(null);
     }, 300);
@@ -62,7 +66,13 @@ export function CartDrawer() {
           })),
           notes: notes || undefined,
           expectedDate: expectedDate || undefined,
-          paymentType: paymentType || undefined,
+          paymentType: paymentType
+            ? paymentType === "termin" && paymentTerm
+              ? `termin:${paymentTerm}`
+              : paymentType === "dp" && dpNext
+              ? `dp:${dpNext}`
+              : paymentType
+            : undefined,
         }),
       });
       const data = await res.json();
@@ -258,8 +268,8 @@ export function CartDrawer() {
               </div>
 
               {/* Payment type */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
+              <div className="space-y-3">
+                <label className="block text-sm font-medium">
                   Jenis Pembayaran <span className="text-muted-foreground font-normal">(opsional)</span>
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -274,7 +284,11 @@ export function CartDrawer() {
                       <button
                         key={type}
                         type="button"
-                        onClick={() => setPaymentType(selected ? "" : type)}
+                        onClick={() => {
+                          setPaymentType(selected ? "" : type);
+                          setPaymentTerm("");
+                          setDpNext("");
+                        }}
                         className={`flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-3 text-center transition-all ${
                           selected
                             ? "border-accent bg-accent/10 text-accent"
@@ -287,6 +301,67 @@ export function CartDrawer() {
                     );
                   })}
                 </div>
+
+                {/* Termin sub-options */}
+                {paymentType === "termin" && (
+                  <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
+                    <p className="text-xs font-medium text-accent">Pilih Jangka Waktu Termin</p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(["net7", "net14", "net30", "net60"] as const).map((term) => {
+                        const termLabels: Record<string, string> = {
+                          net7: "Net 7 Hari", net14: "Net 14 Hari",
+                          net30: "Net 30 Hari", net60: "Net 60 Hari",
+                        };
+                        return (
+                          <button
+                            key={term}
+                            type="button"
+                            onClick={() => setPaymentTerm(paymentTerm === term ? "" : term)}
+                            className={`rounded-lg border-2 py-2 text-[11px] font-semibold transition-all text-center ${
+                              paymentTerm === term
+                                ? "border-accent bg-accent text-white"
+                                : "border-border bg-white text-foreground hover:border-accent/50"
+                            }`}
+                          >
+                            {termLabels[term]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* DP sub-options */}
+                {paymentType === "dp" && (
+                  <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
+                    <p className="text-xs font-medium text-accent">Pembayaran Selanjutnya Setelah DP</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(["lunas-delivery", "lunas-net30", "lunas-net60", "cicil"] as const).map((opt) => {
+                        const dpLabels: Record<string, { title: string; desc: string }> = {
+                          "lunas-delivery": { title: "Pelunasan Setelah Pengiriman", desc: "Sisa dibayar saat barang tiba" },
+                          "lunas-net30":    { title: "Pelunasan Net 30 Hari", desc: "Sisa lunas maks. 30 hari" },
+                          "lunas-net60":    { title: "Pelunasan Net 60 Hari", desc: "Sisa lunas maks. 60 hari" },
+                          "cicil":          { title: "Cicilan Bertahap", desc: "Sisa dibayar secara cicil" },
+                        };
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => setDpNext(dpNext === opt ? "" : opt)}
+                            className={`flex flex-col gap-0.5 rounded-lg border-2 px-3 py-2.5 text-left transition-all ${
+                              dpNext === opt
+                                ? "border-accent bg-accent text-white"
+                                : "border-border bg-white text-foreground hover:border-accent/50"
+                            }`}
+                          >
+                            <span className="font-semibold text-[11px] leading-tight">{dpLabels[opt].title}</span>
+                            <span className={`text-[10px] leading-tight ${dpNext === opt ? "text-white/80" : "text-muted-foreground"}`}>{dpLabels[opt].desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {hasNegotiatedItems && (
