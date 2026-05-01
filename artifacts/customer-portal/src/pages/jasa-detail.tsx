@@ -178,6 +178,28 @@ export default function JasaDetail() {
       }
     : null;
 
+  function set(key: string, val: string) {
+    setState((prev) => ({ ...prev, [key]: val }));
+  }
+
+  const fetchDistance = useCallback(async (from: GeoLocation, to: GeoLocation) => {
+    setCalcDist(true);
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
+      const res = await fetch(url);
+      const data = await res.json() as { routes?: Array<{ distance: number }> };
+      if (data.routes && data.routes.length > 0) {
+        const km = Math.round(data.routes[0].distance / 1000);
+        set("distance", String(km));
+        toast({ title: `Jarak otomatis: ${km} km`, description: `${from.label.split(",")[0]} → ${to.label.split(",")[0]}` });
+      }
+    } catch {
+      toast({ title: "Gagal menghitung jarak", description: "Isi jarak secara manual", variant: "destructive" });
+    } finally {
+      setCalcDist(false);
+    }
+  }, [toast]);
+
   const cat = CATEGORIES.find((c) => c.name === serviceCategory);
   const IconComp = cat ? (ICON_MAP[cat.icon] ?? Package) : Package;
   const colors = CATEGORY_COLORS_DETAIL[serviceCategory] ?? {
@@ -205,10 +227,6 @@ export default function JasaDetail() {
     );
   }
 
-  function set(key: string, val: string) {
-    setState((prev) => ({ ...prev, [key]: val }));
-  }
-
   const subtotal = calcSubtotal(item.calculatorType, state, airRows);
   const ct = item.calculatorType;
 
@@ -217,24 +235,6 @@ export default function JasaDetail() {
   }
   function addAirRow() { setAirRows((prev) => [...prev, newAirRow()]); }
   function removeAirRow(id: string) { setAirRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== id) : prev); }
-
-  const fetchDistance = useCallback(async (from: GeoLocation, to: GeoLocation) => {
-    setCalcDist(true);
-    try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
-      const res = await fetch(url);
-      const data = await res.json() as { routes?: Array<{ distance: number }> };
-      if (data.routes && data.routes.length > 0) {
-        const km = Math.round(data.routes[0].distance / 1000);
-        set("distance", String(km));
-        toast({ title: `Jarak otomatis: ${km} km`, description: `${from.label.split(",")[0]} → ${to.label.split(",")[0]}` });
-      }
-    } catch {
-      toast({ title: "Gagal menghitung jarak", description: "Isi jarak secara manual", variant: "destructive" });
-    } finally {
-      setCalcDist(false);
-    }
-  }, [toast]);
 
   function handlePickupChange(label: string, geo?: GeoLocation) {
     set("pickupCity", label);
