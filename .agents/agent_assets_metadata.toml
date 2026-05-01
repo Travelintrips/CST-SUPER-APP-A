@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "XXSyoWx3ZJFSNXNKTHbla"
@@ -24,3 +23,9 @@ id = "zJZVpLJT9Dr19qiah9rtn"
 uri = "file://artifacts/customer-portal/public/images/customs.png"
 type = "image"
 title = "customs clearance documents"
+
+[[outputs]]
+id = "jbw844mUijSYeJ7x1ujqa"
+uri = "file://attached_assets/logo_composited.png"
+type = "image"
+title = "Logo on New Background (High-Res PNG)"

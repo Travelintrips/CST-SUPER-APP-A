@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11", "postgresql-16"]
+modules = ["nodejs-24", "python-3.11", "postgresql-16", "python3"]
 
 [deployment]
 router = "application"
@@ -74,3 +74,4 @@ ADMIN_EMAIL_DOMAINS = "example.com"
 
 [nix]
 channel = "stable-25_05"
+packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tk", "zlib"]
