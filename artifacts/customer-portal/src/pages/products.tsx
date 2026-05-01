@@ -3,8 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
-import { ShoppingBag, Search, ShoppingCart } from "lucide-react";
+import { ShoppingBag, Search, ShoppingCart, ZoomIn, X } from "lucide-react";
 import { useCart } from "@/lib/cart";
 
 interface Product {
@@ -23,6 +29,7 @@ export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const { addItem, items } = useCart();
 
   useEffect(() => {
@@ -90,7 +97,12 @@ export default function Products() {
                 key={product.id}
                 className="group overflow-hidden flex flex-col h-full border-border/50 hover:shadow-lg transition-all duration-300"
               >
-                <div className="aspect-video w-full overflow-hidden bg-gray-100 relative">
+                {/* Clickable image area */}
+                <div
+                  className="aspect-video w-full overflow-hidden bg-gray-100 relative cursor-pointer"
+                  onClick={() => setSelectedProduct(product)}
+                  title="Klik untuk lihat detail"
+                >
                   {product.imageUrl ? (
                     <img
                       src={resolveImageUrl(product.imageUrl) ?? ""}
@@ -102,6 +114,10 @@ export default function Products() {
                       <ShoppingBag className="h-12 w-12 text-gray-300" />
                     </div>
                   )}
+                  {/* Zoom overlay hint */}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                  </div>
                   <div className="absolute top-3 left-3 flex flex-wrap gap-2">
                     {product.categories.map((cat, i) => (
                       <Badge
@@ -159,6 +175,71 @@ export default function Products() {
           </div>
         )}
       </div>
+
+      {/* Product Detail Modal */}
+      <Dialog open={!!selectedProduct} onOpenChange={(open) => { if (!open) setSelectedProduct(null); }}>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden">
+          {selectedProduct && (
+            <>
+              {selectedProduct.imageUrl ? (
+                <div className="w-full aspect-video bg-gray-100 overflow-hidden">
+                  <img
+                    src={resolveImageUrl(selectedProduct.imageUrl) ?? ""}
+                    alt={selectedProduct.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-full aspect-video bg-gray-100 flex items-center justify-center">
+                  <ShoppingBag className="h-20 w-20 text-gray-300" />
+                </div>
+              )}
+              <div className="p-6 space-y-4">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl">{selectedProduct.name}</DialogTitle>
+                </DialogHeader>
+                {selectedProduct.categories.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedProduct.categories.map((cat, i) => (
+                      <Badge key={i} variant="secondary">{cat}</Badge>
+                    ))}
+                  </div>
+                )}
+                {selectedProduct.description && (
+                  <p className="text-muted-foreground leading-relaxed">{selectedProduct.description}</p>
+                )}
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Harga</p>
+                    {selectedProduct.price > 0 ? (
+                      <p className="text-2xl font-bold text-primary">{formatIDR(selectedProduct.price)}</p>
+                    ) : (
+                      <p className="text-lg font-semibold text-amber-600">Harga Negosiasi</p>
+                    )}
+                  </div>
+                  <Button
+                    size="lg"
+                    className="gap-2"
+                    variant={isInCart(selectedProduct.id) ? "outline" : "default"}
+                    onClick={() => {
+                      addItem({
+                        productId: selectedProduct.id,
+                        name: selectedProduct.name,
+                        unitPrice: selectedProduct.price,
+                        itemType: "barang",
+                      });
+                      setSelectedProduct(null);
+                    }}
+                  >
+                    <ShoppingCart className="h-5 w-5" />
+                    {isInCart(selectedProduct.id) ? "Tambah Lagi" : "Pesan Sekarang"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

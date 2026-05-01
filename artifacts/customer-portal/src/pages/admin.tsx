@@ -20,7 +20,16 @@ import {
   Box,
   Settings,
   CheckCircle,
+  Plus,
+  X,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 type Service = {
   id: number;
@@ -373,6 +382,12 @@ function ProductsTab() {
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+  const [newImageUrl, setNewImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -392,6 +407,33 @@ function ProductsTab() {
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
   }
 
+  async function handleAdd() {
+    if (!newName.trim()) {
+      toast({ title: "Nama produk harus diisi", variant: "destructive" });
+      return;
+    }
+    setAdding(true);
+    try {
+      const created = await apiPost<Product>("/api/portal/admin/products", {
+        name: newName.trim(),
+        description: newDesc.trim() || null,
+        price: parseFloat(newPrice) || 0,
+        imageUrl: newImageUrl,
+      });
+      setProducts((prev) => [created, ...prev]);
+      setShowAdd(false);
+      setNewName("");
+      setNewDesc("");
+      setNewPrice("");
+      setNewImageUrl(null);
+      toast({ title: "Produk berhasil ditambahkan" });
+    } catch (err) {
+      toast({ title: "Gagal menambahkan produk", description: String(err), variant: "destructive" });
+    } finally {
+      setAdding(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -402,17 +444,60 @@ function ProductsTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Kelola {products.length} produk yang tampil di halaman Produk.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Kelola {products.length} produk yang tampil di halaman Produk.
+        </p>
+        <Button size="sm" className="gap-2" onClick={() => setShowAdd(true)}>
+          <Plus className="h-4 w-4" /> Tambah Produk
+        </Button>
+      </div>
+
       {products.map((p) => (
         <ItemEditCard key={p.id} item={p} onSave={handleSave} type="products" />
       ))}
       {products.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
-          Belum ada produk. Tambahkan produk melalui BizPortal.
+          Belum ada produk. Klik "Tambah Produk" untuk menambahkan produk baru.
         </div>
       )}
+
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" /> Tambah Produk Baru
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Nama Produk <span className="text-destructive">*</span></Label>
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nama produk..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Deskripsi</Label>
+              <Textarea value={newDesc} onChange={(e) => setNewDesc(e.target.value)} rows={3} placeholder="Deskripsi singkat produk..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Harga (0 = Negosiasi)</Label>
+              <Input type="number" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0" min="0" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Gambar Produk</Label>
+              <ImageUploader currentUrl={newImageUrl} onUpload={(url) => setNewImageUrl(url)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAdd(false)} disabled={adding}>
+              <X className="h-4 w-4 mr-1" /> Batal
+            </Button>
+            <Button onClick={handleAdd} disabled={adding} className="gap-2">
+              {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {adding ? "Menyimpan..." : "Tambah"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -295,6 +295,35 @@ router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   return res.json(updated);
 });
 
+// POST /api/portal/admin/products  — create a new product (admin only)
+router.post("/admin/products", requirePortalAdmin, async (req, res) => {
+  const { name, description, price, imageUrl } = req.body ?? {};
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ message: "Nama produk harus diisi" });
+  }
+  const parsedPrice = price !== undefined ? parseFloat(String(price)) : 0;
+  const year = new Date().getFullYear();
+  const [maxRow] = await db
+    .select({ maxId: sql<number>`COALESCE(MAX(id), 0)` })
+    .from(productsTable);
+  const nextId = (Number(maxRow?.maxId ?? 0) + 1);
+  const autoSku = `PRD-${year}-${String(nextId).padStart(4, "0")}`;
+  const [created] = await db
+    .insert(productsTable)
+    .values({
+      name: name.trim(),
+      sku: autoSku,
+      description: description ? String(description).trim() : null,
+      price: parsedPrice.toFixed(2),
+      imageUrl: imageUrl ? String(imageUrl).trim() : null,
+      itemType: "barang",
+      unit: "pcs",
+      isActive: true,
+    })
+    .returning();
+  return res.status(201).json(created);
+});
+
 // PUT /api/portal/admin/products/:id  — update product (admin only)
 router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
