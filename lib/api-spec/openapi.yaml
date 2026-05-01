@@ -5020,6 +5020,7 @@ components:
         volumeCbm: { type: number, nullable: true }
         requiredDate: { type: string, nullable: true }
         notes: { type: string, nullable: true }
+        paymentType: { type: string, nullable: true }
         subtotal: { type: number }
         tax: { type: number }
         grandTotal: { type: number }

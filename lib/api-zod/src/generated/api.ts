@@ -4098,6 +4098,7 @@ export const CreateLogisticOrderBody = zod.object({
   volumeCbm: zod.number().nullish(),
   requiredDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  paymentType: zod.string().nullish(),
   subtotal: zod.number(),
   tax: zod.number(),
   grandTotal: zod.number(),

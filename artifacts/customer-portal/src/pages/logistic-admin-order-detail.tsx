@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useGetLogisticOrder, useUpdateLogisticOrderStatus } from "@workspace/api-client-react";
+import { useGetLogisticOrder, useUpdateLogisticOrderStatus, getGetLogisticOrderQueryKey } from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, OrderStatus } from "@/lib/services-data";
 import { ArrowLeft, Package, Ship, User, MapPin, Calendar, FileText } from "lucide-react";
@@ -16,7 +16,7 @@ export default function AdminOrderDetail() {
   const id = parseInt(params.id || "0");
 
   const { data: order, isLoading, refetch } = useGetLogisticOrder(id, {
-    query: { enabled: !!id },
+    query: { enabled: !!id, queryKey: getGetLogisticOrderQueryKey(id) },
   });
 
   const updateStatus = useUpdateLogisticOrderStatus();
@@ -174,7 +174,7 @@ export default function AdminOrderDetail() {
                   </div>
                   <span className="font-bold text-accent text-sm flex-shrink-0">{formatCurrency(item.subtotal)}</span>
                 </div>
-                {item.inputData && typeof item.inputData === "object" && Object.keys(item.inputData as Record<string, unknown>).length > 0 && (
+                {typeof item.inputData === "object" && item.inputData !== null && Object.keys(item.inputData as Record<string, unknown>).length > 0 && (
                   <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1">
                     {Object.entries(item.inputData as Record<string, unknown>)
                       .filter(([, v]) => v !== undefined && v !== null && v !== "")

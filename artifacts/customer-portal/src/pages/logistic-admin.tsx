@@ -49,7 +49,7 @@ export default function AdminPage() {
   });
 
   const { data: summary } = useGetLogisticOrderSummary({
-    query: { enabled: authed },
+    query: { enabled: authed, queryKey: getGetLogisticOrderSummaryQueryKey() },
   });
 
   function handleLogin() {
