@@ -1,7 +1,17 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Package, LogOut, LayoutDashboard, ShoppingCart, Shield, Ship, Search } from "lucide-react";
+import {
+  Menu,
+  X,
+  Package,
+  LogOut,
+  LayoutDashboard,
+  ShoppingCart,
+  Shield,
+  Ship,
+  Search,
+} from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useCart } from "@/lib/cart";
@@ -15,7 +25,7 @@ export function Navbar() {
   const { count, openCart } = useCart();
 
   const { data: company } = useGetPortalCompany({
-    query: { queryKey: ["getPortalCompany"] }
+    query: { queryKey: ["getPortalCompany"] },
   });
 
   useEffect(() => {
@@ -65,9 +75,11 @@ export function Navbar() {
         <div className="flex h-20 items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="bg-primary text-primary-foreground p-2 rounded-lg group-hover:bg-accent transition-colors">
-              <Package className="h-6 w-6" />
-            </div>
+            <img
+              src="/images/logo.png"
+              alt="Logo"
+              className="h-10 w-auto object-contain"
+            />
             <span className="font-display font-bold text-xl tracking-tight">
               {company?.name || "CST Logistics"}
             </span>
@@ -98,7 +110,7 @@ export function Navbar() {
                   >
                     {link.name}
                   </button>
-                )
+                ),
               )}
             </div>
 
@@ -121,7 +133,11 @@ export function Navbar() {
                 <>
                   {isAdmin && (
                     <Link href="/admin">
-                      <Button variant="ghost" size="sm" className="gap-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                      >
                         <Shield className="h-4 w-4" />
                         Admin
                       </Button>
@@ -133,7 +149,12 @@ export function Navbar() {
                       Dashboard
                     </Button>
                   </Link>
-                  <Button variant="outline" size="sm" onClick={handleLogout} className="gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="gap-2"
+                  >
                     <LogOut className="h-4 w-4" />
                     Keluar
                   </Button>
@@ -146,7 +167,10 @@ export function Navbar() {
                     </Button>
                   </Link>
                   <Link href="/register">
-                    <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
+                    <Button
+                      size="sm"
+                      className="bg-accent text-accent-foreground hover:bg-accent/90"
+                    >
                       Daftar Sekarang
                     </Button>
                   </Link>
@@ -157,8 +181,16 @@ export function Navbar() {
 
           {/* Mobile Menu Button */}
           <div className="md:hidden">
-            <Button variant="ghost" size="icon" onClick={() => setIsOpen(!isOpen)}>
-              {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsOpen(!isOpen)}
+            >
+              {isOpen ? (
+                <X className="h-6 w-6" />
+              ) : (
+                <Menu className="h-6 w-6" />
+              )}
             </Button>
           </div>
         </div>
@@ -170,7 +202,11 @@ export function Navbar() {
           <div className="space-y-1 px-4 pb-4 pt-2">
             {navLinks.map((link) =>
               link.type === "link" ? (
-                <Link key={link.name} href={link.path} onClick={() => setIsOpen(false)}>
+                <Link
+                  key={link.name}
+                  href={link.path}
+                  onClick={() => setIsOpen(false)}
+                >
                   <div
                     className={`block rounded-md px-3 py-2 text-base font-medium cursor-pointer ${
                       location === link.path
@@ -189,7 +225,7 @@ export function Navbar() {
                 >
                   {link.name}
                 </button>
-              )
+              ),
             )}
 
             <div className="my-4 border-t border-border pt-4">
@@ -197,14 +233,20 @@ export function Navbar() {
                 <div className="space-y-2">
                   {isAdmin && (
                     <Link href="/admin" onClick={() => setIsOpen(false)}>
-                      <Button variant="outline" className="w-full justify-start gap-2 text-amber-600 border-amber-200">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2 text-amber-600 border-amber-200"
+                      >
                         <Shield className="h-4 w-4" />
                         Admin Panel
                       </Button>
                     </Link>
                   )}
                   <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start gap-2">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start gap-2"
+                    >
                       <LayoutDashboard className="h-4 w-4" />
                       Dashboard
                     </Button>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { X, Minus, Plus, Trash2, ShoppingCart, ArrowRight, CheckCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,16 @@ const formatIDR = (v: number) =>
 type Step = "cart" | "checkout" | "success";
 
 export function CartDrawer() {
-  const { items, removeItem, updateQty, updatePrice, clearCart, total, count, isOpen, closeCart } = useCart();
+  const { items, removeItem, updateQty, updatePrice, clearCart, total, count, isOpen, closeCart, pendingCheckout, clearPendingCheckout } = useCart();
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<Step>("cart");
+
+  useEffect(() => {
+    if (isOpen && pendingCheckout) {
+      setStep("checkout");
+      clearPendingCheckout();
+    }
+  }, [isOpen, pendingCheckout, clearPendingCheckout]);
   const [notes, setNotes] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");

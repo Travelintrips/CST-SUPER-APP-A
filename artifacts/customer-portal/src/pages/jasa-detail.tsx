@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/services-data";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { useCart } from "@/lib/logistic-cart";
+import { useCart as useProductCart } from "@/lib/cart";
 import { formatCurrency } from "@/lib/utils";
 import { isAuthenticated } from "@/lib/auth";
 import { AirportCombobox } from "@/components/AirportCombobox";
@@ -151,12 +152,33 @@ export default function JasaDetail() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { addItem } = useCart();
+  const { openCheckout } = useProductCart();
   const [state, setState] = useState<CalcState>({});
   const [airRows, setAirRows] = useState<AirRow[]>([newAirRow()]);
   const [added, setAdded] = useState(false);
   const [pickupGeo, setPickupGeo] = useState<GeoLocation | undefined>();
   const [destGeo, setDestGeo] = useState<GeoLocation | undefined>();
   const [calcDist, setCalcDist] = useState(false);
+
+  const [pendingOrder, setPendingOrder] = useState<{ serviceId: number; productName: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("pendingJasaReview");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { serviceId: number; productId: number; productName: string };
+        if (String(parsed.serviceId) === params.id) {
+          setPendingOrder({ serviceId: parsed.serviceId, productName: parsed.productName });
+        }
+      }
+    } catch { /* ignore */ }
+  }, [params.id]);
+
+  function confirmJasaAndCheckout() {
+    sessionStorage.removeItem("pendingJasaReview");
+    setPendingOrder(null);
+    openCheckout();
+  }
 
   const { data: servicesRaw, isLoading: servicesLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServicesDetail"] },
@@ -655,6 +677,41 @@ export default function JasaDetail() {
           </div>
         </div>
       </div>
+
+      {/* Pending-order confirm banner */}
+      {pendingOrder && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-primary/20 shadow-[0_-4px_24px_rgba(0,0,0,0.10)]">
+          <div className="container max-w-4xl px-4 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">Layanan ini dipilih sebagai pengiriman</p>
+              <p className="text-xs text-muted-foreground truncate">
+                Pesanan: <span className="font-medium text-foreground">{pendingOrder.productName}</span>
+                {" · "}Pastikan layanan ini sesuai sebelum melanjutkan.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  sessionStorage.removeItem("pendingJasaReview");
+                  setPendingOrder(null);
+                }}
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={confirmJasaAndCheckout}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Konfirmasi &amp; Lanjutkan Pesanan
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -265,7 +266,8 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
   const [shippingTab, setShippingTab] = useState<"vendor" | "service">("vendor");
-  const { addItem, items } = useCart();
+  const { addItem, addItemSilent, items } = useCart();
+  const [, setLocation] = useLocation();
   const isInCart = items.some((i) => i.productId === product.id);
   const allShipping = useShippingOptions();
 
@@ -281,6 +283,26 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
       unitPrice: product.price,
       itemType: "barang",
     });
+  }
+
+  function handleBuyNow() {
+    if (chosen && chosen.kind === "service" && chosen.serviceId != null) {
+      addItemSilent({
+        productId: product.id,
+        name: product.name,
+        unitPrice: product.price,
+        itemType: "barang",
+      });
+      sessionStorage.setItem(
+        "pendingJasaReview",
+        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name })
+      );
+      onClose();
+      setLocation(`/jasa/${chosen.serviceId}`);
+    } else {
+      handleAddToCart();
+      onClose();
+    }
   }
 
   return (
@@ -453,10 +475,10 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             </Button>
             <Button
               className="flex-1 gap-2"
-              onClick={() => { handleAddToCart(); onClose(); }}
+              onClick={handleBuyNow}
             >
               <Package className="h-4 w-4" />
-              Beli Sekarang
+              {chosen?.kind === "service" ? "Lanjutkan Pesanan" : "Beli Sekarang"}
             </Button>
           </div>
         </div>
