@@ -254,7 +254,7 @@ export default function FreightForwarding() {
         sender: { name: senderName, address: senderAddress },
         receiver: { name: receiverName, address: receiverAddress },
         commodity, goodsCategory,
-        items: items.map((it) => ({
+        cargoItems: items.map((it) => ({
           grossWeight: it.grossWeight, kolli: it.kolli,
           dimensions: `${it.length}x${it.width}x${it.height} cm`,
         })),
@@ -262,28 +262,27 @@ export default function FreightForwarding() {
         documents: { invoice: docInvoice?.objectPath, packingList: docPackingList?.objectPath, msds: docMsds?.objectPath, coa: docCoa?.objectPath, other: docOther?.objectPath },
       });
 
+      const contactLines = [
+        `PIC: ${customerName}`,
+        companyName ? `Perusahaan: ${companyName}` : null,
+        `Email: ${customerEmail}`,
+        `Telepon: ${customerPhone}`,
+      ].filter(Boolean).join("\n");
+
+      const fullNotes = [
+        notes || null,
+        `[KONTAK PEMESAN]\n${contactLines}`,
+        `[FF DATA]\n${ffData}`,
+        docsList ? `[DOKUMEN]\n${docsList}` : null,
+      ].filter(Boolean).join("\n\n");
+
       const body = {
-        shipmentType: direction,
-        customerName,
-        customerEmail,
-        customerPhone,
-        companyName: companyName || undefined,
-        origin: senderAddress,
-        destination: receiverAddress,
-        commodity,
-        notes: `${notes}\n\n[FF DATA]\n${ffData}\n\n[DOCUMENTS]\n${docsList}`.trim(),
-        services: [
+        notes: fullNotes,
+        items: [
           {
-            serviceName: serviceLabel,
-            category: "Freight",
-            calculatorType: mode === "Sea" ? "sea_lcl" : "air_freight",
-            inputData: {
-              direction, mode: modeLabel(mode!), variant: VARIANT_LABELS[variant!],
-              sender: senderName, receiver: receiverName,
-              commodity, goodsCategory,
-            },
-            calculationResult: { freightPrice: freightPrice || "Nego" },
-            subtotal: parseFloat(freightPrice) || 0,
+            name: serviceLabel,
+            quantity: 1,
+            unitPrice: parseFloat(freightPrice) || 0,
           },
         ],
       };
