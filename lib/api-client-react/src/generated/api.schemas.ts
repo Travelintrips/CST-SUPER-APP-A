@@ -2099,7 +2099,6 @@ export interface CreateLogisticOrderBody {
   volumeCbm?: number | null;
   requiredDate?: string | null;
   notes?: string | null;
-  paymentType?: string | null;
   subtotal: number;
   tax: number;
   grandTotal: number;

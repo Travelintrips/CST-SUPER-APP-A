@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useListPortalOrders, useListPortalLogisticOrders } from "@workspace/api-client-react";
+import { useListPortalOrders, useListPortalLogisticOrders, useCancelPortalOrder, useCancelPortalLogisticOrder } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { Package, Search, Calendar, FileText, ExternalLink } from "lucide-react";
+import { Package, Search, Calendar, FileText, ExternalLink, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
@@ -27,12 +28,14 @@ export default function Orders() {
   const [, setLocation] = useLocation();
   const token = getAuthToken();
   const [search, setSearch] = useState("");
+  const [cancellingKey, setCancellingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
 
-  const headers = getAuthHeaders() as any;
+  const headers = getAuthHeaders() as Record<string, string>;
+  const queryClient = useQueryClient();
 
   const { data: crmResponse, isLoading: isLoadingCrm } = useListPortalOrders({
     query: { queryKey: ["listPortalOrders", token], enabled: !!token },
@@ -44,10 +47,16 @@ export default function Orders() {
     request: { headers },
   });
 
+  const cancelCrmOrder = useCancelPortalOrder({ request: { headers } });
+  const cancelLogisticOrder = useCancelPortalLogisticOrder({ request: { headers } });
+
   if (!token) return null;
 
   const crmOrders = (Array.isArray(crmResponse) ? crmResponse : []).map((o) => ({
     _key: `crm-${o.id}`,
+    _id: o.id,
+    _type: "crm" as const,
+    _cancellable: o.status === "draft",
     displayNumber: o.docNumber,
     subtitle: "Sales Order",
     status: o.status,
@@ -59,6 +68,9 @@ export default function Orders() {
 
   const logisticOrders = (Array.isArray(logisticResponse) ? logisticResponse : []).map((o) => ({
     _key: `log-${o.id}`,
+    _id: o.id,
+    _type: "logistic" as const,
+    _cancellable: o.status === "New Order",
     displayNumber: o.orderNumber,
     subtitle: `${o.shipmentType} • ${o.origin} → ${o.destination}`,
     status: LOGISTIC_STATUS_MAP[o.status] ?? o.status,
@@ -81,6 +93,24 @@ export default function Orders() {
           o.subtitle.toLowerCase().includes(search.toLowerCase())
       )
     : allOrders;
+
+  const handleCancel = async (order: typeof allOrders[number]) => {
+    if (!confirm(`Batalkan pesanan ${order.displayNumber}?`)) return;
+    setCancellingKey(order._key);
+    try {
+      if (order._type === "crm") {
+        await cancelCrmOrder.mutateAsync({ id: order._id });
+        queryClient.invalidateQueries({ queryKey: ["listPortalOrders", token] });
+      } else {
+        await cancelLogisticOrder.mutateAsync({ id: order._id });
+        queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders", token] });
+      }
+    } catch {
+      alert("Gagal membatalkan pesanan. Silakan coba lagi.");
+    } finally {
+      setCancellingKey(null);
+    }
+  };
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gray-50 py-8">
@@ -114,6 +144,7 @@ export default function Orders() {
                   <th className="px-6 py-4 font-medium">Date</th>
                   <th className="px-6 py-4 font-medium">Status</th>
                   <th className="px-6 py-4 font-medium text-right">Amount</th>
+                  <th className="px-6 py-4 font-medium w-16"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50 bg-white">
@@ -124,6 +155,7 @@ export default function Orders() {
                       <td className="px-6 py-4"><div className="h-4 bg-gray-100 rounded w-24" /></td>
                       <td className="px-6 py-4"><div className="h-6 bg-gray-100 rounded-full w-20" /></td>
                       <td className="px-6 py-4"><div className="h-4 bg-gray-100 rounded w-24 ml-auto" /></td>
+                      <td className="px-6 py-4"></td>
                     </tr>
                   ))
                 ) : filtered.length > 0 ? (
@@ -165,11 +197,27 @@ export default function Orders() {
                           {formatCurrency(order.grandTotal)}
                         </span>
                       </td>
+                      <td className="px-6 py-4 text-center">
+                        {order._cancellable && (
+                          <button
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                            title="Batalkan pesanan"
+                            disabled={cancellingKey === order._key}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleCancel(order);
+                            }}
+                            data-testid={`btn-cancel-${order._key}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="px-6 py-16 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-6 py-16 text-center text-muted-foreground">
                       <FileText className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
                       <p className="text-lg font-medium text-foreground">
                         {search ? "Tidak ada hasil" : "Belum ada pesanan"}

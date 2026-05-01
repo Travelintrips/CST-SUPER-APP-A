@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { PackageOpen, Search, RefreshCw, FilePlus } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STATUS_OPTIONS = ["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"];
@@ -265,16 +265,34 @@ export default function LogisticsPortalOrdersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 text-xs h-7 whitespace-nowrap"
-                        onClick={() => setSoDialog(o)}
-                        disabled={o.status === "Cancelled"}
-                      >
-                        <FilePlus className="h-3.5 w-3.5" />
-                        Buat SO
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-xs h-7 whitespace-nowrap"
+                          onClick={() => setSoDialog(o)}
+                          disabled={o.status === "Cancelled"}
+                        >
+                          <FilePlus className="h-3.5 w-3.5" />
+                          Buat SO
+                        </Button>
+                        {o.status !== "Completed" && o.status !== "Cancelled" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            title="Batalkan"
+                            disabled={updatingId === o.id}
+                            onClick={() => {
+                              if (!confirm(`Batalkan order ${o.orderNumber}?`)) return;
+                              handleStatusChange(o.id, "Cancelled");
+                            }}
+                            data-testid={`btn-cancel-${o.id}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

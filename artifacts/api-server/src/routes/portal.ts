@@ -468,4 +468,65 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
   });
 });
 
+// PATCH /api/portal/orders/:id/cancel — cancel a portal sales order (owning customer only)
+router.patch("/orders/:id/cancel", requirePortalAuth, async (req, res) => {
+  const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const id = Number(req.params.id);
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
+  if (!customer) return res.status(401).json({ message: "Customer not found" });
+  const [crmCustomer] = await db.select().from(customersTable).where(eq(customersTable.email, customer.email));
+  if (!crmCustomer) return res.status(403).json({ message: "Forbidden" });
+  const [doc] = await db
+    .select()
+    .from(salesDocumentsTable)
+    .where(and(eq(salesDocumentsTable.id, id), eq(salesDocumentsTable.customerId, crmCustomer.id)));
+  if (!doc) return res.status(404).json({ message: "Order not found" });
+  if (doc.status === "cancelled" || doc.status === "done") {
+    return res.status(400).json({ message: "Order cannot be cancelled" });
+  }
+  const [updated] = await db
+    .update(salesDocumentsTable)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(eq(salesDocumentsTable.id, id))
+    .returning();
+  return res.json({
+    id: updated.id,
+    docNumber: updated.docNumber,
+    status: updated.status,
+    grandTotal: Number(updated.grandTotal ?? 0),
+    createdAt: updated.createdAt.toISOString(),
+  });
+});
+
+// PATCH /api/portal/logistic-orders/:id/cancel — cancel a portal logistic order (owning customer only)
+router.patch("/logistic-orders/:id/cancel", requirePortalAuth, async (req, res) => {
+  const portalCustId = (req as Request & { portalCustomerId: number }).portalCustomerId;
+  const id = Number(req.params.id);
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
+  if (!customer) return res.status(401).json({ message: "Customer not found" });
+  const [order] = await db
+    .select()
+    .from(logisticOrdersTable)
+    .where(and(eq(logisticOrdersTable.id, id), eq(logisticOrdersTable.email, customer.email)));
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (order.status === "Cancelled" || order.status === "Completed") {
+    return res.status(400).json({ message: "Order cannot be cancelled" });
+  }
+  const [updated] = await db
+    .update(logisticOrdersTable)
+    .set({ status: "Cancelled", updatedAt: new Date() })
+    .where(eq(logisticOrdersTable.id, id))
+    .returning();
+  return res.json({
+    id: updated.id,
+    orderNumber: updated.orderNumber,
+    status: updated.status,
+    grandTotal: parseFloat(updated.grandTotal),
+    createdAt: updated.createdAt.toISOString(),
+    shipmentType: updated.shipmentType,
+    origin: updated.origin,
+    destination: updated.destination,
+  });
+});
+
 export default router;

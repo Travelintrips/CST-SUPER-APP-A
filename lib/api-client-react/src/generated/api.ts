@@ -9291,6 +9291,174 @@ export function useListPortalLogisticOrders<
 }
 
 /**
+ * @summary Cancel a portal sales order (only allowed by the owning customer)
+ */
+export const getCancelPortalOrderUrl = (id: number) => {
+  return `/api/portal/orders/${id}/cancel`;
+};
+
+export const cancelPortalOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PortalOrder> => {
+  return customFetch<PortalOrder>(getCancelPortalOrderUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getCancelPortalOrderMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelPortalOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelPortalOrder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["cancelPortalOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelPortalOrder>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelPortalOrder(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelPortalOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelPortalOrder>>
+>;
+
+export type CancelPortalOrderMutationError = ErrorType<void>;
+
+/**
+ * @summary Cancel a portal sales order (only allowed by the owning customer)
+ */
+export const useCancelPortalOrder = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelPortalOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelPortalOrder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCancelPortalOrderMutationOptions(options));
+};
+
+/**
+ * @summary Cancel a portal logistic order (only allowed by the owning customer)
+ */
+export const getCancelPortalLogisticOrderUrl = (id: number) => {
+  return `/api/portal/logistic-orders/${id}/cancel`;
+};
+
+export const cancelPortalLogisticOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PortalLogisticOrder> => {
+  return customFetch<PortalLogisticOrder>(getCancelPortalLogisticOrderUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getCancelPortalLogisticOrderMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelPortalLogisticOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof cancelPortalLogisticOrder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["cancelPortalLogisticOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof cancelPortalLogisticOrder>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return cancelPortalLogisticOrder(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CancelPortalLogisticOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof cancelPortalLogisticOrder>>
+>;
+
+export type CancelPortalLogisticOrderMutationError = ErrorType<void>;
+
+/**
+ * @summary Cancel a portal logistic order (only allowed by the owning customer)
+ */
+export const useCancelPortalLogisticOrder = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof cancelPortalLogisticOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof cancelPortalLogisticOrder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCancelPortalLogisticOrderMutationOptions(options));
+};
+
+/**
  * @summary Get accounting settings (account mappings)
  */
 export const getGetAccountingSettingsUrl = () => {

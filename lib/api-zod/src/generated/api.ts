@@ -2742,6 +2742,40 @@ export const ListPortalLogisticOrdersResponse = zod.array(
 );
 
 /**
+ * @summary Cancel a portal sales order (only allowed by the owning customer)
+ */
+export const CancelPortalOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelPortalOrderResponse = zod.object({
+  id: zod.number(),
+  docNumber: zod.string(),
+  status: zod.string(),
+  grandTotal: zod.number(),
+  createdAt: zod.string(),
+  items: zod.string().nullish(),
+});
+
+/**
+ * @summary Cancel a portal logistic order (only allowed by the owning customer)
+ */
+export const CancelPortalLogisticOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CancelPortalLogisticOrderResponse = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  status: zod.string(),
+  grandTotal: zod.number(),
+  createdAt: zod.string(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
+});
+
+/**
  * @summary Get accounting settings (account mappings)
  */
 export const GetAccountingSettingsResponse = zod.object({
@@ -4064,7 +4098,6 @@ export const CreateLogisticOrderBody = zod.object({
   volumeCbm: zod.number().nullish(),
   requiredDate: zod.string().nullish(),
   notes: zod.string().nullish(),
-  paymentType: zod.string().nullish(),
   subtotal: zod.number(),
   tax: zod.number(),
   grandTotal: zod.number(),

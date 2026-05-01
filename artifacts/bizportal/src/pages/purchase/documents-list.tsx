@@ -12,8 +12,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useListPurchaseDocuments } from "@workspace/api-client-react";
-import { Plus } from "lucide-react";
+import {
+  useListPurchaseDocuments,
+  useDeletePurchaseDocument,
+  usePurchaseDocumentAction,
+  getListPurchaseDocumentsQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { Plus, Trash2, X } from "lucide-react";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -63,6 +70,11 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
   const isRfq = kind === "rfq";
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
 
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const deleteMut = useDeletePurchaseDocument();
+  const actionMut = usePurchaseDocumentAction();
+
   const { data: docs } = useListPurchaseDocuments({
     kind,
     ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
@@ -71,6 +83,30 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
   const title = isRfq ? "Request for Quotation" : "Purchase Orders";
   const desc = isRfq ? "Permintaan penawaran ke vendor." : "Pesanan pembelian terkonfirmasi.";
   const detailBase = isRfq ? "/purchase/rfq" : "/purchase/orders";
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.")) return;
+    try {
+      await deleteMut.mutateAsync({ id });
+      queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey({ kind }) });
+      toast({ title: "Dokumen dihapus" });
+    } catch {
+      toast({ title: "Gagal menghapus dokumen", variant: "destructive" });
+    }
+  };
+
+  const handleCancel = async (id: number) => {
+    if (!confirm("Batalkan dokumen ini?")) return;
+    try {
+      await actionMut.mutateAsync({ id, data: { action: "cancel" } });
+      queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey({ kind }) });
+      toast({ title: "Dokumen dibatalkan" });
+    } catch {
+      toast({ title: "Gagal membatalkan dokumen", variant: "destructive" });
+    }
+  };
+
+  const colCount = isRfq ? 6 : 9;
 
   return (
     <AppShell>
@@ -124,6 +160,7 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
                   {!isRfq && <TableHead>Bayar</TableHead>}
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Tanggal</TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -144,11 +181,37 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
                     {!isRfq && <TableCell><PaymentBadge status={d.paymentStatus} /></TableCell>}
                     <TableCell className="text-right font-medium">{idr(Number(d.totalAmount))}</TableCell>
                     <TableCell className="text-right text-sm text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("id-ID")}</TableCell>
+                    <TableCell className="text-right">
+                      {d.status === "draft" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          title="Hapus"
+                          onClick={() => void handleDelete(d.id)}
+                          data-testid={`btn-delete-${d.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {d.status !== "draft" && d.status !== "cancelled" && d.status !== "done" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                          title="Batalkan"
+                          onClick={() => void handleCancel(d.id)}
+                          data-testid={`btn-cancel-${d.id}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {(!docs || docs.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={isRfq ? 5 : 8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={colCount} className="text-center text-muted-foreground py-8">
                       {paymentFilter !== "all" ? `Tidak ada PO dengan status pembayaran "${PAYMENT_LABELS[paymentFilter]}".` : "Belum ada dokumen."}
                     </TableCell>
                   </TableRow>
