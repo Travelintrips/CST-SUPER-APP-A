@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   useListLogisticOrders, useGetLogisticOrderSummary,
@@ -14,8 +15,20 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, SHIPMENT_TYPES, OrderStatus } from "@/lib/services-data";
 import {
-  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight,
+  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight, Truck, Save, Loader2,
 } from "lucide-react";
+
+const VEHICLE_TYPES = ["CDE", "CDD", "Fuso", "Wingbox", "Trailer"] as const;
+type VehicleType = (typeof VEHICLE_TYPES)[number];
+type TruckingRates = Record<VehicleType, { ratePerKm: number; loadingFee: number }>;
+
+const DEFAULT_RATES: TruckingRates = {
+  CDE:     { ratePerKm: 5000,  loadingFee: 500000 },
+  CDD:     { ratePerKm: 7000,  loadingFee: 700000 },
+  Fuso:    { ratePerKm: 10000, loadingFee: 1000000 },
+  Wingbox: { ratePerKm: 12000, loadingFee: 1200000 },
+  Trailer: { ratePerKm: 15000, loadingFee: 1500000 },
+};
 
 const ADMIN_KEY = "logistic_admin_auth";
 
@@ -32,6 +45,17 @@ export default function AdminPage() {
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [search, setSearch] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+
+  const [rates, setRates] = useState<TruckingRates>(DEFAULT_RATES);
+  const [ratesEditing, setRatesEditing] = useState<TruckingRates>(DEFAULT_RATES);
+  const [ratesSaving, setRatesSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/logistic/orders/trucking-rates")
+      .then((r) => r.json())
+      .then((d) => { setRates(d); setRatesEditing(d); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -51,6 +75,24 @@ export default function AdminPage() {
   const { data: summary } = useGetLogisticOrderSummary({
     query: { enabled: authed },
   });
+
+  async function handleSaveRates() {
+    setRatesSaving(true);
+    try {
+      const res = await fetch("/api/logistic/orders/trucking-rates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-admin-password": "admin123" },
+        body: JSON.stringify(ratesEditing),
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan");
+      setRates(ratesEditing);
+      toast({ title: "Tarif trucking berhasil disimpan" });
+    } catch {
+      toast({ title: "Gagal menyimpan tarif", variant: "destructive" });
+    } finally {
+      setRatesSaving(false);
+    }
+  }
 
   function handleLogin() {
     if (password === "admin123") {
@@ -207,6 +249,77 @@ export default function AdminPage() {
                 {SHIPMENT_TYPES.map(({ type }) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        {/* Trucking Rates Config */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+            <Truck className="w-4 h-4 text-primary" />
+            <h2 className="font-semibold text-foreground text-sm">Tarif Trucking per Kendaraan</h2>
+          </div>
+          <div className="p-4 space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Tarif ini diterapkan otomatis saat customer memilih jenis kendaraan pada kalkulator. Rate digunakan sebagai: <strong>Jarak (km) × Rate/km + Loading Fee</strong>.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground w-28">Kendaraan</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground">Trucking Rate (IDR/km)</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground">Loading Fee (IDR)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {VEHICLE_TYPES.map((vt) => (
+                    <tr key={vt} className="border-b border-border/50">
+                      <td className="py-2 px-3">
+                        <Badge variant="outline" className="font-mono text-xs">{vt}</Badge>
+                      </td>
+                      <td className="py-2 px-3">
+                        <Input
+                          type="number"
+                          value={ratesEditing[vt]?.ratePerKm ?? ""}
+                          onChange={(e) => setRatesEditing((prev) => ({
+                            ...prev,
+                            [vt]: { ...prev[vt], ratePerKm: parseInt(e.target.value) || 0 },
+                          }))}
+                          className="h-8 text-sm w-40"
+                          min="0"
+                        />
+                      </td>
+                      <td className="py-2 px-3">
+                        <Input
+                          type="number"
+                          value={ratesEditing[vt]?.loadingFee ?? ""}
+                          onChange={(e) => setRatesEditing((prev) => ({
+                            ...prev,
+                            [vt]: { ...prev[vt], loadingFee: parseInt(e.target.value) || 0 },
+                          }))}
+                          className="h-8 text-sm w-40"
+                          min="0"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <Button onClick={handleSaveRates} disabled={ratesSaving} size="sm" className="gap-2">
+                {ratesSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {ratesSaving ? "Menyimpan..." : "Simpan Tarif"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRatesEditing(rates)}
+                disabled={ratesSaving}
+              >
+                Reset
+              </Button>
+            </div>
           </div>
         </div>
 

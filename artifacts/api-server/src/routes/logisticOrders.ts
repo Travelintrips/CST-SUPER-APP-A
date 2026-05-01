@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import {
   logisticOrdersTable,
   logisticOrderItemsTable,
+  portalContentTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
 import {
@@ -196,6 +197,65 @@ logisticOrdersRouter.get(
   }
 );
 
+// --- Trucking Rates (must be registered BEFORE /:id) ---
+
+const TRUCKING_RATES_KEY = "logistic_trucking_rates";
+
+const DEFAULT_TRUCKING_RATES: Record<string, { ratePerKm: number; loadingFee: number }> = {
+  CDE:      { ratePerKm: 5000,  loadingFee: 500000 },
+  CDD:      { ratePerKm: 7000,  loadingFee: 700000 },
+  Fuso:     { ratePerKm: 10000, loadingFee: 1000000 },
+  Wingbox:  { ratePerKm: 12000, loadingFee: 1200000 },
+  Trailer:  { ratePerKm: 15000, loadingFee: 1500000 },
+};
+
+async function getTruckingRates() {
+  const [row] = await db
+    .select()
+    .from(portalContentTable)
+    .where(eq(portalContentTable.key, TRUCKING_RATES_KEY));
+  if (!row) return DEFAULT_TRUCKING_RATES;
+  try {
+    return JSON.parse(row.value) as typeof DEFAULT_TRUCKING_RATES;
+  } catch {
+    return DEFAULT_TRUCKING_RATES;
+  }
+}
+
+// GET /api/logistic/orders/trucking-rates — public
+logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response) => {
+  const rates = await getTruckingRates();
+  return res.json(rates);
+});
+
+// PUT /api/logistic/orders/trucking-rates — admin only
+logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) => {
+  const adminPassword = req.headers["x-admin-password"];
+  if (adminPassword !== "admin123") {
+    return res.status(403).json({ message: "Akses ditolak" });
+  }
+  const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;
+  if (!rates || typeof rates !== "object") {
+    return res.status(400).json({ message: "Format tarif tidak valid" });
+  }
+  const json = JSON.stringify(rates);
+  const existing = await db
+    .select()
+    .from(portalContentTable)
+    .where(eq(portalContentTable.key, TRUCKING_RATES_KEY));
+  if (existing.length > 0) {
+    await db
+      .update(portalContentTable)
+      .set({ value: json })
+      .where(eq(portalContentTable.key, TRUCKING_RATES_KEY));
+  } else {
+    await db
+      .insert(portalContentTable)
+      .values({ key: TRUCKING_RATES_KEY, value: json });
+  }
+  return res.json({ message: "Tarif berhasil disimpan" });
+});
+
 // GET /api/logistic/orders/:id — get order detail (admin)
 logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
   const parsed = GetLogisticOrderParams.safeParse({
@@ -245,3 +305,4 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
   return res.json(toOrder(updated));
 });
+

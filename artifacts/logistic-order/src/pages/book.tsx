@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Plus, Trash2, Edit2, Calculator, ShoppingCart, User, CheckCircle2,
+  Loader2, Lock,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -74,9 +75,10 @@ function calcSubtotal(calcType: string, state: CalcState): number {
         return cf + df + pf + af;
       }
       case "trucking": {
-        const tr = parseFloat(state.truckingRate) || 0;
+        const dist = parseFloat(state.distance) || 0;
+        const ratePerKm = parseFloat(state.truckingRate) || 0;
         const lf = parseFloat(state.loadingFee) || 0;
-        return tr + lf;
+        return dist * ratePerKm + lf;
       }
       case "storage": {
         const days = parseFloat(state.days) || 0;
@@ -123,13 +125,151 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
   }
 }
 
+// ── City search types ──────────────────────────────────────────────────────────
+type NominatimResult = { place_id: number; display_name: string; lat: string; lon: string };
+
+function CitySearchInput({
+  placeholder,
+  value,
+  onSelect,
+}: {
+  placeholder: string;
+  value: string;
+  onSelect: (name: string, lat: string, lon: string) => void;
+}) {
+  const [query, setQuery] = useState(value);
+  const [results, setResults] = useState<NominatimResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  function handleChange(v: string) {
+    setQuery(v);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (v.length < 2) { setResults([]); setOpen(false); return; }
+    setLoading(true);
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(v)}&countrycodes=id&format=json&limit=6`,
+          { headers: { "Accept-Language": "id" } }
+        );
+        const data = (await res.json()) as NominatimResult[];
+        setResults(data);
+        setOpen(true);
+      } catch { setResults([]); }
+      finally { setLoading(false); }
+    }, 500);
+  }
+
+  function handleSelect(item: NominatimResult) {
+    const name = item.display_name.split(",").slice(0, 2).join(",").trim();
+    setQuery(name);
+    setOpen(false);
+    onSelect(name, item.lat, item.lon);
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder={placeholder}
+          className="pl-9"
+          onFocus={() => results.length > 0 && setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 200)}
+        />
+        {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-52 overflow-auto">
+          {results.map((r) => (
+            <button
+              key={r.place_id}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-start gap-2"
+              onMouseDown={() => handleSelect(r)}
+            >
+              <MapPin className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+              <span className="line-clamp-2 leading-snug">{r.display_name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Distance helper ───────────────────────────────────────────────────────────
+async function fetchRoadDistanceKm(lat1: string, lon1: string, lat2: string, lon2: string): Promise<number> {
+  const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.routes?.[0]) return Math.round(data.routes[0].distance / 1000);
+  return 0;
+}
+
+// ── Calculator form ───────────────────────────────────────────────────────────
 function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (data: Omit<CartItem, "cartId">) => void; onBack: () => void }) {
   const [state, setState] = useState<CalcState>({});
+  const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
+  const [calcDist, setCalcDist] = useState(false);
   const { toast } = useToast();
+  const isAdmin = localStorage.getItem("logistic_admin_auth") === "1";
+
+  useEffect(() => {
+    if (item.calculatorType === "trucking") {
+      fetch("/api/logistic/orders/trucking-rates")
+        .then((r) => r.json())
+        .then((d) => setTruckingRates(d))
+        .catch(() => {});
+    }
+  }, [item.calculatorType]);
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
   }
+
+  function handleCitySelect(which: "pickup" | "dest", name: string, lat: string, lon: string) {
+    if (which === "pickup") {
+      set("pickupCity", name);
+      set("pickupLat", lat);
+      set("pickupLon", lon);
+    } else {
+      set("destCity", name);
+      set("destLat", lat);
+      set("destLon", lon);
+    }
+  }
+
+  useEffect(() => {
+    const lat1 = state.pickupLat;
+    const lon1 = state.pickupLon;
+    const lat2 = state.destLat;
+    const lon2 = state.destLon;
+    if (!lat1 || !lon1 || !lat2 || !lon2) return;
+    setCalcDist(true);
+    fetchRoadDistanceKm(lat1, lon1, lat2, lon2)
+      .then((km) => {
+        set("distance", String(km));
+        toast({ title: `Jarak otomatis: ${km} km` });
+      })
+      .catch(() => toast({ title: "Gagal menghitung jarak", variant: "destructive" }))
+      .finally(() => setCalcDist(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pickupLat, state.pickupLon, state.destLat, state.destLon]);
+
+  useEffect(() => {
+    const vt = state.vehicleType;
+    if (!vt || !truckingRates[vt]) return;
+    const { ratePerKm, loadingFee } = truckingRates[vt];
+    set("truckingRate", String(ratePerKm));
+    set("loadingFee", String(loadingFee));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.vehicleType, truckingRates]);
 
   const subtotal = calcSubtotal(item.calculatorType, state);
 
@@ -242,22 +382,78 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
 
         {ct === "trucking" && <>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Pickup City</Label><Input placeholder="Jakarta" value={state.pickupCity||""} onChange={e => set("pickupCity", e.target.value)} /></div>
-            <div><Label className="text-xs">Destination City</Label><Input placeholder="Surabaya" value={state.destCity||""} onChange={e => set("destCity", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Pickup City</Label>
+              <CitySearchInput
+                placeholder="Cari kota asal..."
+                value={state.pickupCity || ""}
+                onSelect={(name, lat, lon) => handleCitySelect("pickup", name, lat, lon)}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Destination City</Label>
+              <CitySearchInput
+                placeholder="Cari kota tujuan..."
+                value={state.destCity || ""}
+                onSelect={(name, lat, lon) => handleCitySelect("dest", name, lat, lon)}
+              />
+            </div>
           </div>
-          <div><Label className="text-xs">Vehicle Type</Label>
+          <div>
+            <Label className="text-xs">Vehicle Type</Label>
             <Select value={state.vehicleType||""} onValueChange={v => set("vehicleType", v)}>
-              <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
               <SelectContent>
                 {["CDE", "CDD", "Fuso", "Wingbox", "Trailer"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label className="text-xs">Distance (km)</Label><Input type="number" placeholder="0" value={state.distance||""} onChange={e => set("distance", e.target.value)} /></div>
-            <div><Label className="text-xs">Trucking Rate (IDR)</Label><Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Distance (km)
+                {calcDist && <Loader2 className="h-3 w-3 animate-spin" />}
+              </Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={state.distance || ""}
+                onChange={e => set("distance", e.target.value)}
+                readOnly={calcDist}
+              />
+            </div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Trucking Rate (IDR/km)
+                {!isAdmin && <Lock className="h-3 w-3 text-muted-foreground" />}
+              </Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={state.truckingRate || ""}
+                onChange={e => isAdmin && set("truckingRate", e.target.value)}
+                readOnly={!isAdmin}
+                className={!isAdmin ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+              />
+            </div>
           </div>
-          <div><Label className="text-xs">Loading Fee (IDR)</Label><Input type="number" placeholder="0" value={state.loadingFee||""} onChange={e => set("loadingFee", e.target.value)} /></div>
+          <div>
+            <Label className="text-xs flex items-center gap-1">
+              Loading Fee (IDR)
+              {!isAdmin && <Lock className="h-3 w-3 text-muted-foreground" />}
+            </Label>
+            <Input
+              type="number"
+              placeholder="0"
+              value={state.loadingFee || ""}
+              onChange={e => isAdmin && set("loadingFee", e.target.value)}
+              readOnly={!isAdmin}
+              className={!isAdmin ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+            />
+          </div>
+          {!state.vehicleType && (
+            <p className="text-xs text-muted-foreground">Pilih jenis kendaraan untuk melihat estimasi tarif otomatis.</p>
+          )}
         </>}
 
         {ct === "storage" && <>
