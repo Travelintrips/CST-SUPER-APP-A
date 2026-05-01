@@ -191,7 +191,7 @@ export default function Dashboard() {
             </h1>
             <p className="text-muted-foreground mt-1">Here's an overview of your logistics activities.</p>
           </div>
-          <Link href="/book">
+          <Link href="/jasa">
             <Button className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground">
               <Plus className="h-4 w-4" /> Buat Pesanan Baru
             </Button>
@@ -307,7 +307,7 @@ export default function Dashboard() {
                       {statusFilter ? "Try another status filter." : "You haven't created any orders."}
                     </p>
                     {!statusFilter && (
-                      <Link href="/book">
+                      <Link href="/jasa">
                         <Button>Buat Pesanan Logistik</Button>
                       </Link>
                     )}
@@ -357,7 +357,7 @@ export default function Dashboard() {
                 <CardDescription className="text-primary-foreground/70">Book export, import & freight services</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Link href="/book">
+                <Link href="/jasa">
                   <Button variant="secondary" className="w-full bg-white text-primary hover:bg-gray-100 gap-2">
                     <Ship className="h-4 w-4" /> Buat Pesanan
                   </Button>

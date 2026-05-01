@@ -139,7 +139,7 @@ export default function TrackPage() {
               <p>Tim kami akan menghubungi Anda untuk konfirmasi dan penawaran final. Jika ada pertanyaan, hubungi customer service kami.</p>
             </div>
 
-            <Button variant="outline" className="w-full" onClick={() => setLocation("/book")}>
+            <Button variant="outline" className="w-full" onClick={() => setLocation("/jasa")}>
               <Ship className="w-4 h-4 mr-2" /> Buat Pesanan Baru
             </Button>
           </div>
