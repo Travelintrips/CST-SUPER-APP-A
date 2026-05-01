@@ -30,6 +30,7 @@ import {
   DollarSign,
   Tags,
   BarChart2,
+  PackageOpen,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -166,6 +167,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { title: "Pengiriman", href: "/logistics", icon: Truck },
         { title: "Freight Forwarding", href: "/logistics/freight", icon: Ship },
+        { title: "Portal Orders", href: "/logistics/portal-orders", icon: PackageOpen },
       ],
     },
     { type: "flat", title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },

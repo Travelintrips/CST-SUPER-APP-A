@@ -15,6 +15,7 @@ import LogisticsFreightPage from "@/pages/logistics-freight";
 import LogisticsFreightEditorPage from "@/pages/logistics-freight-editor";
 import LogisticsFreightDetailPage from "@/pages/logistics-freight-detail";
 import LogisticsFreightBLPage from "@/pages/logistics-freight-bl";
+import LogisticsPortalOrdersPage from "@/pages/logistics-portal-orders";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
 import UsersPage from "@/pages/users";
@@ -199,6 +200,9 @@ function Router() {
       </Route>
       <Route path="/logistics/freight/:id">
         <ProtectedRoute component={LogisticsFreightDetailPage} />
+      </Route>
+      <Route path="/logistics/portal-orders">
+        <ProtectedRoute component={LogisticsPortalOrdersPage} />
       </Route>
       <Route path="/pos">
         <ProtectedRoute component={PosPage} />
