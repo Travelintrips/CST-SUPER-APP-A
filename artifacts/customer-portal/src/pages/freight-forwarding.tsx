@@ -208,16 +208,29 @@ export default function FreightForwarding() {
   function removeItem(id: string) { setItems((prev) => prev.filter((it) => it.id !== id)); }
 
   // Validation per step
+  function missingFields(): string[] {
+    const missing: string[] = [];
+    if (!senderName) missing.push("Nama Pengirim");
+    if (!senderAddress) missing.push("Alamat Pengirim");
+    if (!receiverName) missing.push("Nama Penerima");
+    if (!receiverAddress) missing.push("Alamat Penerima");
+    if (!commodity) missing.push("Nama Barang / Komoditi");
+    if (!docInvoice?.objectPath) missing.push("Dokumen Invoice");
+    if (!docPackingList?.objectPath) missing.push("Dokumen Packing List");
+    if (isDG && !docMsds?.objectPath) missing.push("Dokumen MSDS/SDS");
+    if (isDG && !docCoa?.objectPath) missing.push("Dokumen COA");
+    if (!customerName) missing.push("Nama PIC");
+    if (!customerEmail) missing.push("Email");
+    if (!customerPhone) missing.push("Telepon / WhatsApp");
+    if (items.some((it) => !it.grossWeight || !it.kolli)) missing.push("Berat & Kolli semua item kargo");
+    return missing;
+  }
+
   function canProceed() {
     if (step === 1) return !!direction;
     if (step === 2) return !!mode;
     if (step === 3) return !!variant;
-    // Step 4 validation
-    const basicOk = senderName && senderAddress && receiverName && receiverAddress && commodity && customerName && customerEmail && customerPhone;
-    const docsOk = docInvoice?.objectPath && docPackingList?.objectPath;
-    const dgOk = !isDG || (docMsds?.objectPath && docCoa?.objectPath);
-    const itemsOk = items.every((it) => it.grossWeight && it.kolli);
-    return basicOk && docsOk && dgOk && itemsOk;
+    return missingFields().length === 0;
   }
 
   async function handleSubmit() {
@@ -714,6 +727,21 @@ export default function FreightForwarding() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Validation summary (step 4 only) ──────────────────── */}
+        {step === 4 && missingFields().length > 0 && (
+          <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 space-y-1.5">
+            <p className="text-xs font-semibold text-orange-700 flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              Lengkapi field berikut sebelum mengirim pesanan:
+            </p>
+            <ul className="space-y-0.5 pl-5 list-disc">
+              {missingFields().map((f) => (
+                <li key={f} className="text-xs text-orange-700">{f}</li>
+              ))}
+            </ul>
           </div>
         )}
 
