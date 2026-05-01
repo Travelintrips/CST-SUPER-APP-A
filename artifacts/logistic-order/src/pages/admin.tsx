@@ -163,7 +163,7 @@ export default function AdminPage() {
       <nav className="border-b border-border bg-card sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/logistic-order/logocst.png" alt="CST Logistics" className="h-8 w-auto object-contain" />
+            <img src="/logistic-order/logocst-new.jpg" alt="CST Logistics" className="h-8 w-8 object-contain rounded-full" />
             <span className="font-bold text-sm text-foreground">Admin Dashboard</span>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
