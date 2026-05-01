@@ -45,21 +45,24 @@ function useVideoThumbnail(src: string | null) {
     if (!src) return;
     let cancelled = false;
     const vid = document.createElement("video");
-    vid.preload = "metadata";
+    vid.preload = "auto";
     vid.muted = true;
     vid.playsInline = true;
     vid.src = src;
-    vid.addEventListener("loadedmetadata", () => { vid.currentTime = 0.1; });
-    vid.addEventListener("seeked", () => {
-      if (cancelled) return;
+    const captureFrame = () => {
+      if (cancelled || vid.videoWidth === 0) return;
       try {
         const canvas = document.createElement("canvas");
-        canvas.width = vid.videoWidth || 320;
-        canvas.height = vid.videoHeight || 240;
+        canvas.width = vid.videoWidth;
+        canvas.height = vid.videoHeight;
         canvas.getContext("2d")?.drawImage(vid, 0, 0, canvas.width, canvas.height);
-        setThumb(canvas.toDataURL("image/jpeg", 0.7));
+        const data = canvas.toDataURL("image/jpeg", 0.7);
+        if (data.length > 100) setThumb(data);
       } catch { /* tainted — leave null */ }
-    }, { once: true });
+    };
+    vid.addEventListener("loadeddata", () => { if (!cancelled) captureFrame(); }, { once: true });
+    vid.addEventListener("seeked", () => { if (!cancelled) captureFrame(); }, { once: true });
+    vid.addEventListener("canplay", () => { if (!cancelled) captureFrame(); }, { once: true });
     vid.load();
     return () => { cancelled = true; vid.src = ""; };
   }, [src]);

@@ -83,24 +83,24 @@ function useVideoThumbnail(src: string | null) {
     if (!src) return;
     let cancelled = false;
     const vid = document.createElement("video");
-    vid.preload = "metadata";
+    vid.preload = "auto";
     vid.muted = true;
     vid.playsInline = true;
     vid.src = src;
     const capture = () => {
-      if (cancelled) return;
+      if (cancelled || vid.videoWidth === 0) return;
       try {
         const canvas = document.createElement("canvas");
-        canvas.width = vid.videoWidth || 320;
-        canvas.height = vid.videoHeight || 240;
+        canvas.width = vid.videoWidth;
+        canvas.height = vid.videoHeight;
         canvas.getContext("2d")?.drawImage(vid, 0, 0, canvas.width, canvas.height);
-        setThumb(canvas.toDataURL("image/jpeg", 0.7));
+        const data = canvas.toDataURL("image/jpeg", 0.7);
+        if (data.length > 100) setThumb(data);
       } catch { /* tainted canvas — leave null */ }
     };
-    vid.addEventListener("loadedmetadata", () => {
-      vid.currentTime = 0.1;
-    });
-    vid.addEventListener("seeked", capture, { once: true });
+    vid.addEventListener("loadeddata", () => { if (!cancelled) capture(); }, { once: true });
+    vid.addEventListener("seeked", () => { if (!cancelled) capture(); }, { once: true });
+    vid.addEventListener("canplay", () => { if (!cancelled) capture(); }, { once: true });
     vid.addEventListener("error", () => { /* silent */ });
     vid.load();
     return () => {
@@ -124,7 +124,7 @@ function VideoThumb({ src, className }: { src: string; className?: string }) {
 
 // ── Mini image carousel for product cards ──────────────────────────────────
 function CardCarousel({ product }: { product: Product }) {
-  const media = getMedia(product).filter((m) => m.type === "image");
+  const media = getMedia(product);
   const [idx, setIdx] = useState(0);
 
   if (media.length === 0) {
@@ -135,13 +135,21 @@ function CardCarousel({ product }: { product: Product }) {
     );
   }
 
+  const current = media[idx];
+
   return (
     <div className="w-full h-full relative group/car">
-      <img
-        src={resolveImageUrl(media[idx].url) ?? ""}
-        alt={product.name}
-        className="w-full h-full object-cover"
-      />
+      {current.type === "video" ? (
+        <div className="relative w-full h-full">
+          <VideoThumb src={resolveImageUrl(current.url) ?? ""} className="w-full h-full object-cover" />
+        </div>
+      ) : (
+        <img
+          src={resolveImageUrl(current.url) ?? ""}
+          alt={product.name}
+          className="w-full h-full object-cover"
+        />
+      )}
       {media.length > 1 && (
         <>
           <button
