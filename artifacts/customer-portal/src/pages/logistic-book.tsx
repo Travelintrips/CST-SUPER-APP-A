@@ -611,12 +611,16 @@ export default function BookPage() {
             </div>
 
             <div className="bg-muted/40 rounded-lg border border-border p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {cartItems.length === 1 ? cartItems[0].serviceName : "Subtotal"}
-                </span>
-                <span className="font-medium">{formatCurrency(subtotal)}</span>
-              </div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Rincian Pesanan</p>
+              {cartItems.map((item) => (
+                <div key={item.cartId} className="flex justify-between text-sm gap-2">
+                  <span className="text-foreground font-medium min-w-0 truncate">{item.serviceName}</span>
+                  <span className="font-medium shrink-0">
+                    {item.subtotal > 0 ? formatCurrency(item.subtotal) : <span className="text-amber-600 text-xs">Harga nego</span>}
+                  </span>
+                </div>
+              ))}
+              <Separator />
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
                 <span className="font-medium">{formatCurrency(tax)}</span>
