@@ -337,6 +337,7 @@ export default function BookPage() {
     origin: "", destination: "", commodity: "", cargoDescription: "",
     grossWeight: "", volumeCbm: "", requiredDate: "", notes: "",
   });
+  const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");
 
   // Pre-fill form with logged-in user's profile data (only once, when data loads)
   useEffect(() => {
@@ -416,6 +417,7 @@ export default function BookPage() {
       volumeCbm: parseFloat(customerForm.volumeCbm) || null,
       requiredDate: customerForm.requiredDate || null,
       notes: customerForm.notes || null,
+      paymentType: paymentType || null,
       subtotal,
       tax,
       grandTotal,
@@ -659,6 +661,35 @@ export default function BookPage() {
             </div>
             <div><Label className="text-xs">Cargo Description</Label><Textarea placeholder="Deskripsi kargo..." value={f.cargoDescription} onChange={e => set("cargoDescription", e.target.value)} rows={2} /></div>
             <div><Label className="text-xs">Notes</Label><Textarea placeholder="Catatan tambahan..." value={f.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
+
+            <div>
+              <Label className="text-xs mb-2 block">Jenis Pembayaran <span className="text-muted-foreground font-normal">(opsional)</span></Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["cash", "termin", "dp"] as const).map((type) => {
+                  const labels: Record<string, { title: string; desc: string }> = {
+                    cash: { title: "Cash", desc: "Bayar lunas" },
+                    termin: { title: "Termin", desc: "Cicil berkala" },
+                    dp: { title: "DP / Advance", desc: "Uang muka" },
+                  };
+                  const selected = paymentType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setPaymentType(selected ? "" : type)}
+                      className={`flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-3 text-center transition-all ${
+                        selected
+                          ? "border-accent bg-accent/10 text-accent"
+                          : "border-border bg-background text-foreground hover:border-accent/50"
+                      }`}
+                    >
+                      <span className="font-semibold text-xs leading-tight">{labels[type].title}</span>
+                      <span className="text-[10px] text-muted-foreground leading-tight">{labels[type].desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       );

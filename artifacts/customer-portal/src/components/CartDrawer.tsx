@@ -16,6 +16,7 @@ export function CartDrawer() {
   const [step, setStep] = useState<Step>("cart");
   const [notes, setNotes] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
+  const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successOrder, setSuccessOrder] = useState<{ docNumber: string; id: number } | null>(null);
@@ -29,6 +30,7 @@ export function CartDrawer() {
       setStep("cart");
       setNotes("");
       setExpectedDate("");
+      setPaymentType("");
       setErrorMsg("");
       setSuccessOrder(null);
     }, 300);
@@ -60,6 +62,7 @@ export function CartDrawer() {
           })),
           notes: notes || undefined,
           expectedDate: expectedDate || undefined,
+          paymentType: paymentType || undefined,
         }),
       });
       const data = await res.json();
@@ -252,6 +255,38 @@ export function CartDrawer() {
                   onChange={(e) => setExpectedDate(e.target.value)}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
                 />
+              </div>
+
+              {/* Payment type */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Jenis Pembayaran <span className="text-muted-foreground font-normal">(opsional)</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["cash", "termin", "dp"] as const).map((type) => {
+                    const labels: Record<string, { title: string; desc: string }> = {
+                      cash: { title: "Cash", desc: "Bayar lunas" },
+                      termin: { title: "Termin", desc: "Cicil berkala" },
+                      dp: { title: "DP / Advance", desc: "Uang muka" },
+                    };
+                    const selected = paymentType === type;
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setPaymentType(selected ? "" : type)}
+                        className={`flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-3 text-center transition-all ${
+                          selected
+                            ? "border-accent bg-accent/10 text-accent"
+                            : "border-border bg-background text-foreground hover:border-accent/50"
+                        }`}
+                      >
+                        <span className="font-semibold text-xs leading-tight">{labels[type].title}</span>
+                        <span className="text-[10px] text-muted-foreground leading-tight">{labels[type].desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {hasNegotiatedItems && (

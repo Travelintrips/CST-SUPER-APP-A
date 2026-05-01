@@ -401,7 +401,7 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
   const [portalCustomer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, portalCustId));
   if (!portalCustomer) return res.status(401).json({ message: "Customer not found" });
 
-  const { items, notes, expectedDate } = req.body ?? {};
+  const { items, notes, expectedDate, paymentType } = req.body ?? {};
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "Pesanan harus memiliki minimal satu item" });
@@ -440,6 +440,7 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
       taxAmount: "0",
       notes: notes ? String(notes) : null,
       expectedDate: expectedDate ? new Date(String(expectedDate)) : null,
+      paymentType: paymentType ? String(paymentType) : null,
       createdById: `portal:${portalCustomer.id}`,
     })
     .returning();

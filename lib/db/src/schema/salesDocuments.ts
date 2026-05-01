@@ -51,6 +51,7 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   validUntil: timestamp("valid_until"),
   expectedDate: timestamp("expected_date"),
   notes: text("notes"),
+  paymentType: text("payment_type"),
   confirmedAt: timestamp("confirmed_at"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

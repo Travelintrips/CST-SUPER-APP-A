@@ -91,6 +91,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       volumeCbm: body.volumeCbm != null ? String(body.volumeCbm) : null,
       requiredDate: body.requiredDate ?? null,
       notes: body.notes ?? null,
+      paymentType: body.paymentType ?? null,
       subtotal: String(body.subtotal),
       tax: String(body.tax),
       grandTotal: String(body.grandTotal),
