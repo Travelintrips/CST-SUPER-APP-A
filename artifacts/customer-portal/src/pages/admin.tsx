@@ -39,6 +39,51 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 
+function useVideoThumbnail(src: string | null) {
+  const [thumb, setThumb] = useState<string | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    let cancelled = false;
+    const vid = document.createElement("video");
+    vid.preload = "metadata";
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.src = src;
+    vid.addEventListener("loadedmetadata", () => { vid.currentTime = 0.1; });
+    vid.addEventListener("seeked", () => {
+      if (cancelled) return;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = vid.videoWidth || 320;
+        canvas.height = vid.videoHeight || 240;
+        canvas.getContext("2d")?.drawImage(vid, 0, 0, canvas.width, canvas.height);
+        setThumb(canvas.toDataURL("image/jpeg", 0.7));
+      } catch { /* tainted — leave null */ }
+    }, { once: true });
+    vid.load();
+    return () => { cancelled = true; vid.src = ""; };
+  }, [src]);
+  return thumb;
+}
+
+function VideoThumbCell({ src }: { src: string }) {
+  const thumb = useVideoThumbnail(src);
+  return (
+    <div className="relative w-full h-full">
+      {thumb ? (
+        <img src={thumb} alt="video" className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+          <Play className="h-6 w-6 text-white fill-white" />
+        </div>
+      )}
+      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+        <Play className="h-4 w-4 text-white fill-white drop-shadow" />
+      </div>
+    </div>
+  );
+}
+
 type Service = {
   id: number;
   name: string;
@@ -269,23 +314,29 @@ function MediaUploader({
   const vidRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
-  async function uploadFile(file: File, type: "image" | "video") {
+  async function uploadFiles(files: File[], type: "image" | "video") {
     setUploading(true);
+    const newItems: MediaItem[] = [];
     try {
-      const { uploadURL, objectPath } = await apiPost<{ uploadURL: string; objectPath: string }>(
-        "/api/portal/admin/upload-url",
-        { contentType: file.type }
-      );
-      await fetch(uploadURL, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
+      for (const file of files) {
+        const { uploadURL, objectPath } = await apiPost<{ uploadURL: string; objectPath: string }>(
+          "/api/portal/admin/upload-url",
+          { contentType: file.type }
+        );
+        await fetch(uploadURL, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        newItems.push({ type, url: `/api/storage${objectPath}` });
+      }
+      onChange([...mediaItems, ...newItems]);
+      toast({
+        title: `${newItems.length} ${type === "image" ? "gambar" : "video"} berhasil diunggah`,
       });
-      const publicUrl = `/api/storage${objectPath}`;
-      onChange([...mediaItems, { type, url: publicUrl }]);
-      toast({ title: `${type === "image" ? "Gambar" : "Video"} berhasil diunggah` });
     } catch (err) {
-      toast({ title: "Gagal mengunggah", description: String(err), variant: "destructive" });
+      if (newItems.length > 0) onChange([...mediaItems, ...newItems]);
+      toast({ title: "Sebagian gagal diunggah", description: String(err), variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -303,9 +354,7 @@ function MediaUploader({
           {mediaItems.map((m, i) => (
             <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border bg-muted group">
               {m.type === "video" ? (
-                <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                  <Play className="h-6 w-6 text-white fill-white" />
-                </div>
+                <VideoThumbCell src={resolveImageUrl(m.url) ?? m.url} />
               ) : (
                 <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" />
               )}
@@ -333,14 +382,14 @@ function MediaUploader({
       <input ref={imgRef} type="file" accept="image/*" multiple className="hidden"
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
-          void (async () => { for (const f of files) await uploadFile(f, "image"); })();
+          if (files.length) void uploadFiles(files, "image");
           e.target.value = "";
         }}
       />
       <input ref={vidRef} type="file" accept="video/*" className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void uploadFile(f, "video");
+          const files = Array.from(e.target.files ?? []);
+          if (files.length) void uploadFiles(files, "video");
           e.target.value = "";
         }}
       />
