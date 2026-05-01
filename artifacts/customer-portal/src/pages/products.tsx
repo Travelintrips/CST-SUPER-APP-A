@@ -1,17 +1,16 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
-import { ShoppingBag, Search, ShoppingCart, ZoomIn, X } from "lucide-react";
+import {
+  ShoppingBag, Search, ShoppingCart, ChevronLeft, ChevronRight,
+  Play, X, Truck, Package, Clock, Star, Check,
+} from "lucide-react";
 import { useCart } from "@/lib/cart";
+
+type MediaItem = { type: "image" | "video"; url: string };
 
 interface Product {
   id: number;
@@ -19,18 +18,344 @@ interface Product {
   description: string | null;
   price: number;
   imageUrl: string | null;
+  mediaItems: MediaItem[];
   categories: string[];
 }
+
+// Indonesian courier services
+const SHIPPING_SERVICES = [
+  { id: "jne-reg",   name: "JNE REG",       logo: "📦", eta: "2-3 hari", fee: 15000 },
+  { id: "jne-yes",   name: "JNE YES",       logo: "⚡", eta: "1 hari",   fee: 35000 },
+  { id: "jnt-reg",   name: "J&T Express",   logo: "📫", eta: "2-3 hari", fee: 14000 },
+  { id: "sicepat",   name: "SiCepat REG",   logo: "🚀", eta: "2-3 hari", fee: 13000 },
+  { id: "anteraja",  name: "AnterAja",      logo: "🏃", eta: "2-4 hari", fee: 12000 },
+  { id: "pos",       name: "Pos Indonesia", logo: "📮", eta: "3-5 hari", fee: 10000 },
+  { id: "gosend",    name: "GoSend",        logo: "🛵", eta: "Same day",  fee: 25000 },
+  { id: "grab",      name: "Grab Express",  logo: "🟢", eta: "Same day",  fee: 28000 },
+  { id: "cst",       name: "CST Logistics", logo: "🚢", eta: "1-2 hari",  fee: 0, note: "Harga nego" },
+];
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
+function getMedia(product: Product): MediaItem[] {
+  const items = product.mediaItems ?? [];
+  if (items.length > 0) return items;
+  if (product.imageUrl) return [{ type: "image", url: product.imageUrl }];
+  return [];
+}
+
+// ── Mini image carousel for product cards ──────────────────────────────────
+function CardCarousel({ product }: { product: Product }) {
+  const media = getMedia(product).filter((m) => m.type === "image");
+  const [idx, setIdx] = useState(0);
+
+  if (media.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+        <ShoppingBag className="h-12 w-12 text-gray-300" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full relative group/car">
+      <img
+        src={resolveImageUrl(media[idx].url) ?? ""}
+        alt={product.name}
+        className="w-full h-full object-cover"
+      />
+      {media.length > 1 && (
+        <>
+          <button
+            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i - 1 + media.length) % media.length); }}
+            className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-0.5 opacity-0 group-hover/car:opacity-100 transition-opacity"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i + 1) % media.length); }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/40 text-white rounded-full p-0.5 opacity-0 group-hover/car:opacity-100 transition-opacity"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+            {media.map((_, i) => (
+              <button
+                key={i}
+                onClick={(e) => { e.stopPropagation(); setIdx(i); }}
+                className={`h-1.5 rounded-full transition-all ${i === idx ? "w-4 bg-white" : "w-1.5 bg-white/60"}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Full-screen media gallery inside the modal ─────────────────────────────
+function MediaGallery({ product }: { product: Product }) {
+  const media = getMedia(product);
+  const [idx, setIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const current = media[idx];
+  const isVideo = current?.type === "video";
+
+  function prev() { setIdx((i) => (i - 1 + media.length) % media.length); setPlaying(false); }
+  function next() { setIdx((i) => (i + 1) % media.length); setPlaying(false); }
+
+  if (media.length === 0) {
+    return (
+      <div className="w-full aspect-square bg-gray-100 flex items-center justify-center rounded-xl">
+        <ShoppingBag className="h-20 w-20 text-gray-300" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Main viewer */}
+      <div className="relative bg-black rounded-xl overflow-hidden aspect-square">
+        {isVideo ? (
+          <div className="w-full h-full relative">
+            <video
+              ref={videoRef}
+              src={resolveImageUrl(current.url) ?? ""}
+              className="w-full h-full object-contain"
+              controls={playing}
+              playsInline
+            />
+            {!playing && (
+              <button
+                onClick={() => { setPlaying(true); videoRef.current?.play(); }}
+                className="absolute inset-0 flex items-center justify-center bg-black/30"
+              >
+                <div className="bg-white/90 rounded-full p-4 shadow-lg">
+                  <Play className="h-8 w-8 text-primary fill-primary" />
+                </div>
+              </button>
+            )}
+          </div>
+        ) : (
+          <img
+            src={resolveImageUrl(current.url) ?? ""}
+            alt={product.name}
+            className="w-full h-full object-contain"
+          />
+        )}
+        {media.length > 1 && (
+          <>
+            <button onClick={prev} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-2 hover:bg-black/70 transition-colors">
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button onClick={next} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-2 hover:bg-black/70 transition-colors">
+              <ChevronRight className="h-5 w-5" />
+            </button>
+            <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full">
+              {idx + 1}/{media.length}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
+      {media.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {media.map((m, i) => (
+            <button
+              key={i}
+              onClick={() => { setIdx(i); setPlaying(false); }}
+              className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-primary" : "border-transparent opacity-60 hover:opacity-100"}`}
+            >
+              {m.type === "video" ? (
+                <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                  <Play className="h-5 w-5 text-white fill-white" />
+                </div>
+              ) : (
+                <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Product detail modal ───────────────────────────────────────────────────
+function ProductModal({ product, onClose }: { product: Product; onClose: () => void }) {
+  const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
+  const [qty, setQty] = useState(1);
+  const { addItem, items } = useCart();
+  const isInCart = items.some((i) => i.productId === product.id);
+
+  const chosen = SHIPPING_SERVICES.find((s) => s.id === selectedShipping);
+
+  function handleAddToCart() {
+    addItem({
+      productId: product.id,
+      name: product.name,
+      unitPrice: product.price,
+      itemType: "barang",
+    });
+  }
+
+  return (
+    <DialogContent className="max-w-4xl p-0 overflow-hidden max-h-[90vh] overflow-y-auto">
+      <div className="grid md:grid-cols-2 gap-0">
+        {/* Left: media gallery */}
+        <div className="p-4 md:p-6 bg-gray-50/50 border-r border-border">
+          <MediaGallery product={product} />
+        </div>
+
+        {/* Right: product info */}
+        <div className="p-4 md:p-6 space-y-4 flex flex-col">
+          {/* Categories */}
+          {product.categories.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {product.categories.map((c, i) => (
+                <Badge key={i} variant="secondary" className="text-xs">{c}</Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Name */}
+          <h2 className="text-xl font-bold text-foreground leading-snug">{product.name}</h2>
+
+          {/* Rating (decorative) */}
+          <div className="flex items-center gap-2 text-sm">
+            <div className="flex text-amber-400">
+              {[1,2,3,4,5].map((s) => <Star key={s} className="h-4 w-4 fill-current" />)}
+            </div>
+            <span className="text-muted-foreground">5.0</span>
+            <span className="text-muted-foreground">· Terjual 100+</span>
+          </div>
+
+          {/* Price */}
+          <div className="bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
+            {product.price > 0 ? (
+              <p className="text-2xl font-bold text-primary">{formatIDR(product.price)}</p>
+            ) : (
+              <p className="text-lg font-semibold text-amber-600">Harga Negosiasi</p>
+            )}
+          </div>
+
+          {/* Description */}
+          {product.description && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Deskripsi</p>
+              <p className="text-sm text-foreground leading-relaxed">{product.description}</p>
+            </div>
+          )}
+
+          {/* Quantity */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Jumlah</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setQty((q) => Math.max(1, q - 1))}
+                className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-100 transition-colors font-bold"
+              >−</button>
+              <span className="w-10 text-center font-semibold">{qty}</span>
+              <button
+                onClick={() => setQty((q) => q + 1)}
+                className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-100 transition-colors font-bold"
+              >+</button>
+            </div>
+          </div>
+
+          {/* Shipping selector */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+              <Truck className="h-3.5 w-3.5" /> Pilih Pengiriman
+            </p>
+            <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto pr-1">
+              {SHIPPING_SERVICES.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedShipping(s.id === selectedShipping ? null : s.id)}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-all text-sm ${
+                    selectedShipping === s.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40 hover:bg-gray-50"
+                  }`}
+                >
+                  <span className="text-lg">{s.logo}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground">{s.name}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> {s.eta}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {s.fee > 0 ? (
+                      <p className="font-semibold text-foreground">{formatIDR(s.fee)}</p>
+                    ) : (
+                      <p className="text-xs text-amber-600 font-medium">{s.note}</p>
+                    )}
+                  </div>
+                  {selectedShipping === s.id && (
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Total */}
+          {selectedShipping && product.price > 0 && (
+            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-border">
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatIDR(product.price * qty)}</span>
+              </div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-muted-foreground">Ongkir ({chosen?.name})</span>
+                <span>{chosen!.fee > 0 ? formatIDR(chosen!.fee) : "Nego"}</span>
+              </div>
+              <div className="flex justify-between font-bold border-t border-border pt-2 mt-2">
+                <span>Total</span>
+                <span className="text-primary">
+                  {chosen!.fee > 0 ? formatIDR(product.price * qty + chosen!.fee) : "Hubungi kami"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex gap-2 mt-auto pt-2">
+            <Button
+              variant="outline"
+              className="flex-1 gap-2"
+              onClick={() => { handleAddToCart(); }}
+            >
+              <ShoppingCart className="h-4 w-4" />
+              {isInCart ? "Tambah Lagi" : "Keranjang"}
+            </Button>
+            <Button
+              className="flex-1 gap-2"
+              onClick={() => { handleAddToCart(); onClose(); }}
+            >
+              <Package className="h-4 w-4" />
+              Beli Sekarang
+            </Button>
+          </div>
+        </div>
+      </div>
+    </DialogContent>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const { addItem, items } = useCart();
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
 
   useEffect(() => {
     fetch("/api/portal/products")
@@ -40,205 +365,154 @@ export default function Products() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const filtered = products.filter(
-    (p) =>
+  const allCategories = Array.from(new Set(products.flatMap((p) => p.categories)));
+
+  const filtered = products.filter((p) => {
+    const matchSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.description ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.categories.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  function isInCart(id: number) {
-    return items.some((i) => i.productId === id);
-  }
+      p.categories.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchCat = !selectedCategory || p.categories.includes(selectedCategory);
+    return matchSearch && matchCat;
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-primary text-primary-foreground py-16 md:py-24">
-        <div className="container px-4 md:px-6">
-          <div className="max-w-2xl">
-            <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">Katalog Produk</p>
-            <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">Produk Kami</h1>
-            <p className="text-lg text-primary-foreground/80 mb-8">
-              Temukan berbagai produk berkualitas yang kami sediakan untuk memenuhi kebutuhan bisnis Anda.
-            </p>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary-foreground/50" />
-              <Input
-                type="text"
-                placeholder="Cari produk atau kategori..."
-                className="w-full h-12 pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+      {/* Hero header */}
+      <div className="bg-primary text-primary-foreground py-14 md:py-20">
+        <div className="container px-4 md:px-6 max-w-5xl">
+          <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-2">Katalog Produk</p>
+          <h1 className="text-3xl md:text-4xl font-display font-bold mb-3">Produk Kami</h1>
+          <p className="text-primary-foreground/70 mb-6 text-sm max-w-xl">
+            Temukan berbagai produk berkualitas untuk kebutuhan bisnis Anda.
+          </p>
+          <div className="relative max-w-xl">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary-foreground/50" />
+            <Input
+              type="text"
+              placeholder="Cari produk atau kategori..."
+              className="w-full pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="container px-4 md:px-6 mt-12">
+      <div className="container px-4 md:px-6 max-w-5xl mt-8">
+        {/* Category filter tabs */}
+        {allCategories.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
+            <button
+              onClick={() => setSelectedCategory("")}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                !selectedCategory
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-white border border-border text-foreground hover:border-primary/40"
+              }`}
+            >
+              Semua
+            </button>
+            {allCategories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat === selectedCategory ? "" : cat)}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  selectedCategory === cat
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-white border border-border text-foreground hover:border-primary/40"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Product grid */}
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <Card key={i} className="animate-pulse h-[340px]">
-                <div className="h-48 bg-gray-200 rounded-t-lg" />
-                <CardHeader className="space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-1/4" />
-                  <div className="h-6 bg-gray-200 rounded w-3/4" />
-                </CardHeader>
-              </Card>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <div key={i} className="bg-white rounded-2xl animate-pulse overflow-hidden shadow-sm">
+                <div className="aspect-square bg-gray-200" />
+                <div className="p-3 space-y-2">
+                  <div className="h-3 bg-gray-200 rounded w-3/4" />
+                  <div className="h-4 bg-gray-200 rounded w-1/2" />
+                </div>
+              </div>
             ))}
           </div>
         ) : filtered.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filtered.map((product) => (
-              <Card
+              <div
                 key={product.id}
-                className="group overflow-hidden flex flex-col h-full border-border/50 hover:shadow-lg transition-all duration-300"
+                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group border border-border/30"
+                onClick={() => setSelectedProduct(product)}
               >
-                {/* Clickable image area */}
-                <div
-                  className="aspect-video w-full overflow-hidden bg-gray-100 relative cursor-pointer"
-                  onClick={() => setSelectedProduct(product)}
-                  title="Klik untuk lihat detail"
-                >
-                  {product.imageUrl ? (
-                    <img
-                      src={resolveImageUrl(product.imageUrl) ?? ""}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                      <ShoppingBag className="h-12 w-12 text-gray-300" />
+                {/* Image/carousel */}
+                <div className="aspect-square w-full overflow-hidden relative bg-gray-50">
+                  <CardCarousel product={product} />
+                  {/* Video badge */}
+                  {product.mediaItems?.some((m) => m.type === "video") && (
+                    <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                      <Play className="h-3 w-3 fill-white" /> Video
                     </div>
                   )}
-                  {/* Zoom overlay hint */}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                    <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
-                  </div>
-                  <div className="absolute top-3 left-3 flex flex-wrap gap-2">
-                    {product.categories.map((cat, i) => (
-                      <Badge
-                        key={i}
-                        className="bg-background/90 text-foreground backdrop-blur-sm border-none shadow-sm"
-                      >
-                        {cat}
-                      </Badge>
-                    ))}
+                </div>
+
+                {/* Info */}
+                <div className="p-3">
+                  {product.categories.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mb-1 truncate">{product.categories[0]}</p>
+                  )}
+                  <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug mb-2">
+                    {product.name}
+                  </p>
+                  {product.price > 0 ? (
+                    <p className="text-sm font-bold text-primary">{formatIDR(product.price)}</p>
+                  ) : (
+                    <p className="text-xs font-semibold text-amber-600">Harga Negosiasi</p>
+                  )}
+                  <div className="flex items-center gap-1 mt-1.5">
+                    <div className="flex text-amber-400">
+                      {[1,2,3,4,5].map((s) => <Star key={s} className="h-2.5 w-2.5 fill-current" />)}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">· Terjual 100+</span>
                   </div>
                 </div>
 
-                <CardHeader>
-                  <CardTitle className="text-xl">{product.name}</CardTitle>
-                  {product.description && (
-                    <CardDescription className="text-sm mt-2 leading-relaxed line-clamp-2">
-                      {product.description}
-                    </CardDescription>
-                  )}
-                </CardHeader>
-
-                <CardContent className="mt-auto pt-0 space-y-3">
-                  <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Harga</span>
-                    {product.price > 0 ? (
-                      <span className="font-bold text-lg text-primary">{formatIDR(product.price)}</span>
-                    ) : (
-                      <span className="font-semibold text-amber-600 text-sm">Harga Negosiasi</span>
-                    )}
-                  </div>
-                  <Button
-                    className="w-full gap-2"
-                    variant={isInCart(product.id) ? "outline" : "default"}
-                    onClick={() => addItem({
-                      productId: product.id,
-                      name: product.name,
-                      unitPrice: product.price,
-                      itemType: "barang",
-                    })}
+                {/* Add to cart quick button */}
+                <div className="px-3 pb-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedProduct(product);
+                    }}
+                    className="w-full py-1.5 rounded-xl border border-primary text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-colors flex items-center justify-center gap-1"
                   >
-                    <ShoppingCart className="h-4 w-4" />
-                    {isInCart(product.id) ? "Tambah Lagi" : "Pesan Sekarang"}
-                  </Button>
-                </CardContent>
-              </Card>
+                    <ShoppingCart className="h-3.5 w-3.5" /> Lihat Detail
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         ) : (
-          <div className="text-center py-24 bg-white rounded-xl border border-dashed border-border">
-            <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
-            <h3 className="text-xl font-medium mb-2">Tidak ada produk ditemukan</h3>
-            <p className="text-muted-foreground">
-              {searchQuery ? "Coba kata kunci yang berbeda." : "Belum ada produk yang tersedia saat ini."}
+          <div className="text-center py-24 bg-white rounded-2xl border border-dashed border-border">
+            <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-40" />
+            <h3 className="text-lg font-medium mb-2">Tidak ada produk</h3>
+            <p className="text-muted-foreground text-sm">
+              {searchQuery ? "Coba kata kunci yang berbeda." : "Belum ada produk yang tersedia."}
             </p>
           </div>
         )}
       </div>
 
-      {/* Product Detail Modal */}
+      {/* Product detail modal */}
       <Dialog open={!!selectedProduct} onOpenChange={(open) => { if (!open) setSelectedProduct(null); }}>
-        <DialogContent className="max-w-2xl p-0 overflow-hidden">
-          {selectedProduct && (
-            <>
-              {selectedProduct.imageUrl ? (
-                <div className="w-full aspect-video bg-gray-100 overflow-hidden">
-                  <img
-                    src={resolveImageUrl(selectedProduct.imageUrl) ?? ""}
-                    alt={selectedProduct.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="w-full aspect-video bg-gray-100 flex items-center justify-center">
-                  <ShoppingBag className="h-20 w-20 text-gray-300" />
-                </div>
-              )}
-              <div className="p-6 space-y-4">
-                <DialogHeader>
-                  <DialogTitle className="text-2xl">{selectedProduct.name}</DialogTitle>
-                </DialogHeader>
-                {selectedProduct.categories.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedProduct.categories.map((cat, i) => (
-                      <Badge key={i} variant="secondary">{cat}</Badge>
-                    ))}
-                  </div>
-                )}
-                {selectedProduct.description && (
-                  <p className="text-muted-foreground leading-relaxed">{selectedProduct.description}</p>
-                )}
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Harga</p>
-                    {selectedProduct.price > 0 ? (
-                      <p className="text-2xl font-bold text-primary">{formatIDR(selectedProduct.price)}</p>
-                    ) : (
-                      <p className="text-lg font-semibold text-amber-600">Harga Negosiasi</p>
-                    )}
-                  </div>
-                  <Button
-                    size="lg"
-                    className="gap-2"
-                    variant={isInCart(selectedProduct.id) ? "outline" : "default"}
-                    onClick={() => {
-                      addItem({
-                        productId: selectedProduct.id,
-                        name: selectedProduct.name,
-                        unitPrice: selectedProduct.price,
-                        itemType: "barang",
-                      });
-                      setSelectedProduct(null);
-                    }}
-                  >
-                    <ShoppingCart className="h-5 w-5" />
-                    {isInCart(selectedProduct.id) ? "Tambah Lagi" : "Pesan Sekarang"}
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
-        </DialogContent>
+        {selectedProduct && (
+          <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
+        )}
       </Dialog>
     </div>
   );

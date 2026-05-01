@@ -20,6 +20,7 @@ export const productsTable = pgTable("products", {
   stock: integer("stock").notNull().default(0),
   description: text("description"),
   imageUrl: text("image_url"),
+  mediaItems: text("media_items").default("[]"),
   defaultSalesTaxId: integer("default_sales_tax_id"),
   defaultPurchaseTaxId: integer("default_purchase_tax_id"),
   itemType: text("item_type").notNull().default("barang"),

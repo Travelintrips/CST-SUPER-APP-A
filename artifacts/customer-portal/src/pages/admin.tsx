@@ -22,6 +22,9 @@ import {
   CheckCircle,
   Plus,
   X,
+  Play,
+  Trash2,
+  Video,
 } from "lucide-react";
 import {
   Dialog,
@@ -39,12 +42,15 @@ type Service = {
   imageUrl: string | null;
 };
 
+type MediaItem = { type: "image" | "video"; url: string };
+
 type Product = {
   id: number;
   name: string;
   description: string | null;
   price: number;
   imageUrl: string | null;
+  mediaItems: MediaItem[];
 };
 
 type ContentMap = Record<string, string>;
@@ -246,13 +252,117 @@ function ContentTab() {
   );
 }
 
+function MediaUploader({
+  mediaItems,
+  onChange,
+}: {
+  mediaItems: MediaItem[];
+  onChange: (items: MediaItem[]) => void;
+}) {
+  const { toast } = useToast();
+  const imgRef = useRef<HTMLInputElement>(null);
+  const vidRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function uploadFile(file: File, type: "image" | "video") {
+    setUploading(true);
+    try {
+      const { uploadURL, objectPath } = await apiPost<{ uploadURL: string; objectPath: string }>(
+        "/api/portal/admin/upload-url",
+        { contentType: file.type }
+      );
+      await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      const publicUrl = `/api/storage${objectPath}`;
+      onChange([...mediaItems, { type, url: publicUrl }]);
+      toast({ title: `${type === "image" ? "Gambar" : "Video"} berhasil diunggah` });
+    } catch (err) {
+      toast({ title: "Gagal mengunggah", description: String(err), variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function remove(idx: number) {
+    onChange(mediaItems.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Existing media grid */}
+      {mediaItems.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {mediaItems.map((m, i) => (
+            <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border bg-muted group">
+              {m.type === "video" ? (
+                <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                  <Play className="h-6 w-6 text-white fill-white" />
+                </div>
+              ) : (
+                <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" />
+              )}
+              <button
+                onClick={() => remove(i)}
+                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="h-3 w-3" />
+              </button>
+              {i === 0 && (
+                <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[9px] px-1 rounded">Cover</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {mediaItems.length === 0 && (
+        <div className="rounded-lg border-2 border-dashed border-border h-28 flex flex-col items-center justify-center text-muted-foreground gap-2">
+          <ImageIcon className="h-7 w-7" />
+          <span className="text-xs">Belum ada media</span>
+        </div>
+      )}
+
+      {/* Upload buttons */}
+      <input ref={imgRef} type="file" accept="image/*" multiple className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          void (async () => { for (const f of files) await uploadFile(f, "image"); })();
+          e.target.value = "";
+        }}
+      />
+      <input ref={vidRef} type="file" accept="video/*" className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void uploadFile(f, "video");
+          e.target.value = "";
+        }}
+      />
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" size="sm" className="gap-1.5 flex-1" disabled={uploading}
+          onClick={() => imgRef.current?.click()}>
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
+          Tambah Foto
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="gap-1.5 flex-1" disabled={uploading}
+          onClick={() => vidRef.current?.click()}>
+          <Video className="h-3.5 w-3.5" />
+          Tambah Video
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Foto pertama jadi cover. Foto bisa lebih dari satu.</p>
+    </div>
+  );
+}
+
 function ItemEditCard({
   item,
   onSave,
   type,
 }: {
   item: Service | Product;
-  onSave: (id: number, data: Partial<Service>) => Promise<void>;
+  onSave: (id: number, data: Partial<Service & { mediaItems: MediaItem[] }>) => Promise<void>;
   type: "services" | "products";
 }) {
   const { toast } = useToast();
@@ -260,13 +370,25 @@ function ItemEditCard({
   const [description, setDescription] = useState(item.description ?? "");
   const [price, setPrice] = useState(String(item.price));
   const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>(
+    type === "products" ? (item as Product).mediaItems ?? [] : []
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
     setSaving(true);
     try {
-      await onSave(item.id, { name, description: description || null, price: parseFloat(price) || 0, imageUrl });
+      const payload: Partial<Service & { mediaItems: MediaItem[] }> = {
+        name,
+        description: description || null,
+        price: parseFloat(price) || 0,
+        imageUrl: type === "products" && mediaItems.length > 0
+          ? (mediaItems.find((m) => m.type === "image")?.url ?? imageUrl)
+          : imageUrl,
+      };
+      if (type === "products") payload.mediaItems = mediaItems;
+      await onSave(item.id, payload);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       toast({ title: `${type === "services" ? "Layanan" : "Produk"} berhasil diperbarui` });
@@ -308,11 +430,17 @@ function ItemEditCard({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-sm">Gambar</Label>
-            <ImageUploader
-              currentUrl={imageUrl}
-              onUpload={(url) => setImageUrl(url)}
-            />
+            {type === "products" ? (
+              <>
+                <Label className="text-sm">Foto & Video Produk</Label>
+                <MediaUploader mediaItems={mediaItems} onChange={setMediaItems} />
+              </>
+            ) : (
+              <>
+                <Label className="text-sm">Gambar</Label>
+                <ImageUploader currentUrl={imageUrl} onUpload={(url) => setImageUrl(url)} />
+              </>
+            )}
           </div>
         </div>
         <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
@@ -348,7 +476,7 @@ function ServicesTab() {
     })();
   }, []);
 
-  async function handleSave(id: number, data: Partial<Service>) {
+  async function handleSave(id: number, data: Partial<Service & { mediaItems: MediaItem[] }>) {
     await apiPut(`/api/portal/admin/services/${id}`, data);
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...data } : s)));
   }
@@ -402,7 +530,7 @@ function ProductsTab() {
     })();
   }, []);
 
-  async function handleSave(id: number, data: Partial<Product>) {
+  async function handleSave(id: number, data: Partial<Product & { mediaItems: MediaItem[] }>) {
     await apiPut(`/api/portal/admin/products/${id}`, data);
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
   }

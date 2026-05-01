@@ -112,14 +112,19 @@ async function listByType(type: string) {
     .where(and(eq(productsTable.isActive, true), eq(productsTable.itemType, type)));
   const ids = rows.map((p) => p.id);
   const catMap = await getProductCategories(ids);
-  return rows.map((p) => ({
-    id: p.id,
-    name: p.name,
-    description: p.description ?? null,
-    price: Number(p.price),
-    imageUrl: p.imageUrl ?? null,
-    categories: catMap[p.id] ?? [],
-  }));
+  return rows.map((p) => {
+    let mediaItems: Array<{ type: string; url: string }> = [];
+    try { mediaItems = JSON.parse(p.mediaItems ?? "[]"); } catch { /* empty */ }
+    return {
+      id: p.id,
+      name: p.name,
+      description: p.description ?? null,
+      price: Number(p.price),
+      imageUrl: p.imageUrl ?? null,
+      mediaItems,
+      categories: catMap[p.id] ?? [],
+    };
+  });
 }
 
 // GET /api/portal/services  — item_type = 'jasa'
@@ -282,7 +287,7 @@ function sanitizeText(val: unknown): string | null {
 
 // PUT /api/portal/admin/services/:id  — update service (admin only)
 router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { name, description, price, imageUrl } = req.body ?? {};
   const updates: Record<string, unknown> = {};
@@ -297,7 +302,7 @@ router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
 
 // POST /api/portal/admin/products  — create a new product (admin only)
 router.post("/admin/products", requirePortalAdmin, async (req, res) => {
-  const { name, description, price, imageUrl } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems } = req.body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Nama produk harus diisi" });
   }
@@ -316,6 +321,7 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
       description: description ? String(description).trim() : null,
       price: parsedPrice.toFixed(2),
       imageUrl: imageUrl ? String(imageUrl).trim() : null,
+      mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
       itemType: "barang",
       unit: "pcs",
       isActive: true,
@@ -326,14 +332,15 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
 
 // PUT /api/portal/admin/products/:id  — update product (admin only)
 router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, imageUrl } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
   if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
+  if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(mediaItems);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);
@@ -344,7 +351,8 @@ const _objectStorage = new ObjectStorageService();
 router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {
   const { contentType } = req.body ?? {};
   if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
-  if (!contentType.startsWith("image/")) return res.status(415).json({ message: "Hanya file gambar yang diizinkan" });
+  if (!contentType.startsWith("image/") && !contentType.startsWith("video/"))
+    return res.status(415).json({ message: "Hanya file gambar atau video yang diizinkan" });
   try {
     const uploadURL = await _objectStorage.getObjectEntityUploadURL();
     const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
@@ -543,7 +551,7 @@ router.patch("/logistic-orders/:id/cancel", requirePortalAuth, async (req, res) 
   }
   const [updated] = await db
     .update(logisticOrdersTable)
-    .set({ status: "Cancelled", updatedAt: new Date() })
+    .set({ status: "Cancelled" })
     .where(eq(logisticOrdersTable.id, id))
     .returning();
   return res.json({
