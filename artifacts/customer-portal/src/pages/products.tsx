@@ -81,24 +81,32 @@ function useVideoThumbnail(src: string | null) {
   const [thumb, setThumb] = useState<string | null>(null);
   useEffect(() => {
     if (!src) return;
+    let cancelled = false;
     const vid = document.createElement("video");
-    vid.crossOrigin = "anonymous";
     vid.preload = "metadata";
     vid.muted = true;
+    vid.playsInline = true;
     vid.src = src;
     const capture = () => {
+      if (cancelled) return;
       try {
         const canvas = document.createElement("canvas");
         canvas.width = vid.videoWidth || 320;
         canvas.height = vid.videoHeight || 240;
         canvas.getContext("2d")?.drawImage(vid, 0, 0, canvas.width, canvas.height);
         setThumb(canvas.toDataURL("image/jpeg", 0.7));
-      } catch { /* cross-origin or empty — leave null */ }
+      } catch { /* tainted canvas — leave null */ }
     };
-    vid.addEventListener("loadedmetadata", () => { vid.currentTime = 0.1; });
+    vid.addEventListener("loadedmetadata", () => {
+      vid.currentTime = 0.1;
+    });
     vid.addEventListener("seeked", capture, { once: true });
+    vid.addEventListener("error", () => { /* silent */ });
     vid.load();
-    return () => { vid.src = ""; };
+    return () => {
+      cancelled = true;
+      vid.src = "";
+    };
   }, [src]);
   return thumb;
 }
