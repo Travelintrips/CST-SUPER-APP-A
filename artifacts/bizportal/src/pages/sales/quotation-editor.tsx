@@ -316,8 +316,28 @@ export default function SalesDocumentEditorPage() {
     }
   };
 
-  const downloadPdf = () => {
-    if (id) window.open(`/api/sales/documents/${id}/pdf`, "_blank");
+  const downloadPdf = async () => {
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/sales/documents/${id}/pdf`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Gagal membuka PDF", description: (err as any)?.message ?? `Error ${res.status}`, variant: "destructive" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch {
+      toast({ title: "Gagal membuka PDF", description: "Periksa koneksi jaringan Anda.", variant: "destructive" });
+    }
   };
   const payViaPaylabs = async () => {
     if (!id) return;

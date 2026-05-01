@@ -82,6 +82,30 @@ export default function PurchaseDocumentEditorPage() {
   const idStr = paramsRfq?.id ?? paramsOrder?.id;
   const id = idStr ? Number(idStr) : null;
 
+  const downloadPdf = async () => {
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/purchase/documents/${id}/pdf`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Gagal membuka PDF", description: (err as any)?.message ?? `Error ${res.status}`, variant: "destructive" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch {
+      toast({ title: "Gagal membuka PDF", description: "Periksa koneksi jaringan Anda.", variant: "destructive" });
+    }
+  };
+
   const { data: doc, isLoading: docLoading } = useGetPurchaseDocument(id ?? 0, {
     query: {
       enabled: !isNew && id !== null,
@@ -522,7 +546,7 @@ export default function PurchaseDocumentEditorPage() {
               <Button variant="ghost" onClick={remove} data-testid="button-delete"><Trash2 className="mr-2 h-4 w-4 text-destructive" /></Button>
             )}
             {!isNew && doc && id && (
-              <Button variant="outline" onClick={() => window.open(`/api/purchase/documents/${id}/pdf`, "_blank")} data-testid="button-download-pdf">
+              <Button variant="outline" onClick={downloadPdf} data-testid="button-download-pdf">
                 <Printer className="mr-2 h-4 w-4" /> Cetak PDF
               </Button>
             )}
