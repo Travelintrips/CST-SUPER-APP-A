@@ -362,6 +362,23 @@ router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {
   }
 });
 
+// POST /api/portal/order-upload-url  — get presigned URL for order document uploads (customer auth)
+router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
+  const { contentType } = req.body ?? {};
+  if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
+  const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+  if (!allowed.includes(contentType) && !contentType.startsWith("image/"))
+    return res.status(415).json({ message: "Tipe file tidak diizinkan" });
+  try {
+    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
+    const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
+    return res.json({ uploadURL, objectPath });
+  } catch (_err) {
+    return res.status(500).json({ message: "Gagal membuat URL upload" });
+  }
+});
+
 // Shared helper: find or create CRM customer by email
 async function findOrCreateCrmCustomer(portalCustomer: { name: string; email: string; phone: string | null; company: string | null }) {
   const [existing] = await db.select().from(customersTable).where(eq(customersTable.email, portalCustomer.email));

@@ -28,10 +28,11 @@ import LogisticOrderSuccess from "@/pages/logistic-order-success";
 import LogisticTrack from "@/pages/logistic-track";
 import LogisticAdmin from "@/pages/logistic-admin";
 import LogisticAdminOrderDetail from "@/pages/logistic-admin-order-detail";
+import FreightForwarding from "@/pages/freight-forwarding";
 
 const queryClient = new QueryClient();
 
-const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/track", "/logistic-admin"];
+const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/track", "/logistic-admin", "/freight-forwarding"];
 
 function AppShell() {
   const [location] = useLocation();
@@ -52,6 +53,7 @@ function AppShell() {
       <Route path="/orders" component={Orders} />
       <Route path="/admin" component={Admin} />
       {/* Logistic ordering routes */}
+      <Route path="/freight-forwarding" component={FreightForwarding} />
       <Route path="/book" component={LogisticBook} />
       <Route path="/logistic-order-success" component={LogisticOrderSuccess} />
       <Route path="/track" component={LogisticTrack} />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, Ship, Plane, Package, Warehouse, Truck, FileCheck,
-  Shield, FileText, ArrowRight,
+  Shield, FileText, ArrowRight, ChevronRight,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -44,6 +44,7 @@ const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: strin
 const DEFAULT_COLOR = { bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-700" };
 
 export default function Jasa() {
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("Semua");
 
@@ -110,6 +111,39 @@ export default function Jasa() {
               {cat}
             </button>
           ))}
+        </div>
+
+        {/* ── Freight Forwarding featured banner ── */}
+        <div className="mb-6 rounded-2xl border-2 border-primary/20 bg-gradient-to-r from-primary/5 via-sky-50 to-blue-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-4 flex-1">
+            <div className="flex gap-2 shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                <Ship className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center">
+                <Plane className="h-5 w-5 text-sky-600" />
+              </div>
+            </div>
+            <div>
+              <p className="font-bold text-foreground">Freight Forwarding</p>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {["Impor", "Ekspor", "Domestic"].map((d) => (
+                  <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0">{d}</Badge>
+                ))}
+                <span className="text-[10px] text-muted-foreground">×</span>
+                {["Sea Freight", "Air Freight"].map((m) => (
+                  <Badge key={m} variant="outline" className="text-[10px] px-1.5 py-0">{m}</Badge>
+                ))}
+                <span className="text-[10px] text-muted-foreground">×</span>
+                {["D2D", "D2P", "P2D", "P2P"].map((v) => (
+                  <Badge key={v} className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">{v}</Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+          <Button onClick={() => setLocation("/freight-forwarding")} className="gap-2 shrink-0">
+            Buat Pesanan <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Services grid */}
