@@ -183,6 +183,36 @@ export default function FreightForwarding() {
 
   const isDG = goodsCategory === "DG";
 
+  // ── Cargo calculations ────────────────────────────────────────────
+  const totalGrossWeight = items.reduce((sum, it) => {
+    const w = parseFloat(it.grossWeight) || 0;
+    return sum + w;
+  }, 0);
+
+  const totalVolumeCBM = items.reduce((sum, it) => {
+    const l = parseFloat(it.length) || 0;
+    const w = parseFloat(it.width) || 0;
+    const h = parseFloat(it.height) || 0;
+    const k = parseFloat(it.kolli) || 1;
+    return sum + (l * w * h * k) / 1_000_000;
+  }, 0);
+
+  // Air freight standard: 1 CBM = 167 kg volumetric weight
+  const volumetricWeight = totalVolumeCBM * 167;
+  const chargeableWeight = Math.max(totalGrossWeight, volumetricWeight);
+  const freightPriceNum = parseFloat(freightPrice) || 0;
+  // For Air: price per kg × chargeable weight; For Sea: price per CBM × volume
+  const estimasiTotal = mode === "Air"
+    ? freightPriceNum * chargeableWeight
+    : freightPriceNum * totalVolumeCBM;
+
+  function fmtIDR(n: number) {
+    return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+  }
+  function fmtNum(n: number, dec = 3) {
+    return n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: dec });
+  }
+
   // Available variants per direction
   function availableVariants(): Variant[] {
     if (direction === "Domestic") return ["D2P", "P2P"];
@@ -258,7 +288,16 @@ export default function FreightForwarding() {
           grossWeight: it.grossWeight, kolli: it.kolli,
           dimensions: `${it.length}x${it.width}x${it.height} cm`,
         })),
-        freightPrice,
+        totalGrossWeight: `${fmtNum(totalGrossWeight, 1)} kg`,
+        totalVolumeCBM: `${fmtNum(totalVolumeCBM)} CBM`,
+        ...(mode === "Air" ? {
+          volumetricWeight: `${fmtNum(volumetricWeight, 1)} kg`,
+          chargeableWeight: `${fmtNum(chargeableWeight, 1)} kg`,
+          estimasiTotal: fmtIDR(estimasiTotal),
+        } : {
+          estimasiTotal: fmtIDR(estimasiTotal),
+        }),
+        freightPrice: `${freightPrice} IDR/${mode === "Air" ? "kg" : "CBM"}`,
         documents: { invoice: docInvoice?.objectPath, packingList: docPackingList?.objectPath, msds: docMsds?.objectPath, coa: docCoa?.objectPath, other: docOther?.objectPath },
       });
 
@@ -282,7 +321,7 @@ export default function FreightForwarding() {
           {
             name: serviceLabel,
             quantity: 1,
-            unitPrice: parseFloat(freightPrice) || 0,
+            unitPrice: estimasiTotal > 0 ? estimasiTotal : (parseFloat(freightPrice) || 0),
           },
         ],
       };
@@ -634,15 +673,63 @@ export default function FreightForwarding() {
                 </div>
               </div>
 
+              {/* Cargo summary */}
+              {(totalGrossWeight > 0 || totalVolumeCBM > 0) && (
+                <div className="rounded-xl bg-sky-50 border border-sky-200 px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wide">Jumlah Volume</p>
+                    <p className="text-sm font-bold text-sky-900">{fmtNum(totalVolumeCBM)} CBM</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wide">Total Berat Kotor</p>
+                    <p className="text-sm font-bold text-sky-900">{fmtNum(totalGrossWeight, 1)} kg</p>
+                  </div>
+                  {mode === "Air" && (
+                    <>
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wide">Berat Volumetrik</p>
+                        <p className="text-sm font-bold text-sky-900">{fmtNum(volumetricWeight, 1)} kg</p>
+                        <p className="text-[10px] text-sky-500">CBM × 167</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">Chargeable Weight</p>
+                        <p className="text-sm font-bold text-emerald-800">{fmtNum(chargeableWeight, 1)} kg</p>
+                        <p className="text-[10px] text-emerald-500">maks(kotor, vol.)</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Freight price */}
               <div className="space-y-1">
-                <Label className="text-xs">{freightLabel()} (IDR) <span className="text-muted-foreground font-normal">— kosongkan jika belum ada</span></Label>
+                <Label className="text-xs">
+                  {freightLabel()} (IDR/{mode === "Air" ? "kg" : "CBM"})
+                  {" "}<span className="text-muted-foreground font-normal">— kosongkan jika belum ada</span>
+                </Label>
                 <Input
                   type="number" min="0" placeholder="0"
                   value={freightPrice}
                   onChange={(e) => setFreightPrice(e.target.value)}
                 />
               </div>
+
+              {/* Estimasi total */}
+              {freightPriceNum > 0 && (totalGrossWeight > 0 || totalVolumeCBM > 0) && (
+                <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-700">
+                      Estimasi Total {mode === "Air" ? "Air Freight" : "Sea Freight"}
+                    </p>
+                    <p className="text-[10px] text-emerald-600 mt-0.5">
+                      {mode === "Air"
+                        ? `${fmtNum(freightPriceNum, 0)} IDR/kg × ${fmtNum(chargeableWeight, 1)} kg chargeable`
+                        : `${fmtNum(freightPriceNum, 0)} IDR/CBM × ${fmtNum(totalVolumeCBM)} CBM`}
+                    </p>
+                  </div>
+                  <p className="text-lg font-extrabold text-emerald-800 shrink-0">{fmtIDR(estimasiTotal)}</p>
+                </div>
+              )}
             </div>
 
             {/* ── Dokumen ─────────────────────── */}
