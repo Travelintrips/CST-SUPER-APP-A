@@ -25,6 +25,10 @@ import {
   Play,
   Trash2,
   Video,
+  Truck,
+  ToggleLeft,
+  ToggleRight,
+  GripVertical,
 } from "lucide-react";
 import {
   Dialog,
@@ -33,6 +37,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 
 type Service = {
   id: number;
@@ -630,6 +635,248 @@ function ProductsTab() {
   );
 }
 
+type DeliveryVendor = {
+  id: number;
+  name: string;
+  logo: string;
+  eta: string;
+  fee: number;
+  note: string | null;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+function DeliveryVendorsTab() {
+  const { toast } = useToast();
+  const [vendors, setVendors] = useState<DeliveryVendor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newLogo, setNewLogo] = useState("📦");
+  const [newEta, setNewEta] = useState("2-3 hari");
+  const [newFee, setNewFee] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editData, setEditData] = useState<Partial<DeliveryVendor>>({});
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    try {
+      const data = await apiGet<DeliveryVendor[]>("/api/portal/admin/delivery-vendors");
+      setVendors(data);
+    } catch {
+      toast({ title: "Gagal memuat data kurir", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  async function handleAdd() {
+    if (!newName.trim()) {
+      toast({ title: "Nama vendor harus diisi", variant: "destructive" });
+      return;
+    }
+    setAdding(true);
+    try {
+      const created = await apiPost<DeliveryVendor>("/api/portal/admin/delivery-vendors", {
+        name: newName.trim(),
+        logo: newLogo.trim() || "📦",
+        eta: newEta.trim() || "2-3 hari",
+        fee: parseFloat(newFee) || 0,
+        note: newNote.trim() || null,
+      });
+      setVendors((prev) => [...prev, created]);
+      setShowAdd(false);
+      setNewName(""); setNewLogo("📦"); setNewEta("2-3 hari"); setNewFee(""); setNewNote("");
+      toast({ title: "Kurir berhasil ditambahkan" });
+    } catch (err) {
+      toast({ title: "Gagal menambahkan kurir", description: String(err), variant: "destructive" });
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggle(id: number, isActive: boolean) {
+    try {
+      await apiPut(`/api/portal/admin/delivery-vendors/${id}`, { isActive });
+      setVendors((prev) => prev.map((v) => v.id === id ? { ...v, isActive } : v));
+    } catch {
+      toast({ title: "Gagal mengubah status", variant: "destructive" });
+    }
+  }
+
+  async function handleSaveEdit(id: number) {
+    setSaving(true);
+    try {
+      const updated = await apiPut<DeliveryVendor>(`/api/portal/admin/delivery-vendors/${id}`, editData);
+      setVendors((prev) => prev.map((v) => v.id === id ? updated : v));
+      setEditId(null);
+      setEditData({});
+      toast({ title: "Kurir berhasil diperbarui" });
+    } catch {
+      toast({ title: "Gagal menyimpan", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: number, name: string) {
+    if (!confirm(`Hapus vendor "${name}"?`)) return;
+    try {
+      await fetch(`/api/portal/admin/delivery-vendors/${id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      setVendors((prev) => prev.filter((v) => v.id !== id));
+      toast({ title: "Kurir berhasil dihapus" });
+    } catch {
+      toast({ title: "Gagal menghapus", variant: "destructive" });
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Kelola {vendors.length} vendor kurir/pengiriman. Aktifkan atau nonaktifkan yang ditampilkan ke pelanggan.
+        </p>
+        <Button size="sm" className="gap-2" onClick={() => setShowAdd(true)}>
+          <Plus className="h-4 w-4" /> Tambah Kurir
+        </Button>
+      </div>
+
+      {/* Vendor list */}
+      <div className="space-y-2">
+        {vendors.map((v) => (
+          <div key={v.id} className={`rounded-xl border p-4 transition-all ${v.isActive ? "bg-white border-border" : "bg-gray-50 border-dashed border-gray-200 opacity-60"}`}>
+            {editId === v.id ? (
+              /* Edit mode */
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Nama</Label>
+                    <Input value={editData.name ?? v.name} onChange={(e) => setEditData((d) => ({ ...d, name: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Logo/Emoji</Label>
+                    <Input value={editData.logo ?? v.logo} onChange={(e) => setEditData((d) => ({ ...d, logo: e.target.value }))} placeholder="📦" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Estimasi (ETA)</Label>
+                    <Input value={editData.eta ?? v.eta} onChange={(e) => setEditData((d) => ({ ...d, eta: e.target.value }))} placeholder="2-3 hari" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Ongkir (0 = Nego)</Label>
+                    <Input type="number" value={editData.fee ?? v.fee} onChange={(e) => setEditData((d) => ({ ...d, fee: parseFloat(e.target.value) || 0 }))} min="0" />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">Catatan (opsional)</Label>
+                    <Input value={editData.note ?? v.note ?? ""} onChange={(e) => setEditData((d) => ({ ...d, note: e.target.value || null }))} placeholder="Harga nego, dll." />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => handleSaveEdit(v.id)} disabled={saving} className="gap-1.5">
+                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    Simpan
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditId(null); setEditData({}); }}>Batal</Button>
+                </div>
+              </div>
+            ) : (
+              /* View mode */
+              <div className="flex items-center gap-4">
+                <GripVertical className="h-4 w-4 text-muted-foreground/40 shrink-0 cursor-grab" />
+                <span className="text-2xl shrink-0">{v.logo}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{v.name}</p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-xs text-muted-foreground">⏱ {v.eta}</span>
+                    <span className="text-xs font-medium text-primary">
+                      {v.fee > 0 ? new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v.fee) : v.note ?? "Nego"}
+                    </span>
+                    {!v.isActive && <Badge variant="secondary" className="text-[10px] px-1">Nonaktif</Badge>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    {v.isActive ? <ToggleRight className="h-4 w-4 text-primary" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                    <Switch
+                      checked={v.isActive}
+                      onCheckedChange={(checked) => void handleToggle(v.id, checked)}
+                    />
+                  </div>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { setEditId(v.id); setEditData({}); }}>
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" onClick={() => void handleDelete(v.id, v.name)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        {vendors.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground">
+            Belum ada kurir. Klik "Tambah Kurir" untuk menambahkan.
+          </div>
+        )}
+      </div>
+
+      {/* Add dialog */}
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tambah Vendor Kurir</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1">
+                <Label>Nama Vendor *</Label>
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="JNE REG" />
+              </div>
+              <div className="space-y-1">
+                <Label>Logo/Emoji</Label>
+                <Input value={newLogo} onChange={(e) => setNewLogo(e.target.value)} placeholder="📦" />
+              </div>
+              <div className="space-y-1">
+                <Label>Estimasi Waktu</Label>
+                <Input value={newEta} onChange={(e) => setNewEta(e.target.value)} placeholder="2-3 hari" />
+              </div>
+              <div className="space-y-1">
+                <Label>Ongkir (Rp, 0 = Nego)</Label>
+                <Input type="number" value={newFee} onChange={(e) => setNewFee(e.target.value)} placeholder="15000" min="0" />
+              </div>
+              <div className="space-y-1">
+                <Label>Catatan</Label>
+                <Input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Harga nego, dll." />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowAdd(false)}>Batal</Button>
+            <Button onClick={() => void handleAdd()} disabled={adding} className="gap-2">
+              {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Tambah
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function ClaimAdminTab() {
   const { toast } = useToast();
   const [key, setKey] = useState("");
@@ -739,6 +986,10 @@ export default function AdminPage() {
                   <Box className="h-4 w-4" />
                   Kelola Produk
                 </TabsTrigger>
+                <TabsTrigger value="couriers" className="gap-2">
+                  <Truck className="h-4 w-4" />
+                  Kurir
+                </TabsTrigger>
               </>
             )}
             <TabsTrigger value="claim" className="gap-2">
@@ -787,6 +1038,20 @@ export default function AdminPage() {
                   </CardHeader>
                   <CardContent>
                     <ProductsTab />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="couriers">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Vendor Kurir & Pengiriman</CardTitle>
+                    <CardDescription>
+                      Kelola daftar kurir yang ditampilkan ke pelanggan saat memilih pengiriman produk. Aktifkan/nonaktifkan, edit ongkir, atau tambah vendor baru.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <DeliveryVendorsTab />
                   </CardContent>
                 </Card>
               </TabsContent>

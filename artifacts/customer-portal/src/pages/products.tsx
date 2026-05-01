@@ -6,7 +6,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
 import {
   ShoppingBag, Search, ShoppingCart, ChevronLeft, ChevronRight,
-  Play, X, Truck, Package, Clock, Star, Check,
+  Play, Truck, Package, Clock, Star, Check, Layers,
 } from "lucide-react";
 import { useCart } from "@/lib/cart";
 
@@ -22,18 +22,46 @@ interface Product {
   categories: string[];
 }
 
-// Indonesian courier services
-const SHIPPING_SERVICES = [
-  { id: "jne-reg",   name: "JNE REG",       logo: "📦", eta: "2-3 hari", fee: 15000 },
-  { id: "jne-yes",   name: "JNE YES",       logo: "⚡", eta: "1 hari",   fee: 35000 },
-  { id: "jnt-reg",   name: "J&T Express",   logo: "📫", eta: "2-3 hari", fee: 14000 },
-  { id: "sicepat",   name: "SiCepat REG",   logo: "🚀", eta: "2-3 hari", fee: 13000 },
-  { id: "anteraja",  name: "AnterAja",      logo: "🏃", eta: "2-4 hari", fee: 12000 },
-  { id: "pos",       name: "Pos Indonesia", logo: "📮", eta: "3-5 hari", fee: 10000 },
-  { id: "gosend",    name: "GoSend",        logo: "🛵", eta: "Same day",  fee: 25000 },
-  { id: "grab",      name: "Grab Express",  logo: "🟢", eta: "Same day",  fee: 28000 },
-  { id: "cst",       name: "CST Logistics", logo: "🚢", eta: "1-2 hari",  fee: 0, note: "Harga nego" },
-];
+interface ShippingOption {
+  id: string;
+  name: string;
+  logo: string;
+  eta: string;
+  fee: number;
+  note: string | null;
+  kind: "vendor" | "service";
+}
+
+function useShippingOptions() {
+  const [options, setOptions] = useState<ShippingOption[]>([]);
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/portal/delivery-vendors").then((r) => r.json()).catch(() => []),
+      fetch("/api/portal/services").then((r) => r.json()).catch(() => []),
+    ]).then(([vendors, services]) => {
+      const vendorOpts: ShippingOption[] = (Array.isArray(vendors) ? vendors : []).map((v: { id: number; name: string; logo: string; eta: string; fee: number; note: string | null }) => ({
+        id: `vendor-${v.id}`,
+        name: v.name,
+        logo: v.logo,
+        eta: v.eta,
+        fee: v.fee,
+        note: v.note,
+        kind: "vendor" as const,
+      }));
+      const serviceOpts: ShippingOption[] = (Array.isArray(services) ? services : []).map((s: { id: number; name: string; price: number }) => ({
+        id: `service-${s.id}`,
+        name: s.name,
+        logo: "🏢",
+        eta: "Sesuai kesepakatan",
+        fee: s.price ?? 0,
+        note: s.price === 0 ? "Harga nego" : null,
+        kind: "service" as const,
+      }));
+      setOptions([...vendorOpts, ...serviceOpts]);
+    });
+  }, []);
+  return options;
+}
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -189,10 +217,15 @@ function MediaGallery({ product }: { product: Product }) {
 function ProductModal({ product, onClose }: { product: Product; onClose: () => void }) {
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
+  const [shippingTab, setShippingTab] = useState<"vendor" | "service">("vendor");
   const { addItem, items } = useCart();
   const isInCart = items.some((i) => i.productId === product.id);
+  const allShipping = useShippingOptions();
 
-  const chosen = SHIPPING_SERVICES.find((s) => s.id === selectedShipping);
+  const vendorOpts = allShipping.filter((s) => s.kind === "vendor");
+  const serviceOpts = allShipping.filter((s) => s.kind === "service");
+  const shownOpts = shippingTab === "vendor" ? vendorOpts : serviceOpts;
+  const chosen = allShipping.find((s) => s.id === selectedShipping);
 
   function handleAddToCart() {
     addItem({
@@ -272,8 +305,28 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
               <Truck className="h-3.5 w-3.5" /> Pilih Pengiriman
             </p>
-            <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto pr-1">
-              {SHIPPING_SERVICES.map((s) => (
+            {/* Tab switcher */}
+            <div className="flex gap-1 mb-2">
+              <button
+                onClick={() => setShippingTab("vendor")}
+                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "vendor" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
+              >
+                <Package className="h-3 w-3" /> Kurir ({vendorOpts.length})
+              </button>
+              {serviceOpts.length > 0 && (
+                <button
+                  onClick={() => setShippingTab("service")}
+                  className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "service" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
+                >
+                  <Layers className="h-3 w-3" /> Jasa ({serviceOpts.length})
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto pr-1">
+              {shownOpts.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">Tidak ada pilihan tersedia</p>
+              )}
+              {shownOpts.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => setSelectedShipping(s.id === selectedShipping ? null : s.id)}
@@ -294,7 +347,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
                     {s.fee > 0 ? (
                       <p className="font-semibold text-foreground">{formatIDR(s.fee)}</p>
                     ) : (
-                      <p className="text-xs text-amber-600 font-medium">{s.note}</p>
+                      <p className="text-xs text-amber-600 font-medium">{s.note ?? "Nego"}</p>
                     )}
                   </div>
                   {selectedShipping === s.id && (

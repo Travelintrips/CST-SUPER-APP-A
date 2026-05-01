@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, deliveryVendorsTable } from "@workspace/db";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -564,6 +564,117 @@ router.patch("/logistic-orders/:id/cancel", requirePortalAuth, async (req, res) 
     origin: updated.origin,
     destination: updated.destination,
   });
+});
+
+// ── Delivery Vendors ────────────────────────────────────────────────────────
+
+const DEFAULT_VENDORS = [
+  { name: "JNE REG",       logo: "📦", eta: "2-3 hari",  fee: "15000", note: null, sortOrder: "1" },
+  { name: "JNE YES",       logo: "⚡", eta: "1 hari",    fee: "35000", note: null, sortOrder: "2" },
+  { name: "J&T Express",   logo: "📫", eta: "2-3 hari",  fee: "14000", note: null, sortOrder: "3" },
+  { name: "SiCepat REG",   logo: "🚀", eta: "2-3 hari",  fee: "13000", note: null, sortOrder: "4" },
+  { name: "AnterAja",      logo: "🏃", eta: "2-4 hari",  fee: "12000", note: null, sortOrder: "5" },
+  { name: "Pos Indonesia", logo: "📮", eta: "3-5 hari",  fee: "10000", note: null, sortOrder: "6" },
+  { name: "GoSend",        logo: "🛵", eta: "Same day",  fee: "25000", note: null, sortOrder: "7" },
+  { name: "Grab Express",  logo: "🟢", eta: "Same day",  fee: "28000", note: null, sortOrder: "8" },
+  { name: "CST Logistics", logo: "🚢", eta: "1-2 hari",  fee: "0",     note: "Harga nego", sortOrder: "9" },
+];
+
+async function ensureDefaultVendors() {
+  const existing = await db.select({ id: deliveryVendorsTable.id }).from(deliveryVendorsTable).limit(1);
+  if (existing.length === 0) {
+    await db.insert(deliveryVendorsTable).values(
+      DEFAULT_VENDORS.map((v) => ({ ...v, isActive: true }))
+    );
+  }
+}
+
+// GET /api/portal/delivery-vendors — public: return active vendors (sorted)
+router.get("/delivery-vendors", async (_req, res) => {
+  await ensureDefaultVendors();
+  const vendors = await db
+    .select()
+    .from(deliveryVendorsTable)
+    .where(eq(deliveryVendorsTable.isActive, true))
+    .orderBy(deliveryVendorsTable.sortOrder, deliveryVendorsTable.id);
+  return res.json(vendors.map((v) => ({
+    id: v.id,
+    name: v.name,
+    logo: v.logo,
+    eta: v.eta,
+    fee: Number(v.fee),
+    note: v.note,
+    isActive: v.isActive,
+    sortOrder: Number(v.sortOrder),
+  })));
+});
+
+// GET /api/portal/admin/delivery-vendors — admin: return ALL vendors
+router.get("/admin/delivery-vendors", requirePortalAdmin, async (_req, res) => {
+  await ensureDefaultVendors();
+  const vendors = await db
+    .select()
+    .from(deliveryVendorsTable)
+    .orderBy(deliveryVendorsTable.sortOrder, deliveryVendorsTable.id);
+  return res.json(vendors.map((v) => ({
+    id: v.id,
+    name: v.name,
+    logo: v.logo,
+    eta: v.eta,
+    fee: Number(v.fee),
+    note: v.note,
+    isActive: v.isActive,
+    sortOrder: Number(v.sortOrder),
+  })));
+});
+
+// POST /api/portal/admin/delivery-vendors — create vendor
+router.post("/admin/delivery-vendors", requirePortalAdmin, async (req, res) => {
+  const { name, logo, eta, fee, note } = req.body ?? {};
+  if (!name || typeof name !== "string" || !name.trim())
+    return res.status(400).json({ message: "Nama vendor harus diisi" });
+  const [maxRow] = await db
+    .select({ max: sql<number>`COALESCE(MAX(sort_order), 0)` })
+    .from(deliveryVendorsTable);
+  const nextSort = Number(maxRow?.max ?? 0) + 1;
+  const [created] = await db.insert(deliveryVendorsTable).values({
+    name: name.trim(),
+    logo: logo ? String(logo).trim() : "📦",
+    eta: eta ? String(eta).trim() : "2-3 hari",
+    fee: fee !== undefined ? String(parseFloat(String(fee)) || 0) : "0",
+    note: note ? String(note).trim() : null,
+    isActive: true,
+    sortOrder: String(nextSort),
+  }).returning();
+  return res.status(201).json({ ...created, fee: Number(created.fee), sortOrder: Number(created.sortOrder) });
+});
+
+// PUT /api/portal/admin/delivery-vendors/:id — update vendor
+router.put("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { name, logo, eta, fee, note, isActive, sortOrder } = req.body ?? {};
+  const updates: Record<string, unknown> = {};
+  if (name !== undefined) updates.name = String(name).trim();
+  if (logo !== undefined) updates.logo = String(logo).trim();
+  if (eta !== undefined) updates.eta = String(eta).trim();
+  if (fee !== undefined) updates.fee = String(parseFloat(String(fee)) || 0);
+  if (note !== undefined) updates.note = note ? String(note).trim() : null;
+  if (isActive !== undefined) updates.isActive = Boolean(isActive);
+  if (sortOrder !== undefined) updates.sortOrder = String(parseInt(String(sortOrder)) || 0);
+  if (Object.keys(updates).length === 0)
+    return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  const [updated] = await db.update(deliveryVendorsTable).set(updates).where(eq(deliveryVendorsTable.id, id)).returning();
+  if (!updated) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+  return res.json({ ...updated, fee: Number(updated.fee), sortOrder: Number(updated.sortOrder) });
+});
+
+// DELETE /api/portal/admin/delivery-vendors/:id — delete vendor
+router.delete("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  await db.delete(deliveryVendorsTable).where(eq(deliveryVendorsTable.id, id));
+  return res.json({ ok: true });
 });
 
 export default router;
