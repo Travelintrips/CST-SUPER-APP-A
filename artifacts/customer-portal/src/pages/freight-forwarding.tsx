@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { getAuthHeaders, getAuthToken, isAuthenticated } from "@/lib/auth";
+import { useGetPortalMe } from "@workspace/api-client-react";
 import {
   Ship, Plane, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft,
   Upload, FileText, AlertTriangle, Check, Loader2, Package,
@@ -180,6 +181,22 @@ export default function FreightForwarding() {
   const [docOther, setDocOther] = useState<UploadedDoc | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
+
+  // ── Load profile → pre-fill read-only fields ──────────────────────
+  const token = getAuthToken();
+  const headers = getAuthHeaders();
+  const { data: portalUser } = useGetPortalMe({
+    query: { queryKey: ["portalMe", token], enabled: !!token },
+    request: { headers },
+  });
+
+  useEffect(() => {
+    if (!portalUser) return;
+    setCustomerName((prev) => prev || (portalUser.name ?? ""));
+    setCustomerEmail((prev) => prev || (portalUser.email ?? ""));
+    setCompanyName((prev) => prev || (portalUser.company ?? ""));
+    setCustomerPhone((prev) => prev || (portalUser.phone ?? ""));
+  }, [portalUser]);
 
   const isDG = goodsCategory === "DG";
 
@@ -790,18 +807,43 @@ export default function FreightForwarding() {
                 </div>
                 Data Pemesan
               </h3>
+              {portalUser && (
+                <div className="flex items-start gap-2 text-xs text-sky-700 bg-sky-50 rounded-xl px-3 py-2.5 border border-sky-200">
+                  <Check className="h-3.5 w-3.5 mt-0.5 shrink-0 text-sky-500" />
+                  <span>Data diambil dari profil akun Anda. Hanya nomor telepon yang dapat diubah.</span>
+                </div>
+              )}
               <div className="grid sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Nama PIC <span className="text-red-500">*</span></Label>
-                  <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nama lengkap" />
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Nama lengkap"
+                    readOnly={!!portalUser?.name}
+                    className={portalUser?.name ? "bg-muted/50 text-muted-foreground cursor-default" : ""}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Nama Perusahaan</Label>
-                  <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="PT. ..." />
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="PT. ..."
+                    readOnly={!!portalUser?.company}
+                    className={portalUser?.company ? "bg-muted/50 text-muted-foreground cursor-default" : ""}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Email <span className="text-red-500">*</span></Label>
-                  <Input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="email@perusahaan.com" />
+                  <Input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="email@perusahaan.com"
+                    readOnly={!!portalUser?.email}
+                    className={portalUser?.email ? "bg-muted/50 text-muted-foreground cursor-default" : ""}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Telepon / WhatsApp <span className="text-red-500">*</span></Label>
