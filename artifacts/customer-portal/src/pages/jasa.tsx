@@ -4,44 +4,75 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Search, Ship, Plane, Download, Upload, MapPin, Home,
-  Package, Warehouse, Truck, FileCheck, Shield, FileText,
-  ArrowRight,
+  Search, Ship, Plane, Package, Warehouse, Truck, FileCheck,
+  Shield, FileText, ArrowRight,
 } from "lucide-react";
-import { CATEGORIES, SERVICE_ITEMS, ServiceCategory } from "@/lib/services-data";
+import { useListPortalServices } from "@workspace/api-client-react";
+import { resolveImageUrl } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
 
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  Ship, Plane, Download, Upload, MapPin, Home,
-  Package, Warehouse, Truck, FileCheck, Shield, FileText,
+const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
+  "Udara": Plane,
+  "Laut": Ship,
+  "Trucking": Truck,
+  "Container": Package,
+  "Pabean": FileCheck,
+  "Handling": Package,
+  "Storage": Warehouse,
+  "Document": FileText,
+  "Additional": Shield,
+  "Freight Forwarding": Ship,
+  "Lainnya": Shield,
 };
 
-const CATEGORY_COLORS: Record<ServiceCategory, { bg: string; text: string; badge: string }> = {
-  Freight:    { bg: "bg-blue-50",    text: "text-blue-700",   badge: "bg-blue-100 text-blue-700" },
-  Customs:    { bg: "bg-orange-50",  text: "text-orange-700", badge: "bg-orange-100 text-orange-700" },
-  Handling:   { bg: "bg-purple-50",  text: "text-purple-700", badge: "bg-purple-100 text-purple-700" },
-  Storage:    { bg: "bg-teal-50",    text: "text-teal-700",   badge: "bg-teal-100 text-teal-700" },
-  Trucking:   { bg: "bg-amber-50",   text: "text-amber-700",  badge: "bg-amber-100 text-amber-700" },
-  Document:   { bg: "bg-indigo-50",  text: "text-indigo-700", badge: "bg-indigo-100 text-indigo-700" },
-  Additional: { bg: "bg-pink-50",    text: "text-pink-700",   badge: "bg-pink-100 text-pink-700" },
+const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: string }> = {
+  "Udara":             { bg: "bg-blue-50",    text: "text-blue-700",   badge: "bg-blue-100 text-blue-700" },
+  "Laut":              { bg: "bg-indigo-50",  text: "text-indigo-700", badge: "bg-indigo-100 text-indigo-700" },
+  "Trucking":          { bg: "bg-amber-50",   text: "text-amber-700",  badge: "bg-amber-100 text-amber-700" },
+  "Container":         { bg: "bg-violet-50",  text: "text-violet-700", badge: "bg-violet-100 text-violet-700" },
+  "Pabean":            { bg: "bg-orange-50",  text: "text-orange-700", badge: "bg-orange-100 text-orange-700" },
+  "Handling":          { bg: "bg-purple-50",  text: "text-purple-700", badge: "bg-purple-100 text-purple-700" },
+  "Storage":           { bg: "bg-teal-50",    text: "text-teal-700",   badge: "bg-teal-100 text-teal-700" },
+  "Document":          { bg: "bg-slate-50",   text: "text-slate-700",  badge: "bg-slate-100 text-slate-700" },
+  "Additional":        { bg: "bg-pink-50",    text: "text-pink-700",   badge: "bg-pink-100 text-pink-700" },
+  "Freight Forwarding":{ bg: "bg-cyan-50",    text: "text-cyan-700",   badge: "bg-cyan-100 text-cyan-700" },
+  "Lainnya":           { bg: "bg-gray-50",    text: "text-gray-700",   badge: "bg-gray-100 text-gray-700" },
 };
+
+const DEFAULT_COLOR = { bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-700" };
 
 export default function Jasa() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<ServiceCategory | "All">("All");
+  const [activeCategory, setActiveCategory] = useState<string>("Semua");
 
-  const filtered = SERVICE_ITEMS.filter((item) => {
+  const { data: servicesRaw, isLoading } = useListPortalServices({
+    query: { queryKey: ["listPortalServicesJasa"] },
+  });
+
+  const services = Array.isArray(servicesRaw) ? servicesRaw : [];
+
+  const allCategories = Array.from(
+    new Set(services.flatMap((s) => s.categories ?? []))
+  ).sort();
+
+  const filtered = services.filter((s) => {
+    const q = searchQuery.toLowerCase();
     const matchSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchCategory = activeCategory === "All" || item.category === activeCategory;
-    return matchSearch && matchCategory;
+      !q ||
+      s.name.toLowerCase().includes(q) ||
+      (s.description ?? "").toLowerCase().includes(q) ||
+      (s.categories ?? []).some((c) => c.toLowerCase().includes(q));
+    const matchCat =
+      activeCategory === "Semua" ||
+      (s.categories ?? []).includes(activeCategory);
+    return matchSearch && matchCat;
   });
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header — compact */}
+      {/* Header */}
       <div className="bg-primary text-primary-foreground py-8 md:py-10">
         <div className="container px-4 md:px-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -66,85 +97,80 @@ export default function Jasa() {
       <div className="container px-4 md:px-6 mt-6">
         {/* Category filter tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
-          <button
-            onClick={() => setActiveCategory("All")}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
-              activeCategory === "All"
-                ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                : "bg-white text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
-            }`}
-          >
-            Semua
-          </button>
-          {CATEGORIES.map((cat) => {
-            const IconComp = ICON_MAP[cat.icon] ?? Package;
-            const colors = CATEGORY_COLORS[cat.name];
-            const isActive = activeCategory === cat.name;
-            return (
-              <button
-                key={cat.name}
-                onClick={() => setActiveCategory(isActive ? "All" : cat.name)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all border ${
-                  isActive
-                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                    : `bg-white ${colors.text} border-border hover:border-primary/40`
-                }`}
-              >
-                <IconComp className="h-3.5 w-3.5" />
-                {cat.name}
-              </button>
-            );
-          })}
+          {["Semua", ...allCategories].map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+                activeCategory === cat
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  : "bg-white text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
 
-        {/* Service grid */}
-        {filtered.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((item) => {
-              const cat = CATEGORIES.find((c) => c.name === item.category);
-              const IconComp = cat ? (ICON_MAP[cat.icon] ?? Package) : Package;
-              const colors = CATEGORY_COLORS[item.category];
-              return (
-                <Card
-                  key={item.id}
-                  className="group flex flex-col h-full border-border/50 hover:shadow-lg transition-all duration-300 overflow-hidden"
-                >
-                  {/* Icon banner */}
-                  <div className={`${colors.bg} flex items-center justify-center h-36 relative`}>
-                    <IconComp className={`h-16 w-16 ${colors.text} opacity-30`} />
-                    <div className="absolute top-3 left-3">
-                      <Badge className={`${colors.badge} border-0 font-medium`}>{item.category}</Badge>
-                    </div>
-                  </div>
-
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg leading-tight">{item.name}</CardTitle>
-                    <CardDescription className="text-sm leading-relaxed">
-                      {item.description}
-                    </CardDescription>
-                  </CardHeader>
-
-                  <CardContent className="mt-auto pt-0 space-y-3">
-                    <div className="bg-gray-50 rounded-lg p-3 flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Harga</span>
-                      <span className="font-semibold text-amber-600 text-sm">Negosiasi / Quotation</span>
-                    </div>
-                    <Link href={`/jasa/${item.id}`}>
-                      <Button className="w-full gap-2">
-                        <ArrowRight className="h-4 w-4" />
-                        Pesan Sekarang
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              );
-            })}
+        {/* Services grid */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-40 rounded-xl" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
+            <p>Tidak ada layanan yang cocok</p>
           </div>
         ) : (
-          <div className="text-center py-24 bg-white rounded-xl border border-dashed border-border">
-            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-40" />
-            <h3 className="text-xl font-medium mb-2">Tidak ada jasa ditemukan</h3>
-            <p className="text-muted-foreground">Coba kata kunci atau kategori yang berbeda.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filtered.map((service) => {
+              const primaryCat = (service.categories ?? [])[0] ?? "";
+              const Icon = ICON_BY_CATEGORY[primaryCat] ?? Package;
+              const colors = COLOR_BY_CATEGORY[primaryCat] ?? DEFAULT_COLOR;
+              const imgUrl = resolveImageUrl(service.imageUrl);
+              return (
+                <Link key={service.id} href={`/jasa/${service.id}`} className="block group">
+                  <Card className="h-full hover:shadow-md transition-all group-hover:border-primary/40 overflow-hidden">
+                    {imgUrl ? (
+                      <div className="h-32 overflow-hidden">
+                        <img
+                          src={imgUrl}
+                          alt={service.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+                    ) : (
+                      <div className={`h-24 ${colors.bg} flex items-center justify-center`}>
+                        <Icon className={`h-10 w-10 ${colors.text} opacity-60`} />
+                      </div>
+                    )}
+                    <CardHeader className="pb-2 pt-3 px-4">
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {(service.categories ?? []).map((cat) => (
+                          <Badge key={cat} className={`text-[10px] px-1.5 py-0 ${COLOR_BY_CATEGORY[cat]?.badge ?? DEFAULT_COLOR.badge}`}>
+                            {cat}
+                          </Badge>
+                        ))}
+                      </div>
+                      <CardTitle className="text-sm leading-snug">{service.name}</CardTitle>
+                    </CardHeader>
+                    {service.description && (
+                      <CardContent className="px-4 pb-3">
+                        <CardDescription className="text-xs line-clamp-2">{service.description}</CardDescription>
+                      </CardContent>
+                    )}
+                    <CardContent className="px-4 pb-4 pt-0">
+                      <Button size="sm" className="w-full gap-1 text-xs h-8 group-hover:bg-primary/90">
+                        Lihat Detail <ArrowRight className="h-3 w-3" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

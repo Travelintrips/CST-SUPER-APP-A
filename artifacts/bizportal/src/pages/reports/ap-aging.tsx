@@ -96,23 +96,28 @@ export default function ApAgingPage() {
                             <Badge className={bucketColor(it.bucket)}>{it.daysOld} hari</Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex flex-col items-end gap-1">
-                              <span className="text-muted-foreground">{idr(it.grandTotal)}</span>
-                              {isPartial && (
-                                <div className="w-24 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-amber-400"
-                                    style={{ width: `${pctPaid}%` }}
-                                  />
+                            {isPartial ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="font-medium">{idr(it.grandTotal)}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-20 h-2 rounded-full bg-gray-200 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-amber-400"
+                                      style={{ width: `${pctPaid}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-amber-600 font-medium">{pctPaid}%</span>
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">{idr(it.grandTotal)}</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {isPartial ? (
                               <div className="flex flex-col items-end gap-0.5">
                                 <span className="text-amber-700 font-medium">{idr(it.amountPaid)}</span>
-                                <span className="text-[10px] text-amber-600">{pctPaid}% terbayar</span>
+                                <span className="text-[10px] text-muted-foreground">dari {idr(it.grandTotal)}</span>
                               </div>
                             ) : (
                               <span className="text-muted-foreground">{idr(it.amountPaid)}</span>

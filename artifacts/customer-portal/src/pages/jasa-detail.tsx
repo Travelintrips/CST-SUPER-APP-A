@@ -16,8 +16,10 @@ import {
   Plus, Trash2,
 } from "lucide-react";
 import {
-  CATEGORIES, SERVICE_ITEMS, CATEGORY_COLORS_DETAIL,
+  CATEGORIES, CATEGORY_COLORS_DETAIL,
+  type ServiceCategory, type CalculatorType,
 } from "@/lib/services-data";
+import { useListPortalServices } from "@workspace/api-client-react";
 import { useCart } from "@/lib/logistic-cart";
 import { formatCurrency } from "@/lib/utils";
 import { isAuthenticated } from "@/lib/auth";
@@ -27,6 +29,34 @@ import { LocationCombobox, type GeoLocation } from "@/components/LocationCombobo
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
+};
+
+const CAT_TO_CALC: Record<string, CalculatorType> = {
+  "Udara": "air_freight",
+  "Laut": "sea_lcl",
+  "Container": "sea_fcl",
+  "Trucking": "trucking",
+  "Pabean": "customs",
+  "Handling": "generic",
+  "Storage": "storage",
+  "Document": "document",
+  "Additional": "additional",
+  "Freight Forwarding": "generic",
+  "Lainnya": "generic",
+};
+
+const CAT_TO_SERVICE_CAT: Record<string, ServiceCategory> = {
+  "Udara": "Freight",
+  "Laut": "Freight",
+  "Container": "Freight",
+  "Trucking": "Trucking",
+  "Pabean": "Customs",
+  "Handling": "Handling",
+  "Storage": "Storage",
+  "Document": "Document",
+  "Additional": "Additional",
+  "Freight Forwarding": "Freight",
+  "Lainnya": "Additional",
 };
 
 type CalcState = Record<string, string>;
@@ -128,7 +158,41 @@ export default function JasaDetail() {
   const [destGeo, setDestGeo] = useState<GeoLocation | undefined>();
   const [calcDist, setCalcDist] = useState(false);
 
-  const item = SERVICE_ITEMS.find((i) => i.id === params.id);
+  const { data: servicesRaw, isLoading: servicesLoading } = useListPortalServices({
+    query: { queryKey: ["listPortalServicesDetail"] },
+  });
+  const allServices = Array.isArray(servicesRaw) ? servicesRaw : [];
+
+  const dbService = allServices.find((s) => String(s.id) === params.id);
+  const primaryCat = (dbService?.categories ?? [])[0] ?? "";
+  const serviceCategory: ServiceCategory = CAT_TO_SERVICE_CAT[primaryCat] ?? "Freight";
+  const calculatorType: CalculatorType = CAT_TO_CALC[primaryCat] ?? "generic";
+
+  const item = dbService
+    ? {
+        id: String(dbService.id),
+        name: dbService.name,
+        description: dbService.description ?? `Layanan ${dbService.name} profesional`,
+        category: serviceCategory,
+        calculatorType,
+      }
+    : null;
+
+  const cat = CATEGORIES.find((c) => c.name === serviceCategory);
+  const IconComp = cat ? (ICON_MAP[cat.icon] ?? Package) : Package;
+  const colors = CATEGORY_COLORS_DETAIL[serviceCategory] ?? {
+    bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-700",
+    header: "from-blue-900 to-blue-700",
+  };
+
+  if (servicesLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Package className="h-12 w-12 text-muted-foreground animate-pulse" />
+      </div>
+    );
+  }
+
   if (!item) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
@@ -140,13 +204,6 @@ export default function JasaDetail() {
       </div>
     );
   }
-
-  const cat = CATEGORIES.find((c) => c.name === item.category);
-  const IconComp = cat ? (ICON_MAP[cat.icon] ?? Package) : Package;
-  const colors = CATEGORY_COLORS_DETAIL[item.category] ?? {
-    bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-700",
-    header: "from-blue-900 to-blue-700",
-  };
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
@@ -221,9 +278,19 @@ export default function JasaDetail() {
     requireAuthThenBook();
   }
 
-  const otherServices = SERVICE_ITEMS.filter(
-    (s) => s.category === item.category && s.id !== item.id
-  ).slice(0, 3);
+  const otherServices = allServices
+    .filter((s) => {
+      const sCat = (s.categories ?? [])[0] ?? "";
+      return sCat === primaryCat && s.id !== dbService?.id;
+    })
+    .slice(0, 3)
+    .map((s) => ({
+      id: String(s.id),
+      name: s.name,
+      description: s.description ?? "",
+      category: (CAT_TO_SERVICE_CAT[(s.categories ?? [])[0] ?? ""] ?? "Freight") as ServiceCategory,
+      calculatorType: (CAT_TO_CALC[(s.categories ?? [])[0] ?? ""] ?? "generic") as CalculatorType,
+    }));
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
