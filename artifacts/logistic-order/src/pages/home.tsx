@@ -70,7 +70,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
-              src="/images/logo.png"
+              src="/logistic-order/logo.png"
               alt="CST Logistics"
               className="h-10 w-auto object-contain"
             />
