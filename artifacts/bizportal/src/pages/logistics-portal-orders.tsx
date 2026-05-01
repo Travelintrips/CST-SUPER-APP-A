@@ -103,7 +103,7 @@ export default function LogisticsPortalOrdersPage() {
         onSuccess: (doc) => {
           toast({ title: "Sales Order berhasil dibuat!", description: doc.docNumber });
           setSoDialog(null);
-          navigate("/sales/documents");
+          navigate("/sales/orders");
         },
         onError: () => toast({ title: "Gagal membuat Sales Order", variant: "destructive" }),
       },
