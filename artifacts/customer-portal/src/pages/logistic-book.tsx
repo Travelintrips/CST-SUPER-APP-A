@@ -612,7 +612,9 @@ export default function BookPage() {
 
             <div className="bg-muted/40 rounded-lg border border-border p-4 space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal</span>
+                <span className="text-muted-foreground">
+                  {cartItems.length === 1 ? cartItems[0].serviceName : "Subtotal"}
+                </span>
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex justify-between text-sm">
