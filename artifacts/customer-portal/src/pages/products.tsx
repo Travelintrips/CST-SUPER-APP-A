@@ -6,7 +6,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
 import {
   ShoppingBag, Search, ShoppingCart, ChevronLeft, ChevronRight,
-  Play, Truck, Package, Clock, Star, Check, Layers,
+  Play, Truck, Package, Clock, Star, Check, Layers, ExternalLink,
 } from "lucide-react";
 import { useCart } from "@/lib/cart";
 
@@ -30,6 +30,7 @@ interface ShippingOption {
   fee: number;
   note: string | null;
   kind: "vendor" | "service";
+  serviceId?: number;
 }
 
 function useShippingOptions() {
@@ -56,6 +57,7 @@ function useShippingOptions() {
         fee: s.price ?? 0,
         note: s.price === 0 ? "Harga nego" : null,
         kind: "service" as const,
+        serviceId: s.id,
       }));
       setOptions([...vendorOpts, ...serviceOpts]);
     });
@@ -71,6 +73,44 @@ function getMedia(product: Product): MediaItem[] {
   if (items.length > 0) return items;
   if (product.imageUrl) return [{ type: "image", url: product.imageUrl }];
   return [];
+}
+
+// ── Video first-frame thumbnail capture ────────────────────────────────────
+function useVideoThumbnail(src: string | null) {
+  const [thumb, setThumb] = useState<string | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    const vid = document.createElement("video");
+    vid.crossOrigin = "anonymous";
+    vid.preload = "metadata";
+    vid.muted = true;
+    vid.src = src;
+    const capture = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = vid.videoWidth || 320;
+        canvas.height = vid.videoHeight || 240;
+        canvas.getContext("2d")?.drawImage(vid, 0, 0, canvas.width, canvas.height);
+        setThumb(canvas.toDataURL("image/jpeg", 0.7));
+      } catch { /* cross-origin or empty — leave null */ }
+    };
+    vid.addEventListener("loadedmetadata", () => { vid.currentTime = 0.1; });
+    vid.addEventListener("seeked", capture, { once: true });
+    vid.load();
+    return () => { vid.src = ""; };
+  }, [src]);
+  return thumb;
+}
+
+function VideoThumb({ src, className }: { src: string; className?: string }) {
+  const thumb = useVideoThumbnail(src);
+  return thumb ? (
+    <img src={thumb} alt="video preview" className={className ?? "w-full h-full object-cover"} />
+  ) : (
+    <div className={`bg-gray-900 flex items-center justify-center ${className ?? "w-full h-full"}`}>
+      <Play className="h-5 w-5 text-white/70 fill-white/70" />
+    </div>
+  );
 }
 
 // ── Mini image carousel for product cards ──────────────────────────────────
@@ -131,6 +171,8 @@ function MediaGallery({ product }: { product: Product }) {
 
   const current = media[idx];
   const isVideo = current?.type === "video";
+  const videoSrc = isVideo ? (resolveImageUrl(current.url) ?? null) : null;
+  const videoPoster = useVideoThumbnail(videoSrc);
 
   function prev() { setIdx((i) => (i - 1 + media.length) % media.length); setPlaying(false); }
   function next() { setIdx((i) => (i + 1) % media.length); setPlaying(false); }
@@ -155,6 +197,8 @@ function MediaGallery({ product }: { product: Product }) {
               className="w-full h-full object-contain"
               controls={playing}
               playsInline
+              preload="metadata"
+              poster={videoPoster ?? undefined}
             />
             {!playing && (
               <button
@@ -199,8 +243,11 @@ function MediaGallery({ product }: { product: Product }) {
               className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${i === idx ? "border-primary" : "border-transparent opacity-60 hover:opacity-100"}`}
             >
               {m.type === "video" ? (
-                <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                  <Play className="h-5 w-5 text-white fill-white" />
+                <div className="relative w-full h-full">
+                  <VideoThumb src={resolveImageUrl(m.url) ?? ""} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <Play className="h-4 w-4 text-white fill-white drop-shadow" />
+                  </div>
                 </div>
               ) : (
                 <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" />
@@ -327,33 +374,49 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
                 <p className="text-xs text-muted-foreground text-center py-4">Tidak ada pilihan tersedia</p>
               )}
               {shownOpts.map((s) => (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => setSelectedShipping(s.id === selectedShipping ? null : s.id)}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-all text-sm ${
                     selectedShipping === s.id
                       ? "border-primary bg-primary/5"
                       : "border-border hover:border-primary/40 hover:bg-gray-50"
                   }`}
                 >
-                  <span className="text-lg">{s.logo}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground">{s.name}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> {s.eta}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    {s.fee > 0 ? (
-                      <p className="font-semibold text-foreground">{formatIDR(s.fee)}</p>
-                    ) : (
-                      <p className="text-xs text-amber-600 font-medium">{s.note ?? "Nego"}</p>
+                  <button
+                    className="flex items-center gap-3 flex-1 min-w-0"
+                    onClick={() => setSelectedShipping(s.id === selectedShipping ? null : s.id)}
+                  >
+                    <span className="text-lg shrink-0">{s.logo}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">{s.name}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> {s.eta}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 mx-1">
+                      {s.fee > 0 ? (
+                        <p className="font-semibold text-foreground text-xs">{formatIDR(s.fee)}</p>
+                      ) : (
+                        <p className="text-xs text-amber-600 font-medium">{s.note ?? "Nego"}</p>
+                      )}
+                    </div>
+                    {selectedShipping === s.id && (
+                      <Check className="h-4 w-4 text-primary shrink-0" />
                     )}
-                  </div>
-                  {selectedShipping === s.id && (
-                    <Check className="h-4 w-4 text-primary shrink-0" />
+                  </button>
+                  {s.kind === "service" && s.serviceId != null && (
+                    <a
+                      href={`/customer-portal/jasa/${s.serviceId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                      title="Lihat detail layanan"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           </div>
