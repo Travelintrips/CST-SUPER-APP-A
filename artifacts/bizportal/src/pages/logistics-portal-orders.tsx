@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { useListLogisticOrders, useUpdateLogisticOrderStatus, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
+import { useLocation } from "wouter";
+import {
+  useListLogisticOrders,
+  useUpdateLogisticOrderStatus,
+  useCreateSalesDocument,
+  getListLogisticOrdersQueryKey,
+} from "@workspace/api-client-react";
+import type { LogisticOrder } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,8 +14,16 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { PackageOpen, Search, RefreshCw } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STATUS_OPTIONS = ["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"];
@@ -27,9 +42,12 @@ const idr = (n: number) =>
 export default function LogisticsPortalOrdersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
 
   const { data: orders = [], isLoading, refetch } = useListLogisticOrders(
     statusFilter !== "all" ? { status: statusFilter } : undefined,
@@ -37,6 +55,7 @@ export default function LogisticsPortalOrdersPage() {
   );
 
   const updateStatus = useUpdateLogisticOrderStatus();
+  const createSalesDoc = useCreateSalesDocument();
 
   function handleStatusChange(id: number, status: string) {
     setUpdatingId(id);
@@ -49,6 +68,44 @@ export default function LogisticsPortalOrdersPage() {
         },
         onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
         onSettled: () => setUpdatingId(null),
+      },
+    );
+  }
+
+  function handleCreateSalesOrder() {
+    if (!soDialog) return;
+    const o = soDialog;
+    createSalesDoc.mutate(
+      {
+        data: {
+          kind: "order",
+          customerName: o.companyName || o.customerName,
+          origin: o.origin,
+          destination: o.destination,
+          notes: [
+            `Ref Portal Order: ${o.orderNumber}`,
+            `Tipe: ${o.shipmentType}`,
+            o.commodity ? `Komoditi: ${o.commodity}` : null,
+            o.cargoDescription ? `Kargo: ${o.cargoDescription}` : null,
+            o.notes ?? null,
+          ].filter(Boolean).join(" | "),
+          lines: [
+            {
+              name: `Jasa Logistik ${o.shipmentType} — ${o.origin} → ${o.destination}`,
+              description: `Portal Order #${o.orderNumber} (${o.customerName})`,
+              quantity: 1,
+              unitPrice: o.grandTotal,
+            },
+          ],
+        },
+      },
+      {
+        onSuccess: (doc) => {
+          toast({ title: "Sales Order berhasil dibuat!", description: doc.docNumber });
+          setSoDialog(null);
+          navigate("/sales/documents");
+        },
+        onError: () => toast({ title: "Gagal membuat Sales Order", variant: "destructive" }),
       },
     );
   }
@@ -80,7 +137,7 @@ export default function LogisticsPortalOrdersPage() {
               <PackageOpen className="h-6 w-6" /> Portal Orders
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Pesanan masuk dari customer portal — ubah status untuk update ke pelanggan
+              Pesanan masuk dari customer portal — ubah status atau konversi ke Sales Order
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
@@ -144,18 +201,19 @@ export default function LogisticsPortalOrdersPage() {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Memuat...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Tidak ada pesanan
                     </TableCell>
                   </TableRow>
@@ -178,7 +236,7 @@ export default function LogisticsPortalOrdersPage() {
                       <Badge variant="outline" className="text-xs">{o.shipmentType}</Badge>
                     </TableCell>
                     <TableCell className="text-right font-medium text-sm">
-                      {idr(Number(o.grandTotal))}
+                      {idr(o.grandTotal)}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {new Date(o.createdAt).toLocaleDateString("id-ID", {
@@ -206,6 +264,18 @@ export default function LogisticsPortalOrdersPage() {
                         </Select>
                       </div>
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 text-xs h-7 whitespace-nowrap"
+                        onClick={() => setSoDialog(o)}
+                        disabled={o.status === "Cancelled"}
+                      >
+                        <FilePlus className="h-3.5 w-3.5" />
+                        Buat SO
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -213,6 +283,65 @@ export default function LogisticsPortalOrdersPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Create Sales Order Dialog */}
+      <Dialog open={!!soDialog} onOpenChange={(open) => { if (!open) setSoDialog(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FilePlus className="h-5 w-5" /> Buat Sales Order
+            </DialogTitle>
+            <DialogDescription>
+              Sales Order akan dibuat dari portal order berikut dan diarahkan ke halaman Sales.
+            </DialogDescription>
+          </DialogHeader>
+          {soDialog && (
+            <div className="space-y-3 py-2">
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">No. Order</span>
+                  <span className="font-mono font-medium">{soDialog.orderNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Pelanggan</span>
+                  <span className="font-medium">{soDialog.customerName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Perusahaan</span>
+                  <span>{soDialog.companyName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Rute</span>
+                  <span>{soDialog.origin} → {soDialog.destination}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tipe</span>
+                  <Badge variant="outline" className="text-xs">{soDialog.shipmentType}</Badge>
+                </div>
+                <div className="flex justify-between border-t pt-2 mt-2">
+                  <span className="text-muted-foreground font-medium">Total</span>
+                  <span className="font-bold text-base">{idr(soDialog.grandTotal)}</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Sales Order akan dibuat dengan status <strong>Draft</strong> dengan 1 line item berisi total harga portal order ini.
+                Anda bisa mengubah detail di halaman Sales setelah dibuat.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSoDialog(null)}>Batal</Button>
+            <Button
+              onClick={handleCreateSalesOrder}
+              disabled={createSalesDoc.isPending}
+              className="gap-2"
+            >
+              <FilePlus className="h-4 w-4" />
+              {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

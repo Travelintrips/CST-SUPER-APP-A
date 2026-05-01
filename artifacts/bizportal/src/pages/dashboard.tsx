@@ -1,9 +1,10 @@
 import { useCallback, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
-import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime } from "@workspace/api-client-react";
+import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -155,6 +156,16 @@ export default function DashboardPage() {
   const activeFreightCount = summary?.activeFreightCount ?? 0;
   const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
   const inTransitCount = summary?.inTransitCount ?? 0;
+
+  const { data: portalOrders = [], isLoading: portalLoading } = useListLogisticOrders(undefined, {
+    query: { queryKey: ["dashboard-portal-orders"], refetchInterval },
+  });
+  const portalNew = portalOrders.filter((o) => o.status === "New Order").length;
+  const portalInProgress = portalOrders.filter((o) => o.status === "In Progress").length;
+  const portalCompleted = portalOrders.filter((o) => o.status === "Completed").length;
+  const latestPortalOrders = [...portalOrders]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5);
 
   const formatIDR = (value: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -345,6 +356,99 @@ export default function DashboardPage() {
                     <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Dalam Perjalanan</p>
                   </div>
                 </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Portal Orders Widget */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PackageOpen className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Portal Orders</CardTitle>
+                {portalNew > 0 && (
+                  <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs">
+                    {portalNew} baru
+                  </Badge>
+                )}
+              </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/logistics/portal-orders">
+                  Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+            <CardDescription>Permintaan jasa dari customer portal</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Status summary */}
+            <div className="grid grid-cols-3 gap-4">
+              <Link href="/logistics/portal-orders?status=New+Order" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-2xl font-bold text-yellow-600">{portalLoading ? "—" : portalNew}</p>
+                    {portalNew > 0 && <Clock className="h-4 w-4 text-yellow-500 shrink-0" />}
+                  </div>
+                  <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Baru Masuk</p>
+                </div>
+              </Link>
+              <Link href="/logistics/portal-orders?status=In+Progress" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50">
+                <div className="space-y-1">
+                  <p className="text-2xl font-bold text-orange-500">{portalLoading ? "—" : portalInProgress}</p>
+                  <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Diproses</p>
+                </div>
+              </Link>
+              <Link href="/logistics/portal-orders?status=Completed" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50">
+                <div className="space-y-1">
+                  <p className="text-2xl font-bold text-green-600">{portalLoading ? "—" : portalCompleted}</p>
+                  <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Selesai</p>
+                </div>
+              </Link>
+            </div>
+
+            {/* Latest orders list */}
+            {portalLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full bg-muted" />
+                ))}
+              </div>
+            ) : latestPortalOrders.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Belum ada portal order</p>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {latestPortalOrders.map((o) => (
+                  <div key={o.id} className="flex items-center justify-between py-2 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-muted-foreground">{o.orderNumber}</span>
+                        <Badge
+                          className={`text-[10px] px-1.5 py-0 border ${
+                            o.status === "New Order" ? "bg-yellow-100 text-yellow-800 border-yellow-200" :
+                            o.status === "In Progress" ? "bg-orange-100 text-orange-800 border-orange-200" :
+                            o.status === "Completed" ? "bg-green-100 text-green-800 border-green-200" :
+                            o.status === "Confirmed" ? "bg-blue-100 text-blue-800 border-blue-200" :
+                            "bg-gray-100 text-gray-700 border-gray-200"
+                          }`}
+                        >
+                          {o.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm font-medium truncate">{o.customerName} · {o.companyName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{o.origin} → {o.destination} · {o.shipmentType}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold">
+                        {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(o.grandTotal)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(o.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
