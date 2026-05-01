@@ -28,10 +28,8 @@ export default function HomePage() {
       <nav className="border-b border-border bg-card sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded bg-primary flex items-center justify-center">
-              <Ship className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-foreground text-sm tracking-wide uppercase">Logistic Ordering</span>
+            <img src="/logistic-order/logocst.png" alt="CST Logistics" className="h-10 w-auto object-contain" />
+            <span className="font-bold text-foreground text-sm tracking-wide">PT. Cahaya Sejati Teknologi</span>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => setLocation("/track")}>Track Order</Button>
