@@ -70,9 +70,9 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
-              src="/logistic-order/logocst-new.jpg"
+              src="/logocst_nobg.png"
               alt="CST Logistics"
-              className="h-10 w-10 object-contain rounded-full"
+              className="h-10 w-auto object-contain"
             />
             <span className="font-bold text-foreground text-sm tracking-wide">
               PT. Cahaya Sejati Teknologi
