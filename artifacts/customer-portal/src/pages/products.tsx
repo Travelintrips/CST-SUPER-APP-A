@@ -282,7 +282,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
   const [shippingTab, setShippingTab] = useState<"vendor" | "service">("vendor");
-  const { addItem, addItemSilent, items } = useCart();
+  const { addItem, addItemSilent, openCheckout, items } = useCart();
   const [, setLocation] = useLocation();
   const isInCart = items.some((i) => i.productId === product.id);
   const allShipping = useShippingOptions();
@@ -292,23 +292,22 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const shownOpts = shippingTab === "vendor" ? vendorOpts : serviceOpts;
   const chosen = allShipping.find((s) => s.id === selectedShipping);
 
+  const cartPayload = {
+    productId: product.id,
+    name: product.name,
+    unitPrice: product.price,
+    itemType: "barang" as const,
+  };
+
   function handleAddToCart() {
-    addItem({
-      productId: product.id,
-      name: product.name,
-      unitPrice: product.price,
-      itemType: "barang",
-    });
+    addItem(cartPayload);
+    onClose();
   }
 
   function handleBuyNow() {
     if (chosen && chosen.kind === "service" && chosen.serviceId != null) {
-      addItemSilent({
-        productId: product.id,
-        name: product.name,
-        unitPrice: product.price,
-        itemType: "barang",
-      });
+      // Jasa flow: add silently → navigate to jasa detail → sticky confirm banner opens checkout
+      addItemSilent(cartPayload);
       sessionStorage.setItem(
         "pendingJasaReview",
         JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name })
@@ -316,8 +315,10 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
       onClose();
       setLocation(`/jasa/${chosen.serviceId}`);
     } else {
-      handleAddToCart();
+      // Vendor / no-shipping flow: add silently → open cart drawer at checkout step directly
+      addItemSilent(cartPayload);
       onClose();
+      openCheckout();
     }
   }
 

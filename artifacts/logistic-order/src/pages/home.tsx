@@ -28,7 +28,7 @@ export default function HomePage() {
       <nav className="border-b border-border bg-card sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logistic-order/logocst.png" alt="CST Logistics" className="h-10 w-auto object-contain" />
+            <img src="/logistic-order/logo.png" alt="CST Logistics" className="h-10 w-auto object-contain" />
             <span className="font-bold text-foreground text-sm tracking-wide">PT. Cahaya Sejati Teknologi</span>
           </div>
           <div className="flex items-center gap-3">
