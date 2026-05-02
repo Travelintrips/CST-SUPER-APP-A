@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { assetUrl } from "@/lib/utils";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -54,7 +54,14 @@ export default function Login() {
       <div className="hidden md:flex flex-col justify-center p-12 lg:p-24 bg-primary text-primary-foreground relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 bg-cover bg-center mix-blend-overlay" style={{ backgroundImage: `url(${assetUrl("/images/warehouse.png")})` }} />
         <div className="relative z-10 max-w-lg">
-          <Package className="h-12 w-12 text-accent mb-8" />
+          <div className="inline-flex mb-8 bg-white/95 rounded-xl p-2 shadow-sm">
+            <img
+              src={assetUrl("/images/logo.png")}
+              alt="Logo"
+              className="h-12 w-auto object-contain"
+              style={{ maxWidth: "160px" }}
+            />
+          </div>
           <h1 className="text-4xl lg:text-5xl font-display font-bold leading-tight mb-6">
             {t("login.sideTitle")}
           </h1>

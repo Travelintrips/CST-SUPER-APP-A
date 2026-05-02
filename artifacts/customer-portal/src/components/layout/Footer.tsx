@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Package, Mail, MapPin, Phone } from "lucide-react";
+import { Mail, MapPin, Phone } from "lucide-react";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useLanguage } from "@/i18n/LanguageContext";
 
@@ -15,8 +15,15 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12">
 
           <div className="md:col-span-1 space-y-4">
-            <div className="flex items-center gap-2">
-              <Package className="h-8 w-8 text-accent" />
+            <div className="flex items-center gap-3">
+              <div className="shrink-0 bg-white/95 rounded-xl p-1.5 shadow-sm">
+                <img
+                  src={`${import.meta.env.BASE_URL}images/logo.png`}
+                  alt="Logo"
+                  className="h-9 w-auto object-contain"
+                  style={{ maxWidth: "120px" }}
+                />
+              </div>
               <span className="font-display font-bold text-xl">
                 {company?.name || "CST"}
               </span>
