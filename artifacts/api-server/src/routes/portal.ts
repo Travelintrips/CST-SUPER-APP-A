@@ -4,6 +4,7 @@ import { eq, inArray, and, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendWhatsApp } from "../lib/fonnte";
+import { getAdminWa } from "../lib/adminWa.js";
 
 const router = Router();
 
@@ -96,14 +97,14 @@ async function getProductCategories(productIds: number[]): Promise<Record<number
 // GET /api/portal/company
 router.get("/company", async (_req, res) => {
   const [settings] = await db.select().from(accountingSettingsTable).limit(1);
-  const adminWa = process.env.FONNTE_ADMIN_WA ?? null;
+  const adminWa = await getAdminWa();
   return res.json({
     name: settings?.companyName ?? "PT. Cahaya Sejati Teknologi",
     tagline: "Solusi Logistik Terintegrasi & Berbasis Teknologi",
     logoUrl: settings?.companyLogoUrl ?? null,
     address: settings?.companyAddress ?? null,
     email: null,
-    phone: adminWa,
+    phone: adminWa || null,
   });
 });
 
