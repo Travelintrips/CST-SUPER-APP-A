@@ -22,6 +22,11 @@ build = [ "pnpm", "--filter", "@workspace/customer-portal", "run", "build" ]
 publicDir = "artifacts/customer-portal/dist/public"
 serve = "static"
 
+[[services.production.redirects]]
+from = "/customer-portal/:path*"
+to = "/:path*"
+status = 301
+
 [[services.production.rewrites]]
 from = "/*"
 to = "/index.html"
