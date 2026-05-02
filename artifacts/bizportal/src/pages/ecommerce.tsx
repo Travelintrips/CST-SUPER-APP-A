@@ -22,7 +22,7 @@ import {
   type AccountingTax,
   type ProductCategory,
 } from "@workspace/api-client-react";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
@@ -321,6 +321,13 @@ export default function EcommercePage() {
   const [productSearch, setProductSearch] = useState<string>(() => initialParams.get("search") ?? "");
   const [orderSearch, setOrderSearch] = useState<string>(() => initialParams.get("orderSearch") ?? "");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>(() => initialParams.get("orderStatus") ?? "all");
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<number>>(new Set());
+  const toggleOrderExpand = (id: number) =>
+    setExpandedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   const filteredOrders = (orders ?? []).filter((o) => {
     if (orderStatusFilter !== "all" && o.status !== orderStatusFilter) return false;
@@ -1243,6 +1250,7 @@ export default function EcommercePage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-8 px-2"></TableHead>
                       <TableHead>Order ID</TableHead>
                       <TableHead>Pelanggan</TableHead>
                       <TableHead>Status</TableHead>
@@ -1255,6 +1263,7 @@ export default function EcommercePage() {
                     {isLoadingOrders ? (
                       Array.from({ length: 5 }).map((_, i) => (
                         <TableRow key={i}>
+                          <TableCell className="px-2"><Skeleton className="h-4 w-4" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[60px]" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-[150px]" /></TableCell>
                           <TableCell><Skeleton className="h-6 w-[80px] rounded-full" /></TableCell>
@@ -1265,7 +1274,7 @@ export default function EcommercePage() {
                       ))
                     ) : filteredOrders.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center">
+                        <TableCell colSpan={7} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <ShoppingBag className="h-8 w-8 mb-2 opacity-50" />
                             <p>{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : orderStatusFilter !== "all" ? "Tidak ada order dengan status ini." : "Belum ada order."}</p>
@@ -1273,40 +1282,90 @@ export default function EcommercePage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredOrders.map((order) => (
-                        <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
-                          <TableCell className="font-medium">#ORD-{order.id.toString().padStart(4, '0')}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span>{order.customerName}</span>
-                              <span className="text-xs text-muted-foreground">{order.customerEmail}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={`capitalize ${getOrderStatusColor(order.status)}`}>{order.status}</Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            <div>{formatIDR(order.grandTotal)}</div>
-                            {order.taxAmount > 0 && (
-                              <div className="text-xs text-muted-foreground">PPN: {formatIDR(order.taxAmount)}</div>
+                      filteredOrders.map((order) => {
+                        const isExpanded = expandedOrderIds.has(order.id);
+                        const hasItems = (order.lineItems && order.lineItems.length > 0) || !!order.items;
+                        return (
+                          <React.Fragment key={order.id}>
+                            <TableRow data-testid={`row-order-${order.id}`} className={isExpanded ? "border-b-0" : ""}>
+                              <TableCell className="px-2">
+                                {hasItems && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-muted-foreground"
+                                    onClick={() => toggleOrderExpand(order.id)}
+                                    aria-label={isExpanded ? "Tutup detail" : "Lihat detail item"}
+                                    data-testid={`button-expand-order-${order.id}`}
+                                  >
+                                    <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                  </Button>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">#ORD-{order.id.toString().padStart(4, '0')}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-col">
+                                  <span>{order.customerName}</span>
+                                  <span className="text-xs text-muted-foreground">{order.customerEmail}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`capitalize ${getOrderStatusColor(order.status)}`}>{order.status}</Badge>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                              <TableCell className="text-right font-medium">
+                                <div>{formatIDR(order.grandTotal)}</div>
+                                {order.taxAmount > 0 && (
+                                  <div className="text-xs text-muted-foreground">PPN: {formatIDR(order.taxAmount)}</div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button size="icon" variant="ghost" onClick={() => setPrintingOrder(order)} data-testid={`button-print-order-${order.id}`} aria-label="Cetak invoice">
+                                    <Printer className="h-4 w-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-${order.id}`} aria-label="Edit order">
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => setDeletingOrder(order)} data-testid={`button-delete-order-${order.id}`} aria-label="Hapus order" className="text-destructive hover:text-destructive">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            {isExpanded && (
+                              <TableRow className="bg-muted/30 hover:bg-muted/30">
+                                <TableCell colSpan={7} className="py-0 px-6 pb-3">
+                                  {order.lineItems && order.lineItems.length > 0 ? (
+                                    <table className="w-full text-xs mt-2">
+                                      <thead>
+                                        <tr className="text-muted-foreground border-b border-border">
+                                          <th className="text-left pb-1.5 font-medium">Item</th>
+                                          <th className="text-center pb-1.5 font-medium w-14">Qty</th>
+                                          <th className="text-right pb-1.5 font-medium w-28">Harga Satuan</th>
+                                          <th className="text-right pb-1.5 font-medium w-28">Subtotal</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {order.lineItems.map((li, i) => (
+                                          <tr key={i} className="border-b border-border/40 last:border-0">
+                                            <td className="py-1.5">{li.name}</td>
+                                            <td className="py-1.5 text-center text-muted-foreground">{li.qty}</td>
+                                            <td className="py-1.5 text-right text-muted-foreground">{formatIDR(li.unitPrice)}</td>
+                                            <td className="py-1.5 text-right font-medium">{formatIDR(li.qty * li.unitPrice)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  ) : order.items ? (
+                                    <p className="text-xs text-muted-foreground whitespace-pre-wrap mt-2">{order.items}</p>
+                                  ) : null}
+                                </TableCell>
+                              </TableRow>
                             )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button size="icon" variant="ghost" onClick={() => setPrintingOrder(order)} data-testid={`button-print-order-${order.id}`} aria-label="Cetak invoice">
-                                <Printer className="h-4 w-4" />
-                              </Button>
-                              <Button size="icon" variant="ghost" onClick={() => openEditOrder(order)} data-testid={`button-edit-order-${order.id}`} aria-label="Edit order">
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button size="icon" variant="ghost" onClick={() => setDeletingOrder(order)} data-testid={`button-delete-order-${order.id}`} aria-label="Hapus order" className="text-destructive hover:text-destructive">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                          </React.Fragment>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -1328,7 +1387,10 @@ export default function EcommercePage() {
                   <p className="text-sm text-muted-foreground">{orderSearch.trim() ? "Tidak ada order yang cocok dengan pencarian ini." : orderStatusFilter !== "all" ? "Tidak ada order dengan status ini." : "Belum ada order."}</p>
                 </CardContent></Card>
               ) : (
-                filteredOrders.map((order) => (
+                filteredOrders.map((order) => {
+                  const isExpanded = expandedOrderIds.has(order.id);
+                  const hasItems = (order.lineItems && order.lineItems.length > 0) || !!order.items;
+                  return (
                   <Card key={order.id} data-testid={`card-order-${order.id}`}><CardContent className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium font-mono text-sm">#ORD-{order.id.toString().padStart(4, '0')}</p>
@@ -1347,6 +1409,43 @@ export default function EcommercePage() {
                         )}
                       </div>
                     </div>
+                    {hasItems && (
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground w-full"
+                        onClick={() => toggleOrderExpand(order.id)}
+                        data-testid={`button-expand-order-mobile-${order.id}`}
+                      >
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                        {isExpanded ? "Sembunyikan item" : "Lihat item pesanan"}
+                      </button>
+                    )}
+                    {isExpanded && (
+                      <div className="rounded-md bg-muted/50 p-2 text-xs">
+                        {order.lineItems && order.lineItems.length > 0 ? (
+                          <table className="w-full">
+                            <thead>
+                              <tr className="text-muted-foreground border-b border-border">
+                                <th className="text-left pb-1 font-medium">Item</th>
+                                <th className="text-center pb-1 font-medium w-10">Qty</th>
+                                <th className="text-right pb-1 font-medium w-24">Subtotal</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.lineItems.map((li, i) => (
+                                <tr key={i} className="border-b border-border/40 last:border-0">
+                                  <td className="py-1">{li.name}</td>
+                                  <td className="py-1 text-center text-muted-foreground">{li.qty}</td>
+                                  <td className="py-1 text-right font-medium">{formatIDR(li.qty * li.unitPrice)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : order.items ? (
+                          <p className="text-muted-foreground whitespace-pre-wrap">{order.items}</p>
+                        ) : null}
+                      </div>
+                    )}
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => setPrintingOrder(order)} data-testid={`button-print-order-mobile-${order.id}`}>
                         <Printer className="h-3.5 w-3.5 mr-1.5" /> Cetak
@@ -1359,7 +1458,8 @@ export default function EcommercePage() {
                       </Button>
                     </div>
                   </CardContent></Card>
-                ))
+                  );
+                })
               )}
             </div>
           </TabsContent>
