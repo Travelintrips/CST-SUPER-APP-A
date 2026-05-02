@@ -17,6 +17,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       logout: "Keluar",
       admin: "Admin",
       cart: "Keranjang",
+      more: "Lainnya",
     },
     hero: {
       badge: "Solusi Logistik Terintegrasi & Berbasis Teknologi",
@@ -455,6 +456,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       logout: "Logout",
       admin: "Admin",
       cart: "Cart",
+      more: "More",
     },
     hero: {
       badge: "Integrated Logistics Solutions Powered by Technology",

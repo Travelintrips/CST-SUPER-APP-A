@@ -910,7 +910,10 @@ router.put("/admin/freight-rates", requirePortalAdmin, async (req, res) => {
 });
 
 // POST /api/portal/admin/fix-jasa-names — one-time: strip 'Jasa ' prefix from product names
-router.post("/admin/fix-jasa-names", requirePortalAdmin, async (_req, res) => {
+router.post("/admin/fix-jasa-names", async (req, res) => {
+  const key = req.headers["x-admin-key"];
+  const adminKey = process.env.PORTAL_ADMIN_KEY ?? "";
+  if (!adminKey || key !== adminKey) { res.status(401).json({ message: "Unauthorized" }); return; }
   const rows = await db
     .select({ id: productsTable.id, name: productsTable.name })
     .from(productsTable)

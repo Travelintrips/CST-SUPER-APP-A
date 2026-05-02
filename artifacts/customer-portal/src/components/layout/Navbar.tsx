@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
   ChevronDown, Ship, Plane, FileCheck, Truck, Package, Globe,
-  Search, Warehouse, Calculator, ChevronRight,
+  Search, Warehouse, Calculator, ChevronRight, MapPin, Phone, Info,
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
@@ -13,14 +13,14 @@ import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { useLanguage } from "@/i18n/LanguageContext";
 
 const SERVICES_ITEMS = [
-  { icon: Ship, titleKey: "servicesMenu.seaFreight.title", descKey: "servicesMenu.seaFreight.desc", href: "/freight-forwarding" },
-  { icon: Plane, titleKey: "servicesMenu.airFreight.title", descKey: "servicesMenu.airFreight.desc", href: "/freight-forwarding" },
-  { icon: FileCheck, titleKey: "servicesMenu.customs.title", descKey: "servicesMenu.customs.desc", href: "/pabean" },
-  { icon: Truck, titleKey: "servicesMenu.domestic.title", descKey: "servicesMenu.domestic.desc", href: "/jasa" },
+  { icon: Ship,      titleKey: "servicesMenu.seaFreight.title",  descKey: "servicesMenu.seaFreight.desc",  href: "/freight-forwarding" },
+  { icon: Plane,     titleKey: "servicesMenu.airFreight.title",  descKey: "servicesMenu.airFreight.desc",  href: "/freight-forwarding" },
+  { icon: FileCheck, titleKey: "servicesMenu.customs.title",     descKey: "servicesMenu.customs.desc",     href: "/pabean" },
+  { icon: Truck,     titleKey: "servicesMenu.domestic.title",    descKey: "servicesMenu.domestic.desc",    href: "/jasa" },
   { icon: Warehouse, titleKey: "servicesMenu.warehousing.title", descKey: "servicesMenu.warehousing.desc", href: "/jasa" },
-  { icon: Package, titleKey: "servicesMenu.project.title", descKey: "servicesMenu.project.desc", href: "/jasa" },
-  { icon: Globe, titleKey: "servicesMenu.consultation.title", descKey: "servicesMenu.consultation.desc", href: "/services" },
-  { icon: Search, titleKey: "servicesMenu.tracking.title", descKey: "servicesMenu.tracking.desc", href: "/track" },
+  { icon: Package,   titleKey: "servicesMenu.project.title",     descKey: "servicesMenu.project.desc",     href: "/jasa" },
+  { icon: Globe,     titleKey: "servicesMenu.consultation.title",descKey: "servicesMenu.consultation.desc",href: "/services" },
+  { icon: Search,    titleKey: "servicesMenu.tracking.title",    descKey: "servicesMenu.tracking.desc",    href: "/track" },
 ];
 
 const NAV_GLASS: React.CSSProperties = {
@@ -28,11 +28,11 @@ const NAV_GLASS: React.CSSProperties = {
   backdropFilter: "blur(16px)",
   WebkitBackdropFilter: "blur(16px)",
   borderBottom: "1px solid #E2E8F0",
-  boxShadow: "0 4px 24px rgba(15,23,42,0.06)",
+  boxShadow: "0 8px 30px rgba(15,23,42,0.05)",
 };
 
 const NAV_GLASS_SCROLLED: React.CSSProperties = {
-  background: "rgba(255,255,255,0.96)",
+  background: "rgba(255,255,255,0.97)",
   backdropFilter: "blur(20px)",
   WebkitBackdropFilter: "blur(20px)",
   borderBottom: "1px solid #E2E8F0",
@@ -41,25 +41,28 @@ const NAV_GLASS_SCROLLED: React.CSSProperties = {
 
 function navItemCls(active: boolean) {
   return [
-    "flex items-center gap-1 px-2.5 py-[7px] text-[13px] font-medium rounded-[14px]",
+    "flex items-center gap-1 px-[14px] py-[10px] text-[15px] font-semibold rounded-[14px]",
     "transition-all duration-200 whitespace-nowrap cursor-pointer select-none",
     active
-      ? "bg-sky-50 text-sky-600 font-semibold"
-      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+      ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]"
+      : "text-[#64748B] hover:bg-slate-50 hover:text-slate-900",
   ].join(" ");
 }
 
 export function Navbar() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [servicesOpen, setServicesOpen] = useState(false);
+  const [isOpen, setIsOpen]                     = useState(false);
+  const [scrolled, setScrolled]                 = useState(false);
+  const [servicesOpen, setServicesOpen]         = useState(false);
+  const [moreOpen, setMoreOpen]                 = useState(false);
   const [mobileServicesOpen, setMobileServicesOpen] = useState(false);
-  const [location, setLocation] = useLocation();
-  const isAuth = isAuthenticated();
+  const [mobileMoreOpen, setMobileMoreOpen]     = useState(false);
+  const [location, setLocation]                 = useLocation();
+  const isAuth  = isAuthenticated();
   const isAdmin = isPortalAdmin();
   const { count, openCart } = useCart();
   const { t } = useLanguage();
   const servicesRef = useRef<HTMLDivElement>(null);
+  const moreRef     = useRef<HTMLDivElement>(null);
 
   const { data: company } = useGetPortalCompany({
     query: { queryKey: ["getPortalCompany"] },
@@ -73,12 +76,11 @@ export function Navbar() {
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (servicesRef.current && !servicesRef.current.contains(e.target as Node)) {
-        setServicesOpen(false);
-      }
+      if (servicesRef.current && !servicesRef.current.contains(e.target as Node)) setServicesOpen(false);
+      if (moreRef.current     && !moreRef.current.contains(e.target as Node))     setMoreOpen(false);
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") { setServicesOpen(false); setIsOpen(false); }
+      if (e.key === "Escape") { setServicesOpen(false); setMoreOpen(false); setIsOpen(false); }
     }
     document.addEventListener("mousedown", onClickOutside);
     document.addEventListener("keydown", onKeyDown);
@@ -88,18 +90,13 @@ export function Navbar() {
     };
   }, []);
 
-  const handleLogout = () => {
-    removeAuthToken();
-    setLocation("/login");
-  };
+  const handleLogout = () => { removeAuthToken(); setLocation("/login"); };
 
   function scrollToSection(id: string) {
     setIsOpen(false);
     if (location !== "/") {
       setLocation("/");
-      setTimeout(() => {
-        document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-      }, 150);
+      setTimeout(() => { document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }); }, 150);
     } else {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
     }
@@ -112,9 +109,7 @@ export function Navbar() {
     location === "/pabean";
 
   const brandName = company?.name
-    ? company.name.length > 22
-      ? "CST Logistics"
-      : company.name
+    ? company.name.length > 22 ? "CST Logistics" : company.name
     : "CST Logistics";
 
   return (
@@ -123,9 +118,9 @@ export function Navbar() {
       style={scrolled ? NAV_GLASS_SCROLLED : NAV_GLASS}
     >
       <div className="max-w-[1440px] mx-auto px-4 md:px-6">
-        <div className="flex h-[72px] items-center justify-between gap-4">
+        <div className="flex h-[76px] items-center justify-between gap-4">
 
-          {/* ── Logo & Brand ─────────────────────────────────────── */}
+          {/* ── Logo & Brand ──────────────────────────────────── */}
           <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
             <img
               src={`${import.meta.env.BASE_URL}images/logo.png`}
@@ -133,31 +128,27 @@ export function Navbar() {
               className="h-[44px] w-auto object-contain"
             />
             <span
-              className="font-bold text-[19px] leading-tight tracking-tight whitespace-nowrap"
-              style={{
-                background: "linear-gradient(135deg, #0F172A 0%, #0369A1 60%, #0EA5E9 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
+              className="font-extrabold text-[19px] leading-tight tracking-tight whitespace-nowrap"
+              style={{ color: "#0F172A" }}
             >
               {brandName}
             </span>
           </Link>
 
-          {/* ── Desktop Navigation ───────────────────────────────── */}
-          <div className="hidden lg:flex lg:items-center lg:gap-1 flex-1 justify-center">
-            {/* Home */}
+          {/* ── Desktop Navigation ───────────────────────────── */}
+          <div className="hidden lg:flex lg:items-center flex-1 justify-center" style={{ gap: "4px" }}>
+
+            {/* Beranda */}
             <Link href="/" className={navItemCls(location === "/")}>
               {t("nav.home")}
             </Link>
 
-            {/* Products */}
+            {/* Produk */}
             <Link href="/products" className={navItemCls(location === "/products")}>
               {t("nav.products")}
             </Link>
 
-            {/* Services with Mega Menu */}
+            {/* Services Mega Menu */}
             <div className="relative" ref={servicesRef}>
               <button
                 className={navItemCls(isServicesActive)}
@@ -167,33 +158,31 @@ export function Navbar() {
                 aria-haspopup="true"
               >
                 {t("nav.services")}
-                <ChevronDown
-                  className={`h-3.5 w-3.5 transition-transform duration-200 ${servicesOpen ? "rotate-180" : ""}`}
-                />
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${servicesOpen ? "rotate-180" : ""}`} />
               </button>
 
               {servicesOpen && (
                 <div
                   className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50"
-                  style={{ width: "640px" }}
+                  style={{ width: "720px" }}
                   onMouseLeave={() => setServicesOpen(false)}
                 >
                   <div
                     className="rounded-2xl overflow-hidden"
                     style={{
-                      background: "rgba(255,255,255,0.98)",
+                      background: "rgba(255,255,255,0.99)",
                       backdropFilter: "blur(20px)",
                       WebkitBackdropFilter: "blur(20px)",
                       border: "1px solid #E2E8F0",
                       boxShadow: "0 20px 50px rgba(15,23,42,0.13)",
                     }}
                   >
-                    <div className="px-5 py-3.5 bg-gradient-to-r from-sky-50 to-blue-50 border-b border-slate-100">
+                    <div className="px-5 py-3 bg-gradient-to-r from-sky-50 to-blue-50 border-b border-slate-100">
                       <p className="text-[11px] font-semibold text-sky-700 uppercase tracking-widest">
                         {t("servicesMenu.tagline")}
                       </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-0.5 p-2.5">
+                    <div className="grid grid-cols-3 gap-0.5 p-3">
                       {SERVICES_ITEMS.map(({ icon: Icon, titleKey, descKey, href }) => (
                         <Link key={titleKey} href={href} onClick={() => setServicesOpen(false)}>
                           <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-sky-50 transition-colors duration-150 group cursor-pointer">
@@ -201,7 +190,7 @@ export function Navbar() {
                               <Icon className="h-4 w-4 text-sky-600" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors">
+                              <p className="text-[13px] font-semibold text-slate-800 group-hover:text-sky-700 transition-colors leading-tight">
                                 {t(titleKey)}
                               </p>
                               <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-2">
@@ -225,40 +214,85 @@ export function Navbar() {
               )}
             </div>
 
-            {/* Calculator */}
-            <Link href="/calculator" className={navItemCls(location === "/calculator")}>
+            {/* Kalkulator — soft pill highlight */}
+            <Link
+              href="/calculator"
+              className="flex items-center gap-1.5 px-[14px] py-[10px] text-[15px] font-semibold rounded-[14px] whitespace-nowrap transition-all duration-200"
+              style={
+                location === "/calculator"
+                  ? { background: "rgba(14,165,233,0.18)", color: "#0284C7" }
+                  : { background: "rgba(14,165,233,0.08)", color: "#0284C7" }
+              }
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(14,165,233,0.15)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = location === "/calculator" ? "rgba(14,165,233,0.18)" : "rgba(14,165,233,0.08)"; }}
+            >
+              <Calculator className="h-4 w-4" />
               {t("nav.calculator")}
             </Link>
 
-            {/* About */}
-            <button
-              onClick={() => scrollToSection("tentang")}
-              className={navItemCls(false)}
-            >
-              {t("nav.about")}
-            </button>
+            {/* Lainnya dropdown — About, Contact, Track */}
+            <div className="relative" ref={moreRef}>
+              <button
+                className={navItemCls(
+                  location === "/track"
+                )}
+                onClick={() => setMoreOpen((v) => !v)}
+                onMouseEnter={() => setMoreOpen(true)}
+                aria-expanded={moreOpen}
+                aria-haspopup="true"
+              >
+                {t("nav.more")}
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`} />
+              </button>
 
-            {/* Contact */}
-            <button
-              onClick={() => scrollToSection("kontak")}
-              className={navItemCls(false)}
-            >
-              {t("nav.contact")}
-            </button>
-
-            {/* Track */}
-            <Link href="/track" className={navItemCls(location === "/track")}>
-              {t("nav.trackOrder")}
-            </Link>
+              {moreOpen && (
+                <div
+                  className="absolute top-full right-0 mt-2 z-50 w-52"
+                  onMouseLeave={() => setMoreOpen(false)}
+                >
+                  <div
+                    className="rounded-2xl overflow-hidden py-1.5"
+                    style={{
+                      background: "rgba(255,255,255,0.99)",
+                      border: "1px solid #E2E8F0",
+                      boxShadow: "0 16px 40px rgba(15,23,42,0.12)",
+                    }}
+                  >
+                    <button
+                      onClick={() => { setMoreOpen(false); scrollToSection("tentang"); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
+                    >
+                      <Info className="h-4 w-4 text-slate-400 shrink-0" />
+                      {t("nav.about")}
+                    </button>
+                    <button
+                      onClick={() => { setMoreOpen(false); scrollToSection("kontak"); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] font-medium text-slate-700 hover:bg-slate-50 hover:text-sky-700 transition-colors"
+                    >
+                      <Phone className="h-4 w-4 text-slate-400 shrink-0" />
+                      {t("nav.contact")}
+                    </button>
+                    <Link href="/track" onClick={() => setMoreOpen(false)}>
+                      <div className={`flex items-center gap-3 px-4 py-2.5 text-[14px] font-medium transition-colors cursor-pointer ${
+                        location === "/track" ? "text-sky-700 bg-sky-50" : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
+                      }`}>
+                        <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
+                        {t("nav.trackOrder")}
+                      </div>
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* ── Right Actions ────────────────────────────────────── */}
+          {/* ── Right Actions ─────────────────────────────────── */}
           <div className="hidden lg:flex items-center gap-2 shrink-0">
             {/* Cart */}
             <button
               onClick={openCart}
               className="relative flex items-center justify-center w-9 h-9 rounded-[14px] text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all duration-200"
-              aria-label="Keranjang"
+              aria-label={t("nav.cart")}
             >
               <ShoppingCart className="h-[18px] w-[18px]" />
               {count > 0 && (
@@ -276,21 +310,21 @@ export function Navbar() {
               <div className="flex items-center gap-1.5">
                 {isAdmin && (
                   <Link href="/admin">
-                    <button className="flex items-center gap-1.5 px-2.5 py-[7px] text-[13px] font-medium rounded-[14px] text-amber-600 hover:bg-amber-50 transition-all duration-200 whitespace-nowrap">
+                    <button className="flex items-center gap-1.5 px-[14px] py-[10px] text-[15px] font-semibold rounded-[14px] text-amber-600 hover:bg-amber-50 transition-all duration-200 whitespace-nowrap">
                       <Shield className="h-3.5 w-3.5" />
                       {t("nav.admin")}
                     </button>
                   </Link>
                 )}
                 <Link href="/dashboard">
-                  <button className="flex items-center gap-1.5 px-2.5 py-[7px] text-[13px] font-medium rounded-[14px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200 whitespace-nowrap">
+                  <button className="flex items-center gap-1.5 px-[14px] py-[10px] text-[15px] font-semibold rounded-[14px] text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200 whitespace-nowrap">
                     <LayoutDashboard className="h-3.5 w-3.5" />
                     {t("nav.dashboard")}
                   </button>
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-1.5 px-2.5 py-[7px] text-[13px] font-medium rounded-[14px] text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200 whitespace-nowrap border border-slate-200"
+                  className="flex items-center gap-1.5 px-[14px] py-[10px] text-[15px] font-semibold rounded-[14px] text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all duration-200 whitespace-nowrap border border-slate-200"
                 >
                   <LogOut className="h-3.5 w-3.5" />
                   {t("nav.logout")}
@@ -298,18 +332,17 @@ export function Navbar() {
               </div>
             ) : (
               <div className="flex items-center gap-2">
+                {/* Masuk — plain text style */}
                 <Link href="/login">
-                  <button className="px-3 py-[7px] text-[13px] font-medium text-slate-600 hover:text-slate-900 rounded-[14px] hover:bg-slate-50 transition-all duration-200 whitespace-nowrap">
+                  <button className="px-[14px] py-[10px] text-[15px] font-semibold text-[#64748B] hover:text-slate-900 rounded-[14px] hover:bg-slate-50 transition-all duration-200 whitespace-nowrap">
                     {t("nav.login")}
                   </button>
                 </Link>
+                {/* Daftar — dark premium */}
                 <Link href="/register">
                   <button
-                    className="px-4 py-[9px] text-[13px] font-semibold rounded-[14px] whitespace-nowrap transition-all duration-200"
-                    style={{
-                      background: "#0F172A",
-                      color: "#ffffff",
-                    }}
+                    className="px-[18px] py-[11px] text-[15px] font-semibold rounded-[16px] whitespace-nowrap transition-all duration-200 text-white"
+                    style={{ background: "#0F172A" }}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#1E293B"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "#0F172A"; }}
                   >
@@ -320,12 +353,12 @@ export function Navbar() {
             )}
           </div>
 
-          {/* ── Mobile Header Right ──────────────────────────────── */}
+          {/* ── Mobile Header Right ──────────────────────────── */}
           <div className="lg:hidden flex items-center gap-1">
             <button
               onClick={openCart}
               className="relative flex items-center justify-center w-9 h-9 rounded-[14px] text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all"
-              aria-label="Keranjang"
+              aria-label={t("nav.cart")}
             >
               <ShoppingCart className="h-[18px] w-[18px]" />
               {count > 0 && (
@@ -345,12 +378,12 @@ export function Navbar() {
         </div>
       </div>
 
-      {/* ── Mobile Drawer ─────────────────────────────────────────── */}
+      {/* ── Mobile Drawer ─────────────────────────────────────── */}
       {isOpen && (
         <div
           className="lg:hidden max-h-[85vh] overflow-y-auto"
           style={{
-            background: "rgba(255,255,255,0.98)",
+            background: "rgba(255,255,255,0.99)",
             backdropFilter: "blur(16px)",
             borderTop: "1px solid #F1F5F9",
           }}
@@ -358,16 +391,16 @@ export function Navbar() {
           <div className="max-w-[1440px] mx-auto px-4 pb-6 pt-3 space-y-0.5">
 
             <Link href="/" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-medium cursor-pointer ${
-                location === "/" ? "bg-sky-50 text-sky-600 font-semibold" : "text-slate-600 hover:bg-slate-50"
+              <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
+                location === "/" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
                 {t("nav.home")}
               </div>
             </Link>
 
             <Link href="/products" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-medium cursor-pointer ${
-                location === "/products" ? "bg-sky-50 text-sky-600 font-semibold" : "text-slate-600 hover:bg-slate-50"
+              <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
+                location === "/products" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
                 {t("nav.products")}
               </div>
@@ -376,8 +409,8 @@ export function Navbar() {
             {/* Services Accordion */}
             <div>
               <button
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-[14px] text-[15px] font-medium transition-colors ${
-                  isServicesActive ? "bg-sky-50 text-sky-600 font-semibold" : "text-slate-600 hover:bg-slate-50"
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-[14px] text-[15px] font-semibold transition-colors ${
+                  isServicesActive ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
                 }`}
                 onClick={() => setMobileServicesOpen((v) => !v)}
               >
@@ -405,38 +438,62 @@ export function Navbar() {
               )}
             </div>
 
+            {/* Kalkulator — pill highlight di mobile */}
             <Link href="/calculator" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-[14px] text-[15px] font-medium cursor-pointer ${
-                location === "/calculator" ? "bg-sky-50 text-sky-600 font-semibold" : "text-slate-600 hover:bg-slate-50"
-              }`}>
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer"
+                style={
+                  location === "/calculator"
+                    ? { background: "rgba(14,165,233,0.15)", color: "#0284C7" }
+                    : { background: "rgba(14,165,233,0.07)", color: "#0284C7" }
+                }
+              >
                 <Calculator className="h-4 w-4" />
                 {t("nav.calculator")}
               </div>
             </Link>
 
-            <button
-              onClick={() => scrollToSection("tentang")}
-              className="w-full text-left px-3 py-2.5 rounded-[14px] text-[15px] font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              {t("nav.about")}
-            </button>
+            {/* Lainnya Accordion */}
+            <div>
+              <button
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-[14px] text-[15px] font-semibold transition-colors ${
+                  location === "/track" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={() => setMobileMoreOpen((v) => !v)}
+              >
+                {t("nav.more")}
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileMoreOpen ? "rotate-180" : ""}`} />
+              </button>
 
-            <button
-              onClick={() => scrollToSection("kontak")}
-              className="w-full text-left px-3 py-2.5 rounded-[14px] text-[15px] font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              {t("nav.contact")}
-            </button>
+              {mobileMoreOpen && (
+                <div className="mt-1 ml-3 pl-3 border-l-2 border-slate-100 space-y-0.5">
+                  <button
+                    onClick={() => scrollToSection("tentang")}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Info className="h-4 w-4 text-slate-400 shrink-0" />
+                    {t("nav.about")}
+                  </button>
+                  <button
+                    onClick={() => scrollToSection("kontak")}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Phone className="h-4 w-4 text-slate-400 shrink-0" />
+                    {t("nav.contact")}
+                  </button>
+                  <Link href="/track" onClick={() => setIsOpen(false)}>
+                    <div className={`flex items-center gap-3 px-3 py-2 rounded-xl text-[14px] cursor-pointer ${
+                      location === "/track" ? "text-sky-700 font-semibold" : "text-slate-600 hover:bg-slate-50"
+                    }`}>
+                      <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
+                      {t("nav.trackOrder")}
+                    </div>
+                  </Link>
+                </div>
+              )}
+            </div>
 
-            <Link href="/track" onClick={() => setIsOpen(false)}>
-              <div className={`flex items-center px-3 py-2.5 rounded-[14px] text-[15px] font-medium cursor-pointer ${
-                location === "/track" ? "bg-sky-50 text-sky-600 font-semibold" : "text-slate-600 hover:bg-slate-50"
-              }`}>
-                {t("nav.trackOrder")}
-              </div>
-            </Link>
-
-            {/* Divider + Language */}
+            {/* Language */}
             <div className="pt-2 border-t border-slate-100">
               <LanguageSelector />
             </div>
@@ -471,13 +528,13 @@ export function Navbar() {
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <Link href="/login" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full rounded-[14px] text-[14px]">
+                    <Button variant="outline" className="w-full rounded-[14px] text-[14px] font-semibold">
                       {t("nav.login")}
                     </Button>
                   </Link>
                   <Link href="/register" onClick={() => setIsOpen(false)}>
                     <button
-                      className="w-full py-2 text-[14px] font-semibold rounded-[14px] text-white transition-all"
+                      className="w-full py-2 text-[14px] font-semibold rounded-[16px] text-white transition-all"
                       style={{ background: "#0F172A" }}
                     >
                       {t("nav.register")}
