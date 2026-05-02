@@ -166,9 +166,17 @@ export default function JasaDetail() {
     try {
       const raw = sessionStorage.getItem("pendingJasaReview");
       if (raw) {
-        const parsed = JSON.parse(raw) as { serviceId: number; productId: number; productName: string };
+        const parsed = JSON.parse(raw) as { serviceId: number; productId: number; productName: string; qty?: number };
         if (String(parsed.serviceId) === params.id) {
           setPendingOrder({ serviceId: parsed.serviceId, productName: parsed.productName });
+          // Prefill quantity into calculator form
+          if (parsed.qty && parsed.qty >= 1) {
+            const qtyStr = String(parsed.qty);
+            // For air freight: set quantity in the first airRow
+            setAirRows(prev => prev.map((r, i) => i === 0 ? { ...r, quantity: qtyStr } : r));
+            // For other calculators (generic, storage, document): set state.quantity
+            setState(prev => ({ ...prev, quantity: qtyStr }));
+          }
         }
       }
     } catch { /* ignore */ }
