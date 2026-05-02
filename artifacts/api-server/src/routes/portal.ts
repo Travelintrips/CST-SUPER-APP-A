@@ -876,6 +876,12 @@ async function setPricingKey(key: string, value: unknown) {
   }
 }
 
+// GET /api/portal/trucking-rates — public
+router.get("/trucking-rates", async (_req, res) => {
+  const rates = await getPricingKey(TRUCKING_RATES_KEY, DEFAULT_TRUCKING_RATES);
+  return res.json(rates);
+});
+
 // GET /api/portal/admin/trucking-rates
 router.get("/admin/trucking-rates", requirePortalAdmin, async (_req, res) => {
   const rates = await getPricingKey(TRUCKING_RATES_KEY, DEFAULT_TRUCKING_RATES);

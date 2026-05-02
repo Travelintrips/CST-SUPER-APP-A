@@ -31,6 +31,7 @@ import {
   GripVertical,
   Tag,
   Ship,
+  ExternalLink,
 } from "lucide-react";
 import {
   Dialog,
@@ -1375,6 +1376,15 @@ function PricingTab() {
             <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-3 space-y-1">
               <p>💡 Tarif ini digunakan untuk kalkulator harga pada halaman pemesanan logistik.</p>
               <p>Estimasi biaya = (jarak km × rate/km) + biaya muat</p>
+              <a
+                href="/jasa/8"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium mt-1"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Lihat Kalkulator Trucking
+              </a>
             </div>
 
             <div className="flex items-center justify-between pt-1">

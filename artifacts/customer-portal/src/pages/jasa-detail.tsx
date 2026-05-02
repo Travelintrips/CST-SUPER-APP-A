@@ -161,6 +161,14 @@ export default function JasaDetail() {
   const [calcDist, setCalcDist] = useState(false);
 
   const [pendingOrder, setPendingOrder] = useState<{ serviceId: number; productName: string } | null>(null);
+  const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
+
+  useEffect(() => {
+    fetch("/api/portal/trucking-rates")
+      .then(r => r.ok ? r.json() as Promise<Record<string, { ratePerKm: number; loadingFee: number }>> : Promise.reject())
+      .then(setTruckingRates)
+      .catch(() => {/* fallback: empty, user can input manually */});
+  }, []);
 
   useEffect(() => {
     try {
@@ -516,9 +524,28 @@ export default function JasaDetail() {
                     </div>
                   </div>
                   <div><Label>Vehicle Type</Label>
-                    <Select value={state.vehicleType || ""} onValueChange={v => set("vehicleType", v)}>
+                    <Select
+                      value={state.vehicleType || ""}
+                      onValueChange={v => {
+                        set("vehicleType", v);
+                        const r = truckingRates[v];
+                        if (r) {
+                          setState(prev => ({
+                            ...prev,
+                            vehicleType: v,
+                            truckingRate: String(r.ratePerKm),
+                            loadingFee: String(r.loadingFee),
+                          }));
+                        }
+                      }}
+                    >
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
-                      <SelectContent>{["20 ft", "40 ft", "40 ft (High Cube)", "20 ft Suspensi", "40 ft Suspensi"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                      <SelectContent>
+                        {Object.keys(truckingRates).length > 0
+                          ? Object.keys(truckingRates).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)
+                          : ["CDE", "CDD", "Fuso", "Wingbox", "Trailer"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)
+                        }
+                      </SelectContent>
                     </Select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -530,9 +557,25 @@ export default function JasaDetail() {
                       </Label>
                       <Input type="number" placeholder="0" className="mt-1" value={state.distance || ""} onChange={e => set("distance", e.target.value)} disabled={calcDist} />
                     </div>
-                    <div><Label>Trucking Rate (IDR/km)</Label><Input type="number" placeholder="0" className="mt-1" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)} /></div>
+                    <div>
+                      <Label className="flex items-center gap-2">
+                        Trucking Rate (IDR/km)
+                        {state.vehicleType && truckingRates[state.vehicleType] && (
+                          <span className="text-xs text-green-600 font-normal">✓ dari admin</span>
+                        )}
+                      </Label>
+                      <Input type="number" placeholder="0" className="mt-1" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)} />
+                    </div>
                   </div>
-                  <div><Label>Loading Fee (IDR)</Label><Input type="number" placeholder="0" className="mt-1" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)} /></div>
+                  <div>
+                    <Label className="flex items-center gap-2">
+                      Loading Fee (IDR)
+                      {state.vehicleType && truckingRates[state.vehicleType] && (
+                        <span className="text-xs text-green-600 font-normal">✓ dari admin</span>
+                      )}
+                    </Label>
+                    <Input type="number" placeholder="0" className="mt-1" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)} />
+                  </div>
                   {(parseFloat(state.distance) || 0) > 0 && (parseFloat(state.truckingRate) || 0) > 0 && (
                     <div className="bg-orange-50 border border-orange-100 rounded-lg p-4 text-sm space-y-1.5">
                       <p className="text-orange-700 font-medium">Rincian Kalkulasi:</p>
