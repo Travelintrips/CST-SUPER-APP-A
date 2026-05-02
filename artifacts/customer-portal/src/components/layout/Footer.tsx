@@ -14,9 +14,6 @@ const FOOTER_STYLE: React.CSSProperties = {
   background: "linear-gradient(150deg, #0F172A 0%, #1E293B 50%, #0C4A6E 100%)",
 };
 
-const linkCls =
-  "text-white/70 hover:text-white hover:translate-x-1 transition-all duration-200 inline-block text-sm leading-relaxed cursor-pointer";
-
 interface NavItem {
   label: string;
   href: string;
@@ -35,11 +32,11 @@ function FooterNavLink({ label, href }: NavItem) {
       setTimeout(() => {
         const el = document.getElementById(hash);
         if (el) {
-          el.scrollIntoView({ behavior: "smooth" });
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
         } else {
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
-      }, 120);
+      }, 150);
     } else {
       window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
       setLocation(href);
@@ -47,7 +44,34 @@ function FooterNavLink({ label, href }: NavItem) {
   }
 
   return (
-    <a href={href} onClick={handleClick} className={linkCls}>
+    <a
+      href={href}
+      onClick={handleClick}
+      className="group inline-flex items-center gap-1.5 text-sm leading-relaxed outline-none"
+      style={{
+        color: "rgba(255,255,255,0.68)",
+        transition: "color 0.25s ease, transform 0.25s ease",
+        display: "inline-block",
+        borderRadius: "4px",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.color = "#ffffff";
+        (e.currentTarget as HTMLElement).style.transform = "translateX(4px)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.68)";
+        (e.currentTarget as HTMLElement).style.transform = "translateX(0)";
+      }}
+      onFocus={(e) => {
+        (e.currentTarget as HTMLElement).style.color = "#ffffff";
+        (e.currentTarget as HTMLElement).style.outline = "2px solid rgba(56,189,248,0.70)";
+        (e.currentTarget as HTMLElement).style.outlineOffset = "3px";
+      }}
+      onBlur={(e) => {
+        (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.68)";
+        (e.currentTarget as HTMLElement).style.outline = "none";
+      }}
+    >
       {label}
     </a>
   );
@@ -74,17 +98,17 @@ export function Footer() {
     : null;
 
   const quickLinks: NavItem[] = [
-    { label: t("footer.home"), href: "/" },
-    { label: t("footer.about"), href: "/#tentang" },
-    { label: t("footer.calculator"), href: "/calculator" },
-    { label: t("footer.track"), href: "/track" },
+    { label: t("footer.home"),          href: "/" },
+    { label: t("footer.about"),         href: "/#tentang" },
+    { label: t("footer.calculator"),    href: "/calculator" },
+    { label: t("footer.track"),         href: "/track" },
     { label: t("footer.customerPortal"), href: "/login" },
   ];
 
   const serviceLinks: NavItem[] = [
-    { label: t("footer.seaFreight"), href: "/freight-forwarding" },
-    { label: t("footer.airFreight"), href: "/freight-forwarding" },
-    { label: t("footer.customsBrokerage"), href: "/pabean" },
+    { label: t("footer.seaFreight"),          href: "/freight-forwarding" },
+    { label: t("footer.airFreight"),          href: "/freight-forwarding" },
+    { label: t("footer.customsBrokerage"),    href: "/pabean" },
     { label: t("footer.domesticDistribution"), href: "/jasa" },
   ];
 
@@ -114,7 +138,6 @@ export function Footer() {
               {t("footer.description")}
             </p>
 
-            {/* Social / WA quick link */}
             {waHref && (
               <a
                 href={waHref}
@@ -162,7 +185,7 @@ export function Footer() {
               {t("footer.contactUs")}
             </h4>
             <ul className="space-y-4">
-              {/* Address */}
+
               {(company?.address || true) && (
                 <li>
                   {mapsHref ? (
@@ -188,7 +211,6 @@ export function Footer() {
                 </li>
               )}
 
-              {/* Phone / WhatsApp */}
               {(company?.phone || true) && (
                 <li>
                   <a
@@ -205,7 +227,6 @@ export function Footer() {
                 </li>
               )}
 
-              {/* Email */}
               {(company?.email || true) && (
                 <li>
                   <a
