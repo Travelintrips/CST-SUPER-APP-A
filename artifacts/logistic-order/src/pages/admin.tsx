@@ -15,7 +15,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, SHIPMENT_TYPES, OrderStatus } from "@/lib/services-data";
 import {
-  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight, Truck, Save, Loader2,
+  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight, Truck, Save, Loader2, Settings, ChevronDown,
 } from "lucide-react";
 
 const VEHICLE_TYPES = ["CDE", "CDD", "Fuso", "Wingbox", "Trailer"] as const;
@@ -31,6 +31,33 @@ const DEFAULT_RATES: TruckingRates = {
 };
 
 const ADMIN_KEY = "logistic_admin_auth";
+const CARD_STYLE_KEY = "logistic_admin_card_styles";
+
+type CardStyle = { logoUrl?: string; bgCustom?: string };
+type CardStyleMap = Record<string, CardStyle>;
+
+const ADMIN_CARDS = [
+  { id: "totalOrders", label: "Total Pesanan" },
+  { id: "revenue",     label: "Estimasi Revenue" },
+  { id: "newOrder",       label: "New Order" },
+  { id: "underReview",    label: "Under Review" },
+  { id: "quotationSent",  label: "Quotation Sent" },
+  { id: "confirmed",      label: "Confirmed" },
+  { id: "inProgress",     label: "In Progress" },
+  { id: "completed",      label: "Completed" },
+  { id: "cancelled",      label: "Cancelled" },
+];
+
+const ADMIN_GRADIENT_PRESETS = [
+  "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+  "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+  "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+  "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
+  "linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%)",
+  "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
+  "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)",
+];
 
 export default function AdminPage() {
   const [, setLocation] = useLocation();
@@ -51,6 +78,24 @@ export default function AdminPage() {
   const [rates, setRates] = useState<TruckingRates>(DEFAULT_RATES);
   const [ratesEditing, setRatesEditing] = useState<TruckingRates>(DEFAULT_RATES);
   const [ratesSaving, setRatesSaving] = useState(false);
+
+  const [cardStyles, setCardStyles] = useState<CardStyleMap>(() => {
+    try { return JSON.parse(localStorage.getItem(CARD_STYLE_KEY) ?? "{}"); } catch { return {}; }
+  });
+  const [cardConfigOpen, setCardConfigOpen] = useState(false);
+
+  function updateCardStyle(id: string, patch: Partial<CardStyle>) {
+    const next = { ...cardStyles, [id]: { ...cardStyles[id], ...patch } };
+    setCardStyles(next);
+    localStorage.setItem(CARD_STYLE_KEY, JSON.stringify(next));
+  }
+
+  function resetCardStyle(id: string) {
+    const next = { ...cardStyles };
+    delete next[id];
+    setCardStyles(next);
+    localStorage.setItem(CARD_STYLE_KEY, JSON.stringify(next));
+  }
 
   useEffect(() => {
     fetch("/api/logistic/orders/trucking-rates")
@@ -75,7 +120,7 @@ export default function AdminPage() {
   });
 
   const { data: summary } = useGetLogisticOrderSummary({
-    query: { enabled: authed },
+    query: { enabled: authed, queryKey: getGetLogisticOrderSummaryQueryKey() },
   });
 
   async function handleSaveRates() {
@@ -189,48 +234,61 @@ export default function AdminPage() {
           <div className="space-y-3">
             {/* Top row: Total + Revenue */}
             <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setStatusFilterAndUrl("")}
-                className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between w-full cursor-pointer hover:brightness-95 transition-all text-left"
-              >
-                <div>
-                  <p className="text-xs text-primary-foreground/60 mb-1">Total Pesanan</p>
-                  <p className="text-4xl font-bold">{summary.totalOrders}</p>
-                </div>
-                <Package className="w-10 h-10 opacity-20" />
-              </button>
-              <button
-                onClick={() => setStatusFilterAndUrl("")}
-                className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between w-full cursor-pointer hover:brightness-95 transition-all text-left"
-              >
-                <div>
-                  <p className="text-xs text-accent-foreground/70 mb-1">Estimasi Revenue</p>
-                  <p className="text-xl font-bold leading-tight">{formatCurrency(summary.totalEstimatedRevenue)}</p>
-                </div>
-                <TrendingUp className="w-10 h-10 opacity-20" />
-              </button>
+              {[
+                { id: "totalOrders", label: "Total Pesanan", value: summary.totalOrders, icon: <Package className="w-10 h-10 opacity-20" />, defaultCls: "bg-primary text-primary-foreground", subLabelCls: "text-primary-foreground/60" },
+                { id: "revenue", label: "Estimasi Revenue", value: formatCurrency(summary.totalEstimatedRevenue), icon: <TrendingUp className="w-10 h-10 opacity-20" />, defaultCls: "bg-accent text-accent-foreground", subLabelCls: "text-accent-foreground/70" },
+              ].map(({ id, label, value, icon, defaultCls, subLabelCls }) => {
+                const cs = cardStyles[id];
+                const isGrad = cs?.bgCustom?.includes("gradient");
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setStatusFilterAndUrl("")}
+                    style={cs?.bgCustom ? { background: cs.bgCustom } : undefined}
+                    className={`${cs?.bgCustom ? (isGrad ? "text-white" : "") : defaultCls} rounded-xl p-5 flex items-center justify-between w-full cursor-pointer hover:brightness-95 transition-all text-left`}
+                  >
+                    <div>
+                      <p className={`text-xs mb-1 ${cs?.bgCustom ? (isGrad ? "text-white/70" : "text-foreground/60") : subLabelCls}`}>{label}</p>
+                      <p className="text-2xl sm:text-4xl font-bold leading-tight">{value}</p>
+                    </div>
+                    {cs?.logoUrl ? (
+                      <img src={cs.logoUrl} alt="" className="w-10 h-10 object-contain rounded opacity-80" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                    ) : icon}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Status breakdown */}
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
               {[
-                { label: "New Order", value: summary.newOrders, bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", num: "text-blue-800" },
-                { label: "Under Review", value: summary.underReviewOrders, bg: "bg-yellow-50", border: "border-yellow-200", text: "text-yellow-700", num: "text-yellow-800" },
-                { label: "Quotation Sent", value: summary.quotationSentOrders, bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700", num: "text-purple-800" },
-                { label: "Confirmed", value: summary.confirmedOrders, bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", num: "text-emerald-800" },
-                { label: "In Progress", value: summary.inProgressOrders, bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700", num: "text-orange-800" },
-                { label: "Completed", value: summary.completedOrders, bg: "bg-green-50", border: "border-green-200", text: "text-green-700", num: "text-green-800" },
-                { label: "Cancelled", value: summary.cancelledOrders, bg: "bg-red-50", border: "border-red-200", text: "text-red-700", num: "text-red-800" },
-              ].map(({ label, value, bg, border, text, num }) => (
-                <button
-                  key={label}
-                  onClick={() => setStatusFilterAndUrl(statusFilter === label ? "" : label)}
-                  className={`${bg} border ${border} rounded-lg p-3 text-left transition-all hover:shadow-sm cursor-pointer ${statusFilter === label ? "ring-2 ring-offset-1 ring-current" : ""}`}
-                >
-                  <p className={`text-2xl font-bold ${num}`}>{value}</p>
-                  <p className={`text-xs font-medium mt-0.5 ${text} leading-tight`}>{label}</p>
-                </button>
-              ))}
+                { id: "newOrder",      label: "New Order",       value: summary.newOrders,          bg: "bg-blue-50",    border: "border-blue-200",   text: "text-blue-700",   num: "text-blue-800" },
+                { id: "underReview",   label: "Under Review",    value: summary.underReviewOrders,  bg: "bg-yellow-50",  border: "border-yellow-200", text: "text-yellow-700", num: "text-yellow-800" },
+                { id: "quotationSent", label: "Quotation Sent",  value: summary.quotationSentOrders,bg: "bg-purple-50",  border: "border-purple-200", text: "text-purple-700", num: "text-purple-800" },
+                { id: "confirmed",     label: "Confirmed",       value: summary.confirmedOrders,    bg: "bg-emerald-50", border: "border-emerald-200",text: "text-emerald-700",num: "text-emerald-800" },
+                { id: "inProgress",    label: "In Progress",     value: summary.inProgressOrders,   bg: "bg-orange-50",  border: "border-orange-200", text: "text-orange-700", num: "text-orange-800" },
+                { id: "completed",     label: "Completed",       value: summary.completedOrders,    bg: "bg-green-50",   border: "border-green-200",  text: "text-green-700",  num: "text-green-800" },
+                { id: "cancelled",     label: "Cancelled",       value: summary.cancelledOrders,    bg: "bg-red-50",     border: "border-red-200",    text: "text-red-700",    num: "text-red-800" },
+              ].map(({ id, label, value, bg, border, text, num }) => {
+                const cs = cardStyles[id];
+                const isGrad = cs?.bgCustom?.includes("gradient");
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setStatusFilterAndUrl(statusFilter === label ? "" : label)}
+                    style={cs?.bgCustom ? { background: cs.bgCustom } : undefined}
+                    className={`${cs?.bgCustom ? "" : bg} border ${cs?.bgCustom ? "border-white/20" : border} rounded-lg p-3 text-left transition-all hover:shadow-sm cursor-pointer ${statusFilter === label ? "ring-2 ring-offset-1 ring-current" : ""}`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <p className={`text-2xl font-bold ${isGrad ? "text-white drop-shadow" : num}`}>{value}</p>
+                      {cs?.logoUrl && (
+                        <img src={cs.logoUrl} alt="" className="h-6 w-6 object-contain rounded opacity-80" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                      )}
+                    </div>
+                    <p className={`text-xs font-medium mt-0.5 ${isGrad ? "text-white/85" : text} leading-tight`}>{label}</p>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -338,6 +396,86 @@ export default function AdminPage() {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Card Style Config */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <button
+            className="w-full px-4 py-3 border-b border-border flex items-center justify-between hover:bg-muted/30 transition-colors"
+            onClick={() => setCardConfigOpen((v) => !v)}
+          >
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4 text-primary" />
+              <h2 className="font-semibold text-foreground text-sm">Tampilan Stat Cards</h2>
+              <span className="text-xs text-muted-foreground">(logo &amp; background)</span>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${cardConfigOpen ? "rotate-180" : ""}`} />
+          </button>
+          {cardConfigOpen && (
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-muted-foreground mb-2">Kustomisasi logo dan background tiap stat card. Perubahan tersimpan otomatis di browser ini.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {ADMIN_CARDS.map(({ id, label }) => {
+                  const cs = cardStyles[id] ?? {};
+                  const isGrad = cs.bgCustom?.includes("gradient");
+                  return (
+                    <div key={id} className="border rounded-lg p-3 space-y-2 bg-muted/20">
+                      {/* Preview */}
+                      <div
+                        style={cs.bgCustom ? { background: cs.bgCustom } : undefined}
+                        className={`rounded p-2 flex items-center justify-between ${cs.bgCustom ? "" : "bg-primary/10"}`}
+                      >
+                        <span className={`text-xs font-semibold ${isGrad ? "text-white" : "text-foreground"}`}>{label}</span>
+                        {cs.logoUrl && <img src={cs.logoUrl} alt="" className="h-5 w-5 object-contain rounded" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />}
+                      </div>
+
+                      {/* Logo URL */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0 w-9">Logo:</span>
+                        <input
+                          className="flex-1 text-xs border rounded px-1.5 py-0.5 bg-background min-w-0"
+                          placeholder="URL gambar..."
+                          value={cs.logoUrl ?? ""}
+                          onChange={(e) => updateCardStyle(id, { logoUrl: e.target.value || undefined })}
+                        />
+                        {cs.logoUrl && (
+                          <button onClick={() => updateCardStyle(id, { logoUrl: undefined })} className="text-muted-foreground hover:text-red-500 flex-shrink-0 text-xs">✕</button>
+                        )}
+                      </div>
+
+                      {/* Background */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0 w-9">BG:</span>
+                        <input
+                          type="color"
+                          value={cs.bgCustom && !isGrad ? cs.bgCustom : "#eff6ff"}
+                          onChange={(e) => updateCardStyle(id, { bgCustom: e.target.value })}
+                          className="h-5 w-6 rounded border-0 cursor-pointer p-0 flex-shrink-0"
+                          title="Warna solid"
+                        />
+                        {ADMIN_GRADIENT_PRESETS.map((g, gi) => (
+                          <button
+                            key={gi}
+                            style={{ background: g }}
+                            onClick={() => updateCardStyle(id, { bgCustom: g })}
+                            className={`h-4 w-6 rounded border ${cs.bgCustom === g ? "ring-2 ring-offset-1 ring-gray-400" : "border-gray-200"}`}
+                            title={`Gradient ${gi + 1}`}
+                          />
+                        ))}
+                        {cs.bgCustom && (
+                          <button onClick={() => updateCardStyle(id, { bgCustom: undefined })} className="text-muted-foreground hover:text-red-500 text-xs flex-shrink-0">✕</button>
+                        )}
+                      </div>
+
+                      {(cs.logoUrl || cs.bgCustom) && (
+                        <button onClick={() => resetCardStyle(id)} className="text-[10px] text-muted-foreground hover:text-red-500 underline">Reset ke default</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Orders Table */}

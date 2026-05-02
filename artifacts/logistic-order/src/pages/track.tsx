@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { useGetLogisticOrderByNumber } from "@workspace/api-client-react";
+import { useGetLogisticOrderByNumber, getGetLogisticOrderByNumberQueryKey } from "@workspace/api-client-react";
 import { ArrowLeft, Search, Package, Ship } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_COLORS, OrderStatus } from "@/lib/services-data";
@@ -23,7 +23,7 @@ export default function TrackPage() {
 
   const { data: order, isLoading, isError } = useGetLogisticOrderByNumber(
     searchTerm,
-    { query: { enabled: !!searchTerm } }
+    { query: { enabled: !!searchTerm, queryKey: getGetLogisticOrderByNumberQueryKey(searchTerm) } }
   );
 
   function handleSearch() {

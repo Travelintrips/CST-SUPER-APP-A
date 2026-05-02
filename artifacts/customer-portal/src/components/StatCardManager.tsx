@@ -25,6 +25,17 @@ const COLORS = [
   { key: "red",    bg: "bg-red-50",    border: "border-red-200",    text: "text-red-700",    num: "text-red-800" },
 ];
 
+const GRADIENT_PRESETS = [
+  "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+  "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+  "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+  "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
+  "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
+  "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)",
+  "linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%)",
+];
+
 const METRICS = [
   { key: "total",      label: "Total Pesanan" },
   { key: "pending",    label: "Pending" },
@@ -41,6 +52,8 @@ export interface StatCard {
   colorKey: string;
   iconKey: string;
   metric: string;
+  logoUrl?: string;
+  bgCustom?: string;
 }
 
 const DEFAULT_CARDS: StatCard[] = [
@@ -88,19 +101,31 @@ interface StatCardDisplayProps {
 export function StatCardDisplay({ card, count, isActive, onClick }: StatCardDisplayProps) {
   const colors = getCardColor(card.colorKey);
   const IconComp = ALL_ICONS[card.iconKey] ?? Package;
+  const hasCustomBg = !!card.bgCustom;
+  const isGradient = card.bgCustom?.includes("gradient");
 
   return (
     <button
       onClick={onClick}
-      className={`${colors.bg} border ${colors.border} rounded-lg p-3 text-left transition-all hover:shadow-sm w-full ${
+      style={hasCustomBg ? { background: card.bgCustom } : undefined}
+      className={`${hasCustomBg ? "" : colors.bg} border ${hasCustomBg ? "border-white/20" : colors.border} rounded-lg p-3 text-left transition-all hover:shadow-sm w-full ${
         isActive ? "ring-2 ring-offset-1 ring-current" : ""
       }`}
     >
       <div className="flex items-center justify-between mb-1">
-        <p className={`text-2xl font-bold ${colors.num}`}>{count}</p>
-        <IconComp className={`h-5 w-5 ${colors.text} opacity-50`} />
+        <p className={`text-2xl font-bold ${isGradient ? "text-white drop-shadow" : colors.num}`}>{count}</p>
+        {card.logoUrl ? (
+          <img
+            src={card.logoUrl}
+            alt=""
+            className="h-7 w-7 object-contain rounded"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <IconComp className={`h-5 w-5 ${isGradient ? "text-white/60" : colors.text + " opacity-50"}`} />
+        )}
       </div>
-      <p className={`text-xs font-medium ${colors.text} leading-tight`}>{card.label}</p>
+      <p className={`text-xs font-medium ${isGradient ? "text-white/85" : colors.text} leading-tight`}>{card.label}</p>
     </button>
   );
 }
@@ -116,27 +141,35 @@ interface CardEditorProps {
 function CardEditor({ card, onChange, onDelete, dragHandleProps, isDragging }: CardEditorProps) {
   const colors = getCardColor(card.colorKey);
   const IconComp = ALL_ICONS[card.iconKey] ?? Package;
+  const hasCustomBg = !!card.bgCustom;
 
   return (
-    <div className={`${colors.bg} border-2 ${colors.border} rounded-xl p-3 flex items-center gap-3 transition-all ${isDragging ? "opacity-50 scale-95" : ""}`}>
-      <div
-        {...dragHandleProps}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
-      >
+    <div
+      style={hasCustomBg ? { background: card.bgCustom } : undefined}
+      className={`${hasCustomBg ? "border-gray-300" : colors.bg + " " + colors.border} border-2 rounded-xl p-3 flex items-start gap-3 transition-all ${isDragging ? "opacity-50 scale-95" : ""}`}
+    >
+      <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground mt-0.5">
         <GripVertical className="h-5 w-5" />
       </div>
 
-      <IconComp className={`h-5 w-5 ${colors.text} flex-shrink-0`} />
+      {card.logoUrl ? (
+        <img src={card.logoUrl} alt="" className="h-5 w-5 object-contain rounded flex-shrink-0 mt-0.5" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+      ) : (
+        <IconComp className={`h-5 w-5 ${colors.text} flex-shrink-0 mt-0.5`} />
+      )}
 
       <div className="flex-1 min-w-0 space-y-1.5">
+        {/* Label */}
         <Input
           value={card.label}
           onChange={(e) => onChange({ ...card, label: e.target.value })}
           className="h-7 text-xs font-medium bg-white/70 border-0 focus-visible:ring-1"
           placeholder="Label"
         />
-        <div className="flex gap-1.5 flex-wrap">
-          {/* Color picker */}
+
+        {/* Color picker */}
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className="text-[10px] text-muted-foreground">Warna:</span>
           {COLORS.map((c) => (
             <button
               key={c.key}
@@ -146,19 +179,64 @@ function CardEditor({ card, onChange, onDelete, dragHandleProps, isDragging }: C
             />
           ))}
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {/* Icon picker */}
+
+        {/* Icon picker */}
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className="text-[10px] text-muted-foreground">Ikon:</span>
           {Object.entries(ALL_ICONS).map(([key, Icon]) => (
             <button
               key={key}
               title={key}
-              onClick={() => onChange({ ...card, iconKey: key })}
-              className={`p-0.5 rounded transition-colors ${card.iconKey === key ? `${colors.text} bg-white/80` : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => onChange({ ...card, iconKey: key, logoUrl: undefined })}
+              className={`p-0.5 rounded transition-colors ${card.iconKey === key && !card.logoUrl ? `${colors.text} bg-white/80` : "text-muted-foreground hover:text-foreground"}`}
             >
               <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
         </div>
+
+        {/* Logo URL */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground flex-shrink-0">Logo:</span>
+          <Input
+            value={card.logoUrl ?? ""}
+            onChange={(e) => onChange({ ...card, logoUrl: e.target.value || undefined })}
+            placeholder="URL gambar logo..."
+            className="h-6 text-xs bg-white/70 border-0 focus-visible:ring-1 flex-1"
+          />
+          {card.logoUrl && (
+            <>
+              <img src={card.logoUrl} alt="" className="h-5 w-5 object-contain rounded border flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+              <button onClick={() => onChange({ ...card, logoUrl: undefined })} className="text-muted-foreground hover:text-red-500 flex-shrink-0"><X className="h-3 w-3" /></button>
+            </>
+          )}
+        </div>
+
+        {/* Background */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-muted-foreground flex-shrink-0">Background:</span>
+          <input
+            type="color"
+            value={card.bgCustom && !card.bgCustom.includes("gradient") ? card.bgCustom : "#eff6ff"}
+            onChange={(e) => onChange({ ...card, bgCustom: e.target.value })}
+            className="h-5 w-6 rounded cursor-pointer border-0 p-0 flex-shrink-0"
+            title="Pilih warna solid"
+          />
+          {GRADIENT_PRESETS.map((g, i) => (
+            <button
+              key={i}
+              title={`Gradient ${i + 1}`}
+              style={{ background: g }}
+              onClick={() => onChange({ ...card, bgCustom: g })}
+              className={`h-4 w-7 rounded border ${card.bgCustom === g ? "ring-2 ring-offset-1 ring-gray-400" : "border-gray-200"}`}
+            />
+          ))}
+          {card.bgCustom && (
+            <button onClick={() => onChange({ ...card, bgCustom: undefined })} className="text-muted-foreground hover:text-red-500 flex-shrink-0" title="Reset background"><X className="h-3 w-3" /></button>
+          )}
+        </div>
+
+        {/* Metric */}
         <select
           value={card.metric}
           onChange={(e) => onChange({ ...card, metric: e.target.value })}
@@ -170,10 +248,7 @@ function CardEditor({ card, onChange, onDelete, dragHandleProps, isDragging }: C
         </select>
       </div>
 
-      <button
-        onClick={onDelete}
-        className="text-muted-foreground hover:text-red-500 flex-shrink-0 transition-colors"
-      >
+      <button onClick={onDelete} className="text-muted-foreground hover:text-red-500 flex-shrink-0 transition-colors mt-0.5">
         <Trash2 className="h-4 w-4" />
       </button>
     </div>
