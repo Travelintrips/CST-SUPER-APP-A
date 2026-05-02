@@ -8,10 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { getAuthHeaders, isAuthenticated } from "@/lib/auth";
 import { useGetPortalMe } from "@workspace/api-client-react";
+import { useEditMode } from "@/contexts/EditModeContext";
+import { resolveImageUrl } from "@/lib/utils";
 import {
   FileCheck, ArrowLeft, ChevronRight, Upload, FileText,
   AlertTriangle, Check, Loader2, Trash2, Calculator,
-  Scale, Package, BookOpen, Users,
+  Scale, Package, BookOpen, Users, ImagePlus, X,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────────────────── */
@@ -166,6 +168,23 @@ const SERVICE_OPTIONS: { key: ServiceType; icon: React.ReactNode; title: string;
 export default function Pabean() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // --- edit mode ---
+  const { editMode, content, updateField, uploadImage } = useEditMode();
+  const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
+  const logoFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  async function handleServiceLogoUpload(key: string, file: File) {
+    setUploadingLogo(key);
+    try {
+      const path = await uploadImage(file);
+      updateField(`pabean_logo_${key}`, path);
+    } catch {
+      toast({ title: "Gagal upload logo", variant: "destructive" });
+    } finally {
+      setUploadingLogo(null);
+    }
+  }
 
   // --- global state ---
   const [selectedServices, setSelectedServices] = useState<ServiceType[]>([]);
@@ -403,37 +422,96 @@ export default function Pabean() {
           <div className="grid sm:grid-cols-2 gap-3">
             {SERVICE_OPTIONS.map((opt) => {
               const isSelected = selectedServices.includes(opt.key);
+              const logoKey = `pabean_logo_${opt.key}`;
+              const rawLogo = content[logoKey];
+              const logoSrc = rawLogo
+                ? (rawLogo.startsWith("/") ? (resolveImageUrl(rawLogo) ?? rawLogo) : rawLogo)
+                : null;
+              const isUploading = uploadingLogo === opt.key;
               return (
-                <button
-                  key={opt.key}
-                  onClick={() => {
-                    toggleService(opt.key);
-                    if (!selectedServices.includes(opt.key)) {
-                      setTimeout(() => {
-                        detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                      }, 50);
-                    }
-                  }}
-                  className={`rounded-xl border-2 p-4 text-left transition-all flex flex-col gap-2 relative ${
-                    isSelected
-                      ? opt.color + " ring-2 ring-offset-1 ring-orange-400"
-                      : "border-border hover:border-orange-200 bg-white"
-                  }`}
-                >
-                  {/* Checkbox top-right */}
-                  <div className={`absolute top-3 right-3 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                    isSelected
-                      ? "bg-orange-500 border-orange-500"
-                      : "bg-white border-gray-300"
-                  }`}>
-                    {isSelected && <Check className="h-3 w-3 text-white" />}
-                  </div>
-                  <div className="flex items-center gap-2 pr-7">
-                    <span className={isSelected ? "" : "text-muted-foreground"}>{opt.icon}</span>
-                    <span className="font-semibold text-sm leading-tight">{opt.title}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{opt.desc}</p>
-                </button>
+                <div key={opt.key} className="relative">
+                  <button
+                    onClick={() => {
+                      toggleService(opt.key);
+                      if (!selectedServices.includes(opt.key)) {
+                        setTimeout(() => {
+                          detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 50);
+                      }
+                    }}
+                    className={`w-full rounded-xl border-2 p-4 text-left transition-all flex flex-col gap-2 relative ${
+                      isSelected
+                        ? opt.color + " ring-2 ring-offset-1 ring-orange-400"
+                        : "border-border hover:border-orange-200 bg-white"
+                    }`}
+                  >
+                    {/* Checkbox top-right */}
+                    <div className={`absolute top-3 right-3 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                      isSelected
+                        ? "bg-orange-500 border-orange-500"
+                        : "bg-white border-gray-300"
+                    }`}>
+                      {isSelected && <Check className="h-3 w-3 text-white" />}
+                    </div>
+                    <div className="flex items-center gap-2 pr-7">
+                      {/* Icon / Logo */}
+                      <div className="relative shrink-0">
+                        {logoSrc ? (
+                          <img src={logoSrc} alt={opt.title} className="h-6 w-6 object-contain rounded" />
+                        ) : isUploading ? (
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        ) : (
+                          <span className={isSelected ? "" : "text-muted-foreground"}>{opt.icon}</span>
+                        )}
+                        {/* Edit mode overlay on icon */}
+                        {editMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); logoFileRefs.current[opt.key]?.click(); }}
+                            className="absolute inset-0 flex items-center justify-center bg-black/50 rounded opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                            title="Upload logo"
+                          >
+                            <ImagePlus className="h-3.5 w-3.5 text-white" />
+                          </button>
+                        )}
+                      </div>
+                      <span className="font-semibold text-sm leading-tight">{opt.title}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{opt.desc}</p>
+                  </button>
+
+                  {/* Hidden file input */}
+                  <input
+                    ref={(el) => { logoFileRefs.current[opt.key] = el; }}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleServiceLogoUpload(opt.key, f);
+                      e.target.value = "";
+                    }}
+                  />
+
+                  {/* Edit mode: remove logo button */}
+                  {editMode && logoSrc && (
+                    <button
+                      type="button"
+                      onClick={() => updateField(logoKey, "")}
+                      className="absolute top-1 left-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 transition-colors z-10"
+                      title="Hapus logo"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+
+                  {/* Edit mode badge */}
+                  {editMode && (
+                    <div className="absolute bottom-2 left-2 bg-primary/90 text-primary-foreground text-[10px] font-medium px-1.5 py-0.5 rounded pointer-events-none">
+                      Hover icon → upload logo
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
