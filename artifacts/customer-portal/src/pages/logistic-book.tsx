@@ -332,6 +332,8 @@ export default function BookPage() {
     request: { headers },
   });
 
+  const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number } | null>(null);
+
   const [customerForm, setCustomerForm] = useState({
     companyName: "", customerName: "", email: "", phone: "",
     origin: "", destination: "", commodity: "", cargoDescription: "",
@@ -358,10 +360,18 @@ export default function BookPage() {
     []
   );
 
-  // Jump directly to cart/order summary if cart already has items (coming from jasa-detail)
-  // or jump to calculator if ?service=<id> is in the URL
+  // Read URL params on mount: ?commodity=&productId=&qty=&productPrice=&service=
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const commodity = params.get("commodity");
+    const qty = parseInt(params.get("qty") ?? "1", 10) || 1;
+    const productPrice = parseFloat(params.get("productPrice") ?? "0") || 0;
+
+    if (commodity) {
+      setFromProduct({ name: commodity, qty, price: productPrice });
+      setCustomerForm((prev) => ({ ...prev, commodity }));
+    }
+
     const serviceId = params.get("service");
     if (serviceId) {
       const found = SERVICE_ITEMS.find((i) => i.id === serviceId);
@@ -370,7 +380,7 @@ export default function BookPage() {
         setSelectedCategory(found.category);
         setStep(1);
       }
-    } else if (cartItems.length > 0) {
+    } else if (!commodity && cartItems.length > 0) {
       setStep(2);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -572,6 +582,25 @@ export default function BookPage() {
           </Button>
         </div>
 
+        {/* Product summary in cart */}
+        {fromProduct && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
+            <Package className="w-5 h-5 text-amber-600 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">Barang / Komoditi</p>
+              <p className="font-semibold text-amber-900">{fromProduct.name}</p>
+              {fromProduct.qty > 1 && (
+                <p className="text-xs text-amber-700">Qty: {fromProduct.qty}</p>
+              )}
+            </div>
+            {fromProduct.price > 0 && (
+              <p className="font-bold text-amber-900 shrink-0">
+                {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price * fromProduct.qty)}
+              </p>
+            )}
+          </div>
+        )}
+
         {cartItems.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <ShoppingCart className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -668,7 +697,19 @@ export default function BookPage() {
             <div className="grid grid-cols-2 gap-3">
               <div><Label className="text-xs">Origin *</Label><Input placeholder="Jakarta / IDJKT" value={f.origin} onChange={e => set("origin", e.target.value)} /></div>
               <div><Label className="text-xs">Destination *</Label><Input placeholder="Singapore / SGSIN" value={f.destination} onChange={e => set("destination", e.target.value)} /></div>
-              <div><Label className="text-xs">Commodity</Label><Input placeholder="Elektronik, Tekstil..." value={f.commodity} onChange={e => set("commodity", e.target.value)} /></div>
+              <div>
+                <Label className="text-xs">Commodity</Label>
+                <Input
+                  placeholder="Elektronik, Tekstil..."
+                  value={f.commodity}
+                  onChange={e => set("commodity", e.target.value)}
+                  readOnly={!!fromProduct}
+                  className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
+                />
+                {fromProduct && (
+                  <p className="text-xs text-amber-600 mt-0.5">Diisi otomatis dari produk yang dipilih</p>
+                )}
+              </div>
               <div><Label className="text-xs">Required Date</Label><Input type="date" value={f.requiredDate} onChange={e => set("requiredDate", e.target.value)} /></div>
               <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={f.grossWeight} onChange={e => set("grossWeight", e.target.value)} /></div>
               <div><Label className="text-xs">Volume / CBM</Label><Input type="number" placeholder="0" value={f.volumeCbm} onChange={e => set("volumeCbm", e.target.value)} /></div>
@@ -825,6 +866,27 @@ export default function BookPage() {
           </div>
         </div>
       </div>
+
+      {/* Product banner — shown when coming from products page */}
+      {fromProduct && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+            <Package className="w-5 h-5 text-amber-600 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">Produk yang dipesan</p>
+              <p className="font-semibold text-amber-900 truncate">{fromProduct.name}</p>
+            </div>
+            {fromProduct.price > 0 && (
+              <div className="text-right shrink-0">
+                <p className="text-xs text-amber-700">Qty {fromProduct.qty} ×</p>
+                <p className="font-bold text-amber-900 text-sm">
+                  {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price)}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 py-6">

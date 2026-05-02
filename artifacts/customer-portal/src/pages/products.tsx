@@ -6,10 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
 import {
-  ShoppingBag, Search, ShoppingCart, ChevronLeft, ChevronRight,
-  Play, Truck, Package, Clock, Star, Check, Layers, ExternalLink,
+  ShoppingBag, Search, ChevronLeft, ChevronRight,
+  Play, Package, Star, ArrowRight,
 } from "lucide-react";
-import { useCart } from "@/lib/cart";
 
 type MediaItem = { type: "image" | "video"; url: string };
 
@@ -23,48 +22,6 @@ interface Product {
   categories: string[];
 }
 
-interface ShippingOption {
-  id: string;
-  name: string;
-  logo: string;
-  eta: string;
-  fee: number;
-  note: string | null;
-  kind: "vendor" | "service";
-  serviceId?: number;
-}
-
-function useShippingOptions() {
-  const [options, setOptions] = useState<ShippingOption[]>([]);
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/portal/delivery-vendors").then((r) => r.json()).catch(() => []),
-      fetch("/api/portal/services").then((r) => r.json()).catch(() => []),
-    ]).then(([vendors, services]) => {
-      const vendorOpts: ShippingOption[] = (Array.isArray(vendors) ? vendors : []).map((v: { id: number; name: string; logo: string; eta: string; fee: number; note: string | null }) => ({
-        id: `vendor-${v.id}`,
-        name: v.name,
-        logo: v.logo,
-        eta: v.eta,
-        fee: v.fee,
-        note: v.note,
-        kind: "vendor" as const,
-      }));
-      const serviceOpts: ShippingOption[] = (Array.isArray(services) ? services : []).map((s: { id: number; name: string; price: number }) => ({
-        id: `service-${s.id}`,
-        name: s.name,
-        logo: "🏢",
-        eta: "Sesuai kesepakatan",
-        fee: s.price ?? 0,
-        note: s.price === 0 ? "Harga nego" : null,
-        kind: "service" as const,
-        serviceId: s.id,
-      }));
-      setOptions([...vendorOpts, ...serviceOpts]);
-    });
-  }, []);
-  return options;
-}
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -279,47 +236,18 @@ function MediaGallery({ product }: { product: Product }) {
 
 // ── Product detail modal ───────────────────────────────────────────────────
 function ProductModal({ product, onClose }: { product: Product; onClose: () => void }) {
-  const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
-  const [shippingTab, setShippingTab] = useState<"vendor" | "service">("vendor");
-  const { addItem, addItemSilent, openCheckout, items } = useCart();
   const [, setLocation] = useLocation();
-  const isInCart = items.some((i) => i.productId === product.id);
-  const allShipping = useShippingOptions();
 
-  const vendorOpts = allShipping.filter((s) => s.kind === "vendor");
-  const serviceOpts = allShipping.filter((s) => s.kind === "service");
-  const shownOpts = shippingTab === "vendor" ? vendorOpts : serviceOpts;
-  const chosen = allShipping.find((s) => s.id === selectedShipping);
-
-  const cartPayload = {
-    productId: product.id,
-    name: product.name,
-    unitPrice: product.price,
-    itemType: "barang" as const,
-  };
-
-  function handleAddToCart() {
-    addItem(cartPayload);
+  function handleOrder() {
+    const params = new URLSearchParams({
+      commodity: product.name,
+      productId: String(product.id),
+      qty: String(qty),
+      ...(product.price > 0 ? { productPrice: String(product.price) } : {}),
+    });
     onClose();
-  }
-
-  function handleBuyNow() {
-    if (chosen && chosen.kind === "service" && chosen.serviceId != null) {
-      // Jasa flow: add silently → navigate to jasa detail → sticky confirm banner opens checkout
-      addItemSilent(cartPayload);
-      sessionStorage.setItem(
-        "pendingJasaReview",
-        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name })
-      );
-      onClose();
-      setLocation(`/jasa/${chosen.serviceId}`);
-    } else {
-      // Vendor / no-shipping flow: add silently → open cart drawer at checkout step directly
-      addItemSilent(cartPayload);
-      onClose();
-      openCheckout();
-    }
+    setLocation(`/book?${params.toString()}`);
   }
 
   return (
@@ -386,117 +314,29 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             </div>
           </div>
 
-          {/* Shipping selector */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-              <Truck className="h-3.5 w-3.5" /> Pilih Pengiriman
-            </p>
-            {/* Tab switcher */}
-            <div className="flex gap-1 mb-2">
-              <button
-                onClick={() => setShippingTab("vendor")}
-                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "vendor" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
-              >
-                <Package className="h-3 w-3" /> Kurir ({vendorOpts.length})
-              </button>
-              {serviceOpts.length > 0 && (
-                <button
-                  onClick={() => setShippingTab("service")}
-                  className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "service" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
-                >
-                  <Layers className="h-3 w-3" /> Jasa ({serviceOpts.length})
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto pr-1">
-              {shownOpts.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">Tidak ada pilihan tersedia</p>
-              )}
-              {shownOpts.map((s) => (
-                <div
-                  key={s.id}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-all text-sm ${
-                    selectedShipping === s.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/40 hover:bg-gray-50"
-                  }`}
-                >
-                  <button
-                    className="flex items-center gap-3 flex-1 min-w-0"
-                    onClick={() => setSelectedShipping(s.id === selectedShipping ? null : s.id)}
-                  >
-                    <span className="text-lg shrink-0">{s.logo}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">{s.name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> {s.eta}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0 mx-1">
-                      {s.fee > 0 ? (
-                        <p className="font-semibold text-foreground text-xs">{formatIDR(s.fee)}</p>
-                      ) : (
-                        <p className="text-xs text-amber-600 font-medium">{s.note ?? "Nego"}</p>
-                      )}
-                    </div>
-                    {selectedShipping === s.id && (
-                      <Check className="h-4 w-4 text-primary shrink-0" />
-                    )}
-                  </button>
-                  {s.kind === "service" && s.serviceId != null && (
-                    <a
-                      href={`/customer-portal/jasa/${s.serviceId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
-                      title="Lihat detail layanan"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Total */}
-          {selectedShipping && product.price > 0 && (
+          {/* Price estimate */}
+          {product.price > 0 && (
             <div className="bg-gray-50 rounded-xl px-4 py-3 border border-border">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatIDR(product.price * qty)}</span>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal Produk</span>
+                <span className="font-bold text-primary">{formatIDR(product.price * qty)}</span>
               </div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Ongkir ({chosen?.name})</span>
-                <span>{chosen!.fee > 0 ? formatIDR(chosen!.fee) : "Nego"}</span>
-              </div>
-              <div className="flex justify-between font-bold border-t border-border pt-2 mt-2">
-                <span>Total</span>
-                <span className="text-primary">
-                  {chosen!.fee > 0 ? formatIDR(product.price * qty + chosen!.fee) : "Hubungi kami"}
-                </span>
-              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                + Biaya jasa &amp; pengiriman dipilih di langkah berikutnya
+              </p>
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="flex gap-2 mt-auto pt-2">
-            <Button
-              variant="outline"
-              className="flex-1 gap-2"
-              onClick={() => { handleAddToCart(); }}
-            >
-              <ShoppingCart className="h-4 w-4" />
-              {isInCart ? "Tambah Lagi" : "Keranjang"}
-            </Button>
-            <Button
-              className="flex-1 gap-2"
-              onClick={handleBuyNow}
-            >
+          {/* Action button */}
+          <div className="mt-auto pt-2 space-y-2">
+            <Button className="w-full gap-2" onClick={handleOrder}>
               <Package className="h-4 w-4" />
-              {chosen?.kind === "service" ? "Lanjutkan Pesanan" : "Beli Sekarang"}
+              Pesan Sekarang
+              <ArrowRight className="h-4 w-4 ml-auto" />
             </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Pilih layanan &amp; jasa pengiriman di langkah berikutnya
+            </p>
           </div>
         </div>
       </div>
@@ -637,7 +477,7 @@ export default function Products() {
                   </div>
                 </div>
 
-                {/* Add to cart quick button */}
+                {/* Order button */}
                 <div className="px-3 pb-3">
                   <button
                     onClick={(e) => {
@@ -646,7 +486,7 @@ export default function Products() {
                     }}
                     className="w-full py-1.5 rounded-xl border border-primary text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-colors flex items-center justify-center gap-1"
                   >
-                    <ShoppingCart className="h-3.5 w-3.5" /> Lihat Detail
+                    <Package className="h-3.5 w-3.5" /> Lihat &amp; Pesan
                   </button>
                 </div>
               </div>
