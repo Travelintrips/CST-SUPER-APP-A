@@ -480,7 +480,7 @@ export default function Home() {
         className="relative overflow-hidden"
         style={{
           backgroundImage: [
-            "linear-gradient(135deg, rgba(15,23,42,0.72) 0%, rgba(14,165,233,0.48) 45%, rgba(37,99,235,0.40) 100%)",
+            "linear-gradient(90deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.48) 45%, rgba(14,165,233,0.28) 100%)",
             `url(${assetUrl("/images/warehouse.png")})`,
           ].join(", "),
           backgroundSize: "cover",
@@ -491,150 +491,108 @@ export default function Home() {
           borderBottom: "1px solid rgba(255,255,255,0.10)",
         }}
       >
-        {/* radial focus overlay — darkens center behind text, lighter at edges */}
+        {/* vignette — subtle dark perimeter */}
         <div
           aria-hidden
           className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse 80% 60% at center, rgba(15,23,42,0.52) 0%, rgba(15,23,42,0.30) 45%, rgba(15,23,42,0.10) 80%)",
-          }}
-        />
-        {/* vignette — dark perimeter */}
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none"
-          style={{ boxShadow: "inset 0 0 100px 20px rgba(11,29,50,0.55)" }}
+          style={{ boxShadow: "inset 0 0 90px 16px rgba(11,29,50,0.45)" }}
         />
 
         <div
           className="relative z-10 px-4 md:px-6 mx-auto text-center"
-          style={{ maxWidth: "980px" }}
+          style={{ maxWidth: "900px" }}
         >
-          {/* glass card */}
-          <div
+          <h2
+            className="font-display mb-6"
             style={{
-              background: "rgba(15,23,42,0.18)",
-              backdropFilter: "blur(6px)",
-              WebkitBackdropFilter: "blur(6px)",
-              border: "1px solid rgba(255,255,255,0.14)",
-              borderRadius: "28px",
-              padding: "clamp(28px, 4vw, 48px) clamp(24px, 5vw, 52px)",
+              fontWeight: 800,
+              fontSize: "clamp(42px, 5vw, 68px)",
+              lineHeight: 1.08,
+              letterSpacing: "-0.04em",
+              color: "#ffffff",
+              textShadow: "0 6px 24px rgba(15,23,42,0.45)",
             }}
           >
-            <h2
-              className="font-display mb-6"
-              style={{
-                fontWeight: 900,
-                fontSize: "clamp(42px, 5.4vw, 72px)",
-                lineHeight: 1.05,
-                letterSpacing: "-0.04em",
-                color: "#ffffff",
-                textShadow:
-                  "0 4px 14px rgba(15,23,42,0.45), 0 12px 35px rgba(15,23,42,0.28)",
-              }}
-            >
-              {(() => {
-                const title = t("cta.title");
-                const highlight = t("cta.titleHighlight");
-                const idx = title.indexOf(highlight);
-                if (idx < 0) return title;
-                return (
-                  <>
-                    {title.slice(0, idx)}
-                    <span
-                      style={{
-                        background: "linear-gradient(90deg, #FFFFFF 0%, #BAE6FD 100%)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                        backgroundClip: "text",
-                      }}
-                    >
-                      {highlight}
-                    </span>
-                    {title.slice(idx + highlight.length)}
-                  </>
-                );
-              })()}
-            </h2>
+            {t("cta.title")}
+          </h2>
 
-            <p
-              className="mb-10 mx-auto"
-              style={{
-                fontSize: "clamp(18px, 2vw, 24px)",
-                lineHeight: 1.65,
-                fontWeight: 500,
-                maxWidth: "820px",
-                color: "rgba(255,255,255,0.94)",
-                textShadow: "0 3px 12px rgba(15,23,42,0.42)",
-              }}
-            >
-              {t("cta.prefix")} {t("cta.description")} {company?.name || "CST Logistics"}. {t("cta.suffix")}
-            </p>
+          <p
+            className="mx-auto"
+            style={{
+              fontSize: "clamp(18px, 2vw, 22px)",
+              lineHeight: 1.65,
+              fontWeight: 500,
+              maxWidth: "760px",
+              margin: "0 auto 40px",
+              color: "rgba(255,255,255,0.92)",
+              textShadow: "0 4px 14px rgba(15,23,42,0.35)",
+            }}
+          >
+            {t("cta.prefix")} {t("cta.description")} {company?.name || "CST Logistics"}. {t("cta.suffix")}
+          </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {/* Primary */}
-              <Link href="/register" className="w-full sm:w-auto">
-                <button
-                  className="inline-flex items-center justify-center gap-2 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-                  style={{
-                    background: "#0F172A",
-                    color: "#ffffff",
-                    borderRadius: "16px",
-                    padding: "15px 28px",
-                    fontSize: "16px",
-                    fontWeight: 700,
-                    letterSpacing: "-0.01em",
-                    border: "none",
-                    cursor: "pointer",
-                    boxShadow: "0 16px 35px rgba(15,23,42,0.30)",
-                    transition: "transform 0.22s ease, box-shadow 0.22s ease",
-                    whiteSpace: "nowrap",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
-                    (e.currentTarget as HTMLElement).style.boxShadow = "0 22px 44px rgba(15,23,42,0.45)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-                    (e.currentTarget as HTMLElement).style.boxShadow = "0 16px 35px rgba(15,23,42,0.30)";
-                  }}
-                >
-                  {t("cta.primaryBtn")} <ArrowRight className="h-5 w-5" />
-                </button>
-              </Link>
-              {/* Secondary */}
-              <a href="#kontak" className="w-full sm:w-auto">
-                <button
-                  className="inline-flex items-center justify-center w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-                  style={{
-                    background: "rgba(255,255,255,0.14)",
-                    border: "1px solid rgba(255,255,255,0.38)",
-                    backdropFilter: "blur(12px)",
-                    WebkitBackdropFilter: "blur(12px)",
-                    color: "#ffffff",
-                    borderRadius: "16px",
-                    padding: "15px 28px",
-                    fontSize: "16px",
-                    fontWeight: 700,
-                    letterSpacing: "-0.01em",
-                    cursor: "pointer",
-                    transition: "background 0.22s ease, border-color 0.22s ease",
-                    whiteSpace: "nowrap",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.24)";
-                    (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.62)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.14)";
-                    (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.38)";
-                  }}
-                >
-                  {t("cta.secondaryBtn")}
-                </button>
-              </a>
-            </div>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {/* Primary */}
+            <Link href="/register" className="w-full sm:w-auto">
+              <button
+                className="inline-flex items-center justify-center gap-2 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                style={{
+                  background: "#0F172A",
+                  color: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "15px 28px",
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  letterSpacing: "-0.01em",
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 16px 35px rgba(15,23,42,0.30)",
+                  transition: "transform 0.22s ease, box-shadow 0.22s ease",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 22px 44px rgba(15,23,42,0.45)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 16px 35px rgba(15,23,42,0.30)";
+                }}
+              >
+                {t("cta.primaryBtn")} <ArrowRight className="h-5 w-5" />
+              </button>
+            </Link>
+            {/* Secondary — glass only on button */}
+            <a href="#kontak" className="w-full sm:w-auto">
+              <button
+                className="inline-flex items-center justify-center w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                style={{
+                  background: "rgba(255,255,255,0.14)",
+                  border: "1px solid rgba(255,255,255,0.38)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  color: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "15px 28px",
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  letterSpacing: "-0.01em",
+                  cursor: "pointer",
+                  transition: "background 0.22s ease, border-color 0.22s ease",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.24)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.62)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.14)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.38)";
+                }}
+              >
+                {t("cta.secondaryBtn")}
+              </button>
+            </a>
           </div>
         </div>
       </section>
