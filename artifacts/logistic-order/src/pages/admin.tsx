@@ -247,7 +247,7 @@ export default function AdminPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v === "_all" ? "" : v)}>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilterAndUrl(v === "_all" ? "" : v)}>
               <SelectTrigger className="w-full sm:w-44">
                 <Filter className="w-3.5 h-3.5 mr-1" />
                 <SelectValue placeholder="Semua Status" />
