@@ -37,12 +37,14 @@ import Calculator from "@/pages/calculator";
 const queryClient = new QueryClient();
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/track", "/logistic-admin", "/freight-forwarding", "/pabean"];
+const NO_SHELL_PREFIXES = ["/jasa/"];
 
 function AppShell() {
   const [location] = useLocation();
   const isLogisticPage = LOGISTIC_ROUTES.some(
     (p) => location === p || location.startsWith(p + "/") || location.startsWith("/logistic-admin")
   );
+  const isNoShellPage = NO_SHELL_PREFIXES.some((p) => location.startsWith(p));
 
   const routes = (
     <Switch>
@@ -69,7 +71,7 @@ function AppShell() {
     </Switch>
   );
 
-  if (isLogisticPage) {
+  if (isLogisticPage || isNoShellPage) {
     return <>{routes}</>;
   }
 
