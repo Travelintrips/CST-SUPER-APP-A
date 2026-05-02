@@ -379,8 +379,14 @@ export default function BookPage() {
         setSelectedItem(found);
         setSelectedCategory(found.category);
         setStep(1);
+      } else if (commodity) {
+        // service not found but product present → go to service selection
+        setStep(1);
       }
-    } else if (!commodity && cartItems.length > 0) {
+    } else if (commodity) {
+      // From product page without specific service → skip Tipe Pengiriman, go to Pilih Layanan
+      setStep(1);
+    } else if (cartItems.length > 0) {
       setStep(2);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

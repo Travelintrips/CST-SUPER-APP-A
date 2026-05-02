@@ -7,8 +7,9 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
 import {
   ShoppingBag, Search, ChevronLeft, ChevronRight,
-  Play, Package, Star, ArrowRight,
+  Play, Package, Star, ArrowRight, Check,
 } from "lucide-react";
+import { CATEGORIES, SERVICE_ITEMS, ServiceCategory, ServiceItem } from "@/lib/services-data";
 
 type MediaItem = { type: "image" | "video"; url: string };
 
@@ -237,7 +238,13 @@ function MediaGallery({ product }: { product: Product }) {
 // ── Product detail modal ───────────────────────────────────────────────────
 function ProductModal({ product, onClose }: { product: Product; onClose: () => void }) {
   const [qty, setQty] = useState(1);
+  const [jasaCategory, setJasaCategory] = useState<ServiceCategory | null>(null);
+  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [, setLocation] = useLocation();
+
+  const categoryItems = jasaCategory
+    ? SERVICE_ITEMS.filter((i) => i.category === jasaCategory)
+    : [];
 
   function handleOrder() {
     const params = new URLSearchParams({
@@ -245,6 +252,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
       productId: String(product.id),
       qty: String(qty),
       ...(product.price > 0 ? { productPrice: String(product.price) } : {}),
+      ...(selectedService ? { service: selectedService.id } : {}),
     });
     onClose();
     setLocation(`/book?${params.toString()}`);
@@ -272,15 +280,6 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
           {/* Name */}
           <h2 className="text-xl font-bold text-foreground leading-snug">{product.name}</h2>
 
-          {/* Rating (decorative) */}
-          <div className="flex items-center gap-2 text-sm">
-            <div className="flex text-amber-400">
-              {[1,2,3,4,5].map((s) => <Star key={s} className="h-4 w-4 fill-current" />)}
-            </div>
-            <span className="text-muted-foreground">5.0</span>
-            <span className="text-muted-foreground">· Terjual 100+</span>
-          </div>
-
           {/* Price */}
           <div className="bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
             {product.price > 0 ? (
@@ -294,7 +293,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
           {product.description && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Deskripsi</p>
-              <p className="text-sm text-foreground leading-relaxed">{product.description}</p>
+              <p className="text-sm text-foreground leading-relaxed line-clamp-3">{product.description}</p>
             </div>
           )}
 
@@ -314,29 +313,79 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             </div>
           </div>
 
-          {/* Price estimate */}
-          {product.price > 0 && (
-            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-border">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal Produk</span>
-                <span className="font-bold text-primary">{formatIDR(product.price * qty)}</span>
+          {/* Jasa / Layanan selector */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+              <Package className="h-3.5 w-3.5" /> Pilih Jasa Logistik
+            </p>
+
+            {/* Category grid */}
+            {!jasaCategory ? (
+              <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-0.5">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.name}
+                    onClick={() => setJasaCategory(cat.name)}
+                    className="text-left px-3 py-2 rounded-lg border border-border bg-gray-50 hover:border-primary/60 hover:bg-primary/5 transition-all text-xs"
+                  >
+                    <p className="font-semibold text-foreground">{cat.name}</p>
+                    <p className="text-muted-foreground line-clamp-1 mt-0.5">{cat.description}</p>
+                  </button>
+                ))}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                + Biaya jasa &amp; pengiriman dipilih di langkah berikutnya
+            ) : (
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => { setJasaCategory(null); setSelectedService(null); }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Semua Kategori
+                </button>
+                <div className="space-y-1 max-h-40 overflow-y-auto pr-0.5">
+                  {categoryItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setSelectedService(selectedService?.id === item.id ? null : item)}
+                      className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all flex items-center gap-2 ${
+                        selectedService?.id === item.id
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-border hover:border-primary/50 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold">{item.name}</p>
+                        <p className="text-muted-foreground line-clamp-1">{item.description}</p>
+                      </div>
+                      {selectedService?.id === item.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedService && (
+              <p className="text-xs text-primary mt-1.5 font-medium">
+                ✓ Jasa dipilih: {selectedService.name}
               </p>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Action button */}
           <div className="mt-auto pt-2 space-y-2">
-            <Button className="w-full gap-2" onClick={handleOrder}>
+            <Button
+              className="w-full gap-2"
+              onClick={handleOrder}
+              disabled={!selectedService}
+            >
               <Package className="h-4 w-4" />
-              Pesan Sekarang
-              <ArrowRight className="h-4 w-4 ml-auto" />
+              {selectedService ? `Pesan dengan ${selectedService.name}` : "Pilih Jasa untuk Melanjutkan"}
+              {selectedService && <ArrowRight className="h-4 w-4 ml-auto" />}
             </Button>
-            <p className="text-xs text-muted-foreground text-center">
-              Pilih layanan &amp; jasa pengiriman di langkah berikutnya
-            </p>
+            {!selectedService && (
+              <p className="text-xs text-muted-foreground text-center">
+                Pilih kategori &amp; jasa logistik di atas terlebih dahulu
+              </p>
+            )}
           </div>
         </div>
       </div>
