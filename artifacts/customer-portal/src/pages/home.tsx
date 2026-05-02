@@ -16,12 +16,12 @@ export default function Home() {
   const { t } = useLanguage();
 
   const whyCards = [
-    { titleKey: "why.card1Title", descKey: "why.card1Desc" },
-    { titleKey: "why.card2Title", descKey: "why.card2Desc" },
-    { titleKey: "why.card3Title", descKey: "why.card3Desc" },
-    { titleKey: "why.card4Title", descKey: "why.card4Desc" },
-    { titleKey: "why.card5Title", descKey: "why.card5Desc" },
-    { titleKey: "why.card6Title", descKey: "why.card6Desc" },
+    { titleKey: "why.card1Title", descKey: "why.card1Desc", href: "/services" },
+    { titleKey: "why.card2Title", descKey: "why.card2Desc", href: "/services" },
+    { titleKey: "why.card3Title", descKey: "why.card3Desc", href: "/services" },
+    { titleKey: "why.card4Title", descKey: "why.card4Desc", href: "/services" },
+    { titleKey: "why.card5Title", descKey: "why.card5Desc", href: "/services" },
+    { titleKey: "why.card6Title", descKey: "why.card6Desc", href: "/services" },
   ];
 
   const aboutPoints = [
@@ -116,21 +116,20 @@ export default function Home() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {[
-              { icon: Ship, titleKey: "homePromo.services.item1Title", descKey: "homePromo.services.item1Desc", color: "from-sky-500 to-blue-600" },
-              { icon: Plane, titleKey: "homePromo.services.item2Title", descKey: "homePromo.services.item2Desc", color: "from-violet-500 to-purple-600" },
-              { icon: FileCheck, titleKey: "homePromo.services.item3Title", descKey: "homePromo.services.item3Desc", color: "from-emerald-500 to-teal-600" },
-              { icon: Warehouse, titleKey: "homePromo.services.item4Title", descKey: "homePromo.services.item4Desc", color: "from-amber-500 to-orange-600" },
-            ].map(({ icon: Icon, titleKey, descKey, color }) => (
-              <div
-                key={titleKey}
-                className="group bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1"
-              >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-5 shadow-lg`}>
-                  <Icon className="h-6 w-6 text-white" />
+              { icon: Ship, titleKey: "homePromo.services.item1Title", descKey: "homePromo.services.item1Desc", color: "from-sky-500 to-blue-600", href: "/freight-forwarding" },
+              { icon: Plane, titleKey: "homePromo.services.item2Title", descKey: "homePromo.services.item2Desc", color: "from-violet-500 to-purple-600", href: "/freight-forwarding" },
+              { icon: FileCheck, titleKey: "homePromo.services.item3Title", descKey: "homePromo.services.item3Desc", color: "from-emerald-500 to-teal-600", href: "/pabean" },
+              { icon: Warehouse, titleKey: "homePromo.services.item4Title", descKey: "homePromo.services.item4Desc", color: "from-amber-500 to-orange-600", href: "/jasa" },
+            ].map(({ icon: Icon, titleKey, descKey, color, href }) => (
+              <Link key={titleKey} href={href}>
+                <div className="group bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 cursor-pointer h-full">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-5 shadow-lg`}>
+                    <Icon className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="font-display font-bold text-lg mb-2 text-white">{t(titleKey)}</h3>
+                  <p className="text-slate-400 text-sm leading-relaxed group-hover:text-slate-300 transition-colors">{t(descKey)}</p>
                 </div>
-                <h3 className="font-display font-bold text-lg mb-2 text-white">{t(titleKey)}</h3>
-                <p className="text-slate-400 text-sm leading-relaxed group-hover:text-slate-300 transition-colors">{t(descKey)}</p>
-              </div>
+              </Link>
             ))}
           </div>
 
@@ -166,6 +165,7 @@ export default function Home() {
                 validKey: "homePromo.promo.item1Valid",
                 gradient: "from-sky-500 to-blue-600",
                 icon: Ship,
+                href: "/freight-forwarding",
               },
               {
                 titleKey: "homePromo.promo.item2Title",
@@ -174,6 +174,7 @@ export default function Home() {
                 validKey: "homePromo.promo.item2Valid",
                 gradient: "from-emerald-500 to-teal-600",
                 icon: FileCheck,
+                href: "/pabean",
               },
               {
                 titleKey: "homePromo.promo.item3Title",
@@ -182,30 +183,30 @@ export default function Home() {
                 validKey: "homePromo.promo.item3Valid",
                 gradient: "from-violet-500 to-purple-600",
                 icon: Sparkles,
+                href: "/register",
               },
-            ].map(({ titleKey, descKey, badgeKey, validKey, gradient, icon: Icon }) => (
-              <div
-                key={titleKey}
-                className="group relative rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-              >
-                <div className={`h-2 bg-gradient-to-r ${gradient}`} />
-                <div className="p-8">
-                  <div className="flex items-start justify-between mb-5">
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-md`}>
-                      <Icon className="h-6 w-6 text-white" />
+            ].map(({ titleKey, descKey, badgeKey, validKey, gradient, icon: Icon, href }) => (
+              <Link key={titleKey} href={href}>
+                <div className="group relative rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer h-full">
+                  <div className={`h-2 bg-gradient-to-r ${gradient}`} />
+                  <div className="p-8">
+                    <div className="flex items-start justify-between mb-5">
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-md`}>
+                        <Icon className="h-6 w-6 text-white" />
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r ${gradient} text-white shadow-sm`}>
+                        {t(badgeKey)}
+                      </span>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r ${gradient} text-white shadow-sm`}>
-                      {t(badgeKey)}
-                    </span>
-                  </div>
-                  <h3 className="font-display font-bold text-xl mb-3">{t(titleKey)}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-5">{t(descKey)}</p>
-                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground bg-gray-50 rounded-lg px-3 py-2">
-                    <Tag className="h-3.5 w-3.5" />
-                    {t(validKey)}
+                    <h3 className="font-display font-bold text-xl mb-3">{t(titleKey)}</h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-5">{t(descKey)}</p>
+                    <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground bg-gray-50 rounded-lg px-3 py-2">
+                      <Tag className="h-3.5 w-3.5" />
+                      {t(validKey)}
+                    </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 
@@ -310,17 +311,16 @@ export default function Home() {
 
         <div className="container px-4 md:px-6">
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {whyCards.map(({ titleKey, descKey }) => (
-              <div
-                key={titleKey}
-                className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-              >
-                <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center mb-5">
-                  <CheckCircle2 className="h-5 w-5 text-accent" />
+            {whyCards.map(({ titleKey, descKey, href }) => (
+              <Link key={titleKey} href={href}>
+                <div className="group bg-white rounded-2xl p-8 border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-200 cursor-pointer h-full">
+                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center mb-5 group-hover:bg-accent/20 transition-colors">
+                    <CheckCircle2 className="h-5 w-5 text-accent" />
+                  </div>
+                  <h3 className="font-display font-bold text-xl mb-3 group-hover:text-accent transition-colors">{t(titleKey)}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{t(descKey)}</p>
                 </div>
-                <h3 className="font-display font-bold text-xl mb-3">{t(titleKey)}</h3>
-                <p className="text-muted-foreground leading-relaxed">{t(descKey)}</p>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
