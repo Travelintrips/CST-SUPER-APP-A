@@ -319,7 +319,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
       addItemSilent(cartPayload);
       sessionStorage.setItem(
         "pendingJasaReview",
-        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name, unit: selectedUnit })
+        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name, unit: selectedUnit, qty })
       );
       onClose();
       setLocation(`/jasa/${chosen.serviceId}`);
