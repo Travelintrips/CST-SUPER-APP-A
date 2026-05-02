@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Printer, ArrowLeft, Download, Loader2 } from "lucide-react";
-import { useGetFreightShipment, useCreateFreightAttachment } from "@workspace/api-client-react";
+import { useGetFreightShipment, useCreateFreightAttachment, useGetAccountingSettings } from "@workspace/api-client-react";
 import { useUpload } from "@workspace/object-storage-web";
 import { useToast } from "@/hooks/use-toast";
 
@@ -42,6 +42,7 @@ export default function LogisticsFreightBLPage() {
   const { toast } = useToast();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
+  const { data: accountingSettings } = useGetAccountingSettings();
   const createAttachment = useCreateFreightAttachment();
   const { uploadFile } = useUpload({
     onError: (err) => {
@@ -215,8 +216,26 @@ export default function LogisticsFreightBLPage() {
             {/* Left: Company Logo / Name */}
             <div className="flex-1 border-r border-gray-700 p-3 flex flex-col justify-center">
               <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-1">Issued by</p>
-              <p className="text-lg font-bold text-gray-900">FREIGHT FORWARDER</p>
-              <p className="text-xs text-gray-600">Freight Forwarding Services</p>
+              {accountingSettings?.companyLogoUrl && (
+                <img
+                  src={accountingSettings.companyLogoUrl}
+                  alt="Company Logo"
+                  className="mb-1 object-contain"
+                  style={{ maxHeight: "40px", maxWidth: "120px" }}
+                  crossOrigin="anonymous"
+                />
+              )}
+              <p className="text-lg font-bold text-gray-900">
+                {accountingSettings?.companyName || "FREIGHT FORWARDER"}
+              </p>
+              {accountingSettings?.companyAddress && (
+                <p className="text-xs text-gray-600 whitespace-pre-line">
+                  {accountingSettings.companyAddress}
+                </p>
+              )}
+              {!accountingSettings?.companyName && (
+                <p className="text-xs text-gray-600">Freight Forwarding Services</p>
+              )}
             </div>
             {/* Right: BL Type & Number */}
             <div className="flex flex-col justify-center items-center px-6">
