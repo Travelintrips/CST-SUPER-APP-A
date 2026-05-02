@@ -476,35 +476,104 @@ export default function Home() {
       </section>
 
       {/* ── CTA ──────────────────────────────────────────────────── */}
-      <section className="py-24 bg-primary text-primary-foreground relative overflow-hidden">
+      <section
+        className="relative overflow-hidden"
+        style={{
+          backgroundImage: `
+            linear-gradient(135deg, rgba(14,165,233,0.80) 0%, rgba(37,99,235,0.66) 100%),
+            linear-gradient(rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.32) 100%),
+            url(${assetUrl("/images/warehouse.png")})
+          `,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          padding: "clamp(72px, 10vw, 128px) 0",
+        }}
+      >
         <div
-          className="absolute inset-0 opacity-10 bg-cover bg-center mix-blend-overlay"
-          style={{ backgroundImage: `url(${assetUrl("/images/warehouse.png")})` }}
-        />
-        <div className="container relative z-10 px-4 md:px-6 text-center max-w-3xl mx-auto">
-          <h2 className="text-3xl md:text-5xl font-display font-bold mb-6">
+          className="container relative z-10 px-4 md:px-6 text-center mx-auto"
+          style={{ maxWidth: "840px" }}
+        >
+          <h2
+            className="font-display font-extrabold mb-6 text-white"
+            style={{
+              fontSize: "clamp(34px, 5vw, 60px)",
+              lineHeight: 1.1,
+              letterSpacing: "-0.03em",
+              textShadow: "0 4px 18px rgba(15,23,42,0.28)",
+            }}
+          >
             {t("cta.title")}
           </h2>
-          <p className="text-xl text-primary-foreground/80 mb-10">
-            {t("cta.prefix")} {t("cta.description")} {company?.name || t("nav.home")}. {t("cta.suffix")}
+          <p
+            className="mb-10 mx-auto"
+            style={{
+              fontSize: "clamp(17px, 2vw, 20px)",
+              lineHeight: 1.65,
+              maxWidth: "660px",
+              color: "rgba(255,255,255,0.92)",
+              textShadow: "0 2px 10px rgba(15,23,42,0.25)",
+            }}
+          >
+            {t("cta.prefix")} {t("cta.description")} {company?.name || "CST Logistics"}. {t("cta.suffix")}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/register">
-              <Button
-                size="lg"
-                className="bg-accent hover:bg-accent/90 text-accent-foreground h-14 px-10 text-lg w-full sm:w-auto gap-2"
+            <Link href="/register" className="w-full sm:w-auto">
+              <button
+                className="inline-flex items-center justify-center gap-2 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                style={{
+                  background: "#0F172A",
+                  color: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "16px 32px",
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 20px rgba(15,23,42,0.38)",
+                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 28px rgba(15,23,42,0.45)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(15,23,42,0.38)";
+                }}
               >
                 {t("cta.primaryBtn")} <ArrowRight className="h-5 w-5" />
-              </Button>
+              </button>
             </Link>
-            <a href="#kontak">
-              <Button
-                size="lg"
-                variant="outline"
-                className="bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 h-14 px-10 text-lg w-full sm:w-auto"
+            <a href="#kontak" className="w-full sm:w-auto">
+              <button
+                className="inline-flex items-center justify-center w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                style={{
+                  background: "rgba(255,255,255,0.13)",
+                  border: "1px solid rgba(255,255,255,0.44)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                  color: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "16px 32px",
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "background 0.2s ease, border-color 0.2s ease",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.23)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.65)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.13)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.44)";
+                }}
               >
                 {t("cta.secondaryBtn")}
-              </Button>
+              </button>
             </a>
           </div>
         </div>
