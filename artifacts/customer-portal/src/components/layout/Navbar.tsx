@@ -4,17 +4,15 @@ import { Button } from "@/components/ui/button";
 import {
   Menu,
   X,
-  Package,
   LogOut,
   LayoutDashboard,
   ShoppingCart,
   Shield,
-  Ship,
-  Search,
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useCart } from "@/lib/cart";
+import { LanguageSelector } from "@/components/layout/LanguageSelector";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -129,6 +127,8 @@ export function Navbar() {
                 )}
               </button>
 
+              <LanguageSelector />
+
               {isAuth ? (
                 <>
                   {isAdmin && (
@@ -180,7 +180,8 @@ export function Navbar() {
           </div>
 
           {/* Mobile Menu Button */}
-          <div className="md:hidden">
+          <div className="md:hidden flex items-center gap-1">
+            <LanguageSelector compact />
             <Button
               variant="ghost"
               size="icon"

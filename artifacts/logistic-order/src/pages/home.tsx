@@ -64,42 +64,7 @@ export default function HomePage() {
   const [, setLocation] = useLocation();
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Navbar */}
-      <nav className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img
-              src="/logocst_nobg.png"
-              alt="CST Logistics"
-              className="h-10 w-auto object-contain"
-            />
-            <span className="font-bold text-foreground text-sm tracking-wide">
-              PT. Cahaya Sejati Teknologi
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setLocation("/track")}
-            >
-              Track Order
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setLocation("/admin")}
-            >
-              Admin
-            </Button>
-            <Button size="sm" onClick={() => setLocation("/book")}>
-              Start Booking
-            </Button>
-          </div>
-        </div>
-      </nav>
-
+    <div className="bg-background">
       {/* Hero */}
       <section className="bg-primary text-primary-foreground">
         <div className="max-w-7xl mx-auto px-6 py-20 md:py-28">

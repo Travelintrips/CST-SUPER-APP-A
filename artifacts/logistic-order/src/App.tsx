@@ -1,7 +1,9 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { ReactNode } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Navbar } from "@/components/layout/Navbar";
 import HomePage from "@/pages/home";
 import BookPage from "@/pages/book";
 import OrderSuccessPage from "@/pages/order-success";
@@ -14,8 +16,20 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
 });
 
-function Router() {
+function AppShell({ children }: { children: ReactNode }) {
   return (
+    <div className="flex flex-col min-h-screen">
+      <Navbar />
+      <main className="flex-1">{children}</main>
+    </div>
+  );
+}
+
+function Router() {
+  const [location] = useLocation();
+  const isAdmin = location.startsWith("/admin");
+
+  const routes = (
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/book" component={BookPage} />
@@ -26,6 +40,9 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+
+  if (isAdmin) return routes;
+  return <AppShell>{routes}</AppShell>;
 }
 
 export default function App() {

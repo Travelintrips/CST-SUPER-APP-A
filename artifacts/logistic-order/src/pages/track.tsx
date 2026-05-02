@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useGetLogisticOrderByNumber, getGetLogisticOrderByNumberQueryKey } from "@workspace/api-client-react";
-import { ArrowLeft, Search, Package, Ship } from "lucide-react";
+import { Search, Package, Ship } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_COLORS, OrderStatus } from "@/lib/services-data";
 
@@ -33,16 +33,7 @@ export default function TrackPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-3">
-          <button onClick={() => setLocation("/")} className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <span className="font-semibold text-foreground">Lacak Pesanan</span>
-        </div>
-      </nav>
-
+    <div className="bg-background">
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         <div>
           <h1 className="text-xl font-bold text-foreground mb-1">Lacak Status Pesanan</h1>

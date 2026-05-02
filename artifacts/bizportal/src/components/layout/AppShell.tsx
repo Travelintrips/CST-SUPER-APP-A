@@ -53,6 +53,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { LanguageSelector } from "@/components/layout/LanguageSelector";
 
 interface AppShellProps {
   children: ReactNode;
@@ -289,6 +290,9 @@ export function AppShell({ children }: AppShellProps) {
           </SidebarContent>
 
           <SidebarFooter className="border-t border-border p-4">
+            <div className="mb-3">
+              <LanguageSelector />
+            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex w-full items-center gap-3 rounded-md p-2 hover:bg-sidebar-accent transition-colors text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
