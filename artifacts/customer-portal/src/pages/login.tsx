@@ -12,27 +12,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Package, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { assetUrl } from "@/lib/utils";
-
-const loginSchema = z.object({
-  email: z.string().email({ message: "Invalid email address" }),
-  password: z.string().min(1, { message: "Password is required" }),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
+import { useLanguage } from "@/i18n/LanguageContext";
 
 export default function Login() {
   const [, setLocation] = useLocation();
   const [errorMsg, setErrorMsg] = useState("");
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+  const { t } = useLanguage();
+
+  const loginSchema = z.object({
+    email: z.string().email({ message: t("login.email") }),
+    password: z.string().min(1, { message: t("login.password") }),
+  });
+  type LoginFormValues = z.infer<typeof loginSchema>;
 
   const loginMutation = usePortalLogin();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = (data: LoginFormValues) => {
@@ -41,12 +39,12 @@ export default function Login() {
       onSuccess: (res) => {
         if (res.token) {
           setAuthToken(res.token);
-          const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-          setLocation(returnTo || "/dashboard");
+          const rt = new URLSearchParams(window.location.search).get("returnTo");
+          setLocation(rt || "/dashboard");
         }
       },
       onError: (err: any) => {
-        setErrorMsg(err?.message || "Invalid credentials. Please try again.");
+        setErrorMsg(err?.message || t("common.error"));
       }
     });
   };
@@ -58,10 +56,10 @@ export default function Login() {
         <div className="relative z-10 max-w-lg">
           <Package className="h-12 w-12 text-accent mb-8" />
           <h1 className="text-4xl lg:text-5xl font-display font-bold leading-tight mb-6">
-            Manage your global shipments with ease.
+            {t("login.sideTitle")}
           </h1>
           <p className="text-xl text-primary-foreground/80 mb-8">
-            Access your dashboard to track orders, manage documents, and request new quotes.
+            {t("login.sideDesc")}
           </p>
           <div className="flex items-center gap-4 text-sm font-medium">
             <div className="flex -space-x-3">
@@ -71,23 +69,23 @@ export default function Login() {
                 </div>
               ))}
             </div>
-            <span>Trusted by 1,000+ businesses globally</span>
+            <span>{t("login.sideTrust")}</span>
           </div>
         </div>
       </div>
-      
+
       <div className="flex items-center justify-center p-6 md:p-12">
         <Card className="w-full max-w-md border-none shadow-none md:shadow-xl md:border-solid">
           <CardHeader className="space-y-3">
-            <CardTitle className="text-2xl font-display font-bold">Welcome back</CardTitle>
-            <CardDescription>Enter your credentials to access your portal</CardDescription>
+            <CardTitle className="text-2xl font-display font-bold">{t("login.welcomeBack")}</CardTitle>
+            <CardDescription>{t("login.subtitle")}</CardDescription>
           </CardHeader>
           <CardContent>
             {returnTo && (
               <Alert className="mb-4 border-accent/40 bg-accent/5">
                 <AlertCircle className="h-4 w-4 text-accent" />
                 <AlertDescription className="text-sm">
-                  Login terlebih dahulu untuk melanjutkan ke halaman checkout.
+                  {t("login.loginRequired")}
                 </AlertDescription>
               </Alert>
             )}
@@ -105,7 +103,7 @@ export default function Login() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>{t("login.email")}</FormLabel>
                       <FormControl>
                         <Input placeholder="you@company.com" {...field} />
                       </FormControl>
@@ -113,16 +111,16 @@ export default function Login() {
                     </FormItem>
                   )}
                 />
-                
+
                 <FormField
                   control={form.control}
                   name="password"
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between">
-                        <FormLabel>Password</FormLabel>
+                        <FormLabel>{t("login.password")}</FormLabel>
                         <Link href="#" className="text-sm font-medium text-accent hover:underline">
-                          Forgot password?
+                          {t("login.forgotPassword")}
                         </Link>
                       </div>
                       <FormControl>
@@ -133,20 +131,23 @@ export default function Login() {
                   )}
                 />
 
-                <Button 
-                  type="submit" 
-                  className="w-full h-11" 
+                <Button
+                  type="submit"
+                  className="w-full h-11"
                   disabled={loginMutation.isPending}
                 >
-                  {loginMutation.isPending ? "Signing in..." : "Sign In"}
+                  {loginMutation.isPending ? t("login.signingIn") : t("login.signIn")}
                 </Button>
               </form>
             </Form>
 
             <div className="mt-8 text-center text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link href={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : "/register"} className="font-medium text-primary hover:underline">
-                Create an account
+              {t("login.noAccount")}{" "}
+              <Link
+                href={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : "/register"}
+                className="font-medium text-primary hover:underline"
+              >
+                {t("login.createAccount")}
               </Link>
             </div>
           </CardContent>

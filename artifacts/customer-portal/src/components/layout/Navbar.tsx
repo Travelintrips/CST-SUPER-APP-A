@@ -55,12 +55,12 @@ export function Navbar() {
     | { name: string; type: "link"; path: string }
     | { name: string; type: "scroll"; anchor: string }
   > = [
-    { name: t("nav_home"), type: "link", path: "/" },
-    { name: t("nav_products"), type: "link", path: "/products" },
-    { name: t("nav_services"), type: "link", path: "/jasa" },
-    { name: t("nav_about"), type: "scroll", anchor: "tentang" },
-    { name: t("nav_contact"), type: "scroll", anchor: "kontak" },
-    { name: t("nav_tracking"), type: "link", path: "/track" },
+    { name: t("nav.home"), type: "link", path: "/" },
+    { name: t("nav.products"), type: "link", path: "/products" },
+    { name: t("nav.services"), type: "link", path: "/jasa" },
+    { name: t("nav.about"), type: "scroll", anchor: "tentang" },
+    { name: t("nav.contact"), type: "scroll", anchor: "kontak" },
+    { name: t("nav.trackOrder"), type: "link", path: "/track" },
   ];
 
   return (
@@ -141,14 +141,14 @@ export function Navbar() {
                         className="gap-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                       >
                         <Shield className="h-4 w-4" />
-                        {t("nav_admin")}
+                        {t("nav.admin")}
                       </Button>
                     </Link>
                   )}
                   <Link href="/dashboard">
                     <Button variant="ghost" size="sm" className="gap-2">
                       <LayoutDashboard className="h-4 w-4" />
-                      {t("nav_dashboard")}
+                      {t("nav.dashboard")}
                     </Button>
                   </Link>
                   <Button
@@ -158,14 +158,14 @@ export function Navbar() {
                     className="gap-2"
                   >
                     <LogOut className="h-4 w-4" />
-                    {t("nav_logout")}
+                    {t("nav.logout")}
                   </Button>
                 </>
               ) : (
                 <>
                   <Link href="/login">
                     <Button variant="ghost" size="sm">
-                      {t("nav_login")}
+                      {t("nav.login")}
                     </Button>
                   </Link>
                   <Link href="/register">
@@ -173,7 +173,7 @@ export function Navbar() {
                       size="sm"
                       className="bg-accent text-accent-foreground hover:bg-accent/90"
                     >
-                      {t("nav_register")}
+                      {t("nav.register")}
                     </Button>
                   </Link>
                 </>
@@ -245,7 +245,7 @@ export function Navbar() {
                         className="w-full justify-start gap-2 text-amber-600 border-amber-200"
                       >
                         <Shield className="h-4 w-4" />
-                        {t("nav_admin")}
+                        {t("nav.admin")}
                       </Button>
                     </Link>
                   )}
@@ -255,7 +255,7 @@ export function Navbar() {
                       className="w-full justify-start gap-2"
                     >
                       <LayoutDashboard className="h-4 w-4" />
-                      {t("nav_dashboard")}
+                      {t("nav.dashboard")}
                     </Button>
                   </Link>
                   <Button
@@ -267,19 +267,19 @@ export function Navbar() {
                     }}
                   >
                     <LogOut className="h-4 w-4" />
-                    {t("nav_logout")}
+                    {t("nav.logout")}
                   </Button>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <Link href="/login" onClick={() => setIsOpen(false)}>
                     <Button variant="outline" className="w-full">
-                      {t("nav_login")}
+                      {t("nav.login")}
                     </Button>
                   </Link>
                   <Link href="/register" onClick={() => setIsOpen(false)}>
                     <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
-                      {t("nav_register")}
+                      {t("nav.register")}
                     </Button>
                   </Link>
                 </div>

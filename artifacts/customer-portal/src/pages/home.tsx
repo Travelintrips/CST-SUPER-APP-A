@@ -15,6 +15,23 @@ export default function Home() {
   const { content } = useEditMode();
   const { t } = useLanguage();
 
+  const whyCards = [
+    { titleKey: "why.card1Title", descKey: "why.card1Desc" },
+    { titleKey: "why.card2Title", descKey: "why.card2Desc" },
+    { titleKey: "why.card3Title", descKey: "why.card3Desc" },
+    { titleKey: "why.card4Title", descKey: "why.card4Desc" },
+    { titleKey: "why.card5Title", descKey: "why.card5Desc" },
+    { titleKey: "why.card6Title", descKey: "why.card6Desc" },
+  ];
+
+  const aboutPoints = [
+    "about.point1",
+    "about.point2",
+    "about.point3",
+    "about.point4",
+    "about.point5",
+  ];
+
   return (
     <div className="flex flex-col min-h-screen">
 
@@ -29,12 +46,12 @@ export default function Home() {
         />
         <div className="container relative z-20 px-4 md:px-6 text-center text-white">
           <span className="inline-block py-1 px-3 rounded-full bg-accent/20 border border-accent/50 text-accent-foreground text-sm font-medium mb-6">
-            <EditableText contentKey="hero_tagline" defaultValue={content["hero_tagline"] || t("hero_badge")} />
+            <EditableText contentKey="hero_tagline" defaultValue={content["hero_tagline"] || t("hero.badge")} />
           </span>
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-display font-bold tracking-tight mb-6 max-w-4xl mx-auto">
             <EditableText
               contentKey="hero_title"
-              defaultValue={content["hero_title"] || t("hero_title")}
+              defaultValue={content["hero_title"] || t("hero.title")}
               as="span"
               multiline
             />
@@ -42,19 +59,19 @@ export default function Home() {
           <p className="text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto">
             <EditableText
               contentKey="hero_subtitle"
-              defaultValue={content["hero_subtitle"] || t("hero_description")}
+              defaultValue={content["hero_subtitle"] || t("hero.description")}
               multiline
             />
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/services">
               <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground h-12 px-8 text-base gap-2">
-                {t("hero_primary_cta")} <ArrowRight className="h-4 w-4" />
+                {t("hero.primaryCta")} <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/register">
               <Button size="lg" variant="outline" className="bg-transparent border-white text-white hover:bg-white/10 h-12 px-8 text-base">
-                {t("hero_secondary_cta")}
+                {t("hero.secondaryCta")}
               </Button>
             </Link>
           </div>
@@ -66,15 +83,15 @@ export default function Home() {
         <div className="container px-4 md:px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-gray-100">
             {[
-              { icon: Globe, value: "150+", label: "Negara Tujuan" },
-              { icon: ShieldCheck, value: "99.9%", label: "Keamanan Kargo" },
-              { icon: Package, value: "10rb+", label: "Pengiriman per Bulan" },
-              { icon: Clock, value: "24/7", label: "Layanan Pelanggan" },
-            ].map(({ icon: Icon, value, label }) => (
-              <div key={label} className="flex flex-col items-center justify-center space-y-2 px-4">
+              { icon: Globe, value: "150+", labelKey: "stats.countries" },
+              { icon: ShieldCheck, value: "99.9%", labelKey: "stats.security" },
+              { icon: Package, value: "10rb+", labelKey: "stats.shipments" },
+              { icon: Clock, value: "24/7", labelKey: "stats.support" },
+            ].map(({ icon: Icon, value, labelKey }) => (
+              <div key={labelKey} className="flex flex-col items-center justify-center space-y-2 px-4">
                 <Icon className="h-8 w-8 text-accent mb-2" />
                 <h3 className="font-display font-bold text-2xl">{value}</h3>
-                <p className="text-sm text-muted-foreground">{label}</p>
+                <p className="text-sm text-muted-foreground">{t(labelKey)}</p>
               </div>
             ))}
           </div>
@@ -87,33 +104,27 @@ export default function Home() {
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div className="space-y-8">
               <div>
-                <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">Tentang Kami</p>
+                <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">{t("about.label")}</p>
                 <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-                  Infrastruktur & Keahlian yang Tidak Tertandingi
+                  {t("about.title")}
                 </h2>
                 <p className="text-muted-foreground text-lg leading-relaxed">
-                  {company?.name || "PT. Cahaya Sejati Teknologi"} adalah perusahaan freight forwarding dan customs brokerage terpercaya yang melayani kebutuhan ekspor-impor korporat maupun UMKM di Indonesia. Kami memiliki tim bersertifikat dan jaringan agen global di lebih dari 150 negara.
+                  {company?.name || "PT. Cahaya Sejati Teknologi"} {t("about.description")}
                 </p>
               </div>
 
               <ul className="space-y-5">
-                {[
-                  "Visibilitas rantai pasok dari ujung ke ujung secara real-time",
-                  "Tenaga ahli kepabeanan berlisensi untuk pengurusan dokumen cepat",
-                  "Fasilitas pergudangan strategis dekat pelabuhan utama",
-                  "Account manager dedikasi untuk klien korporat",
-                  "Teknologi tracking shipment berbasis cloud",
-                ].map((item, i) => (
-                  <li key={i} className="flex gap-4 items-start">
+                {aboutPoints.map((key) => (
+                  <li key={key} className="flex gap-4 items-start">
                     <CheckCircle2 className="h-6 w-6 text-accent shrink-0 mt-0.5" />
-                    <span className="text-base font-medium">{item}</span>
+                    <span className="text-base font-medium">{t(key)}</span>
                   </li>
                 ))}
               </ul>
 
               <Link href="/register">
                 <Button size="lg" className="h-12 px-8 gap-2">
-                  Bergabung Bersama Kami <ArrowRight className="h-4 w-4" />
+                  {t("about.cta")} <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
             </div>
@@ -143,52 +154,27 @@ export default function Home() {
       {/* ── Mengapa Pilih Kami ───────────────────────────────────── */}
       <section className="py-24 bg-gray-50">
         <div className="container px-4 md:px-6 text-center max-w-3xl mx-auto mb-16">
-          <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">Keunggulan Kami</p>
+          <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">{t("why.label")}</p>
           <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-            Mengapa Percayakan Logistik kepada Kami?
+            {t("why.title")}
           </h2>
           <p className="text-muted-foreground text-lg">
-            Kami tidak sekadar mengangkut barang — kami memastikan seluruh perjalanan kargo Anda berjalan mulus dari dokumen hingga tiba di tujuan.
+            {t("why.description")}
           </p>
         </div>
 
         <div className="container px-4 md:px-6">
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              {
-                title: "Kepabeanan Ekspres",
-                desc: "Tim ahli kami memproses dokumen BC 2.0 / BC 3.0 dengan cepat sehingga kargo tidak tertahan di pelabuhan.",
-              },
-              {
-                title: "Jaringan Global",
-                desc: "Agen di lebih dari 150 negara memastikan pengiriman door-to-door ke destinasi manapun di dunia.",
-              },
-              {
-                title: "Teknologi Transparan",
-                desc: "Platform berbasis cloud kami memberi visibilitas penuh atas status pengiriman kapan saja dan di mana saja.",
-              },
-              {
-                title: "Asuransi Kargo",
-                desc: "Perlindungan komprehensif untuk setiap pengiriman, melindungi investasi bisnis Anda dari risiko tak terduga.",
-              },
-              {
-                title: "Harga Kompetitif",
-                desc: "Negosiasi tarif terbaik dengan maskapai dan pelayaran global sehingga biaya logistik Anda lebih efisien.",
-              },
-              {
-                title: "Dukungan 24/7",
-                desc: "Tim customer service kami siap membantu kapan pun Anda membutuhkan informasi atau penanganan darurat.",
-              },
-            ].map((item) => (
+            {whyCards.map(({ titleKey, descKey }) => (
               <div
-                key={item.title}
+                key={titleKey}
                 className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center mb-5">
                   <CheckCircle2 className="h-5 w-5 text-accent" />
                 </div>
-                <h3 className="font-display font-bold text-xl mb-3">{item.title}</h3>
-                <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
+                <h3 className="font-display font-bold text-xl mb-3">{t(titleKey)}</h3>
+                <p className="text-muted-foreground leading-relaxed">{t(descKey)}</p>
               </div>
             ))}
           </div>
@@ -203,10 +189,10 @@ export default function Home() {
         />
         <div className="container relative z-10 px-4 md:px-6 text-center max-w-3xl mx-auto">
           <h2 className="text-3xl md:text-5xl font-display font-bold mb-6">
-            Siap mempercepat logistik global Anda?
+            {t("cta.title")}
           </h2>
           <p className="text-xl text-primary-foreground/80 mb-10">
-            Ribuan pelaku bisnis mempercayakan kargo mereka kepada {company?.name || "kami"}. Bergabunglah dan rasakan perbedaannya.
+            {t("cta.prefix")} {t("cta.description")} {company?.name || t("nav.home")}. {t("cta.suffix")}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/register">
@@ -214,7 +200,7 @@ export default function Home() {
                 size="lg"
                 className="bg-accent hover:bg-accent/90 text-accent-foreground h-14 px-10 text-lg w-full sm:w-auto gap-2"
               >
-                Buat Akun Gratis <ArrowRight className="h-5 w-5" />
+                {t("cta.primaryBtn")} <ArrowRight className="h-5 w-5" />
               </Button>
             </Link>
             <a href="#kontak">
@@ -223,7 +209,7 @@ export default function Home() {
                 variant="outline"
                 className="bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 h-14 px-10 text-lg w-full sm:w-auto"
               >
-                Hubungi Sales
+                {t("cta.secondaryBtn")}
               </Button>
             </a>
           </div>
@@ -235,12 +221,12 @@ export default function Home() {
         <div className="container px-4 md:px-6">
           <div className="grid lg:grid-cols-2 gap-16 items-start">
             <div>
-              <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">Hubungi Kami</p>
+              <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">{t("contact.label")}</p>
               <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-                Ada yang bisa kami bantu?
+                {t("contact.title")}
               </h2>
               <p className="text-muted-foreground text-lg mb-10 leading-relaxed">
-                Tim kami siap menjawab pertanyaan Anda seputar layanan ekspor-impor, kepabeanan, pergudangan, dan solusi logistik lainnya.
+                {t("contact.description")}
               </p>
 
               <ul className="space-y-6">
@@ -250,7 +236,7 @@ export default function Home() {
                       <MapPin className="h-5 w-5 text-accent" />
                     </div>
                     <div>
-                      <p className="font-semibold mb-0.5">Alamat Kantor</p>
+                      <p className="font-semibold mb-0.5">{t("contact.addressLabel")}</p>
                       <p className="text-muted-foreground">{company.address}</p>
                     </div>
                   </li>
@@ -261,7 +247,7 @@ export default function Home() {
                       <Mail className="h-5 w-5 text-accent" />
                     </div>
                     <div>
-                      <p className="font-semibold mb-0.5">Email</p>
+                      <p className="font-semibold mb-0.5">{t("contact.emailLabel")}</p>
                       <a href={`mailto:${company.email}`} className="text-accent hover:underline">
                         {company.email}
                       </a>
@@ -274,7 +260,7 @@ export default function Home() {
                       <Phone className="h-5 w-5 text-accent" />
                     </div>
                     <div>
-                      <p className="font-semibold mb-0.5">Telepon</p>
+                      <p className="font-semibold mb-0.5">{t("contact.phoneLabel")}</p>
                       <a href={`tel:${company.phone}`} className="text-accent hover:underline">
                         {company.phone}
                       </a>
@@ -289,7 +275,7 @@ export default function Home() {
                         <Mail className="h-5 w-5 text-accent" />
                       </div>
                       <div>
-                        <p className="font-semibold mb-0.5">Email</p>
+                        <p className="font-semibold mb-0.5">{t("contact.emailLabel")}</p>
                         <p className="text-muted-foreground">{content["contact_email"] || "info@cstlogistic.co.id"}</p>
                       </div>
                     </li>
@@ -298,7 +284,7 @@ export default function Home() {
                         <Phone className="h-5 w-5 text-accent" />
                       </div>
                       <div>
-                        <p className="font-semibold mb-0.5">Telepon</p>
+                        <p className="font-semibold mb-0.5">{t("contact.phoneLabel")}</p>
                         <p className="text-muted-foreground">{content["contact_phone"] || "+62 21 1234 5678"}</p>
                       </div>
                     </li>
@@ -310,7 +296,7 @@ export default function Home() {
                       <MapPin className="h-5 w-5 text-accent" />
                     </div>
                     <div>
-                      <p className="font-semibold mb-0.5">Alamat</p>
+                      <p className="font-semibold mb-0.5">{t("contact.addressLabel")}</p>
                       <p className="text-muted-foreground whitespace-pre-line">{content["contact_address"]}</p>
                     </div>
                   </li>
@@ -320,27 +306,27 @@ export default function Home() {
 
             {/* Contact Form */}
             <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100">
-              <h3 className="font-display font-bold text-xl mb-6">Kirim Pesan</h3>
+              <h3 className="font-display font-bold text-xl mb-6">{t("contact.sendMessage")}</h3>
               <form
                 className="space-y-5"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  alert("Pesan Anda telah terkirim. Tim kami akan segera menghubungi Anda.");
+                  alert(t("contact.successAlert"));
                   (e.target as HTMLFormElement).reset();
                 }}
               >
                 <div className="grid sm:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-medium mb-1.5">Nama Lengkap</label>
+                    <label className="block text-sm font-medium mb-1.5">{t("contact.fullName")}</label>
                     <input
                       type="text"
                       required
-                      placeholder="John Doe"
+                      placeholder={t("contact.namePlaceholder")}
                       className="w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1.5">Email</label>
+                    <label className="block text-sm font-medium mb-1.5">{t("contact.email")}</label>
                     <input
                       type="email"
                       required
@@ -350,35 +336,35 @@ export default function Home() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1.5">Nama Perusahaan</label>
+                  <label className="block text-sm font-medium mb-1.5">{t("contact.company")}</label>
                   <input
                     type="text"
-                    placeholder="PT. Contoh Industri"
+                    placeholder={t("contact.companyPlaceholder")}
                     className="w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1.5">Kebutuhan Layanan</label>
+                  <label className="block text-sm font-medium mb-1.5">{t("contact.serviceNeed")}</label>
                   <select className="w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40">
-                    <option value="">Pilih layanan...</option>
-                    <option>Ekspor</option>
-                    <option>Impor</option>
-                    <option>Kepabeanan / Customs Clearance</option>
-                    <option>Pergudangan</option>
-                    <option>Pengiriman Internasional</option>
-                    <option>Lainnya</option>
+                    <option value="">{t("contact.selectPlaceholder")}</option>
+                    <option>{t("contact.optExport")}</option>
+                    <option>{t("contact.optImport")}</option>
+                    <option>{t("contact.optCustoms")}</option>
+                    <option>{t("contact.optWarehouse")}</option>
+                    <option>{t("contact.optInternational")}</option>
+                    <option>{t("contact.optOther")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1.5">Pesan</label>
+                  <label className="block text-sm font-medium mb-1.5">{t("contact.message")}</label>
                   <textarea
                     rows={4}
-                    placeholder="Ceritakan kebutuhan logistik Anda..."
+                    placeholder={t("contact.messagePlaceholder")}
                     className="w-full rounded-lg border border-input bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
                   />
                 </div>
                 <Button type="submit" className="w-full h-11 gap-2">
-                  Kirim Pesan <ArrowRight className="h-4 w-4" />
+                  {t("contact.submit")} <ArrowRight className="h-4 w-4" />
                 </Button>
               </form>
             </div>

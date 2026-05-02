@@ -9,6 +9,7 @@ import { Package, Search, Calendar, FileText, ExternalLink, X } from "lucide-rea
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 const STATUS_COLOR: Record<string, string> = {
   pending:    "bg-yellow-100 text-yellow-800",
@@ -32,6 +33,7 @@ export default function Orders() {
     () => new URLSearchParams(window.location.search).get("status") ?? ""
   );
   const [cancellingKey, setCancellingKey] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!token) setLocation("/login");
@@ -109,7 +111,7 @@ export default function Orders() {
     : statusFiltered;
 
   const handleCancel = async (order: typeof allOrders[number]) => {
-    if (!confirm(`Batalkan pesanan ${order.displayNumber}?`)) return;
+    if (!confirm(`${t("orders.cancelConfirmPrefix")} ${order.displayNumber}?`)) return;
     setCancellingKey(order._key);
     try {
       if (order._type === "crm") {
@@ -120,7 +122,7 @@ export default function Orders() {
         queryClient.invalidateQueries({ queryKey: ["listPortalLogisticOrders", token] });
       }
     } catch {
-      alert("Gagal membatalkan pesanan. Silakan coba lagi.");
+      alert(t("orders.cancelFailed"));
     } finally {
       setCancellingKey(null);
     }
@@ -129,19 +131,19 @@ export default function Orders() {
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gray-50 py-8">
       <div className="container px-4 md:px-6">
-        
+
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold mb-2">Order History</h1>
+            <h1 className="text-3xl font-display font-bold mb-2">{t("orders.title")}</h1>
             <p className="text-muted-foreground">
-              View and track all your logistics orders and shipments.
+              {t("orders.description")}
             </p>
           </div>
           <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Search by order number..."
+              placeholder={t("orders.search")}
               className="pl-9 bg-white"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -151,13 +153,13 @@ export default function Orders() {
 
         {statusFilter && (
           <div className="flex items-center gap-2 mb-6">
-            <span className="text-sm text-muted-foreground">Filter aktif:</span>
+            <span className="text-sm text-muted-foreground">{t("orders.activeFilterLabel")}</span>
             <span className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-sm font-medium px-3 py-1 rounded-full">
               {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
               <button
                 onClick={clearStatusFilter}
                 className="hover:text-primary/70 transition-colors ml-0.5"
-                aria-label="Hapus filter"
+                aria-label={t("orders.hapusFilter")}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -170,10 +172,10 @@ export default function Orders() {
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-muted-foreground uppercase bg-gray-50 border-b border-border/50">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Order Details</th>
-                  <th className="px-6 py-4 font-medium">Date</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium text-right">Amount</th>
+                  <th className="px-6 py-4 font-medium">{t("orders.orderDetails")}</th>
+                  <th className="px-6 py-4 font-medium">{t("orders.date")}</th>
+                  <th className="px-6 py-4 font-medium">{t("orders.status")}</th>
+                  <th className="px-6 py-4 font-medium text-right">{t("orders.amount")}</th>
                   <th className="px-6 py-4 font-medium w-16"></th>
                 </tr>
               </thead>
@@ -231,7 +233,7 @@ export default function Orders() {
                         {order._cancellable && (
                           <button
                             className="inline-flex items-center justify-center w-7 h-7 rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                            title="Batalkan pesanan"
+                            title={t("orders.cancelOrder")}
                             disabled={cancellingKey === order._key}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -250,9 +252,9 @@ export default function Orders() {
                     <td colSpan={5} className="px-6 py-16 text-center text-muted-foreground">
                       <FileText className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
                       <p className="text-lg font-medium text-foreground">
-                        {search ? "Tidak ada hasil" : "Belum ada pesanan"}
+                        {search ? t("orders.noResults") : t("orders.noOrders")}
                       </p>
-                      <p>{search ? "Coba kata kunci lain." : "Anda belum membuat pesanan apapun."}</p>
+                      <p>{search ? t("orders.noResultsDesc") : t("orders.noOrdersDesc")}</p>
                     </td>
                   </tr>
                 )}

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { StatCardManagerPanel } from "@/components/StatCardManager";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 const STATUS_BADGE: Record<string, string> = {
   pending:       "bg-yellow-100 text-yellow-800",
@@ -50,10 +51,11 @@ function useCardIcon(storageKey: string, defaultIcon: string) {
   return [iconKey, save] as const;
 }
 
-function IconPicker({ currentKey, onSelect, className }: {
+function IconPicker({ currentKey, onSelect, className, label }: {
   currentKey: string;
   onSelect: (key: string) => void;
   className?: string;
+  label: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -71,14 +73,14 @@ function IconPicker({ currentKey, onSelect, className }: {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((p) => !p)}
-        title="Klik untuk ganti ikon"
+        title={label}
         className={`opacity-20 hover:opacity-50 transition-opacity cursor-pointer ${className ?? ""}`}
       >
         <IconComp className="w-10 h-10" />
       </button>
       {open && (
         <div className="absolute right-0 top-12 z-50 bg-white rounded-xl shadow-xl border border-border p-3 grid grid-cols-4 gap-1.5 w-52">
-          <p className="col-span-4 text-xs text-muted-foreground font-medium mb-1 px-1">Pilih ikon</p>
+          <p className="col-span-4 text-xs text-muted-foreground font-medium mb-1 px-1">{label}</p>
           {ICON_OPTIONS.map(({ key, Icon }) => (
             <button
               key={key}
@@ -103,6 +105,7 @@ export default function Dashboard() {
   const [card1Icon, setCard1Icon] = useCardIcon("dash_card1_icon", "Package");
   const [card2Icon, setCard2Icon] = useCardIcon("dash_card2_icon", "Truck");
   const token = getAuthToken();
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!token) setLocation("/login");
@@ -187,13 +190,13 @@ export default function Dashboard() {
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold">
-              Welcome back, {isLoadingUser ? "..." : customer?.name?.split(" ")[0]}
+              {t("dashboard.welcomeBack")}, {isLoadingUser ? "..." : customer?.name?.split(" ")[0]}
             </h1>
-            <p className="text-muted-foreground mt-1">Here's an overview of your logistics activities.</p>
+            <p className="text-muted-foreground mt-1">{t("dashboard.overview")}</p>
           </div>
           <Link href="/jasa">
             <Button className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground">
-              <Plus className="h-4 w-4" /> Buat Pesanan Baru
+              <Plus className="h-4 w-4" /> {t("dashboard.newOrder")}
             </Button>
           </Link>
         </div>
@@ -202,17 +205,17 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-primary-foreground/60 mb-1">Total Orders</p>
+              <p className="text-xs text-primary-foreground/60 mb-1">{t("dashboard.totalOrders")}</p>
               <p className="text-4xl font-bold">{isLoadingOrders ? "-" : orders.length}</p>
             </div>
-            <IconPicker currentKey={card1Icon} onSelect={setCard1Icon} />
+            <IconPicker currentKey={card1Icon} onSelect={setCard1Icon} label={t("dashboard.selectIcon")} />
           </div>
           <div className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-accent-foreground/70 mb-1">Active Shipments</p>
+              <p className="text-xs text-accent-foreground/70 mb-1">{t("dashboard.activeShipments")}</p>
               <p className="text-4xl font-bold">{isLoadingOrders ? "-" : activeOrders.length}</p>
             </div>
-            <IconPicker currentKey={card2Icon} onSelect={setCard2Icon} />
+            <IconPicker currentKey={card2Icon} onSelect={setCard2Icon} label={t("dashboard.selectIcon")} />
           </div>
         </div>
 
@@ -234,21 +237,25 @@ export default function Dashboard() {
               <CardHeader className="flex flex-row items-center justify-between border-b border-border/40 pb-4">
                 <div>
                   <CardTitle>
-                    {statusFilter ? `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Orders` : "Recent Orders"}
+                    {statusFilter
+                      ? `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} ${t("dashboard.orders")}`
+                      : t("dashboard.recentOrders")}
                   </CardTitle>
                   <CardDescription>
-                    {statusFilter ? `Showing ${filteredOrders.length} orders` : "Your most recent logistics requests"}
+                    {statusFilter
+                      ? `${t("dashboard.showingOrders")} ${filteredOrders.length} ${t("dashboard.orders")}`
+                      : t("dashboard.activities")}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
                   {statusFilter && (
                     <Button variant="ghost" size="sm" onClick={() => setStatusFilter("")} className="text-xs">
-                      Clear filter
+                      {t("dashboard.clearFilter")}
                     </Button>
                   )}
                   <Link href="/orders">
                     <Button variant="ghost" size="sm" className="gap-2">
-                      View All <ArrowRight className="h-4 w-4" />
+                      {t("dashboard.viewAll")} <ArrowRight className="h-4 w-4" />
                     </Button>
                   </Link>
                 </div>
@@ -301,14 +308,14 @@ export default function Dashboard() {
                   <div className="text-center py-12">
                     <Activity className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
                     <h3 className="text-lg font-medium">
-                      {statusFilter ? `No ${statusFilter} orders` : "No orders yet"}
+                      {statusFilter ? t("dashboard.noStatusOrders") : t("dashboard.noOrders")}
                     </h3>
                     <p className="text-muted-foreground mb-6">
-                      {statusFilter ? "Try another status filter." : "You haven't created any orders."}
+                      {statusFilter ? t("dashboard.noStatusDesc") : t("dashboard.noOrdersDesc")}
                     </p>
                     {!statusFilter && (
                       <Link href="/jasa">
-                        <Button>Buat Pesanan Logistik</Button>
+                        <Button>{t("dashboard.createOrder")}</Button>
                       </Link>
                     )}
                   </div>
@@ -321,7 +328,7 @@ export default function Dashboard() {
           <div className="space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader>
-                <CardTitle>Profile Details</CardTitle>
+                <CardTitle>{t("dashboard.profileDetails")}</CardTitle>
               </CardHeader>
               <CardContent>
                 {isLoadingUser ? (
@@ -332,19 +339,19 @@ export default function Dashboard() {
                 ) : customer ? (
                   <div className="space-y-4">
                     <div>
-                      <p className="text-sm text-muted-foreground">Company</p>
-                      <p className="font-medium">{customer.company || "Not provided"}</p>
+                      <p className="text-sm text-muted-foreground">{t("dashboard.company")}</p>
+                      <p className="font-medium">{customer.company || t("dashboard.notProvided")}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Email</p>
+                      <p className="text-sm text-muted-foreground">{t("dashboard.email")}</p>
                       <p className="font-medium">{customer.email}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Phone</p>
-                      <p className="font-medium">{customer.phone || "Not provided"}</p>
+                      <p className="text-sm text-muted-foreground">{t("dashboard.phone")}</p>
+                      <p className="font-medium">{customer.phone || t("dashboard.notProvided")}</p>
                     </div>
                     <div className="pt-4 border-t border-border/40">
-                      <Button variant="outline" className="w-full">Edit Profile</Button>
+                      <Button variant="outline" className="w-full">{t("dashboard.editProfile")}</Button>
                     </div>
                   </div>
                 ) : null}
@@ -353,18 +360,18 @@ export default function Dashboard() {
 
             <Card className="border-none shadow-sm bg-primary text-primary-foreground">
               <CardHeader>
-                <CardTitle>Logistic Ordering</CardTitle>
-                <CardDescription className="text-primary-foreground/70">Book export, import & freight services</CardDescription>
+                <CardTitle>{t("dashboard.logisticOrdering")}</CardTitle>
+                <CardDescription className="text-primary-foreground/70">{t("dashboard.bookDescription")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 <Link href="/jasa">
                   <Button variant="secondary" className="w-full bg-white text-primary hover:bg-gray-100 gap-2">
-                    <Ship className="h-4 w-4" /> Buat Pesanan
+                    <Ship className="h-4 w-4" /> {t("dashboard.createOrder")}
                   </Button>
                 </Link>
                 <Link href="/track">
                   <Button variant="ghost" className="w-full text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 gap-2">
-                    Lacak Pesanan
+                    {t("dashboard.trackOrder")}
                   </Button>
                 </Link>
               </CardContent>

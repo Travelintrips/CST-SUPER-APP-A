@@ -162,6 +162,10 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       redirectNote: "Anda akan diarahkan ke halaman detail layanan",
       noProducts: "Tidak ada produk",
       noMatches: "Produk tidak ditemukan",
+      sold: "Terjual 100+",
+      viewOrder: "Lihat & Pesan",
+      tryOtherKeyword: "Coba kata kunci yang berbeda.",
+      noProductsYet: "Belum ada produk yang tersedia.",
     },
     jasa: {
       catalogLabel: "Katalog Jasa",
@@ -436,6 +440,10 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       redirectNote: "You will be redirected to the service detail page",
       noProducts: "No products found",
       noMatches: "No products match your search",
+      sold: "100+ sold",
+      viewOrder: "View & Order",
+      tryOtherKeyword: "Try a different keyword.",
+      noProductsYet: "No products available yet.",
     },
     jasa: {
       catalogLabel: "Service Catalog",
@@ -710,6 +718,10 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       redirectNote: "You will be redirected to the service detail page",
       noProducts: "No products found",
       noMatches: "No products match your search",
+      sold: "100+ sold",
+      viewOrder: "View & Order",
+      tryOtherKeyword: "Try a different keyword.",
+      noProductsYet: "No products available yet.",
     },
     jasa: {
       catalogLabel: "Service Catalogue",

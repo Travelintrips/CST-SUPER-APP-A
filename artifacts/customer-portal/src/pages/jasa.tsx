@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, Ship, Plane, Package, Warehouse, Truck, FileCheck,
-  Shield, FileText, ArrowRight, ChevronRight, Scale, BookOpen, Users,
+  Shield, FileText, ArrowRight, ChevronRight, Scale,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   "Udara": Plane,
@@ -46,7 +47,8 @@ const DEFAULT_COLOR = { bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue
 export default function Jasa() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<string>("Semua");
+  const { t } = useLanguage();
+  const [activeCategory, setActiveCategory] = useState<string>(() => t("jasa.all"));
 
   const { data: servicesRaw, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServicesJasa"] },
@@ -58,6 +60,8 @@ export default function Jasa() {
     new Set(services.flatMap((s) => s.categories ?? []))
   ).sort();
 
+  const allLabel = t("jasa.all");
+
   const filtered = services.filter((s) => {
     const q = searchQuery.toLowerCase();
     const matchSearch =
@@ -66,7 +70,7 @@ export default function Jasa() {
       (s.description ?? "").toLowerCase().includes(q) ||
       (s.categories ?? []).some((c) => c.toLowerCase().includes(q));
     const matchCat =
-      activeCategory === "Semua" ||
+      activeCategory === allLabel ||
       (s.categories ?? []).includes(activeCategory);
     return matchSearch && matchCat;
   });
@@ -78,14 +82,14 @@ export default function Jasa() {
         <div className="container px-4 md:px-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-1">Katalog Jasa</p>
-              <h1 className="text-2xl md:text-3xl font-display font-bold">Jasa / Services</h1>
+              <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-1">{t("jasa.catalogLabel")}</p>
+              <h1 className="text-2xl md:text-3xl font-display font-bold">{t("jasa.title")}</h1>
             </div>
             <div className="relative w-full md:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary-foreground/50" />
               <Input
                 type="text"
-                placeholder="Cari jasa atau kategori..."
+                placeholder={t("jasa.search")}
                 className="h-10 pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -98,7 +102,7 @@ export default function Jasa() {
       <div className="container px-4 md:px-6 mt-6">
         {/* Category filter tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
-          {["Semua", ...allCategories].map((cat) => (
+          {[allLabel, ...allCategories].map((cat) => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
@@ -144,7 +148,7 @@ export default function Jasa() {
               </div>
             </div>
             <Button onClick={() => setLocation("/freight-forwarding")} className="gap-2 shrink-0">
-              Buat Pesanan <ChevronRight className="h-4 w-4" />
+              {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
 
@@ -176,7 +180,7 @@ export default function Jasa() {
               onClick={() => setLocation("/pabean")}
               className="gap-2 shrink-0 bg-orange-600 hover:bg-orange-700 text-white"
             >
-              Ajukan Layanan <ChevronRight className="h-4 w-4" />
+              {t("jasa.submitService")} <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -191,7 +195,7 @@ export default function Jasa() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>Tidak ada layanan yang cocok</p>
+            <p>{t("jasa.noMatches")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -233,7 +237,7 @@ export default function Jasa() {
                     )}
                     <CardContent className="px-4 pb-4 pt-0">
                       <Button size="sm" className="w-full gap-1 text-xs h-8 group-hover:bg-primary/90">
-                        Lihat Detail <ArrowRight className="h-3 w-3" />
+                        {t("jasa.viewDetail")} <ArrowRight className="h-3 w-3" />
                       </Button>
                     </CardContent>
                   </Card>

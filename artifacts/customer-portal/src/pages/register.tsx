@@ -11,11 +11,12 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from "@/component
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, Check } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 const registerSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  email: z.string().email({ message: "Invalid email address" }),
-  password: z.string().min(8, { message: "Password must be at least 8 characters" }),
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(8),
   phone: z.string().optional(),
   company: z.string().optional(),
   serviceIds: z.array(z.number()).default([]),
@@ -45,6 +46,7 @@ export default function Register() {
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
   const [step, setStep] = useState<1 | 2>(1);
   const [products, setProducts] = useState<SimpleItem[]>([]);
+  const { t } = useLanguage();
 
   const { data: servicesData } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
@@ -69,30 +71,22 @@ export default function Register() {
   }, []);
 
   const allItems: SimpleItem[] = [...services, ...products];
-
   const registerMutation = usePortalRegister();
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      password: "",
-      phone: "",
-      company: "",
-      serviceIds: [],
-    },
+    defaultValues: { name: "", email: "", password: "", phone: "", company: "", serviceIds: [] },
   });
 
   const selectedIds = form.watch("serviceIds");
 
   const toggleItem = (id: number) => {
     const current = form.getValues("serviceIds");
-    if (current.includes(id)) {
-      form.setValue("serviceIds", current.filter((v) => v !== id), { shouldDirty: true });
-    } else {
-      form.setValue("serviceIds", [...current, id], { shouldDirty: true });
-    }
+    form.setValue(
+      "serviceIds",
+      current.includes(id) ? current.filter((v) => v !== id) : [...current, id],
+      { shouldDirty: true }
+    );
   };
 
   const onSubmit = (data: RegisterFormValues) => {
@@ -101,13 +95,12 @@ export default function Register() {
       onSuccess: (res) => {
         if (res.token) {
           setAuthToken(res.token);
-          const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-          const redirect = returnTo || deriveRedirect(data.serviceIds, allItems);
-          setLocation(redirect);
+          const rt = new URLSearchParams(window.location.search).get("returnTo");
+          setLocation(rt || deriveRedirect(data.serviceIds, allItems));
         }
       },
       onError: (err: any) => {
-        setErrorMsg(err?.message || "Registration failed. Please try again.");
+        setErrorMsg(err?.message || t("common.error"));
       }
     });
   };
@@ -122,12 +115,12 @@ export default function Register() {
       <Card className="w-full max-w-2xl border-none shadow-xl">
         <CardHeader className="space-y-3 pb-8 border-b border-border/40">
           <div className="flex justify-between items-center">
-            <CardTitle className="text-2xl font-display font-bold">Create your account</CardTitle>
+            <CardTitle className="text-2xl font-display font-bold">{t("register.title")}</CardTitle>
             <div className="text-sm font-medium bg-accent/10 text-accent px-3 py-1 rounded-full">
-              Step {step} of 2
+              {t("register.stepOf")} {step} {t("register.of")} 2
             </div>
           </div>
-          <CardDescription>Join our platform to manage your logistics easily</CardDescription>
+          <CardDescription>{t("register.subtitle")}</CardDescription>
         </CardHeader>
 
         <CardContent className="pt-8">
@@ -135,8 +128,7 @@ export default function Register() {
             <Alert className="mb-6 border-primary/30 bg-primary/5">
               <Check className="h-4 w-4 text-primary" />
               <AlertDescription className="text-sm text-foreground">
-                Buat akun untuk melanjutkan pemesanan layanan logistik Anda.
-                Setelah daftar, Anda langsung diarahkan ke halaman checkout.
+                {t("register.redirectToCheckout")}
               </AlertDescription>
             </Alert>
           )}
@@ -150,7 +142,6 @@ export default function Register() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
-              {/* Step 1 — Personal info */}
               <div className={step === 1 ? "block space-y-6" : "hidden"}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
@@ -158,7 +149,7 @@ export default function Register() {
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <label className="text-sm font-medium">Full Name</label>
+                        <label className="text-sm font-medium">{t("register.fullName")}</label>
                         <FormControl><Input placeholder="John Doe" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -169,7 +160,7 @@ export default function Register() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <label className="text-sm font-medium">Email Address</label>
+                        <label className="text-sm font-medium">{t("register.emailAddress")}</label>
                         <FormControl><Input type="email" placeholder="john@company.com" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -180,7 +171,7 @@ export default function Register() {
                     name="company"
                     render={({ field }) => (
                       <FormItem>
-                        <label className="text-sm font-medium">Company Name</label>
+                        <label className="text-sm font-medium">{t("register.company")}</label>
                         <FormControl><Input placeholder="Acme Logistics Inc." {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -191,7 +182,7 @@ export default function Register() {
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <label className="text-sm font-medium">Phone Number</label>
+                        <label className="text-sm font-medium">{t("register.phone")}</label>
                         <FormControl><Input placeholder="+62 812 0000 0000" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -204,7 +195,7 @@ export default function Register() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <label className="text-sm font-medium">Password</label>
+                      <label className="text-sm font-medium">{t("register.password")}</label>
                       <FormControl><Input type="password" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
@@ -212,18 +203,17 @@ export default function Register() {
                 />
 
                 <Button type="button" className="w-full h-12" onClick={handleNextStep}>
-                  Continue to Services
+                  {t("register.continueToServices")}
                 </Button>
               </div>
 
-              {/* Step 2 — Service selection */}
               <div className={step === 2 ? "block space-y-6" : "hidden"}>
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">What services are you interested in?</h3>
+                  <h3 className="text-lg font-semibold mb-1">{t("register.servicesTitle")}</h3>
                   <p className="text-sm text-muted-foreground mb-6">
-                    Select all that apply so we can tailor your experience.
+                    {t("register.servicesDesc")}
                     {selectedIds.length > 0 && (
-                      <span className="ml-2 font-medium text-accent">{selectedIds.length} dipilih</span>
+                      <span className="ml-2 font-medium text-accent">{selectedIds.length} {t("register.selected")}</span>
                     )}
                   </p>
 
@@ -249,9 +239,7 @@ export default function Register() {
                             }`}
                           >
                             <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                              isSelected
-                                ? "bg-primary border-primary"
-                                : "border-muted-foreground/40 bg-white"
+                              isSelected ? "bg-primary border-primary" : "border-muted-foreground/40 bg-white"
                             }`}>
                               {isSelected && <Check className="h-3 w-3 text-white" />}
                             </div>
@@ -267,10 +255,10 @@ export default function Register() {
 
                 <div className="flex gap-4 pt-2">
                   <Button type="button" variant="outline" className="w-1/3 h-12" onClick={() => setStep(1)}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                    <ArrowLeft className="mr-2 h-4 w-4" /> {t("register.back")}
                   </Button>
                   <Button type="submit" className="w-2/3 h-12" disabled={registerMutation.isPending}>
-                    {registerMutation.isPending ? "Creating Account..." : "Create Account"}
+                    {registerMutation.isPending ? t("register.creatingAccount") : t("register.createAccount")}
                   </Button>
                 </div>
               </div>
@@ -280,9 +268,12 @@ export default function Register() {
 
           {step === 1 && (
             <div className="mt-8 text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <Link href={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"} className="font-medium text-primary hover:underline">
-                Sign in
+              {t("register.alreadyHaveAccount")}{" "}
+              <Link
+                href={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"}
+                className="font-medium text-primary hover:underline"
+              >
+                {t("register.signIn")}
               </Link>
             </div>
           )}

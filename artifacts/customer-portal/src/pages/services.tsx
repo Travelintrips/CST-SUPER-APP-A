@@ -7,6 +7,7 @@ import { resolveImageUrl } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useCart } from "@/lib/cart";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -14,6 +15,7 @@ const formatIDR = (v: number) =>
 export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const { addItem, items } = useCart();
+  const { t } = useLanguage();
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
@@ -37,16 +39,16 @@ export default function Services() {
       <div className="bg-primary text-primary-foreground py-16 md:py-24">
         <div className="container px-4 md:px-6">
           <div className="max-w-2xl">
-            <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">Katalog Jasa</p>
-            <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">Layanan Kami</h1>
+            <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">{t("services.catalogLabel")}</p>
+            <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">{t("services.title")}</h1>
             <p className="text-lg text-primary-foreground/80 mb-8">
-              Temukan layanan logistik, kepabeanan, dan pengiriman internasional kami yang dirancang sesuai kebutuhan bisnis Anda.
+              {t("services.description")}
             </p>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary-foreground/50" />
               <Input
                 type="text"
-                placeholder="Cari layanan atau kategori..."
+                placeholder={t("services.search")}
                 className="w-full h-12 pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -104,11 +106,11 @@ export default function Services() {
                 </CardHeader>
                 <CardContent className="mt-auto pt-0 space-y-3">
                   <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Harga</span>
+                    <span className="text-sm font-medium text-muted-foreground">{t("services.price")}</span>
                     {service.price > 0 ? (
                       <span className="font-bold text-lg text-primary">{formatIDR(service.price)}</span>
                     ) : (
-                      <span className="font-semibold text-amber-600 text-sm">Harga Negosiasi</span>
+                      <span className="font-semibold text-amber-600 text-sm">{t("services.negotiable")}</span>
                     )}
                   </div>
                   <Button
@@ -122,7 +124,7 @@ export default function Services() {
                     })}
                   >
                     <ShoppingCart className="h-4 w-4" />
-                    {isInCart(service.id) ? "Tambah Lagi" : "Pesan Sekarang"}
+                    {isInCart(service.id) ? t("services.inCart") : t("services.addToCart")}
                   </Button>
                 </CardContent>
               </Card>
@@ -131,9 +133,9 @@ export default function Services() {
         ) : (
           <div className="text-center py-24 bg-white rounded-xl border border-dashed border-border">
             <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
-            <h3 className="text-xl font-medium mb-2">Tidak ada layanan ditemukan</h3>
+            <h3 className="text-xl font-medium mb-2">{t("services.noServices")}</h3>
             <p className="text-muted-foreground">
-              {searchQuery ? "Coba kata kunci yang berbeda." : "Belum ada layanan yang tersedia saat ini."}
+              {searchQuery ? t("services.tryOther") : t("services.noResults")}
             </p>
           </div>
         )}

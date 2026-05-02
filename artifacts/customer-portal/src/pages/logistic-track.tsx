@@ -8,13 +8,14 @@ import { useGetLogisticOrderByNumber, getGetLogisticOrderByNumberQueryKey } from
 import { ArrowLeft, Search, Package, Ship } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_COLORS, OrderStatus } from "@/lib/services-data";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 export default function TrackPage() {
   const [, setLocation] = useLocation();
   const [input, setInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const { t } = useLanguage();
 
-  // Read ?order= from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const o = params.get("order");
@@ -39,19 +40,19 @@ export default function TrackPage() {
           <button onClick={() => setLocation("/")} className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <span className="font-semibold text-foreground">Lacak Pesanan</span>
+          <span className="font-semibold text-foreground">{t("tracking.trackOrder")}</span>
         </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-foreground mb-1">Lacak Status Pesanan</h1>
-          <p className="text-sm text-muted-foreground">Masukkan nomor pesanan untuk melihat status terkini</p>
+          <h1 className="text-xl font-bold text-foreground mb-1">{t("tracking.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("tracking.description")}</p>
         </div>
 
         <div className="flex gap-2">
           <Input
-            placeholder="Contoh: LOG-250429-12345"
+            placeholder={t("tracking.placeholder")}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -59,15 +60,15 @@ export default function TrackPage() {
           />
           <Button onClick={handleSearch} disabled={isLoading}>
             <Search className="w-4 h-4 mr-1" />
-            {isLoading ? "Mencari..." : "Cari"}
+            {isLoading ? t("tracking.searching") : t("tracking.search")}
           </Button>
         </div>
 
         {isError && (
           <div className="text-center py-10 text-muted-foreground">
             <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
-            <p className="font-medium text-foreground">Pesanan tidak ditemukan</p>
-            <p className="text-sm mt-1">Periksa kembali nomor pesanan Anda</p>
+            <p className="font-medium text-foreground">{t("tracking.notFound")}</p>
+            <p className="text-sm mt-1">{t("tracking.notFoundDesc")}</p>
           </div>
         )}
 
@@ -77,7 +78,7 @@ export default function TrackPage() {
             <div className="bg-card border border-border rounded-xl p-5">
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">Nomor Pesanan</p>
+                  <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">{t("tracking.orderNumber")}</p>
                   <p className="text-xl font-bold font-mono text-foreground">{order.orderNumber}</p>
                 </div>
                 <Badge className={STATUS_COLORS[order.status as OrderStatus] || "bg-gray-100 text-gray-800"}>
@@ -86,17 +87,17 @@ export default function TrackPage() {
               </div>
               <Separator className="mb-4" />
               <div className="grid grid-cols-2 gap-y-2 text-sm">
-                <span className="text-muted-foreground">Perusahaan</span>
+                <span className="text-muted-foreground">{t("tracking.company")}</span>
                 <span className="font-medium text-foreground text-right">{order.companyName}</span>
-                <span className="text-muted-foreground">PIC</span>
+                <span className="text-muted-foreground">{t("tracking.pic")}</span>
                 <span className="font-medium text-foreground text-right">{order.customerName}</span>
-                <span className="text-muted-foreground">Tipe Pengiriman</span>
+                <span className="text-muted-foreground">{t("tracking.shipmentType")}</span>
                 <span className="font-medium text-foreground text-right">{order.shipmentType}</span>
-                <span className="text-muted-foreground">Origin</span>
+                <span className="text-muted-foreground">{t("tracking.origin")}</span>
                 <span className="font-medium text-foreground text-right">{order.origin}</span>
-                <span className="text-muted-foreground">Destination</span>
+                <span className="text-muted-foreground">{t("tracking.destination")}</span>
                 <span className="font-medium text-foreground text-right">{order.destination}</span>
-                <span className="text-muted-foreground">Tanggal Dibuat</span>
+                <span className="text-muted-foreground">{t("tracking.createdAt")}</span>
                 <span className="font-medium text-foreground text-right">{formatDate(order.createdAt)}</span>
               </div>
             </div>
@@ -104,7 +105,7 @@ export default function TrackPage() {
             {/* Items */}
             <div className="bg-card border border-border rounded-xl p-5">
               <h3 className="font-semibold text-foreground text-sm mb-3">
-                Layanan ({order.items.length})
+                {t("tracking.services")} ({order.items.length})
               </h3>
               <div className="space-y-2">
                 {order.items.map((item) => (
@@ -120,7 +121,7 @@ export default function TrackPage() {
               <Separator className="mt-3 mb-3" />
               <div className="space-y-1">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">{t("tracking.subtotal")}</span>
                   <span>{formatCurrency(order.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
@@ -128,19 +129,19 @@ export default function TrackPage() {
                   <span>{formatCurrency(order.tax)}</span>
                 </div>
                 <div className="flex justify-between font-bold">
-                  <span>Total Estimasi</span>
+                  <span>{t("tracking.total")}</span>
                   <span className="text-accent">{formatCurrency(order.grandTotal)}</span>
                 </div>
               </div>
             </div>
 
             <div className="bg-muted/40 rounded-lg p-4 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground mb-1">Informasi</p>
-              <p>Tim kami akan menghubungi Anda untuk konfirmasi dan penawaran final. Jika ada pertanyaan, hubungi customer service kami.</p>
+              <p className="font-medium text-foreground mb-1">{t("tracking.infoTitle")}</p>
+              <p>{t("tracking.infoDesc")}</p>
             </div>
 
             <Button variant="outline" className="w-full" onClick={() => setLocation("/jasa")}>
-              <Ship className="w-4 h-4 mr-2" /> Buat Pesanan Baru
+              <Ship className="w-4 h-4 mr-2" /> {t("tracking.newOrder")}
             </Button>
           </div>
         )}

@@ -10,6 +10,7 @@ import {
   Play, Package, Star, Clock, Check, Layers, ExternalLink, Truck,
 } from "lucide-react";
 import { useCart } from "@/lib/cart";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 type MediaItem = { type: "image" | "video"; url: string };
 
@@ -282,6 +283,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
   const { addItemSilent } = useCart();
   const [, setLocation] = useLocation();
+  const { t } = useLanguage();
 
   const allShipping = useShippingOptions();
   const vendorOpts = allShipping.filter((s) => s.kind === "vendor");
@@ -347,21 +349,21 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             {product.price > 0 ? (
               <p className="text-2xl font-bold text-primary">{formatIDR(product.price)}</p>
             ) : (
-              <p className="text-lg font-semibold text-amber-600">Harga Negosiasi</p>
+              <p className="text-lg font-semibold text-amber-600">{t("products.negotiable")}</p>
             )}
           </div>
 
           {/* Description */}
           {product.description && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Deskripsi</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{t("products.descriptionLabel")}</p>
               <p className="text-sm text-foreground leading-relaxed line-clamp-3">{product.description}</p>
             </div>
           )}
 
           {/* Quantity */}
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Jumlah</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t("products.quantityLabel")}</p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
@@ -378,7 +380,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
           {/* Shipping selector */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-              <Truck className="h-3.5 w-3.5" /> Pilih Pengiriman / Jasa
+              <Truck className="h-3.5 w-3.5" /> {t("products.shippingLabel")}
             </p>
             {/* Tab switcher */}
             <div className="flex gap-1 mb-2">
@@ -386,18 +388,18 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
                 onClick={() => { setShippingTab("service"); setSelectedShipping(null); }}
                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "service" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
               >
-                <Layers className="h-3 w-3" /> Jasa ({serviceOpts.length})
+                <Layers className="h-3 w-3" /> {t("products.serviceTab")} ({serviceOpts.length})
               </button>
               <button
                 onClick={() => { setShippingTab("vendor"); setSelectedShipping(null); }}
                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "vendor" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
               >
-                <Package className="h-3 w-3" /> Kurir ({vendorOpts.length})
+                <Package className="h-3 w-3" /> {t("products.courierTab")} ({vendorOpts.length})
               </button>
             </div>
             <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto pr-1">
               {shownOpts.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">Tidak ada pilihan tersedia</p>
+                <p className="text-xs text-muted-foreground text-center py-4">{t("products.noShipping")}</p>
               )}
               {shownOpts.map((s) => (
                 <div
@@ -448,17 +450,17 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
           {chosen && product.price > 0 && (
             <div className="bg-gray-50 rounded-xl px-4 py-3 border border-border">
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Subtotal ({qty}x)</span>
+                <span className="text-muted-foreground">{t("products.subtotal")} ({qty}x)</span>
                 <span>{formatIDR(product.price * qty)}</span>
               </div>
               {chosen.kind === "vendor" && (
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Ongkir ({chosen.name})</span>
-                  <span>{chosen.fee > 0 ? formatIDR(chosen.fee) : "Nego"}</span>
+                  <span className="text-muted-foreground">{t("products.freight")} ({chosen.name})</span>
+                  <span>{chosen.fee > 0 ? formatIDR(chosen.fee) : t("products.negotiable")}</span>
                 </div>
               )}
               {chosen.kind === "service" && (
-                <p className="text-xs text-muted-foreground">+ Biaya jasa dihitung di halaman layanan</p>
+                <p className="text-xs text-muted-foreground">{t("products.serviceNote")}</p>
               )}
             </div>
           )}
@@ -472,14 +474,14 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             >
               <Package className="h-4 w-4" />
               {!chosen
-                ? "Pilih Pengiriman / Jasa"
+                ? t("products.selectShipping")
                 : chosen.kind === "service"
-                  ? `Lanjutkan ke ${chosen.name}`
-                  : "Lanjutkan Pesanan"}
+                  ? `${t("products.proceedTo")} ${chosen.name}`
+                  : t("products.proceedOrder")}
             </Button>
             {chosen?.kind === "service" && (
               <p className="text-xs text-muted-foreground text-center mt-2">
-                Anda akan diarahkan ke halaman detail layanan
+                {t("products.redirectNote")}
               </p>
             )}
           </div>
@@ -496,6 +498,7 @@ export default function Products() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const { t } = useLanguage();
 
   useEffect(() => {
     fetch("/api/portal/products")
@@ -521,16 +524,16 @@ export default function Products() {
       {/* Hero header */}
       <div className="bg-primary text-primary-foreground py-14 md:py-20">
         <div className="container px-4 md:px-6 max-w-5xl">
-          <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-2">Katalog Produk</p>
-          <h1 className="text-3xl md:text-4xl font-display font-bold mb-3">Produk Kami</h1>
+          <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-2">{t("products.catalogLabel")}</p>
+          <h1 className="text-3xl md:text-4xl font-display font-bold mb-3">{t("products.title")}</h1>
           <p className="text-primary-foreground/70 mb-6 text-sm max-w-xl">
-            Temukan berbagai produk berkualitas untuk kebutuhan bisnis Anda.
+            {t("products.description")}
           </p>
           <div className="relative max-w-xl">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary-foreground/50" />
             <Input
               type="text"
-              placeholder="Cari produk atau kategori..."
+              placeholder={t("products.search")}
               className="w-full pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -551,7 +554,7 @@ export default function Products() {
                   : "bg-white border border-border text-foreground hover:border-primary/40"
               }`}
             >
-              Semua
+              {t("products.all")}
             </button>
             {allCategories.map((cat) => (
               <button
@@ -612,13 +615,13 @@ export default function Products() {
                   {product.price > 0 ? (
                     <p className="text-sm font-bold text-primary">{formatIDR(product.price)}</p>
                   ) : (
-                    <p className="text-xs font-semibold text-amber-600">Harga Negosiasi</p>
+                    <p className="text-xs font-semibold text-amber-600">{t("products.negotiable")}</p>
                   )}
                   <div className="flex items-center gap-1 mt-1.5">
                     <div className="flex text-amber-400">
                       {[1,2,3,4,5].map((s) => <Star key={s} className="h-2.5 w-2.5 fill-current" />)}
                     </div>
-                    <span className="text-[10px] text-muted-foreground">· Terjual 100+</span>
+                    <span className="text-[10px] text-muted-foreground">· {t("products.sold")}</span>
                   </div>
                 </div>
 
@@ -631,7 +634,7 @@ export default function Products() {
                     }}
                     className="w-full py-1.5 rounded-xl border border-primary text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-colors flex items-center justify-center gap-1"
                   >
-                    <Package className="h-3.5 w-3.5" /> Lihat &amp; Pesan
+                    <Package className="h-3.5 w-3.5" /> {t("products.viewOrder")}
                   </button>
                 </div>
               </div>
@@ -640,9 +643,9 @@ export default function Products() {
         ) : (
           <div className="text-center py-24 bg-white rounded-2xl border border-dashed border-border">
             <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-40" />
-            <h3 className="text-lg font-medium mb-2">Tidak ada produk</h3>
+            <h3 className="text-lg font-medium mb-2">{t("products.noProducts")}</h3>
             <p className="text-muted-foreground text-sm">
-              {searchQuery ? "Coba kata kunci yang berbeda." : "Belum ada produk yang tersedia."}
+              {searchQuery ? t("products.tryOtherKeyword") : t("products.noProductsYet")}
             </p>
           </div>
         )}
