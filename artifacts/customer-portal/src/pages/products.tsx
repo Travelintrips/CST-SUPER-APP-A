@@ -531,6 +531,9 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   );
 }
 
+// ── Product hero background — swap this path to change the image ───────────
+const PRODUCT_HERO_BG = `${import.meta.env.BASE_URL}images/warehouse.png`;
+
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -561,23 +564,96 @@ export default function Products() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Hero header */}
-      <div className="bg-primary text-primary-foreground py-14 md:py-20">
-        <div className="container px-4 md:px-6 max-w-5xl">
-          <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-2">{t("products.catalogLabel")}</p>
-          <h1 className="text-3xl md:text-4xl font-display font-bold mb-3">{t("products.title")}</h1>
-          <p className="text-primary-foreground/70 mb-6 text-sm max-w-xl">
+      {/* ── Hero header ─────────────────────────────────────────────── */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          backgroundImage: [
+            "linear-gradient(135deg, rgba(14,165,233,0.83) 0%, rgba(37,99,235,0.60) 100%)",
+            "linear-gradient(rgba(15,23,42,0.20) 0%, rgba(15,23,42,0.30) 100%)",
+            `url(${PRODUCT_HERO_BG})`,
+          ].join(", "),
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          padding: "clamp(56px, 8vw, 96px) 0 clamp(40px, 6vw, 72px)",
+        }}
+      >
+        <div
+          className="container px-4 md:px-6"
+          style={{ maxWidth: "760px" }}
+        >
+          {/* Label */}
+          <p
+            className="font-extrabold uppercase text-white mb-3"
+            style={{ fontSize: "13px", letterSpacing: "0.14em", opacity: 0.92 }}
+          >
+            {t("products.catalogLabel")}
+          </p>
+
+          {/* Title */}
+          <h1
+            className="font-display font-extrabold text-white mb-4"
+            style={{
+              fontSize: "clamp(40px, 5vw, 68px)",
+              lineHeight: 1.05,
+              letterSpacing: "-0.02em",
+              textShadow: "0 4px 18px rgba(15,23,42,0.25)",
+            }}
+          >
+            {t("products.title")}
+          </h1>
+
+          {/* Description */}
+          <p
+            className="mb-8"
+            style={{
+              fontSize: "clamp(16px, 2vw, 20px)",
+              color: "rgba(255,255,255,0.90)",
+              maxWidth: "620px",
+              lineHeight: 1.65,
+              textShadow: "0 2px 8px rgba(15,23,42,0.20)",
+            }}
+          >
             {t("products.description")}
           </p>
-          <div className="relative max-w-xl">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary-foreground/50" />
-            <Input
+
+          {/* Glassmorphism search input */}
+          <div className="relative" style={{ maxWidth: "560px" }}>
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ width: "18px", height: "18px", color: "rgba(255,255,255,0.72)" }}
+            />
+            <input
               type="text"
               placeholder={t("products.search")}
-              className="w-full pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full text-white focus:outline-none"
+              style={{
+                paddingLeft: "44px",
+                paddingRight: "16px",
+                paddingTop: "14px",
+                paddingBottom: "14px",
+                background: "rgba(255,255,255,0.15)",
+                border: "1px solid rgba(255,255,255,0.34)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                borderRadius: "16px",
+                fontSize: "15px",
+                boxShadow: "0 2px 14px rgba(15,23,42,0.14)",
+                color: "white",
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.45), 0 2px 14px rgba(15,23,42,0.14)";
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.65)";
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.boxShadow = "0 2px 14px rgba(15,23,42,0.14)";
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.34)";
+              }}
             />
+            <style>{`input::placeholder { color: rgba(255,255,255,0.58); }`}</style>
           </div>
         </div>
       </div>
