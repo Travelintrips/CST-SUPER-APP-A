@@ -646,8 +646,8 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
   }
 
   // Notify admin via WhatsApp (fire-and-forget)
-  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
-  if (adminWa) {
+  getAdminWa().then((adminWa) => {
+    if (!adminWa) return;
     const totalFmt = Number(doc!.grandTotal ?? 0).toLocaleString("id-ID");
     const msg =
       `🛒 *Order Portal Baru*\n` +
@@ -656,8 +656,8 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
       `Email: ${portalCustomer.email}\n` +
       `Total: Rp ${totalFmt}\n` +
       `Item: ${orderItems.length} produk/jasa`;
-    sendWhatsApp(adminWa, msg).catch(() => undefined);
-  }
+    return sendWhatsApp(adminWa, msg);
+  }).catch(() => undefined);
 
   return res.status(201).json({
     id: doc!.id,
