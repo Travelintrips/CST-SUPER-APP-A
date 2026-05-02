@@ -222,6 +222,8 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
           
+          {isAdmin && <WhatsAppNotificationCard />}
+
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>
               <CardTitle className="text-xl">Authentication</CardTitle>
@@ -244,8 +246,6 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-
-          {isAdmin && <WhatsAppNotificationCard />}
         </div>
       </div>
     </AppShell>
