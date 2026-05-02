@@ -840,4 +840,67 @@ router.delete("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res
   return res.json({ ok: true });
 });
 
+// ---- Pricing Rates (Trucking & Freight) ----
+const TRUCKING_RATES_KEY = "logistic_trucking_rates";
+const FREIGHT_RATES_KEY  = "logistic_freight_rates";
+
+const DEFAULT_TRUCKING_RATES: Record<string, { ratePerKm: number; loadingFee: number }> = {
+  CDE:     { ratePerKm: 5000,  loadingFee: 500000 },
+  CDD:     { ratePerKm: 7000,  loadingFee: 700000 },
+  Fuso:    { ratePerKm: 10000, loadingFee: 1000000 },
+  Wingbox: { ratePerKm: 12000, loadingFee: 1200000 },
+  Trailer: { ratePerKm: 15000, loadingFee: 1500000 },
+};
+
+const DEFAULT_FREIGHT_RATES = {
+  seaLcl:          { ratePerCbm: 250000,  label: "Sea Freight LCL (per CBM)" },
+  seaFcl20:        { flatRate: 8000000,   label: "Sea Freight FCL 20ft" },
+  seaFcl40:        { flatRate: 14000000,  label: "Sea Freight FCL 40ft" },
+  air:             { ratePerKg: 50000,    label: "Air Freight (per kg)" },
+  customClearance: { flatRate: 2500000,   label: "Custom Clearance" },
+};
+
+async function getPricingKey<T>(key: string, def: T): Promise<T> {
+  const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, key));
+  if (!row) return def;
+  try { return JSON.parse(row.value) as T; } catch { return def; }
+}
+
+async function setPricingKey(key: string, value: unknown) {
+  const json = JSON.stringify(value);
+  const existing = await db.select().from(portalContentTable).where(eq(portalContentTable.key, key));
+  if (existing.length > 0) {
+    await db.update(portalContentTable).set({ value: json }).where(eq(portalContentTable.key, key));
+  } else {
+    await db.insert(portalContentTable).values({ key, value: json });
+  }
+}
+
+// GET /api/portal/admin/trucking-rates
+router.get("/admin/trucking-rates", requirePortalAdmin, async (_req, res) => {
+  const rates = await getPricingKey(TRUCKING_RATES_KEY, DEFAULT_TRUCKING_RATES);
+  return res.json(rates);
+});
+
+// PUT /api/portal/admin/trucking-rates
+router.put("/admin/trucking-rates", requirePortalAdmin, async (req, res) => {
+  const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;
+  if (!rates || typeof rates !== "object") return res.status(400).json({ message: "Format tidak valid" });
+  await setPricingKey(TRUCKING_RATES_KEY, rates);
+  return res.json({ ok: true });
+});
+
+// GET /api/portal/admin/freight-rates
+router.get("/admin/freight-rates", requirePortalAdmin, async (_req, res) => {
+  const rates = await getPricingKey(FREIGHT_RATES_KEY, DEFAULT_FREIGHT_RATES);
+  return res.json(rates);
+});
+
+// PUT /api/portal/admin/freight-rates
+router.put("/admin/freight-rates", requirePortalAdmin, async (req, res) => {
+  if (!req.body || typeof req.body !== "object") return res.status(400).json({ message: "Format tidak valid" });
+  await setPricingKey(FREIGHT_RATES_KEY, req.body);
+  return res.json({ ok: true });
+});
+
 export default router;

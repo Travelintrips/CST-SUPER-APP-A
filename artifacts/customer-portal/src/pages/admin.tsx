@@ -29,6 +29,8 @@ import {
   ToggleLeft,
   ToggleRight,
   GripVertical,
+  Tag,
+  Ship,
 } from "lucide-react";
 import {
   Dialog,
@@ -1166,6 +1168,300 @@ function DeliveryVendorsTab() {
   );
 }
 
+type TruckingRates = Record<string, { ratePerKm: number; loadingFee: number }>;
+type FreightRates = {
+  seaLcl:          { ratePerCbm: number; label: string };
+  seaFcl20:        { flatRate: number; label: string };
+  seaFcl40:        { flatRate: number; label: string };
+  air:             { ratePerKg: number; label: string };
+  customClearance: { flatRate: number; label: string };
+};
+
+function PricingTab() {
+  const { toast } = useToast();
+
+  const [, setTrucking] = useState<TruckingRates>({});
+  const [truckingEdit, setTruckingEdit] = useState<TruckingRates>({});
+  const [truckingLoading, setTruckingLoading] = useState(true);
+  const [truckingSaving, setTruckingSaving] = useState(false);
+
+  const [freight, setFreight] = useState<FreightRates | null>(null);
+  const [freightEdit, setFreightEdit] = useState<Partial<FreightRates>>({});
+  const [freightLoading, setFreightLoading] = useState(true);
+  const [freightSaving, setFreightSaving] = useState(false);
+
+  const [newVehicle, setNewVehicle] = useState("");
+  const [newRatePerKm, setNewRatePerKm] = useState("");
+  const [newLoadingFee, setNewLoadingFee] = useState("");
+  const [addingVehicle, setAddingVehicle] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiGet<TruckingRates>("/api/portal/admin/trucking-rates");
+        setTrucking(data);
+        setTruckingEdit(JSON.parse(JSON.stringify(data)) as TruckingRates);
+      } catch {
+        toast({ title: "Gagal memuat tarif trucking", variant: "destructive" });
+      } finally { setTruckingLoading(false); }
+    })();
+    void (async () => {
+      try {
+        const data = await apiGet<FreightRates>("/api/portal/admin/freight-rates");
+        setFreight(data);
+        setFreightEdit(JSON.parse(JSON.stringify(data)) as FreightRates);
+      } catch {
+        toast({ title: "Gagal memuat tarif freight", variant: "destructive" });
+      } finally { setFreightLoading(false); }
+    })();
+  }, []);
+
+  const parse = (s: string) => parseInt(s.replace(/\D/g, ""), 10) || 0;
+
+  async function saveTrucking() {
+    setTruckingSaving(true);
+    try {
+      await apiPut("/api/portal/admin/trucking-rates", truckingEdit);
+      setTrucking(JSON.parse(JSON.stringify(truckingEdit)) as TruckingRates);
+      toast({ title: "Tarif trucking berhasil disimpan" });
+    } catch {
+      toast({ title: "Gagal menyimpan tarif trucking", variant: "destructive" });
+    } finally { setTruckingSaving(false); }
+  }
+
+  async function saveFreight() {
+    setFreightSaving(true);
+    try {
+      await apiPut("/api/portal/admin/freight-rates", freightEdit);
+      setFreight(JSON.parse(JSON.stringify(freightEdit)) as FreightRates);
+      toast({ title: "Tarif freight berhasil disimpan" });
+    } catch {
+      toast({ title: "Gagal menyimpan tarif freight", variant: "destructive" });
+    } finally { setFreightSaving(false); }
+  }
+
+  async function addVehicle() {
+    const name = newVehicle.trim();
+    if (!name) { toast({ title: "Nama kendaraan harus diisi", variant: "destructive" }); return; }
+    setAddingVehicle(true);
+    const updated = {
+      ...truckingEdit,
+      [name]: { ratePerKm: parse(newRatePerKm), loadingFee: parse(newLoadingFee) },
+    };
+    try {
+      await apiPut("/api/portal/admin/trucking-rates", updated);
+      setTrucking(updated);
+      setTruckingEdit(JSON.parse(JSON.stringify(updated)) as TruckingRates);
+      setNewVehicle(""); setNewRatePerKm(""); setNewLoadingFee("");
+      toast({ title: `Kendaraan "${name}" ditambahkan` });
+    } catch {
+      toast({ title: "Gagal menambah kendaraan", variant: "destructive" });
+    } finally { setAddingVehicle(false); }
+  }
+
+  async function deleteVehicle(key: string) {
+    if (!confirm(`Hapus kendaraan "${key}"?`)) return;
+    const updated = { ...truckingEdit };
+    delete updated[key];
+    try {
+      await apiPut("/api/portal/admin/trucking-rates", updated);
+      setTrucking(updated);
+      setTruckingEdit(JSON.parse(JSON.stringify(updated)) as TruckingRates);
+      toast({ title: `Kendaraan "${key}" dihapus` });
+    } catch {
+      toast({ title: "Gagal menghapus", variant: "destructive" });
+    }
+  }
+
+  const FREIGHT_FIELDS: Array<{
+    key: keyof FreightRates;
+    label: string;
+    icon: string;
+    field: string;
+    unit: string;
+  }> = [
+    { key: "seaLcl",          label: "Sea Freight LCL",   icon: "🚢", field: "ratePerCbm", unit: "per CBM" },
+    { key: "seaFcl20",        label: "Sea Freight FCL 20ft", icon: "📦", field: "flatRate",   unit: "flat" },
+    { key: "seaFcl40",        label: "Sea Freight FCL 40ft", icon: "📦", field: "flatRate",   unit: "flat" },
+    { key: "air",             label: "Air Freight",        icon: "✈️", field: "ratePerKg",  unit: "per kg" },
+    { key: "customClearance", label: "Custom Clearance",   icon: "📋", field: "flatRate",   unit: "flat" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* ---- Trucking Rates ---- */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 pb-1 border-b">
+          <Truck className="h-5 w-5 text-sky-600" />
+          <h3 className="font-semibold text-base">Tarif Trucking</h3>
+          <span className="text-xs text-muted-foreground ml-1">— Rate per km + biaya muat</span>
+        </div>
+
+        {truckingLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-xl border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 font-medium">Kendaraan</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Rate/km (Rp)</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Biaya Muat (Rp)</th>
+                    <th className="px-3 py-2.5 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(truckingEdit).map(([key, val]) => (
+                    <tr key={key} className="border-t hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 font-medium">{key}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <Input
+                          type="number"
+                          className="text-right h-8 w-32 ml-auto"
+                          value={val.ratePerKm}
+                          min={0}
+                          onChange={(e) => setTruckingEdit((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], ratePerKm: parseFloat(e.target.value) || 0 },
+                          }))}
+                        />
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <Input
+                          type="number"
+                          className="text-right h-8 w-36 ml-auto"
+                          value={val.loadingFee}
+                          min={0}
+                          onChange={(e) => setTruckingEdit((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], loadingFee: parseFloat(e.target.value) || 0 },
+                          }))}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <button
+                          onClick={() => void deleteVehicle(key)}
+                          className="text-destructive hover:text-destructive/70 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-end gap-2 pt-1">
+              <div className="space-y-1 flex-1">
+                <Label className="text-xs">Nama Kendaraan</Label>
+                <Input value={newVehicle} onChange={(e) => setNewVehicle(e.target.value)} placeholder="cth: Engkel" className="h-8" />
+              </div>
+              <div className="space-y-1 w-32">
+                <Label className="text-xs">Rate/km</Label>
+                <Input type="number" value={newRatePerKm} onChange={(e) => setNewRatePerKm(e.target.value)} placeholder="5000" className="h-8" />
+              </div>
+              <div className="space-y-1 w-36">
+                <Label className="text-xs">Biaya Muat</Label>
+                <Input type="number" value={newLoadingFee} onChange={(e) => setNewLoadingFee(e.target.value)} placeholder="500000" className="h-8" />
+              </div>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5 shrink-0" onClick={() => void addVehicle()} disabled={addingVehicle}>
+                {addingVehicle ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                Tambah
+              </Button>
+            </div>
+
+            <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-3 space-y-1">
+              <p>💡 Tarif ini digunakan untuk kalkulator harga pada halaman pemesanan logistik.</p>
+              <p>Estimasi biaya = (jarak km × rate/km) + biaya muat</p>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-xs text-muted-foreground">
+                {Object.keys(truckingEdit).length} jenis kendaraan terdaftar
+              </p>
+              <Button size="sm" onClick={() => void saveTrucking()} disabled={truckingSaving} className="gap-2">
+                {truckingSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Simpan Tarif Trucking
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ---- Freight Rates ---- */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 pb-1 border-b">
+          <Ship className="h-5 w-5 text-blue-600" />
+          <h3 className="font-semibold text-base">Tarif Freight (Sea & Air)</h3>
+          <span className="text-xs text-muted-foreground ml-1">— Harga pengiriman internasional</span>
+        </div>
+
+        {freightLoading ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : freight ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 font-medium">Jenis Layanan</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Satuan</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Tarif (Rp)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {FREIGHT_FIELDS.map(({ key, label, icon, field, unit }) => {
+                    const row = (freightEdit as Record<string, Record<string, number | string>>)[key] ?? {};
+                    const currentVal = (row[field] as number) ?? 0;
+                    return (
+                      <tr key={key} className="border-t hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <span className="mr-2">{icon}</span>
+                          <span className="font-medium">{label}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-xs">{unit}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <Input
+                            type="number"
+                            className="text-right h-8 w-40 ml-auto"
+                            value={currentVal}
+                            min={0}
+                            onChange={(e) => setFreightEdit((prev) => ({
+                              ...prev,
+                              [key]: {
+                                ...(((prev as Record<string, Record<string, number | string>>)[key]) ?? {}),
+                                [field]: parseFloat(e.target.value) || 0,
+                              },
+                            }))}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-3 space-y-1">
+              <p>💡 Tarif ini ditampilkan di halaman pemesanan logistik dan kalkulator biaya untuk pelanggan.</p>
+              <p>LCL = Less than Container Load (dihitung per CBM). FCL = Full Container Load (harga flat per container).</p>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button size="sm" onClick={() => void saveFreight()} disabled={freightSaving} className="gap-2">
+                {freightSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Simpan Tarif Freight
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ClaimAdminTab() {
   const { toast } = useToast();
   const [key, setKey] = useState("");
@@ -1279,6 +1575,10 @@ export default function AdminPage() {
                   <Truck className="h-4 w-4" />
                   Kurir
                 </TabsTrigger>
+                <TabsTrigger value="pricing" className="gap-2">
+                  <Tag className="h-4 w-4" />
+                  Kelola Harga
+                </TabsTrigger>
               </>
             )}
             <TabsTrigger value="claim" className="gap-2">
@@ -1341,6 +1641,20 @@ export default function AdminPage() {
                   </CardHeader>
                   <CardContent>
                     <DeliveryVendorsTab />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="pricing">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Kelola Harga Trucking & Freight</CardTitle>
+                    <CardDescription>
+                      Atur tarif trucking (per km + biaya muat) dan tarif freight internasional (Sea LCL/FCL, Air, Custom Clearance). Harga ini akan ditampilkan di kalkulator dan form pemesanan logistik.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <PricingTab />
                   </CardContent>
                 </Card>
               </TabsContent>
