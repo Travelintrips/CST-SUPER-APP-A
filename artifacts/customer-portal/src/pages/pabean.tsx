@@ -171,6 +171,7 @@ export default function Pabean() {
   const [serviceType, setServiceType] = useState<ServiceType | null>(null);
   const [direction, setDirection] = useState<Direction | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const detailSectionRef = useRef<HTMLDivElement>(null);
 
   // --- customer info ---
   const [customerName, setCustomerName] = useState("");
@@ -381,7 +382,12 @@ export default function Pabean() {
             {SERVICE_OPTIONS.map((opt) => (
               <button
                 key={opt.key}
-                onClick={() => setServiceType(opt.key)}
+                onClick={() => {
+                  setServiceType(opt.key);
+                  setTimeout(() => {
+                    detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }, 50);
+                }}
                 className={`rounded-xl border-2 p-4 text-left transition-all flex flex-col gap-2 ${
                   serviceType === opt.key
                     ? opt.color + " ring-2 ring-offset-1 ring-orange-400"
@@ -400,7 +406,7 @@ export default function Pabean() {
 
         {/* ── Step 2: Detail Layanan ───────────────────────────────── */}
         {serviceType && (
-          <div className="rounded-2xl border border-border bg-white p-5 space-y-5">
+          <div ref={detailSectionRef} className="rounded-2xl border border-border bg-white p-5 space-y-5">
             <h2 className="font-semibold text-base flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold">2</div>
               Detail {SERVICE_OPTIONS.find((s) => s.key === serviceType)?.title}

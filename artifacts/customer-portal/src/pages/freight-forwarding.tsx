@@ -168,6 +168,30 @@ export default function FreightForwarding() {
     }
   }
 
+  async function handleModeLogoUpload(modeLabel: string, file: File) {
+    setUploadingLogo(`mode_${modeLabel}`);
+    try {
+      const path = await uploadImage(file);
+      updateField(`ff_mode_logo_${modeLabel}`, path);
+    } catch {
+      toast({ title: "Gagal upload logo", variant: "destructive" });
+    } finally {
+      setUploadingLogo(null);
+    }
+  }
+
+  async function handleVariantLogoUpload(variantLabel: string, file: File) {
+    setUploadingLogo(`variant_${variantLabel}`);
+    try {
+      const path = await uploadImage(file);
+      updateField(`ff_variant_logo_${variantLabel}`, path);
+    } catch {
+      toast({ title: "Gagal upload logo", variant: "destructive" });
+    } finally {
+      setUploadingLogo(null);
+    }
+  }
+
   // Navigation state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [direction, setDirection] = useState<Direction | null>(null);
@@ -564,30 +588,86 @@ export default function FreightForwarding() {
               <p className="text-sm text-muted-foreground mt-1">Pilih moda transportasi yang sesuai</p>
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
-              {MODES.map((m) => (
-                <button
-                  key={m.label}
-                  onClick={() => { setMode(m.label); if (m.label !== "Sea") setSeaType(null); }}
-                  className={`rounded-2xl border-2 p-6 text-left transition-all ${
-                    mode === m.label
-                      ? "border-primary bg-primary/5 shadow-md"
-                      : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex flex-col items-center gap-3 text-center">
-                    {m.icon}
-                    <div>
-                      <p className="font-bold text-base">{m.desc}</p>
-                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{m.detail}</p>
-                    </div>
-                    {mode === m.label && (
-                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                        <Check className="h-3.5 w-3.5 text-white" />
+              {MODES.map((m) => {
+                const logoKey = `ff_mode_logo_${m.label}`;
+                const rawLogoPath = content[logoKey];
+                const logoSrc = rawLogoPath
+                  ? (rawLogoPath.startsWith("/") ? (resolveImageUrl(rawLogoPath) ?? rawLogoPath) : rawLogoPath)
+                  : null;
+                const isUploading = uploadingLogo === `mode_${m.label}`;
+                return (
+                  <div key={m.label} className="relative">
+                    <button
+                      onClick={() => { if (!editMode) { setMode(m.label); if (m.label !== "Sea") setSeaType(null); setStep(3); } }}
+                      className={`w-full rounded-2xl border-2 p-6 text-left transition-all ${
+                        mode === m.label && !editMode
+                          ? "border-primary bg-primary/5 shadow-md"
+                          : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
+                      } ${editMode ? "cursor-default" : ""}`}
+                    >
+                      <div className="flex flex-col items-center gap-3 text-center">
+                        <div className="relative w-12 h-12 flex items-center justify-center">
+                          {logoSrc ? (
+                            <img
+                              src={logoSrc}
+                              alt={m.label}
+                              className="w-12 h-12 object-contain rounded-lg"
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            m.icon
+                          )}
+                          {editMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); logoFileRefs.current[`mode_${m.label}`]?.click(); }}
+                              className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 rounded-lg opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Upload logo"
+                            >
+                              {isUploading ? <Loader2 className="h-5 w-5 text-white animate-spin" /> : <ImagePlus className="h-5 w-5 text-white" />}
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-base">{m.desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{m.detail}</p>
+                        </div>
+                        {mode === m.label && !editMode && (
+                          <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                            <Check className="h-3.5 w-3.5 text-white" />
+                          </div>
+                        )}
+                        {editMode && logoSrc && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); updateField(logoKey, ""); }}
+                            className="text-xs text-muted-foreground hover:text-red-500"
+                            title="Hapus logo"
+                          >
+                            Hapus logo
+                          </button>
+                        )}
+                      </div>
+                    </button>
+                    <input
+                      ref={(el) => { logoFileRefs.current[`mode_${m.label}`] = el; }}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleModeLogoUpload(m.label, file);
+                        e.target.value = "";
+                      }}
+                    />
+                    {editMode && (
+                      <div className="absolute top-2 right-2 bg-primary/90 text-primary-foreground text-[10px] font-medium px-1.5 py-0.5 rounded pointer-events-none">
+                        Edit: hover icon untuk upload logo
                       </div>
                     )}
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -636,28 +716,89 @@ export default function FreightForwarding() {
             )}
 
             <div className="grid sm:grid-cols-2 gap-3">
-              {availableVariants().map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setVariant(v)}
-                  className={`rounded-2xl border-2 p-5 text-left transition-all ${
-                    variant === v
-                      ? "border-primary bg-primary/5 shadow-md"
-                      : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 ${variant === v ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
-                      {v}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm">{VARIANT_LABELS[v]}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{VARIANT_DESCS[v]}</p>
-                    </div>
-                    {variant === v && <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />}
+              {availableVariants().map((v) => {
+                const logoKey = `ff_variant_logo_${v}`;
+                const rawLogoPath = content[logoKey];
+                const logoSrc = rawLogoPath
+                  ? (rawLogoPath.startsWith("/") ? (resolveImageUrl(rawLogoPath) ?? rawLogoPath) : rawLogoPath)
+                  : null;
+                const isUploading = uploadingLogo === `variant_${v}`;
+                return (
+                  <div key={v} className="relative">
+                    <button
+                      onClick={() => {
+                        if (!editMode) {
+                          setVariant(v);
+                          if (mode !== "Sea" || seaType) setStep(4);
+                        }
+                      }}
+                      className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
+                        variant === v && !editMode
+                          ? "border-primary bg-primary/5 shadow-md"
+                          : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
+                      } ${editMode ? "cursor-default" : ""}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="relative shrink-0">
+                          {logoSrc ? (
+                            <img
+                              src={logoSrc}
+                              alt={v}
+                              className="w-8 h-8 object-contain rounded-lg"
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${variant === v && !editMode ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
+                              {v}
+                            </div>
+                          )}
+                          {editMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); logoFileRefs.current[`variant_${v}`]?.click(); }}
+                              className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 rounded-lg opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Upload logo"
+                            >
+                              {isUploading ? <Loader2 className="h-4 w-4 text-white animate-spin" /> : <ImagePlus className="h-4 w-4 text-white" />}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm">{VARIANT_LABELS[v]}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{VARIANT_DESCS[v]}</p>
+                        </div>
+                        {variant === v && !editMode && <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />}
+                        {editMode && logoSrc && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); updateField(logoKey, ""); }}
+                            className="text-xs text-muted-foreground hover:text-red-500 shrink-0"
+                            title="Hapus logo"
+                          >
+                            Hapus
+                          </button>
+                        )}
+                      </div>
+                    </button>
+                    <input
+                      ref={(el) => { logoFileRefs.current[`variant_${v}`] = el; }}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleVariantLogoUpload(v, file);
+                        e.target.value = "";
+                      }}
+                    />
+                    {editMode && (
+                      <div className="absolute top-2 right-2 bg-primary/90 text-primary-foreground text-[10px] font-medium px-1.5 py-0.5 rounded pointer-events-none">
+                        Edit: hover icon
+                      </div>
+                    )}
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
