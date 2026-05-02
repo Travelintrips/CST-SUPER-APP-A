@@ -23,6 +23,11 @@ publicDir = "artifacts/customer-portal/dist/public"
 serve = "static"
 
 [[services.production.redirects]]
+from = "/customer-portal"
+to = "/"
+status = 301
+
+[[services.production.redirects]]
 from = "/customer-portal/:path*"
 to = "/:path*"
 status = 301
