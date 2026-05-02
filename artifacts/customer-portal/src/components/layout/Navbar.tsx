@@ -132,7 +132,15 @@ export function Navbar() {
               alt="Logo"
               className="h-[44px] w-auto object-contain"
             />
-            <span className="font-bold text-[15px] leading-tight tracking-tight text-slate-900 whitespace-nowrap">
+            <span
+              className="font-bold text-[15px] leading-tight tracking-tight whitespace-nowrap"
+              style={{
+                background: "linear-gradient(135deg, #0F172A 0%, #0369A1 60%, #0EA5E9 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
               {brandName}
             </span>
           </Link>

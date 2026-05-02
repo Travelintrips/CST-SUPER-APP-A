@@ -36,19 +36,43 @@ export default function Home() {
     <div className="flex flex-col min-h-screen">
 
       {/* ── Hero ─────────────────────────────────────────────────── */}
-      <section className="relative w-full h-[85vh] min-h-[600px] flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-black/45 z-10" />
+      <section className="relative w-full h-[90vh] min-h-[640px] flex items-center justify-center overflow-hidden">
+        {/* Cinematic gradient — dark bottom, lighter top */}
+        <div
+          className="absolute inset-0 z-10"
+          style={{
+            background:
+              "linear-gradient(to top, rgba(2,8,23,0.95) 0%, rgba(2,8,23,0.6) 35%, rgba(2,8,23,0.25) 70%, rgba(2,8,23,0.35) 100%)",
+          }}
+        />
+        {/* Side vignette */}
+        <div
+          className="absolute inset-0 z-10 pointer-events-none"
+          style={{
+            background: "radial-gradient(ellipse at center, transparent 40%, rgba(2,8,23,0.5) 100%)",
+          }}
+        />
         <EditableImage
           contentKey="hero_bg"
           defaultSrc={assetUrl("/images/hero-bg.png")}
           alt="Cargo ship at sea"
           className="absolute inset-0 w-full h-full object-cover z-0"
         />
-        <div className="container relative z-20 px-4 md:px-6 text-center text-white">
-          <span className="inline-block py-1 px-3 rounded-full bg-accent/20 border border-accent/50 text-accent-foreground text-sm font-medium mb-6">
-            <EditableText contentKey="hero_tagline" defaultValue={content["hero_tagline"] || t("hero.badge")} />
-          </span>
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-display font-bold tracking-tight mb-6 max-w-4xl mx-auto">
+
+        <div className="container relative z-20 px-5 md:px-6 text-center text-white">
+          {/* Glass badge */}
+          <div className="flex justify-center mb-7">
+            <span className="inline-flex items-center gap-2 py-1.5 px-5 rounded-full backdrop-blur-md bg-white/10 border border-white/20 text-white/90 text-xs sm:text-sm font-medium shadow-lg tracking-wide">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block animate-pulse shrink-0" />
+              <EditableText contentKey="hero_tagline" defaultValue={content["hero_tagline"] || t("hero.badge")} />
+            </span>
+          </div>
+
+          {/* Headline */}
+          <h1
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-display font-extrabold tracking-tight mb-5 max-w-4xl mx-auto leading-[1.08]"
+            style={{ textShadow: "0 2px 32px rgba(0,0,0,0.5)" }}
+          >
             <EditableText
               contentKey="hero_title"
               defaultValue={content["hero_title"] || t("hero.title")}
@@ -56,26 +80,54 @@ export default function Home() {
               multiline
             />
           </h1>
-          <p className="text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto">
+
+          {/* Sky-blue accent divider */}
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="h-px w-10 bg-gradient-to-r from-transparent to-sky-400 opacity-80" />
+            <div className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(14,165,233,0.8)]" />
+            <div className="h-px w-10 bg-gradient-to-l from-transparent to-sky-400 opacity-80" />
+          </div>
+
+          {/* Subtitle */}
+          <p className="text-base sm:text-lg md:text-xl text-slate-300 mb-10 max-w-xl mx-auto leading-relaxed">
             <EditableText
               contentKey="hero_subtitle"
               defaultValue={content["hero_subtitle"] || t("hero.description")}
               multiline
             />
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link href="/services">
-              <Button size="lg" className="bg-sky-500 hover:bg-sky-400 text-white h-14 px-10 text-base gap-2 rounded-xl shadow-[0_0_24px_rgba(14,165,233,0.5)] hover:shadow-[0_0_32px_rgba(14,165,233,0.7)] transition-all duration-300 font-semibold">
+              <Button
+                size="lg"
+                className="w-full sm:w-auto bg-sky-500 hover:bg-sky-400 text-white h-14 px-10 text-base gap-2 rounded-xl font-bold shadow-[0_0_28px_rgba(14,165,233,0.55)] hover:shadow-[0_0_42px_rgba(14,165,233,0.75)] transition-all duration-300"
+              >
                 {t("hero.primaryCta")} <ArrowRight className="h-5 w-5" />
               </Button>
             </Link>
             <Link href="/register">
-              <Button size="lg" variant="outline" className="bg-white/10 backdrop-blur-sm border-white/40 text-white hover:bg-white/20 h-14 px-10 text-base rounded-xl font-semibold transition-all duration-300">
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full sm:w-auto backdrop-blur-md bg-white/8 border-white/30 text-white hover:bg-white/15 h-14 px-10 text-base rounded-xl font-semibold transition-all duration-300"
+              >
                 {t("hero.secondaryCta")}
               </Button>
             </Link>
           </div>
         </div>
+
+        {/* Scroll indicator */}
+        <button
+          aria-label="Scroll down"
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 text-white/50 hover:text-white/90 transition-colors duration-300 cursor-pointer"
+          onClick={() => window.scrollBy({ top: window.innerHeight * 0.85, behavior: "smooth" })}
+        >
+          <span className="text-[9px] tracking-[0.2em] uppercase font-bold">Scroll</span>
+          <ChevronRight className="h-5 w-5 rotate-90 animate-bounce" />
+        </button>
       </section>
 
       {/* ── Trust Signals ────────────────────────────────────────── */}
