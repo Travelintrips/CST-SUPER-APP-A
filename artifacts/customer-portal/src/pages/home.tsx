@@ -479,28 +479,39 @@ export default function Home() {
       <section
         className="relative overflow-hidden"
         style={{
-          backgroundImage: `
-            linear-gradient(135deg, rgba(14,165,233,0.80) 0%, rgba(37,99,235,0.66) 100%),
-            linear-gradient(rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.32) 100%),
-            url(${assetUrl("/images/warehouse.png")})
-          `,
+          backgroundImage: [
+            "linear-gradient(135deg, rgba(15,23,42,0.78) 0%, rgba(14,165,233,0.55) 45%, rgba(37,99,235,0.45) 100%)",
+            `url(${assetUrl("/images/warehouse.png")})`,
+          ].join(", "),
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
-          padding: "clamp(72px, 10vw, 128px) 0",
+          padding: "clamp(100px, 12vw, 140px) 0",
+          borderTop: "1px solid rgba(255,255,255,0.10)",
+          borderBottom: "1px solid rgba(255,255,255,0.10)",
         }}
       >
+        {/* vignette — dark edges for depth */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            boxShadow: "inset 0 0 120px 40px rgba(11,29,50,0.60)",
+          }}
+        />
+
         <div
           className="container relative z-10 px-4 md:px-6 text-center mx-auto"
-          style={{ maxWidth: "840px" }}
+          style={{ maxWidth: "820px" }}
         >
           <h2
-            className="font-display font-extrabold mb-6 text-white"
+            className="font-display mb-6 text-white"
             style={{
-              fontSize: "clamp(34px, 5vw, 60px)",
+              fontWeight: 800,
+              fontSize: "clamp(36px, 5vw, 60px)",
               lineHeight: 1.1,
               letterSpacing: "-0.03em",
-              textShadow: "0 4px 18px rgba(15,23,42,0.28)",
+              textShadow: "0 6px 24px rgba(15,23,42,0.35)",
             }}
           >
             {t("cta.title")}
@@ -508,16 +519,17 @@ export default function Home() {
           <p
             className="mb-10 mx-auto"
             style={{
-              fontSize: "clamp(17px, 2vw, 20px)",
-              lineHeight: 1.65,
-              maxWidth: "660px",
-              color: "rgba(255,255,255,0.92)",
-              textShadow: "0 2px 10px rgba(15,23,42,0.25)",
+              fontSize: "clamp(18px, 2vw, 21px)",
+              lineHeight: 1.6,
+              maxWidth: "760px",
+              color: "rgba(255,255,255,0.90)",
+              textShadow: "0 2px 12px rgba(15,23,42,0.30)",
             }}
           >
             {t("cta.prefix")} {t("cta.description")} {company?.name || "CST Logistics"}. {t("cta.suffix")}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {/* Primary */}
             <Link href="/register" className="w-full sm:w-auto">
               <button
                 className="inline-flex items-center justify-center gap-2 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
@@ -525,51 +537,52 @@ export default function Home() {
                   background: "#0F172A",
                   color: "#ffffff",
                   borderRadius: "16px",
-                  padding: "16px 32px",
+                  padding: "15px 26px",
                   fontSize: "16px",
                   fontWeight: 700,
                   border: "none",
                   cursor: "pointer",
-                  boxShadow: "0 4px 20px rgba(15,23,42,0.38)",
-                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                  boxShadow: "0 16px 35px rgba(15,23,42,0.28)",
+                  transition: "transform 0.22s ease, box-shadow 0.22s ease",
                   whiteSpace: "nowrap",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
-                  (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 28px rgba(15,23,42,0.45)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 20px 42px rgba(15,23,42,0.42)";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-                  (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(15,23,42,0.38)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 16px 35px rgba(15,23,42,0.28)";
                 }}
               >
                 {t("cta.primaryBtn")} <ArrowRight className="h-5 w-5" />
               </button>
             </Link>
+            {/* Secondary */}
             <a href="#kontak" className="w-full sm:w-auto">
               <button
                 className="inline-flex items-center justify-center w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                 style={{
-                  background: "rgba(255,255,255,0.13)",
-                  border: "1px solid rgba(255,255,255,0.44)",
-                  backdropFilter: "blur(10px)",
-                  WebkitBackdropFilter: "blur(10px)",
+                  background: "rgba(255,255,255,0.14)",
+                  border: "1px solid rgba(255,255,255,0.38)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
                   color: "#ffffff",
                   borderRadius: "16px",
-                  padding: "16px 32px",
+                  padding: "15px 26px",
                   fontSize: "16px",
                   fontWeight: 600,
                   cursor: "pointer",
-                  transition: "background 0.2s ease, border-color 0.2s ease",
+                  transition: "background 0.22s ease, border-color 0.22s ease",
                   whiteSpace: "nowrap",
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.23)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.65)";
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.24)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.60)";
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.13)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.44)";
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.14)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.38)";
                 }}
               >
                 {t("cta.secondaryBtn")}
