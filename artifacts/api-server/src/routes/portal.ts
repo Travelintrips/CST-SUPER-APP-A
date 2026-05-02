@@ -909,4 +909,20 @@ router.put("/admin/freight-rates", requirePortalAdmin, async (req, res) => {
   return res.json({ ok: true });
 });
 
+// POST /api/portal/admin/fix-jasa-names — one-time: strip 'Jasa ' prefix from product names
+router.post("/admin/fix-jasa-names", requirePortalAdmin, async (_req, res) => {
+  const rows = await db
+    .select({ id: productsTable.id, name: productsTable.name })
+    .from(productsTable)
+    .where(sql`${productsTable.name} ILIKE 'Jasa %'`);
+
+  const updated: { id: number; oldName: string; newName: string }[] = [];
+  for (const row of rows) {
+    const newName = row.name.replace(/^Jasa\s+/i, "");
+    await db.update(productsTable).set({ name: newName }).where(eq(productsTable.id, row.id));
+    updated.push({ id: row.id, oldName: row.name, newName });
+  }
+  return res.json({ fixed: updated.length, items: updated });
+});
+
 export default router;
