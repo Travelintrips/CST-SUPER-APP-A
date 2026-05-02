@@ -168,10 +168,16 @@ export default function Pabean() {
   const { toast } = useToast();
 
   // --- global state ---
-  const [serviceType, setServiceType] = useState<ServiceType | null>(null);
+  const [selectedServices, setSelectedServices] = useState<ServiceType[]>([]);
   const [direction, setDirection] = useState<Direction | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const detailSectionRef = useRef<HTMLDivElement>(null);
+
+  function toggleService(key: ServiceType) {
+    setSelectedServices((prev) =>
+      prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key]
+    );
+  }
 
   // --- customer info ---
   const [customerName, setCustomerName] = useState("");
@@ -231,25 +237,28 @@ export default function Pabean() {
   /* ── PIB/PEB fees ─────────────────────────────────────────────── */
   const pibFee = 250_000 + 200_000 + 200_000; // PIB + Dok + Adm
 
-  /* ── Estimated total ─────────────────────────────────────────── */
+  /* ── Estimated total (combined) ───────────────────────────────── */
   function estimatedTotal(): number {
-    if (serviceType === "pib_peb") return pibFee;
-    if (serviceType === "handling") return handlingFee;
-    if (serviceType === "konsultasi") return 250_000;
-    return 0; // undername — dikonfirmasi
+    let total = 0;
+    if (selectedServices.includes("pib_peb")) total += pibFee;
+    if (selectedServices.includes("handling")) total += handlingFee;
+    if (selectedServices.includes("konsultasi")) total += 250_000;
+    // undername: dikonfirmasi
+    return total;
   }
 
   /* ── Validation ───────────────────────────────────────────────── */
   function missingFields(): string[] {
     const m: string[] = [];
-    if (!serviceType) { m.push("Jenis layanan"); return m; }
-    if (!direction && serviceType !== "handling") m.push("Arah (Impor/Ekspor)");
-    if (serviceType === "handling") {
+    if (selectedServices.length === 0) { m.push("Jenis layanan"); return m; }
+    const needsDirection = selectedServices.some((s) => s !== "handling");
+    if (needsDirection && !direction) m.push("Arah (Impor/Ekspor)");
+    if (selectedServices.includes("handling")) {
       if (!jalur) m.push("Jalur (Hijau/Merah)");
       if (!kolli) m.push("Jumlah Kolli");
       if (!grossWeight) m.push("Berat Bruto");
     }
-    if (serviceType === "konsultasi") {
+    if (selectedServices.includes("konsultasi")) {
       if (!regulasi) m.push("Jenis Regulasi");
       if (!konsultasiDetail.trim()) m.push("Detail konsultasi");
     }
@@ -268,42 +277,44 @@ export default function Pabean() {
     }
     setSubmitting(true);
     try {
-      const svcLabel = SERVICE_OPTIONS.find((s) => s.key === serviceType)?.title ?? "PPJK";
+      const svcLabels = selectedServices
+        .map((s) => SERVICE_OPTIONS.find((o) => o.key === s)?.title ?? s)
+        .join(" + ");
 
       const docs = [docNIB, docNPWP, docAWBBL, docInvoice, docPackingList, docCOO, docPerijinan, docLainnya]
         .filter(Boolean)
         .map((d) => `${d!.label}: ${d!.objectPath}`)
         .join("\n");
 
-      let detailData = "";
-      if (serviceType === "pib_peb") {
-        detailData = JSON.stringify({
-          arah: direction,
-          shipmentType: pibShipmentType,
+      const detailParts: string[] = [];
+      if (selectedServices.includes("pib_peb")) {
+        detailParts.push(`[PIB/PEB]\n${JSON.stringify({
+          arah: direction, shipmentType: pibShipmentType,
           pibFee: fmtIDR(250_000), dokFee: fmtIDR(200_000), admFee: fmtIDR(200_000),
           totalEstimasi: fmtIDR(pibFee),
-        });
-      } else if (serviceType === "handling") {
-        detailData = JSON.stringify({
-          jalur: `Jalur ${jalur}`,
-          kolli, beratBruto: `${gw} kg`,
+        })}`);
+      }
+      if (selectedServices.includes("handling")) {
+        detailParts.push(`[Handling Clearance]\n${JSON.stringify({
+          jalur: `Jalur ${jalur}`, kolli, beratBruto: `${gw} kg`,
           dimensi: `${l}×${w}×${h} cm`,
           beratVolumetrik: `${volumetricKg.toFixed(1)} kg`,
           chargeableWeight: `${chargeableKg.toFixed(1)} kg`,
           handlingFee: fmtIDR(handlingFee),
           ...(jalur === "Merah" ? { bahandelFee: fmtIDR(600_000) } : {}),
-        });
-      } else if (serviceType === "konsultasi") {
-        detailData = JSON.stringify({
-          arah: direction, regulasi,
-          detail: konsultasiDetail,
+        })}`);
+      }
+      if (selectedServices.includes("konsultasi")) {
+        detailParts.push(`[Konsultasi Pabean]\n${JSON.stringify({
+          arah: direction, regulasi, detail: konsultasiDetail,
           tarifKonsultasi: fmtIDR(250_000),
-        });
-      } else if (serviceType === "undername") {
-        detailData = JSON.stringify({
+        })}`);
+      }
+      if (selectedServices.includes("undername")) {
+        detailParts.push(`[Undername]\n${JSON.stringify({
           arah: direction,
           catatan: "Biaya undername akan diinfokan setelah pengecekan dokumen oleh tim PPJK.",
-        });
+        })}`);
       }
 
       const contactLines = [
@@ -316,17 +327,27 @@ export default function Pabean() {
       const fullNotes = [
         notes || null,
         `[KONTAK PEMESAN]\n${contactLines}`,
-        `[DETAIL LAYANAN]\n${detailData}`,
+        ...detailParts,
         docs ? `[DOKUMEN]\n${docs}` : null,
       ].filter(Boolean).join("\n\n");
+
+      const orderItems = selectedServices.map((s) => {
+        const opt = SERVICE_OPTIONS.find((o) => o.key === s);
+        const price = s === "pib_peb" ? pibFee : s === "handling" ? handlingFee : s === "konsultasi" ? 250_000 : 0;
+        return {
+          name: `PPJK — ${opt?.title ?? s}${direction ? ` (${direction})` : ""}`,
+          quantity: 1,
+          unitPrice: price,
+        };
+      });
 
       const res = await fetch("/api/portal/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           notes: fullNotes,
-          items: [{
-            name: `Jasa Pengurusan Pabean PPJK — ${svcLabel}${direction ? ` (${direction})` : ""}`,
+          items: orderItems.length > 0 ? orderItems : [{
+            name: `Jasa Pengurusan Pabean PPJK — ${svcLabels}`,
             quantity: 1,
             unitPrice: estimatedTotal(),
           }],
@@ -378,43 +399,71 @@ export default function Pabean() {
             <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold">1</div>
             Pilih Jenis Layanan PPJK
           </h2>
+          <p className="text-xs text-muted-foreground -mt-1">Pilih satu atau lebih layanan yang dibutuhkan</p>
           <div className="grid sm:grid-cols-2 gap-3">
-            {SERVICE_OPTIONS.map((opt) => (
-              <button
-                key={opt.key}
-                onClick={() => {
-                  setServiceType(opt.key);
-                  setTimeout(() => {
-                    detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }, 50);
-                }}
-                className={`rounded-xl border-2 p-4 text-left transition-all flex flex-col gap-2 ${
-                  serviceType === opt.key
-                    ? opt.color + " ring-2 ring-offset-1 ring-orange-400"
-                    : "border-border hover:border-orange-200 bg-white"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={serviceType === opt.key ? "" : "text-muted-foreground"}>{opt.icon}</span>
-                  <span className="font-semibold text-sm leading-tight">{opt.title}</span>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{opt.desc}</p>
-              </button>
-            ))}
+            {SERVICE_OPTIONS.map((opt) => {
+              const isSelected = selectedServices.includes(opt.key);
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => {
+                    toggleService(opt.key);
+                    if (!selectedServices.includes(opt.key)) {
+                      setTimeout(() => {
+                        detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 50);
+                    }
+                  }}
+                  className={`rounded-xl border-2 p-4 text-left transition-all flex flex-col gap-2 relative ${
+                    isSelected
+                      ? opt.color + " ring-2 ring-offset-1 ring-orange-400"
+                      : "border-border hover:border-orange-200 bg-white"
+                  }`}
+                >
+                  {/* Checkbox top-right */}
+                  <div className={`absolute top-3 right-3 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                    isSelected
+                      ? "bg-orange-500 border-orange-500"
+                      : "bg-white border-gray-300"
+                  }`}>
+                    {isSelected && <Check className="h-3 w-3 text-white" />}
+                  </div>
+                  <div className="flex items-center gap-2 pr-7">
+                    <span className={isSelected ? "" : "text-muted-foreground"}>{opt.icon}</span>
+                    <span className="font-semibold text-sm leading-tight">{opt.title}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{opt.desc}</p>
+                </button>
+              );
+            })}
           </div>
+          {selectedServices.length > 1 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <span className="text-xs text-muted-foreground">Terpilih:</span>
+              {selectedServices.map((s) => (
+                <span key={s} className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full font-medium">
+                  {SERVICE_OPTIONS.find((o) => o.key === s)?.title}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Step 2: Detail Layanan ───────────────────────────────── */}
-        {serviceType && (
-          <div ref={detailSectionRef} className="rounded-2xl border border-border bg-white p-5 space-y-5">
+        {selectedServices.length > 0 && (
+          <div ref={detailSectionRef} className="rounded-2xl border border-border bg-white p-5 space-y-6">
             <h2 className="font-semibold text-base flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold">2</div>
-              Detail {SERVICE_OPTIONS.find((s) => s.key === serviceType)?.title}
+              Detail Layanan Terpilih
             </h2>
 
             {/* ─ PIB/PEB ─────────────────────────────────────── */}
-            {serviceType === "pib_peb" && (
-              <div className="space-y-5">
+            {selectedServices.includes("pib_peb") && (
+              <div className="space-y-5 rounded-xl border border-orange-200 bg-orange-50/30 p-4">
+                <div className="flex items-center gap-2 pb-1 border-b border-orange-200">
+                  <FileText className="h-4 w-4 text-orange-600" />
+                  <span className="text-sm font-semibold text-orange-800">Pembuatan Dok. PIB/PEB</span>
+                </div>
                 {/* Direction */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Arah Pengiriman *</Label>
@@ -503,8 +552,12 @@ export default function Pabean() {
             )}
 
             {/* ─ Handling Clearance ──────────────────────────────── */}
-            {serviceType === "handling" && (
-              <div className="space-y-5">
+            {selectedServices.includes("handling") && (
+              <div className="space-y-5 rounded-xl border border-red-200 bg-red-50/30 p-4">
+                <div className="flex items-center gap-2 pb-1 border-b border-red-200">
+                  <Scale className="h-4 w-4 text-red-600" />
+                  <span className="text-sm font-semibold text-red-800">Handling Clearance</span>
+                </div>
                 {/* Jalur */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Jalur Pemeriksaan *</Label>
@@ -623,8 +676,12 @@ export default function Pabean() {
             )}
 
             {/* ─ Konsultasi Pabean ────────────────────────────────── */}
-            {serviceType === "konsultasi" && (
-              <div className="space-y-5">
+            {selectedServices.includes("konsultasi") && (
+              <div className="space-y-5 rounded-xl border border-blue-200 bg-blue-50/30 p-4">
+                <div className="flex items-center gap-2 pb-1 border-b border-blue-200">
+                  <BookOpen className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-800">Konsultasi Pabean</span>
+                </div>
                 {/* Direction */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Arah *</Label>
@@ -707,8 +764,12 @@ export default function Pabean() {
             )}
 
             {/* ─ Undername ────────────────────────────────────────── */}
-            {serviceType === "undername" && (
-              <div className="space-y-5">
+            {selectedServices.includes("undername") && (
+              <div className="space-y-5 rounded-xl border border-violet-200 bg-violet-50/30 p-4">
+                <div className="flex items-center gap-2 pb-1 border-b border-violet-200">
+                  <Users className="h-4 w-4 text-violet-600" />
+                  <span className="text-sm font-semibold text-violet-800">Undername Impor/Ekspor</span>
+                </div>
                 {/* Direction */}
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold">Arah *</Label>
@@ -765,7 +826,7 @@ export default function Pabean() {
         )}
 
         {/* ── Step 3: Data Pemesan ─────────────────────────────────── */}
-        {serviceType && (
+        {selectedServices.length > 0 && (
           <div className="rounded-2xl border border-border bg-white p-5 space-y-4">
             <h2 className="font-semibold text-base flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold">3</div>
@@ -831,7 +892,7 @@ export default function Pabean() {
         )}
 
         {/* ── Summary & Submit ─────────────────────────────────────── */}
-        {serviceType && (
+        {selectedServices.length > 0 && (
           <div className="rounded-2xl border border-border bg-white p-5 space-y-4">
             <h2 className="font-semibold text-base flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold">4</div>
@@ -840,11 +901,15 @@ export default function Pabean() {
 
             {/* Summary row */}
             <div className="rounded-xl bg-muted/40 p-4 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Layanan</span>
-                <span className="font-medium text-right">
-                  {SERVICE_OPTIONS.find((s) => s.key === serviceType)?.title}
-                </span>
+              <div className="flex justify-between items-start gap-4">
+                <span className="text-muted-foreground shrink-0">Layanan</span>
+                <div className="flex flex-wrap gap-1 justify-end">
+                  {selectedServices.map((s) => (
+                    <Badge key={s} variant="secondary">
+                      {SERVICE_OPTIONS.find((o) => o.key === s)?.title}
+                    </Badge>
+                  ))}
+                </div>
               </div>
               {direction && (
                 <div className="flex justify-between">
@@ -852,7 +917,7 @@ export default function Pabean() {
                   <Badge variant="secondary">{direction}</Badge>
                 </div>
               )}
-              {serviceType === "handling" && jalur && (
+              {selectedServices.includes("handling") && jalur && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Jalur</span>
                   <Badge className={jalur === "Hijau" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}>
