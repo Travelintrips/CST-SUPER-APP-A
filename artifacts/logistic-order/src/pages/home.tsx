@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SectionTitle } from "@/components/SectionTitle";
 import {
   Ship,
   Plane,
@@ -124,12 +125,10 @@ export default function HomePage() {
       {/* How it Works */}
       <section className="max-w-7xl mx-auto px-6 py-16">
         <div className="mb-10">
-          <h2 className="text-2xl font-bold text-foreground mb-2">
-            How It Works
-          </h2>
-          <p className="text-muted-foreground">
-            Submit your logistics order in 4 simple steps
-          </p>
+          <SectionTitle
+            title="How It Works"
+            subtitle="Submit your logistics order in 4 simple steps"
+          />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {FLOW_STEPS.map(({ step, title, desc }, idx) => (
@@ -165,12 +164,10 @@ export default function HomePage() {
       <section className="bg-muted/30 border-y border-border">
         <div className="max-w-7xl mx-auto px-6 py-16">
           <div className="mb-10">
-            <h2 className="text-2xl font-bold text-foreground mb-2">
-              Our Services
-            </h2>
-            <p className="text-muted-foreground">
-              Comprehensive logistics solutions for every shipment need
-            </p>
+            <SectionTitle
+              title="Our Services"
+              subtitle="Comprehensive logistics solutions for every shipment need"
+            />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {SERVICES.map(({ icon: Icon, label, desc }) => (

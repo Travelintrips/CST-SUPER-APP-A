@@ -77,7 +77,6 @@ export function Navbar() {
 
           {/* Mobile hamburger */}
           <div className="flex md:hidden items-center gap-2">
-            <LanguageSelector compact />
             <Button
               variant="ghost"
               size="icon"
@@ -111,6 +110,9 @@ export function Navbar() {
                 </div>
               </Link>
             ))}
+            <div className="py-1 border-t border-border mt-1 pt-2">
+              <LanguageSelector />
+            </div>
             <div className="pt-2 border-t border-border mt-2">
               <Link href="/book" onClick={() => setOpen(false)}>
                 <Button className="w-full" size="sm">

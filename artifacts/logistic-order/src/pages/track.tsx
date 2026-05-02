@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { SectionTitle } from "@/components/SectionTitle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +36,10 @@ export default function TrackPage() {
   return (
     <div className="bg-background">
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-        <div>
-          <h1 className="text-xl font-bold text-foreground mb-1">Lacak Status Pesanan</h1>
-          <p className="text-sm text-muted-foreground">Masukkan nomor pesanan untuk melihat status terkini</p>
-        </div>
+        <SectionTitle
+          title="Lacak Status Pesanan"
+          subtitle="Masukkan nomor pesanan untuk melihat status terkini"
+        />
 
         <div className="flex gap-2">
           <Input

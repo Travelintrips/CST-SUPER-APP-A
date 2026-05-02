@@ -91,10 +91,10 @@ export function Navbar() {
                   <Link
                     key={link.name}
                     href={link.path}
-                    className={`px-3 py-2 text-sm font-medium rounded-md transition-colors hover:text-accent hover:bg-accent/5 ${
+                    className={`px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200 hover:text-primary hover:bg-primary/10 ${
                       (location === link.path && link.path !== "/") ||
                       (location === "/" && link.path === "/")
-                        ? "text-accent bg-accent/5"
+                        ? "text-primary bg-primary/10 font-semibold"
                         : "text-muted-foreground"
                     }`}
                   >
@@ -104,7 +104,7 @@ export function Navbar() {
                   <button
                     key={link.name}
                     onClick={() => scrollToSection(link.anchor)}
-                    className="px-3 py-2 text-sm font-medium rounded-md transition-colors hover:text-accent hover:bg-accent/5 text-muted-foreground"
+                    className="px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200 hover:text-primary hover:bg-primary/10 text-muted-foreground"
                   >
                     {link.name}
                   </button>
@@ -229,7 +229,11 @@ export function Navbar() {
               ),
             )}
 
-            <div className="my-4 border-t border-border pt-4">
+            <div className="px-1 py-2 border-t border-border mt-2 pt-2">
+              <LanguageSelector />
+            </div>
+
+            <div className="my-2 border-t border-border pt-4">
               {isAuth ? (
                 <div className="space-y-2">
                   {isAdmin && (
