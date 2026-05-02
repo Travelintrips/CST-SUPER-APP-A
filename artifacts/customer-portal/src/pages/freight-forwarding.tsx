@@ -496,12 +496,12 @@ export default function FreightForwarding() {
                 return (
                   <div key={d.label} className="relative">
                     <button
-                      onClick={() => { if (!editMode) { setDirection(d.label); setStep(2); } }}
+                      onClick={() => { setDirection(d.label); if (!editMode) setStep(2); }}
                       className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
-                        direction === d.label && !editMode
+                        direction === d.label
                           ? `${d.color} border-opacity-100 shadow-md scale-[1.01]`
                           : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
-                      } ${editMode ? "cursor-default" : ""}`}
+                      }`}
                     >
                       <div className="flex items-center gap-4">
                         {/* Logo / emoji area */}
@@ -534,7 +534,7 @@ export default function FreightForwarding() {
                           <p className="font-bold text-base">{d.label}</p>
                           <p className="text-sm text-muted-foreground mt-0.5">{d.desc}</p>
                         </div>
-                        {direction === d.label && !editMode && <Check className="h-5 w-5 ml-auto shrink-0 text-current" />}
+                        {direction === d.label && <Check className="h-5 w-5 ml-auto shrink-0 text-current" />}
                         {editMode && logoSrc && (
                           <button
                             type="button"
@@ -598,12 +598,12 @@ export default function FreightForwarding() {
                 return (
                   <div key={m.label} className="relative">
                     <button
-                      onClick={() => { if (!editMode) { setMode(m.label); if (m.label !== "Sea") setSeaType(null); setStep(3); } }}
+                      onClick={() => { setMode(m.label); if (m.label !== "Sea") setSeaType(null); if (!editMode) setStep(3); }}
                       className={`w-full rounded-2xl border-2 p-6 text-left transition-all ${
-                        mode === m.label && !editMode
+                        mode === m.label
                           ? "border-primary bg-primary/5 shadow-md"
                           : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
-                      } ${editMode ? "cursor-default" : ""}`}
+                      }`}
                     >
                       <div className="flex flex-col items-center gap-3 text-center">
                         <div className="relative w-12 h-12 flex items-center justify-center">
@@ -632,7 +632,7 @@ export default function FreightForwarding() {
                           <p className="font-bold text-base">{m.desc}</p>
                           <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{m.detail}</p>
                         </div>
-                        {mode === m.label && !editMode && (
+                        {mode === m.label && (
                           <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
                             <Check className="h-3.5 w-3.5 text-white" />
                           </div>
@@ -727,16 +727,14 @@ export default function FreightForwarding() {
                   <div key={v} className="relative">
                     <button
                       onClick={() => {
-                        if (!editMode) {
-                          setVariant(v);
-                          if (mode !== "Sea" || seaType) setStep(4);
-                        }
+                        setVariant(v);
+                        if (!editMode && (mode !== "Sea" || seaType)) setStep(4);
                       }}
                       className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
-                        variant === v && !editMode
+                        variant === v
                           ? "border-primary bg-primary/5 shadow-md"
                           : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
-                      } ${editMode ? "cursor-default" : ""}`}
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="relative shrink-0">
@@ -748,7 +746,7 @@ export default function FreightForwarding() {
                               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                             />
                           ) : (
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${variant === v && !editMode ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${variant === v ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
                               {v}
                             </div>
                           )}
@@ -767,7 +765,7 @@ export default function FreightForwarding() {
                           <p className="font-semibold text-sm">{VARIANT_LABELS[v]}</p>
                           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{VARIANT_DESCS[v]}</p>
                         </div>
-                        {variant === v && !editMode && <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />}
+                        {variant === v && <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />}
                         {editMode && logoSrc && (
                           <button
                             type="button"
