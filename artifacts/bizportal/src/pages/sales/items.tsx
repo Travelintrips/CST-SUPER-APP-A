@@ -28,7 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Search, PackageSearch, Boxes, Package, Wrench, RefreshCw } from "lucide-react";
 
-const LOGISTICS_SUBCATEGORIES = [
+const DEFAULT_SUBCATEGORIES = [
   "Udara", "Laut", "Darat", "Pabean", "Handling",
   "Trucking", "Container", "Freight Forwarding", "Lainnya",
 ];
@@ -107,6 +107,15 @@ export default function SalesItemsPage() {
   const [form, setForm] = useState<ItemForm>(emptyForm());
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [seeding, setSeeding] = useState(false);
+
+  // Kumpulkan semua sub-kategori unik dari produk yang ada (+ default)
+  const allSubcategories = useMemo(() => {
+    const fromProducts = products
+      .map((p) => p.subcategory)
+      .filter((s): s is string => !!s && s.trim() !== "");
+    const merged = Array.from(new Set([...DEFAULT_SUBCATEGORIES, ...fromProducts]));
+    return merged.sort();
+  }, [products]);
 
   const filtered = useMemo(() => {
     return products.filter((p) => {
@@ -268,7 +277,7 @@ export default function SalesItemsPage() {
                 </SelectTrigger>
                 <SelectContent className="bg-slate-800 border-slate-700">
                   <SelectItem value="all">Semua Sub-kategori</SelectItem>
-                  {LOGISTICS_SUBCATEGORIES.map((s) => (
+                  {allSubcategories.map((s) => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
                 </SelectContent>
@@ -426,18 +435,27 @@ export default function SalesItemsPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-slate-300">Sub-kategori</Label>
-                <Select value={form.subcategory || "__none"} onValueChange={(v) => setF("subcategory", v === "__none" ? "" : v)}>
-                  <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200">
-                    <SelectValue placeholder="Pilih sub-kategori" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    <SelectItem value="__none">— Tidak ada —</SelectItem>
-                    {LOGISTICS_SUBCATEGORIES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-slate-300">
+                  Jenis / Sub-kategori
+                  <span className="ml-1 text-xs font-normal text-slate-500">(bebas ketik atau pilih)</span>
+                </Label>
+                <datalist id="subcat-list">
+                  {allSubcategories.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+                <Input
+                  list="subcat-list"
+                  value={form.subcategory}
+                  onChange={(e) => setF("subcategory", e.target.value)}
+                  placeholder="cth: Ekspedisi Khusus, Cold Chain…"
+                  className="bg-slate-800 border-slate-600 text-slate-200 placeholder:text-slate-500"
+                />
+                {form.subcategory && !DEFAULT_SUBCATEGORIES.includes(form.subcategory) && (
+                  <p className="text-xs text-blue-400 flex items-center gap-1 mt-0.5">
+                    <Plus className="h-3 w-3" /> Jenis baru: <strong>{form.subcategory}</strong>
+                  </p>
+                )}
               </div>
             </div>
 
