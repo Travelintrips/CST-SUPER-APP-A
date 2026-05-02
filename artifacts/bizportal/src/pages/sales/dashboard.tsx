@@ -41,45 +41,53 @@ export default function SalesDashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Quotations</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-quotations">{summary?.quotationsCount ?? 0}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Sales Orders</CardTitle>
-              <ShoppingBag className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-orders">{summary?.ordersCount ?? 0}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">To Invoice</CardTitle>
-              <Receipt className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-to-invoice">{summary?.toInvoiceCount ?? 0}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Revenue</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-revenue">{idr(summary?.totalRevenue ?? 0)}</div>
-              {summary?.topCustomer && (
-                <p className="text-xs text-muted-foreground mt-1">Top: {summary.topCustomer}</p>
-              )}
-            </CardContent>
-          </Card>
+          <Link href="/sales/quotations" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
+            <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
+              <CardHeader className="flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Quotations</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-quotations">{summary?.quotationsCount ?? 0}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/sales/orders" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
+            <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
+              <CardHeader className="flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Sales Orders</CardTitle>
+                <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-orders">{summary?.ordersCount ?? 0}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/sales/invoices" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
+            <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
+              <CardHeader className="flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">To Invoice</CardTitle>
+                <Receipt className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-to-invoice">{summary?.toInvoiceCount ?? 0}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/sales/customers" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
+            <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
+              <CardHeader className="flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Revenue</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-revenue">{idr(summary?.totalRevenue ?? 0)}</div>
+                {summary?.topCustomer && (
+                  <p className="text-xs text-muted-foreground mt-1">Top: {summary.topCustomer}</p>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         <Card>
