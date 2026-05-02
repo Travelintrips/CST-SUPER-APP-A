@@ -149,8 +149,10 @@ function requireLogisticAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// GET /api/portal/admin/services — semua jasa (incl. inactive) untuk admin
-router.get("/admin/services", requireLogisticAdmin, async (_req, res) => {
+// ── Routes khusus untuk /logistic-admin (auth: X-Admin-Password) ──────────
+
+// GET /api/portal/logistic-admin/services — semua jasa (incl. inactive)
+router.get("/logistic-admin/services", requireLogisticAdmin, async (_req, res) => {
   const rows = await db
     .select()
     .from(productsTable)
@@ -168,8 +170,8 @@ router.get("/admin/services", requireLogisticAdmin, async (_req, res) => {
   })));
 });
 
-// POST /api/portal/admin/services — tambah jasa baru
-router.post("/admin/services", requireLogisticAdmin, async (req, res) => {
+// POST /api/portal/logistic-admin/services — tambah jasa baru
+router.post("/logistic-admin/services", requireLogisticAdmin, async (req, res) => {
   const { name, sku, price, subcategory, unit, description } = req.body ?? {};
   if (!name || !sku) return res.status(400).json({ message: "Nama dan SKU wajib diisi" });
   const [inserted] = await db.insert(productsTable).values({
@@ -187,8 +189,8 @@ router.post("/admin/services", requireLogisticAdmin, async (req, res) => {
   return res.status(201).json(inserted);
 });
 
-// PUT /api/portal/admin/services/:id — update jasa (nama, harga, status, dll)
-router.put("/admin/services/:id", requireLogisticAdmin, async (req, res) => {
+// PUT /api/portal/logistic-admin/services/:id
+router.put("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const { name, price, subcategory, unit, description, isActive } = req.body ?? {};
   const updates: Record<string, unknown> = {};
@@ -204,8 +206,8 @@ router.put("/admin/services/:id", requireLogisticAdmin, async (req, res) => {
   return res.json(updated);
 });
 
-// DELETE /api/portal/admin/services/:id — hapus jasa
-router.delete("/admin/services/:id", requireLogisticAdmin, async (req, res) => {
+// DELETE /api/portal/logistic-admin/services/:id
+router.delete("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(productsTable).where(eq(productsTable.id, id));
   return res.json({ ok: true });
@@ -372,6 +374,40 @@ router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);
+});
+
+// POST /api/portal/admin/services — tambah jasa baru (JWT admin)
+router.post("/admin/services", requirePortalAdmin, async (req, res) => {
+  const { name, description, price, imageUrl, subcategory, unit } = req.body ?? {};
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ message: "Nama layanan harus diisi" });
+  }
+  const parsedPrice = price !== undefined ? parseFloat(String(price)) : 0;
+  const year = new Date().getFullYear();
+  const [maxRow] = await db.select({ maxId: sql<number>`COALESCE(MAX(id), 0)` }).from(productsTable);
+  const nextId = (Number(maxRow?.maxId ?? 0) + 1);
+  const autoSku = `SVC-${year}-${String(nextId).padStart(4, "0")}`;
+  const [created] = await db.insert(productsTable).values({
+    name: name.trim(),
+    sku: autoSku,
+    description: description ? String(description).trim() : null,
+    price: parsedPrice.toFixed(2),
+    imageUrl: imageUrl ? String(imageUrl).trim() : null,
+    mediaItems: "[]",
+    itemType: "jasa",
+    unit: unit ? String(unit) : "pcs",
+    subcategory: subcategory ? String(subcategory) : null,
+    isActive: true,
+  }).returning();
+  return res.status(201).json(created);
+});
+
+// DELETE /api/portal/admin/services/:id — hapus jasa (JWT admin)
+router.delete("/admin/services/:id", requirePortalAdmin, async (req, res) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  await db.delete(productsTable).where(eq(productsTable.id, id));
+  return res.json({ ok: true });
 });
 
 // POST /api/portal/admin/products  — create a new product (admin only)

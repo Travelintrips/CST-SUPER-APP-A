@@ -27,7 +27,7 @@ const ADMIN_KEY = "logistic_admin_auth";
 const ADMIN_PASSWORD = "admin123";
 
 const adminFetch = (url: string, opts: RequestInit = {}) =>
-  fetch(url, {
+  fetch(url.replace("/api/portal/admin/services", "/api/portal/logistic-admin/services"), {
     ...opts,
     headers: {
       "Content-Type": "application/json",

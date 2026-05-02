@@ -519,23 +519,71 @@ function ServicesTab() {
   const { toast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await apiGet<Service[]>("/api/portal/services");
-        setServices(data);
-      } catch {
-        toast({ title: "Gagal memuat layanan", variant: "destructive" });
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const fetchServices = async () => {
+    try {
+      const data = await apiGet<Service[]>("/api/portal/services");
+      setServices(data);
+    } catch {
+      toast({ title: "Gagal memuat layanan", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void fetchServices(); }, []);
 
   async function handleSave(id: number, data: Partial<Service & { mediaItems: MediaItem[] }>) {
     await apiPut(`/api/portal/admin/services/${id}`, data);
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...data } : s)));
+  }
+
+  async function handleAdd() {
+    if (!newName.trim()) {
+      toast({ title: "Nama layanan harus diisi", variant: "destructive" });
+      return;
+    }
+    setAdding(true);
+    try {
+      const created = await apiPost<Service>("/api/portal/admin/services", {
+        name: newName.trim(),
+        description: newDesc.trim() || null,
+        price: parseFloat(newPrice) || 0,
+      });
+      setServices((prev) => [created, ...prev]);
+      setShowAdd(false);
+      setNewName(""); setNewDesc(""); setNewPrice("");
+      toast({ title: "Layanan berhasil ditambahkan" });
+    } catch (err) {
+      toast({ title: "Gagal menambahkan layanan", description: String(err), variant: "destructive" });
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/portal/admin/services/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      setServices((prev) => prev.filter((s) => s.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast({ title: "Layanan dihapus" });
+    } catch {
+      toast({ title: "Gagal menghapus layanan", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (loading) {
@@ -548,17 +596,102 @@ function ServicesTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Kelola {services.length} layanan yang tampil di halaman Layanan.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Kelola {services.length} layanan yang tampil di halaman Layanan.
+        </p>
+        <Button size="sm" className="gap-2" onClick={() => setShowAdd(true)}>
+          <Plus className="h-4 w-4" /> Tambah Layanan
+        </Button>
+      </div>
+
+      {/* Form tambah layanan */}
+      {showAdd && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Layanan Baru</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Nama Layanan *</Label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="cth: Jasa Freight Udara"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Deskripsi</Label>
+              <Textarea
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="Deskripsi singkat layanan (opsional)"
+                rows={2}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Harga (0 = Negosiasi)</Label>
+              <Input
+                type="number"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+                placeholder="0"
+                min="0"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={handleAdd} disabled={adding} className="gap-2">
+                {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {adding ? "Menyimpan..." : "Tambah"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setNewName(""); setNewDesc(""); setNewPrice(""); }}>
+                Batal
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {services.map((s) => (
-        <ItemEditCard key={s.id} item={s} onSave={handleSave} type="services" />
+        <div key={s.id} className="relative">
+          <ItemEditCard item={s} onSave={handleSave} type="services" />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute top-3 right-3 h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={() => setDeleteTarget(s)}
+            title="Hapus layanan"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       ))}
-      {services.length === 0 && (
+
+      {services.length === 0 && !showAdd && (
         <div className="text-center py-12 text-muted-foreground">
-          Belum ada layanan. Tambahkan layanan melalui BizPortal.
+          Belum ada layanan. Klik "Tambah Layanan" untuk menambahkan.
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hapus Layanan?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Layanan <strong>{deleteTarget?.name}</strong> akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Batal</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Ya, Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
