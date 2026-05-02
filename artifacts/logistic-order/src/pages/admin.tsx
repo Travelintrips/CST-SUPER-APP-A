@@ -266,7 +266,7 @@ export default function AdminPage() {
                 { id: "underReview",   label: "Under Review",    value: summary.underReviewOrders,  bg: "bg-yellow-50",  border: "border-yellow-200", text: "text-yellow-700", num: "text-yellow-800" },
                 { id: "quotationSent", label: "Quotation Sent",  value: summary.quotationSentOrders,bg: "bg-purple-50",  border: "border-purple-200", text: "text-purple-700", num: "text-purple-800" },
                 { id: "confirmed",     label: "Confirmed",       value: summary.confirmedOrders,    bg: "bg-emerald-50", border: "border-emerald-200",text: "text-emerald-700",num: "text-emerald-800" },
-                { id: "inProgress",    label: "In Progress",     value: summary.inProgressOrders,   bg: "bg-orange-50",  border: "border-orange-200", text: "text-orange-700", num: "text-orange-800" },
+                { id: "inProgress",    label: "In Progress",     value: summary.inProgressOrders,   bg: "bg-amber-50",   border: "border-amber-200",  text: "text-amber-700",  num: "text-amber-800" },
                 { id: "completed",     label: "Completed",       value: summary.completedOrders,    bg: "bg-green-50",   border: "border-green-200",  text: "text-green-700",  num: "text-green-800" },
                 { id: "cancelled",     label: "Cancelled",       value: summary.cancelledOrders,    bg: "bg-red-50",     border: "border-red-200",    text: "text-red-700",    num: "text-red-800" },
               ].map(({ id, label, value, bg, border, text, num }) => {
