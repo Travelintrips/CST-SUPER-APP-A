@@ -127,7 +127,7 @@ async function listByType(type: string) {
   });
 }
 
-// GET /api/portal/services  — item_type = 'jasa'
+// GET /api/portal/services  — item_type = 'jasa' (active only, public)
 router.get("/services", async (_req, res) => {
   return res.json(await listByType("jasa"));
 });
@@ -135,6 +135,80 @@ router.get("/services", async (_req, res) => {
 // GET /api/portal/products  — item_type = 'barang'
 router.get("/products", async (_req, res) => {
   return res.json(await listByType("barang"));
+});
+
+// ── Admin jasa management (protected by X-Admin-Password header) ──────────
+const LOGISTIC_ADMIN_PASSWORD = process.env.LOGISTIC_ADMIN_PASSWORD ?? "admin123";
+
+function requireLogisticAdmin(req: Request, res: Response, next: NextFunction) {
+  const pw = req.headers["x-admin-password"];
+  if (!pw || pw !== LOGISTIC_ADMIN_PASSWORD) {
+    res.status(403).json({ message: "Akses admin diperlukan" });
+    return;
+  }
+  next();
+}
+
+// GET /api/portal/admin/services — semua jasa (incl. inactive) untuk admin
+router.get("/admin/services", requireLogisticAdmin, async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.itemType, "jasa"))
+    .orderBy(productsTable.id);
+  return res.json(rows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    price: Number(p.price),
+    subcategory: p.subcategory ?? null,
+    unit: p.unit,
+    description: p.description ?? null,
+    isActive: p.isActive,
+  })));
+});
+
+// POST /api/portal/admin/services — tambah jasa baru
+router.post("/admin/services", requireLogisticAdmin, async (req, res) => {
+  const { name, sku, price, subcategory, unit, description } = req.body ?? {};
+  if (!name || !sku) return res.status(400).json({ message: "Nama dan SKU wajib diisi" });
+  const [inserted] = await db.insert(productsTable).values({
+    name: String(name),
+    sku: String(sku),
+    price: String(Number(price) || 0),
+    stock: 0,
+    itemType: "jasa",
+    unit: String(unit || "pcs"),
+    subcategory: subcategory ? String(subcategory) : null,
+    description: description ? String(description) : null,
+    isActive: true,
+    createdAt: new Date(),
+  }).returning();
+  return res.status(201).json(inserted);
+});
+
+// PUT /api/portal/admin/services/:id — update jasa (nama, harga, status, dll)
+router.put("/admin/services/:id", requireLogisticAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, price, subcategory, unit, description, isActive } = req.body ?? {};
+  const updates: Record<string, unknown> = {};
+  if (name !== undefined) updates.name = String(name);
+  if (price !== undefined) updates.price = String(Number(price));
+  if (subcategory !== undefined) updates.subcategory = subcategory ? String(subcategory) : null;
+  if (unit !== undefined) updates.unit = String(unit);
+  if (description !== undefined) updates.description = description ? String(description) : null;
+  if (isActive !== undefined) updates.isActive = Boolean(isActive);
+  if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada data yang diupdate" });
+  const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
+  if (!updated) return res.status(404).json({ message: "Jasa tidak ditemukan" });
+  return res.json(updated);
+});
+
+// DELETE /api/portal/admin/services/:id — hapus jasa
+router.delete("/admin/services/:id", requireLogisticAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  await db.delete(productsTable).where(eq(productsTable.id, id));
+  return res.json({ ok: true });
 });
 
 // Emails yang otomatis mendapat role admin saat login (comma-separated)
