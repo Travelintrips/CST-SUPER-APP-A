@@ -456,6 +456,14 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   return res.json(updated);
 });
 
+// DELETE /api/portal/admin/products/:id — hapus produk (admin only)
+router.delete("/admin/products/:id", requirePortalAdmin, async (req, res) => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  await db.delete(productsTable).where(eq(productsTable.id, id));
+  return res.json({ ok: true });
+});
+
 // POST /api/portal/admin/upload-url  — get presigned upload URL (admin only)
 const _objectStorage = new ObjectStorageService();
 router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {

@@ -706,6 +706,8 @@ function ProductsTab() {
   const [newDesc, setNewDesc] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [newImageUrl, setNewImageUrl] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -752,6 +754,25 @@ function ProductsTab() {
     }
   }
 
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/portal/admin/products/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast({ title: "Produk dihapus" });
+    } catch {
+      toast({ title: "Gagal menghapus produk", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -772,13 +793,43 @@ function ProductsTab() {
       </div>
 
       {products.map((p) => (
-        <ItemEditCard key={p.id} item={p} onSave={handleSave} type="products" />
+        <div key={p.id} className="relative">
+          <ItemEditCard item={p} onSave={handleSave} type="products" />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute top-3 right-3 h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={() => setDeleteTarget(p)}
+            title="Hapus produk"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       ))}
       {products.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           Belum ada produk. Klik "Tambah Produk" untuk menambahkan produk baru.
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hapus Produk?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Produk <strong>{deleteTarget?.name}</strong> akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Batal</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Ya, Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-lg">
