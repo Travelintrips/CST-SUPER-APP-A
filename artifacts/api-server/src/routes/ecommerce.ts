@@ -346,7 +346,7 @@ router.get("/orders", async (_req, res) => {
 
 // POST /api/ecommerce/orders
 router.post("/orders", async (req, res) => {
-  const { customerName, customerEmail, items, lineItems, totalAmount, taxAmount: rawTax } = req.body;
+  const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax } = req.body;
   const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
     Array.isArray(lineItems) && lineItems.length > 0 ? lineItems : null;
   const computedSubtotal = parsedLineItems
@@ -358,6 +358,7 @@ router.post("/orders", async (req, res) => {
   const legacyItems: string | null = items ?? null;
   const [order] = await db.insert(ordersTable).values({
     customerName, customerEmail,
+    customerPhone: customerPhone ?? null,
     items: legacyItems,
     lineItems: parsedLineItems,
     totalAmount: String(subtotal),
@@ -390,7 +391,7 @@ router.put("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
   if (!existing) return res.status(404).json({ message: "Order not found" });
-  const { customerName, customerEmail, items, lineItems, totalAmount, taxAmount: rawTax, status } = req.body;
+  const { customerName, customerEmail, customerPhone, items, lineItems, totalAmount, taxAmount: rawTax, status } = req.body;
   const parsedLineItems: Array<{ name: string; qty: number; unitPrice: number }> | null =
     Array.isArray(lineItems) && lineItems.length > 0 ? lineItems : null;
   const computedSubtotal = parsedLineItems
@@ -403,6 +404,7 @@ router.put("/orders/:id", async (req, res) => {
   const lineItemsUpdate = 'lineItems' in req.body ? parsedLineItems : undefined;
   const [order] = await db.update(ordersTable).set({
     customerName, customerEmail,
+    ...('customerPhone' in req.body ? { customerPhone: customerPhone ?? null } : {}),
     ...(itemsUpdate !== undefined ? { items: itemsUpdate } : {}),
     ...(lineItemsUpdate !== undefined ? { lineItems: lineItemsUpdate } : {}),
     totalAmount: String(subtotal),
@@ -411,6 +413,8 @@ router.put("/orders/:id", async (req, res) => {
     status,
   }).where(eq(ordersTable.id, id)).returning();
   if (!order) return res.status(404).json({ message: "Order not found" });
+
+  // Post journal entry when newly delivered
   if (status === "delivered" && existing.status !== "delivered") {
     void postEcommerceOrder({
       orderId: order.id,
@@ -420,6 +424,40 @@ router.put("/orders/:id", async (req, res) => {
       grandTotal: Number(order.grandTotal),
     });
   }
+
+  // Notify customer via WhatsApp on status change to confirmed or delivered (fire-and-forget)
+  const notifyStatuses = ["confirmed", "delivered"] as const;
+  type NotifyStatus = typeof notifyStatuses[number];
+  const statusLabels: Record<NotifyStatus, string> = {
+    confirmed: "Dikonfirmasi ✅",
+    delivered: "Terkirim 📦",
+  };
+  const isNotifyStatus = (s: unknown): s is NotifyStatus =>
+    notifyStatuses.includes(s as NotifyStatus);
+
+  if (isNotifyStatus(status) && existing.status !== status) {
+    const customerWa = order.customerPhone ?? existing.customerPhone;
+    if (customerWa) {
+      const label = statusLabels[status];
+      const itemSummary = (() => {
+        const li = order.lineItems;
+        if (Array.isArray(li) && li.length > 0) {
+          return li.slice(0, 3).map((l: { name: string; qty: number }) => `- ${l.name} (${l.qty}x)`).join("\n") +
+            (li.length > 3 ? `\n+ ${li.length - 3} item lainnya` : "");
+        }
+        return order.items ?? "—";
+      })();
+      const msg =
+        `🛒 *Update Order Anda*\n` +
+        `Halo ${order.customerName},\n` +
+        `Status pesanan Anda: *${label}*\n\n` +
+        `Item:\n${itemSummary}\n` +
+        `Total: Rp ${Number(order.grandTotal).toLocaleString("id-ID")}\n\n` +
+        `Terima kasih telah berbelanja! 🙏`;
+      sendWhatsApp(customerWa, msg).catch(() => undefined);
+    }
+  }
+
   return res.json(serializeOrder(order));
 });
 
