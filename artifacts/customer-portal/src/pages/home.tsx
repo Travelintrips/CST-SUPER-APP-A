@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useGetPortalCompany } from "@workspace/api-client-react";
-import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight, Ship, Plane, FileCheck, Warehouse, Sparkles, Calculator, Tag, ChevronRight } from "lucide-react";
+import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight, Ship, Plane, FileCheck, Warehouse, Sparkles, Calculator, Tag, ChevronRight, Star } from "lucide-react";
 import { assetUrl } from "@/lib/utils";
 import { useEditMode } from "@/contexts/EditModeContext";
 import { EditableText } from "@/components/EditableText";
@@ -37,7 +37,7 @@ export default function Home() {
 
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="relative w-full h-[85vh] min-h-[600px] flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-black/60 z-10" />
+        <div className="absolute inset-0 bg-black/45 z-10" />
         <EditableImage
           contentKey="hero_bg"
           defaultSrc={assetUrl("/images/hero-bg.png")}
@@ -65,12 +65,12 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/services">
-              <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground h-12 px-8 text-base gap-2">
-                {t("hero.primaryCta")} <ArrowRight className="h-4 w-4" />
+              <Button size="lg" className="bg-sky-500 hover:bg-sky-400 text-white h-14 px-10 text-base gap-2 rounded-xl shadow-[0_0_24px_rgba(14,165,233,0.5)] hover:shadow-[0_0_32px_rgba(14,165,233,0.7)] transition-all duration-300 font-semibold">
+                {t("hero.primaryCta")} <ArrowRight className="h-5 w-5" />
               </Button>
             </Link>
             <Link href="/register">
-              <Button size="lg" variant="outline" className="bg-transparent border-white text-white hover:bg-white/10 h-12 px-8 text-base">
+              <Button size="lg" variant="outline" className="bg-white/10 backdrop-blur-sm border-white/40 text-white hover:bg-white/20 h-14 px-10 text-base rounded-xl font-semibold transition-all duration-300">
                 {t("hero.secondaryCta")}
               </Button>
             </Link>
@@ -79,19 +79,50 @@ export default function Home() {
       </section>
 
       {/* ── Trust Signals ────────────────────────────────────────── */}
-      <section className="py-12 bg-white border-b border-gray-100">
+      <section className="py-16 bg-gradient-to-b from-slate-50 to-white">
         <div className="container px-4 md:px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-gray-100">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
             {[
-              { icon: Globe, value: "150+", labelKey: "stats.countries" },
-              { icon: ShieldCheck, value: "99.9%", labelKey: "stats.security" },
-              { icon: Package, value: "10rb+", labelKey: "stats.shipments" },
-              { icon: Clock, value: "24/7", labelKey: "stats.support" },
-            ].map(({ icon: Icon, value, labelKey }) => (
-              <div key={labelKey} className="flex flex-col items-center justify-center space-y-2 px-4">
-                <Icon className="h-8 w-8 text-accent mb-2" />
-                <h3 className="font-display font-bold text-2xl">{value}</h3>
-                <p className="text-sm text-muted-foreground">{t(labelKey)}</p>
+              { icon: Globe, value: "150+", labelKey: "stats.countries", color: "text-sky-500", bg: "bg-sky-50", border: "border-sky-100" },
+              { icon: ShieldCheck, value: "99.9%", labelKey: "stats.security", color: "text-emerald-500", bg: "bg-emerald-50", border: "border-emerald-100" },
+              { icon: Package, value: "10.000+", labelKey: "stats.shipments", color: "text-violet-500", bg: "bg-violet-50", border: "border-violet-100" },
+              { icon: Clock, value: "24/7", labelKey: "stats.support", color: "text-amber-500", bg: "bg-amber-50", border: "border-amber-100" },
+            ].map(({ icon: Icon, value, labelKey, color, bg, border }) => (
+              <div key={labelKey} className={`text-center p-7 rounded-2xl bg-white border ${border} shadow-sm hover:shadow-md transition-all duration-200`}>
+                <div className={`w-14 h-14 rounded-2xl ${bg} flex items-center justify-center mx-auto mb-4`}>
+                  <Icon className={`h-7 w-7 ${color}`} />
+                </div>
+                <div className={`font-display font-bold text-4xl ${color} mb-1`}>{value}</div>
+                <p className="text-sm font-medium text-slate-500 mt-1">{t(labelKey)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Partner Carrier Logos ─────────────────────────────────── */}
+      <section className="py-10 bg-slate-900 overflow-hidden">
+        <div className="container px-4 md:px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-[0.2em] text-slate-400 mb-8">
+            {t("partners.label")}
+          </p>
+          <div className="flex flex-wrap justify-center items-center gap-x-8 gap-y-5">
+            {[
+              { name: "MAERSK", color: "#42B0D5" },
+              { name: "MSC", color: "#F7A81B" },
+              { name: "CMA CGM", color: "#E63946" },
+              { name: "COSCO", color: "#2196F3" },
+              { name: "Hapag-Lloyd", color: "#F37021" },
+              { name: "ONE", color: "#E91E8C" },
+              { name: "Evergreen", color: "#2E7D32" },
+              { name: "DHL", color: "#FFCC00" },
+            ].map(({ name, color }) => (
+              <div
+                key={name}
+                className="px-5 py-2 rounded-lg border border-slate-700 hover:border-slate-500 transition-colors"
+                style={{ borderLeftColor: color, borderLeftWidth: 3 }}
+              >
+                <span className="text-slate-200 font-bold text-sm tracking-wide">{name}</span>
               </div>
             ))}
           </div>
@@ -321,6 +352,72 @@ export default function Home() {
                   <p className="text-muted-foreground leading-relaxed">{t(descKey)}</p>
                 </div>
               </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Testimonials ─────────────────────────────────────────── */}
+      <section className="py-24 bg-gradient-to-br from-slate-900 via-slate-800 to-sky-950 text-white overflow-hidden relative">
+        <div className="absolute inset-0 opacity-5" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }} />
+        <div className="container px-4 md:px-6 relative z-10">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <span className="inline-block px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-semibold uppercase tracking-widest mb-4">
+              {t("testimonials.label")}
+            </span>
+            <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
+              {t("testimonials.title")}
+            </h2>
+            <p className="text-slate-300 text-lg leading-relaxed">
+              {t("testimonials.desc")}
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-7">
+            {[
+              {
+                nameKey: "testimonials.t1Name",
+                roleKey: "testimonials.t1Role",
+                textKey: "testimonials.t1Text",
+                img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=96&h=96&fit=crop&crop=face",
+              },
+              {
+                nameKey: "testimonials.t2Name",
+                roleKey: "testimonials.t2Role",
+                textKey: "testimonials.t2Text",
+                img: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=96&h=96&fit=crop&crop=face",
+              },
+              {
+                nameKey: "testimonials.t3Name",
+                roleKey: "testimonials.t3Role",
+                textKey: "testimonials.t3Text",
+                img: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=96&h=96&fit=crop&crop=face",
+              },
+            ].map(({ nameKey, roleKey, textKey, img }) => (
+              <div
+                key={nameKey}
+                className="bg-white/5 hover:bg-white/8 border border-white/10 hover:border-white/20 rounded-2xl p-8 flex flex-col transition-all duration-300 hover:-translate-y-1"
+              >
+                <div className="flex gap-0.5 mb-5">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} className="h-4 w-4 text-amber-400 fill-amber-400" />
+                  ))}
+                </div>
+                <p className="text-slate-300 leading-relaxed italic flex-1 mb-7">
+                  &ldquo;{t(textKey)}&rdquo;
+                </p>
+                <div className="flex items-center gap-4 pt-5 border-t border-white/10">
+                  <img
+                    src={img}
+                    alt={t(nameKey)}
+                    className="w-12 h-12 rounded-full object-cover ring-2 ring-sky-400/40"
+                  />
+                  <div>
+                    <p className="font-semibold text-white text-sm">{t(nameKey)}</p>
+                    <p className="text-slate-400 text-xs mt-0.5">{t(roleKey)}</p>
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
