@@ -29,3 +29,6 @@ to = "/index.html"
 [services.env]
 PORT = "23434"
 BASE_PATH = "/customer-portal/"
+
+[services.production.env]
+BASE_PATH = "/"

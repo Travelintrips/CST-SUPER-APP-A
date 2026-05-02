@@ -471,7 +471,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
                   </button>
                   {s.kind === "service" && s.serviceId != null && (
                     <a
-                      href={`/customer-portal/jasa/${s.serviceId}`}
+                      href={`${import.meta.env.BASE_URL}jasa/${s.serviceId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
