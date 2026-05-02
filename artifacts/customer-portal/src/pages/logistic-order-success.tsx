@@ -76,7 +76,22 @@ export default function OrderSuccessPage() {
 
         {/* Order Items */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-semibold text-foreground text-sm mb-3">Layanan Dipesan ({order.items.length})</h3>
+          <h3 className="font-semibold text-foreground text-sm mb-3">Rincian Pesanan</h3>
+
+          {/* Commodity / product row */}
+          {(order.commodity || order.cargoDescription) && (
+            <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-0.5">
+              <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Barang / Komoditi</p>
+              {order.commodity && (
+                <p className="text-sm font-semibold text-foreground">{order.commodity}</p>
+              )}
+              {order.cargoDescription && (
+                <p className="text-xs text-muted-foreground">{order.cargoDescription}</p>
+              )}
+            </div>
+          )}
+
+          {/* Services */}
           <div className="space-y-2">
             {order.items.map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0">
@@ -91,7 +106,9 @@ export default function OrderSuccessPage() {
           <Separator className="my-3" />
           <div className="space-y-1.5">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
+              <span className="text-muted-foreground">
+                {order.items.length === 1 ? order.items[0].serviceName : "Subtotal"}
+              </span>
               <span>{formatCurrency(order.subtotal)}</span>
             </div>
             <div className="flex justify-between text-sm">

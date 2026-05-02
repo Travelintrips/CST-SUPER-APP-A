@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+  import { Link } from "wouter";
 import { Package, Mail, MapPin, Phone } from "lucide-react";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 

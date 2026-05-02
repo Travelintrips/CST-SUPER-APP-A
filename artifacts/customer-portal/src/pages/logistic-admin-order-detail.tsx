@@ -161,8 +161,18 @@ export default function AdminOrderDetail() {
         {/* Order Items */}
         <div className="bg-card border border-border rounded-xl p-5">
           <h3 className="font-semibold text-foreground text-sm flex items-center gap-2 mb-4">
-            <Package className="w-4 h-4 text-accent" /> Layanan Dipesan ({order.items.length})
+            <Package className="w-4 h-4 text-accent" /> Rincian Pesanan
           </h3>
+
+          {/* Commodity */}
+          {(order.commodity || order.cargoDescription) && (
+            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-0.5">
+              <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Barang / Komoditi</p>
+              {order.commodity && <p className="text-sm font-semibold text-foreground">{order.commodity}</p>}
+              {order.cargoDescription && <p className="text-xs text-muted-foreground">{order.cargoDescription}</p>}
+            </div>
+          )}
+
           <div className="space-y-3">
             {order.items.map((item) => (
               <div key={item.id} className="bg-muted/30 rounded-lg p-4">
