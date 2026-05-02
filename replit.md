@@ -139,6 +139,15 @@ Document numbering follows the pattern `PREFIX/YYYY/NNNNNN` (e.g., `SHP/2026/123
 - All frontend API calls go through Orval-generated hooks in `@workspace/api-client-react`.
 - After backend schema or route changes, run `pnpm --filter @workspace/api-client-react run codegen` to regenerate.
 
+### Customer Portal — Public Website Pages
+
+The customer portal (`/customer-portal/`) has been upgraded with the following pages and sections:
+
+- **Homepage** (`home.tsx`): Hero → Trust Signals → **Layanan Populer** (dark section with 4 service cards) → **Promo & Penawaran** (3 promo cards with badges) → **Kalkulator CTA Banner** → Tentang Kami → Mengapa Pilih Kami → CTA → Kontak
+- **Freight Cost Calculator** (`/calculator`): Estimates sea freight, air freight, customs, domestic, warehousing, and project cargo with CBM/volumetric weight formulas, insurance (0.5%), express (+20%), displayed in IDR.
+- **Navbar**: Services item now has a **mega menu** (8 service links with icons + descriptions, desktop hover, mobile accordion). Calculator link added.
+- **i18n**: New keys added to `id-ID` and `en-US` blocks: `nav.calculator`, `servicesMenu.*`, `homePromo.*`, `calculator.*` (other 16 languages fall back to en-US).
+
 ### Customer Portal Admin CMS
 - Route: `/customer-portal/admin` — accessible only after login.
 - **Claim admin**: any logged-in user can enter `PORTAL_ADMIN_KEY` (set as Replit Secret) to promote their account to `role = 'admin'` and receive a refreshed JWT.

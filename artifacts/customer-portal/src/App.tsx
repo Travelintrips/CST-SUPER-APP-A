@@ -32,6 +32,7 @@ import LogisticAdmin from "@/pages/logistic-admin";
 import LogisticAdminOrderDetail from "@/pages/logistic-admin-order-detail";
 import FreightForwarding from "@/pages/freight-forwarding";
 import Pabean from "@/pages/pabean";
+import Calculator from "@/pages/calculator";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +64,7 @@ function AppShell() {
       <Route path="/track" component={LogisticTrack} />
       <Route path="/logistic-admin" component={LogisticAdmin} />
       <Route path="/logistic-admin/orders/:id" component={LogisticAdminOrderDetail} />
+      <Route path="/calculator" component={Calculator} />
       <Route component={NotFound} />
     </Switch>
   );
