@@ -8,10 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { getAuthHeaders, getAuthToken, isAuthenticated } from "@/lib/auth";
 import { useGetPortalMe } from "@workspace/api-client-react";
+import { useEditMode } from "@/contexts/EditModeContext";
+import { resolveImageUrl } from "@/lib/utils";
 import {
   Ship, Plane, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft,
   Upload, FileText, AlertTriangle, Check, Loader2, Package,
-  MapPin, User, Weight, LayoutGrid,
+  MapPin, User, Weight, LayoutGrid, ImagePlus,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────────────────── */
@@ -150,6 +152,21 @@ function DocUploader({
 export default function FreightForwarding() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { editMode, content, updateField, uploadImage } = useEditMode();
+  const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
+  const logoFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  async function handleDirectionLogoUpload(dirLabel: string, file: File) {
+    setUploadingLogo(dirLabel);
+    try {
+      const path = await uploadImage(file);
+      updateField(`ff_direction_logo_${dirLabel}`, path);
+    } catch {
+      toast({ title: "Gagal upload logo", variant: "destructive" });
+    } finally {
+      setUploadingLogo(null);
+    }
+  }
 
   // Navigation state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -444,27 +461,95 @@ export default function FreightForwarding() {
               <p className="text-sm text-muted-foreground mt-1">Tentukan jenis pengiriman yang Anda butuhkan</p>
             </div>
             <div className="grid gap-4">
-              {DIRECTIONS.map((d) => (
-                <button
-                  key={d.label}
-                  onClick={() => setDirection(d.label)}
-                  className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
-                    direction === d.label
-                      ? `${d.color} border-opacity-100 shadow-md scale-[1.01]`
-                      : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <span className="text-3xl">{d.icon}</span>
-                    <div>
-                      <p className="font-bold text-base">{d.label}</p>
-                      <p className="text-sm text-muted-foreground mt-0.5">{d.desc}</p>
-                    </div>
-                    {direction === d.label && <Check className="h-5 w-5 ml-auto shrink-0 text-current" />}
+              {DIRECTIONS.map((d) => {
+                const logoKey = `ff_direction_logo_${d.label}`;
+                const rawLogoPath = content[logoKey];
+                const logoSrc = rawLogoPath
+                  ? (rawLogoPath.startsWith("/") ? (resolveImageUrl(rawLogoPath) ?? rawLogoPath) : rawLogoPath)
+                  : null;
+                const isUploading = uploadingLogo === d.label;
+
+                return (
+                  <div key={d.label} className="relative">
+                    <button
+                      onClick={() => !editMode && setDirection(d.label)}
+                      className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
+                        direction === d.label && !editMode
+                          ? `${d.color} border-opacity-100 shadow-md scale-[1.01]`
+                          : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
+                      } ${editMode ? "cursor-default" : ""}`}
+                    >
+                      <div className="flex items-center gap-4">
+                        {/* Logo / emoji area */}
+                        <div className="relative flex-shrink-0 w-12 h-12 flex items-center justify-center">
+                          {logoSrc ? (
+                            <img
+                              src={logoSrc}
+                              alt={d.label}
+                              className="w-12 h-12 object-contain rounded-lg"
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <span className="text-3xl">{d.icon}</span>
+                          )}
+                          {/* Edit mode upload overlay */}
+                          {editMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); logoFileRefs.current[d.label]?.click(); }}
+                              className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 rounded-lg opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Upload logo"
+                            >
+                              {isUploading
+                                ? <Loader2 className="h-5 w-5 text-white animate-spin" />
+                                : <ImagePlus className="h-5 w-5 text-white" />}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-base">{d.label}</p>
+                          <p className="text-sm text-muted-foreground mt-0.5">{d.desc}</p>
+                        </div>
+                        {direction === d.label && !editMode && <Check className="h-5 w-5 ml-auto shrink-0 text-current" />}
+                        {editMode && logoSrc && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); updateField(logoKey, ""); }}
+                            className="ml-auto text-xs text-muted-foreground hover:text-red-500 flex-shrink-0"
+                            title="Hapus logo"
+                          >
+                            Hapus logo
+                          </button>
+                        )}
+                      </div>
+                    </button>
+                    {/* Hidden file input */}
+                    <input
+                      ref={(el) => { logoFileRefs.current[d.label] = el; }}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleDirectionLogoUpload(d.label, file);
+                        e.target.value = "";
+                      }}
+                    />
+                    {/* Edit mode badge */}
+                    {editMode && (
+                      <div className="absolute top-2 right-2 bg-primary/90 text-primary-foreground text-[10px] font-medium px-1.5 py-0.5 rounded pointer-events-none">
+                        Edit: hover icon untuk upload logo
+                      </div>
+                    )}
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
+            {editMode && (
+              <p className="text-xs text-muted-foreground text-center">
+                Hover pada icon emoji tiap card lalu klik untuk upload gambar logo. Simpan via toolbar Edit Mode.
+              </p>
+            )}
           </div>
         )}
 
