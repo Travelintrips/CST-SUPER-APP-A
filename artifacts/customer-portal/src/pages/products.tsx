@@ -7,11 +7,51 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
 import {
   ShoppingBag, Search, ChevronLeft, ChevronRight,
-  Play, Package, Star, ArrowRight, Check,
+  Play, Package, Star, Clock, Check, Layers, ExternalLink, Truck,
 } from "lucide-react";
-import { CATEGORIES, SERVICE_ITEMS, ServiceCategory, ServiceItem } from "@/lib/services-data";
+import { useCart } from "@/lib/cart";
 
 type MediaItem = { type: "image" | "video"; url: string };
+
+interface ShippingOption {
+  id: string;
+  name: string;
+  logo: string;
+  eta: string;
+  fee: number;
+  note: string | null;
+  kind: "vendor" | "service";
+  serviceId?: number;
+}
+
+function useShippingOptions() {
+  const [options, setOptions] = useState<ShippingOption[]>([]);
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/portal/delivery-vendors").then((r) => r.json()).catch(() => []),
+      fetch("/api/portal/services").then((r) => r.json()).catch(() => []),
+    ]).then(([vendors, services]) => {
+      const vendorOpts: ShippingOption[] = (Array.isArray(vendors) ? vendors : []).map(
+        (v: { id: number; name: string; logo: string; eta: string; fee: number; note: string | null }) => ({
+          id: `vendor-${v.id}`, name: v.name, logo: v.logo, eta: v.eta,
+          fee: v.fee, note: v.note, kind: "vendor" as const,
+        })
+      );
+      const serviceOpts: ShippingOption[] = (Array.isArray(services) ? services : []).map(
+        (s: { id: number; name: string; price: number }) => ({
+          id: `service-${s.id}`, name: s.name, logo: "🏢",
+          eta: "Sesuai kesepakatan",
+          fee: s.price ?? 0,
+          note: s.price === 0 ? "Harga nego" : null,
+          kind: "service" as const,
+          serviceId: s.id,
+        })
+      );
+      setOptions([...vendorOpts, ...serviceOpts]);
+    });
+  }, []);
+  return options;
+}
 
 interface Product {
   id: number;
@@ -238,24 +278,46 @@ function MediaGallery({ product }: { product: Product }) {
 // ── Product detail modal ───────────────────────────────────────────────────
 function ProductModal({ product, onClose }: { product: Product; onClose: () => void }) {
   const [qty, setQty] = useState(1);
-  const [jasaCategory, setJasaCategory] = useState<ServiceCategory | null>(null);
-  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const [shippingTab, setShippingTab] = useState<"vendor" | "service">("service");
+  const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
+  const { addItemSilent } = useCart();
   const [, setLocation] = useLocation();
 
-  const categoryItems = jasaCategory
-    ? SERVICE_ITEMS.filter((i) => i.category === jasaCategory)
-    : [];
+  const allShipping = useShippingOptions();
+  const vendorOpts = allShipping.filter((s) => s.kind === "vendor");
+  const serviceOpts = allShipping.filter((s) => s.kind === "service");
+  const shownOpts = shippingTab === "vendor" ? vendorOpts : serviceOpts;
+  const chosen = allShipping.find((s) => s.id === selectedShipping);
 
-  function handleOrder() {
-    const params = new URLSearchParams({
-      commodity: product.name,
-      productId: String(product.id),
-      qty: String(qty),
-      ...(product.price > 0 ? { productPrice: String(product.price) } : {}),
-      ...(selectedService ? { service: selectedService.id } : {}),
-    });
-    onClose();
-    setLocation(`/book?${params.toString()}`);
+  const cartPayload = {
+    productId: product.id,
+    name: product.name,
+    unitPrice: product.price,
+    itemType: "barang" as const,
+  };
+
+  function handleBuyNow() {
+    if (!chosen) return;
+    if (chosen.kind === "service" && chosen.serviceId != null) {
+      // Jasa flow: add product silently → navigate to /jasa/:id with sticky banner
+      addItemSilent(cartPayload);
+      sessionStorage.setItem(
+        "pendingJasaReview",
+        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name })
+      );
+      onClose();
+      setLocation(`/jasa/${chosen.serviceId}`);
+    } else {
+      // Kurir flow: navigate to /book with commodity pre-filled
+      const params = new URLSearchParams({
+        commodity: product.name,
+        productId: String(product.id),
+        qty: String(qty),
+        ...(product.price > 0 ? { productPrice: String(product.price) } : {}),
+      });
+      onClose();
+      setLocation(`/book?${params.toString()}`);
+    }
   }
 
   return (
@@ -313,77 +375,111 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             </div>
           </div>
 
-          {/* Jasa / Layanan selector */}
+          {/* Shipping selector */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-              <Package className="h-3.5 w-3.5" /> Pilih Jasa Logistik
+              <Truck className="h-3.5 w-3.5" /> Pilih Pengiriman / Jasa
             </p>
-
-            {/* Category grid */}
-            {!jasaCategory ? (
-              <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-0.5">
-                {CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.name}
-                    onClick={() => setJasaCategory(cat.name)}
-                    className="text-left px-3 py-2 rounded-lg border border-border bg-gray-50 hover:border-primary/60 hover:bg-primary/5 transition-all text-xs"
-                  >
-                    <p className="font-semibold text-foreground">{cat.name}</p>
-                    <p className="text-muted-foreground line-clamp-1 mt-0.5">{cat.description}</p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <button
-                  onClick={() => { setJasaCategory(null); setSelectedService(null); }}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1"
+            {/* Tab switcher */}
+            <div className="flex gap-1 mb-2">
+              <button
+                onClick={() => { setShippingTab("service"); setSelectedShipping(null); }}
+                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "service" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
+              >
+                <Layers className="h-3 w-3" /> Jasa ({serviceOpts.length})
+              </button>
+              <button
+                onClick={() => { setShippingTab("vendor"); setSelectedShipping(null); }}
+                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "vendor" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
+              >
+                <Package className="h-3 w-3" /> Kurir ({vendorOpts.length})
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto pr-1">
+              {shownOpts.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">Tidak ada pilihan tersedia</p>
+              )}
+              {shownOpts.map((s) => (
+                <div
+                  key={s.id}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all text-sm ${
+                    selectedShipping === s.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/40 hover:bg-gray-50"
+                  }`}
                 >
-                  <ChevronLeft className="h-3.5 w-3.5" /> Semua Kategori
-                </button>
-                <div className="space-y-1 max-h-40 overflow-y-auto pr-0.5">
-                  {categoryItems.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => setSelectedService(selectedService?.id === item.id ? null : item)}
-                      className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all flex items-center gap-2 ${
-                        selectedService?.id === item.id
-                          ? "border-primary bg-primary/5 text-primary"
-                          : "border-border hover:border-primary/50 hover:bg-gray-50"
-                      }`}
+                  <button
+                    className="flex items-center gap-2 flex-1 min-w-0"
+                    onClick={() => setSelectedShipping(s.id === selectedShipping ? null : s.id)}
+                  >
+                    <span className="text-lg shrink-0">{s.logo}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">{s.name}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> {s.eta}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 mx-1">
+                      {s.fee > 0
+                        ? <p className="font-semibold text-foreground text-xs">{formatIDR(s.fee)}</p>
+                        : <p className="text-xs text-amber-600 font-medium">{s.note ?? "Nego"}</p>
+                      }
+                    </div>
+                    {selectedShipping === s.id && <Check className="h-4 w-4 text-primary shrink-0" />}
+                  </button>
+                  {s.kind === "service" && s.serviceId != null && (
+                    <a
+                      href={`/customer-portal/jasa/${s.serviceId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                      title="Lihat detail layanan"
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold">{item.name}</p>
-                        <p className="text-muted-foreground line-clamp-1">{item.description}</p>
-                      </div>
-                      {selectedService?.id === item.id && <Check className="h-3.5 w-3.5 shrink-0" />}
-                    </button>
-                  ))}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
                 </div>
-              </div>
-            )}
-
-            {selectedService && (
-              <p className="text-xs text-primary mt-1.5 font-medium">
-                ✓ Jasa dipilih: {selectedService.name}
-              </p>
-            )}
+              ))}
+            </div>
           </div>
 
+          {/* Total preview */}
+          {chosen && product.price > 0 && (
+            <div className="bg-gray-50 rounded-xl px-4 py-3 border border-border">
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-muted-foreground">Subtotal ({qty}x)</span>
+                <span>{formatIDR(product.price * qty)}</span>
+              </div>
+              {chosen.kind === "vendor" && (
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">Ongkir ({chosen.name})</span>
+                  <span>{chosen.fee > 0 ? formatIDR(chosen.fee) : "Nego"}</span>
+                </div>
+              )}
+              {chosen.kind === "service" && (
+                <p className="text-xs text-muted-foreground">+ Biaya jasa dihitung di halaman layanan</p>
+              )}
+            </div>
+          )}
+
           {/* Action button */}
-          <div className="mt-auto pt-2 space-y-2">
+          <div className="mt-auto pt-2">
             <Button
               className="w-full gap-2"
-              onClick={handleOrder}
-              disabled={!selectedService}
+              onClick={handleBuyNow}
+              disabled={!chosen}
             >
               <Package className="h-4 w-4" />
-              {selectedService ? `Pesan dengan ${selectedService.name}` : "Pilih Jasa untuk Melanjutkan"}
-              {selectedService && <ArrowRight className="h-4 w-4 ml-auto" />}
+              {!chosen
+                ? "Pilih Pengiriman / Jasa"
+                : chosen.kind === "service"
+                  ? `Lanjutkan ke ${chosen.name}`
+                  : "Lanjutkan Pesanan"}
             </Button>
-            {!selectedService && (
-              <p className="text-xs text-muted-foreground text-center">
-                Pilih kategori &amp; jasa logistik di atas terlebih dahulu
+            {chosen?.kind === "service" && (
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Anda akan diarahkan ke halaman detail layanan
               </p>
             )}
           </div>
