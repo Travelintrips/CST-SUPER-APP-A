@@ -157,6 +157,21 @@ Document numbering follows the pattern `PREFIX/YYYY/NNNNNN` (e.g., `SHP/2026/123
 - Bill of Lading: Dedicated print page at `/logistics/freight/:id/bl`.
 - Emails: PDFs generated server-side via Puppeteer-style flow or sent as attachments by Nodemailer.
 
+### WhatsApp Notifications (Fonnte)
+Admin notifications are sent via [Fonnte](https://fonnte.com) on these events:
+- **Logistic Order baru** (dari Customer Portal) — `logisticOrders.ts`
+- **Sales Quotation / Sales Order baru** (dari BizPortal) — `sales.ts`
+- **E-commerce Order baru** (dari Customer Portal) — `ecommerce.ts`
+- **Status logistic order berubah** (notif ke customer) — `logisticOrders.ts`
+
+Required env vars (set as Replit Secrets):
+| Variable | Purpose |
+|---|---|
+| `FONNTE_TOKEN` | API token dari akun Fonnte |
+| `FONNTE_ADMIN_WA` | Nomor WhatsApp admin yang menerima notifikasi (format: `628xxxxxxxxxx`) |
+
+If either is missing, notifications are silently skipped — no error thrown.
+
 ## Development Workflow
 
 1. Backend changes: edit routes in `artifacts/api-server/src/routes/`, update schema in `lib/db/src/schema/`, run migrations.
