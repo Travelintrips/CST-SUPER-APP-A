@@ -76,6 +76,7 @@ export interface Product {
   defaultPurchaseTaxId?: number | null;
   itemType: ProductItemType;
   unit: string;
+  unitOptions?: string[];
   subcategory?: string | null;
   isActive: boolean;
   createdAt: string;
@@ -101,6 +102,7 @@ export interface CreateProductBody {
   defaultPurchaseTaxId?: number | null;
   itemType: CreateProductBodyItemType;
   unit: string;
+  unitOptions?: string[];
   subcategory?: string | null;
   isActive?: boolean;
 }

@@ -45,6 +45,7 @@ interface ItemForm {
   categories: string[];
   subcategory: string;
   unit: string;
+  unitOptions: string[];
   price: string;
   defaultSalesTaxId: string;
   defaultPurchaseTaxId: string;
@@ -59,6 +60,7 @@ const emptyForm = (): ItemForm => ({
   categories: [],
   subcategory: "",
   unit: "pcs",
+  unitOptions: [],
   price: "0",
   defaultSalesTaxId: "",
   defaultPurchaseTaxId: "",
@@ -74,6 +76,9 @@ function formFromProduct(p: Product): ItemForm {
     categories: p.categories ?? [],
     subcategory: p.subcategory ?? "",
     unit: p.unit,
+    unitOptions: Array.isArray((p as unknown as { unitOptions?: string[] }).unitOptions)
+      ? ((p as unknown as { unitOptions?: string[] }).unitOptions ?? [])
+      : [],
     price: String(p.price),
     defaultSalesTaxId: p.defaultSalesTaxId ? String(p.defaultSalesTaxId) : "",
     defaultPurchaseTaxId: p.defaultPurchaseTaxId ? String(p.defaultPurchaseTaxId) : "",
@@ -166,6 +171,7 @@ export default function SalesItemsPage() {
       description: form.description || null,
       itemType: form.itemType,
       unit: form.unit,
+      unitOptions: form.unitOptions,
       subcategory: form.subcategory || null,
       isActive: form.isActive,
       defaultSalesTaxId: form.defaultSalesTaxId ? Number(form.defaultSalesTaxId) : null,
@@ -461,7 +467,7 @@ export default function SalesItemsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-slate-300">Satuan *</Label>
+                <Label className="text-slate-300">Satuan Default *</Label>
                 <Select value={form.unit} onValueChange={(v) => setF("unit", v)}>
                   <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200">
                     <SelectValue />
@@ -484,6 +490,48 @@ export default function SalesItemsPage() {
                 />
               </div>
             </div>
+
+            {/* Unit Options — multi-pilih untuk customer portal */}
+            {form.itemType === "barang" && (
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  Pilihan Satuan untuk Pelanggan
+                  <span className="ml-1 text-xs font-normal text-slate-500">(tampil di portal saat pemesanan)</span>
+                </Label>
+                <div className="flex flex-wrap gap-2 p-3 rounded-lg bg-slate-800/80 border border-slate-600">
+                  {UNITS.map((u) => {
+                    const checked = form.unitOptions.includes(u);
+                    return (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => {
+                          setF("unitOptions", checked
+                            ? form.unitOptions.filter((x) => x !== u)
+                            : [...form.unitOptions, u]
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                          checked
+                            ? "bg-blue-600 border-blue-500 text-white"
+                            : "bg-slate-700 border-slate-600 text-slate-400 hover:border-slate-400"
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.unitOptions.length > 0 && (
+                  <p className="text-xs text-slate-500">
+                    Terpilih: <span className="text-slate-300">{form.unitOptions.join(", ")}</span>
+                    {!form.unitOptions.includes(form.unit) && form.unit && (
+                      <span className="text-amber-400 ml-1">— Satuan default ({form.unit}) akan ditambahkan otomatis</span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">

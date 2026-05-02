@@ -2962,6 +2962,10 @@ components:
           enum: [barang, jasa]
         unit:
           type: string
+        unitOptions:
+          type: array
+          items:
+            type: string
         subcategory:
           type: string
           nullable: true
@@ -3003,6 +3007,10 @@ components:
           enum: [barang, jasa]
         unit:
           type: string
+        unitOptions:
+          type: array
+          items:
+            type: string
         subcategory:
           type: string
           nullable: true

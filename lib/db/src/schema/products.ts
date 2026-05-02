@@ -25,6 +25,7 @@ export const productsTable = pgTable("products", {
   defaultPurchaseTaxId: integer("default_purchase_tax_id"),
   itemType: text("item_type").notNull().default("barang"),
   unit: text("unit").notNull().default("pcs"),
+  unitOptions: text("unit_options").notNull().default("[]"),
   subcategory: text("subcategory"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -117,11 +117,15 @@ async function listByType(type: string) {
   return rows.map((p) => {
     let mediaItems: Array<{ type: string; url: string }> = [];
     try { mediaItems = JSON.parse(p.mediaItems ?? "[]"); } catch { /* empty */ }
+    let unitOptions: string[] = [];
+    try { unitOptions = JSON.parse(p.unitOptions ?? "[]"); } catch { /* empty */ }
     return {
       id: p.id,
       name: p.name,
       description: p.description ?? null,
       price: Number(p.price),
+      unit: p.unit,
+      unitOptions,
       imageUrl: p.imageUrl ?? null,
       mediaItems,
       categories: catMap[p.id] ?? [],

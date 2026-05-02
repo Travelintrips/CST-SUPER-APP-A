@@ -332,7 +332,7 @@ export default function BookPage() {
     request: { headers },
   });
 
-  const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number } | null>(null);
+  const [fromProduct, setFromProduct] = useState<{ name: string; qty: number; price: number; unit?: string } | null>(null);
 
   const [customerForm, setCustomerForm] = useState({
     companyName: "", customerName: "", email: "", phone: "",
@@ -360,15 +360,16 @@ export default function BookPage() {
     []
   );
 
-  // Read URL params on mount: ?commodity=&productId=&qty=&productPrice=&service=
+  // Read URL params on mount: ?commodity=&productId=&qty=&productPrice=&unit=&service=
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const commodity = params.get("commodity");
     const qty = parseInt(params.get("qty") ?? "1", 10) || 1;
     const productPrice = parseFloat(params.get("productPrice") ?? "0") || 0;
+    const unit = params.get("unit") ?? undefined;
 
     if (commodity) {
-      setFromProduct({ name: commodity, qty, price: productPrice });
+      setFromProduct({ name: commodity, qty, price: productPrice, unit });
       setCustomerForm((prev) => ({ ...prev, commodity }));
     }
 
@@ -595,9 +596,14 @@ export default function BookPage() {
             <div className="flex-1 min-w-0">
               <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">Barang / Komoditi</p>
               <p className="font-semibold text-amber-900">{fromProduct.name}</p>
-              {fromProduct.qty > 1 && (
-                <p className="text-xs text-amber-700">Qty: {fromProduct.qty}</p>
-              )}
+              <div className="flex items-center gap-2 mt-0.5">
+                {fromProduct.qty > 1 && (
+                  <p className="text-xs text-amber-700">Qty: {fromProduct.qty}</p>
+                )}
+                {fromProduct.unit && (
+                  <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium">{fromProduct.unit}</span>
+                )}
+              </div>
             </div>
             {fromProduct.price > 0 && (
               <p className="font-bold text-amber-900 shrink-0">
@@ -881,6 +887,9 @@ export default function BookPage() {
             <div className="flex-1 min-w-0">
               <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">Produk yang dipesan</p>
               <p className="font-semibold text-amber-900 truncate">{fromProduct.name}</p>
+              {fromProduct.unit && (
+                <span className="inline-block text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium mt-0.5">{fromProduct.unit}</span>
+              )}
             </div>
             {fromProduct.price > 0 && (
               <div className="text-right shrink-0">

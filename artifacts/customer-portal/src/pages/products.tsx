@@ -59,6 +59,8 @@ interface Product {
   name: string;
   description: string | null;
   price: number;
+  unit: string;
+  unitOptions: string[];
   imageUrl: string | null;
   mediaItems: MediaItem[];
   categories: string[];
@@ -285,6 +287,18 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const [, setLocation] = useLocation();
   const { t } = useLanguage();
 
+  // Effective unit options: combine unitOptions + default unit, deduplicate
+  const effectiveUnitOptions = Array.from(
+    new Set([
+      ...((product.unitOptions ?? []).length > 0 ? product.unitOptions : []),
+      ...(product.unit ? [product.unit] : ["pcs"]),
+    ])
+  );
+  const hasUnitChoice = effectiveUnitOptions.length > 1;
+  const [selectedUnit, setSelectedUnit] = useState<string>(
+    effectiveUnitOptions[0] ?? product.unit ?? "pcs"
+  );
+
   const allShipping = useShippingOptions();
   const vendorOpts = allShipping.filter((s) => s.kind === "vendor");
   const serviceOpts = allShipping.filter((s) => s.kind === "service");
@@ -305,16 +319,17 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
       addItemSilent(cartPayload);
       sessionStorage.setItem(
         "pendingJasaReview",
-        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name })
+        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name, unit: selectedUnit })
       );
       onClose();
       setLocation(`/jasa/${chosen.serviceId}`);
     } else {
-      // Kurir flow: navigate to /book with commodity pre-filled
+      // Kurir flow: navigate to /book with commodity + unit pre-filled
       const params = new URLSearchParams({
         commodity: product.name,
         productId: String(product.id),
         qty: String(qty),
+        unit: selectedUnit,
         ...(product.price > 0 ? { productPrice: String(product.price) } : {}),
       });
       onClose();
@@ -361,6 +376,30 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             </div>
           )}
 
+          {/* Unit Selector — only shown if product has multiple unit options */}
+          {hasUnitChoice && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Satuan / Ukuran
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {effectiveUnitOptions.map((u) => (
+                  <button
+                    key={u}
+                    onClick={() => setSelectedUnit(u)}
+                    className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                      selectedUnit === u
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-white border-border text-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Quantity */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t("products.quantityLabel")}</p>
@@ -370,6 +409,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
                 className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-100 transition-colors font-bold"
               >−</button>
               <span className="w-10 text-center font-semibold">{qty}</span>
+              <span className="text-xs text-muted-foreground">{selectedUnit}</span>
               <button
                 onClick={() => setQty((q) => q + 1)}
                 className="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-100 transition-colors font-bold"

@@ -47,6 +47,8 @@ function serializeProduct(
   p: typeof productsTable.$inferSelect,
   categories: string[]
 ) {
+  let unitOptions: string[] = [];
+  try { unitOptions = JSON.parse(p.unitOptions ?? "[]"); } catch { /* empty */ }
   return {
     ...p,
     price: Number(p.price),
@@ -54,6 +56,7 @@ function serializeProduct(
     categories,
     itemType: p.itemType,
     unit: p.unit,
+    unitOptions,
     subcategory: p.subcategory ?? null,
     isActive: p.isActive,
   };
@@ -157,7 +160,7 @@ router.post("/products", async (req, res) => {
   const {
     name, sku, price, stock, categories, description, imageUrl,
     defaultSalesTaxId, defaultPurchaseTaxId,
-    itemType, unit, subcategory, isActive,
+    itemType, unit, unitOptions, subcategory, isActive,
   } = req.body;
   if (!name || !sku || price == null) return res.status(400).json({ message: "name, sku, price are required" });
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
@@ -183,6 +186,7 @@ router.post("/products", async (req, res) => {
       defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
       itemType: itemType ?? "barang",
       unit: unit ?? "pcs",
+      unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).returning();
@@ -212,7 +216,7 @@ router.put("/products/:id", async (req, res) => {
   const {
     name, sku, price, stock, categories, description, imageUrl,
     defaultSalesTaxId, defaultPurchaseTaxId,
-    itemType, unit, subcategory, isActive,
+    itemType, unit, unitOptions, subcategory, isActive,
   } = req.body;
   const categoryNames: string[] = Array.isArray(categories) ? categories.map(String) : [];
   if (categoryNames.length === 0) return res.status(400).json({ message: "Produk harus memiliki setidaknya satu kategori" });
@@ -237,6 +241,7 @@ router.put("/products/:id", async (req, res) => {
       defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
       itemType: itemType ?? "barang",
       unit: unit ?? "pcs",
+      unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : "[]",
       subcategory: subcategory ?? null,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }).where(eq(productsTable.id, id)).returning();
