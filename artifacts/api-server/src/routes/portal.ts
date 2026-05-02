@@ -418,7 +418,7 @@ router.delete("/admin/services/:id", requirePortalAdmin, async (req, res) => {
 
 // POST /api/portal/admin/products  — create a new product (admin only)
 router.post("/admin/products", requirePortalAdmin, async (req, res) => {
-  const { name, description, price, imageUrl, mediaItems } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Nama produk harus diisi" });
   }
@@ -439,7 +439,8 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
       imageUrl: imageUrl ? String(imageUrl).trim() : null,
       mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
       itemType: "barang",
-      unit: "pcs",
+      unit: unit ? String(unit).trim() : "pcs",
+      unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : (unitOptions ? JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]"),
       isActive: true,
     })
     .returning();
@@ -450,13 +451,19 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
 router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, imageUrl, mediaItems } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
   if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
   if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(mediaItems);
+  if (unit !== undefined) updates.unit = String(unit).trim() || "pcs";
+  if (unitOptions !== undefined) {
+    updates.unitOptions = Array.isArray(unitOptions)
+      ? JSON.stringify(unitOptions)
+      : JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean));
+  }
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);

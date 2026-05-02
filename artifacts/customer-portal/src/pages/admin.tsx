@@ -104,6 +104,8 @@ type Product = {
   price: number;
   imageUrl: string | null;
   mediaItems: MediaItem[];
+  unit: string;
+  unitOptions: string[];
 };
 
 type ContentMap = Record<string, string>;
@@ -419,7 +421,7 @@ function ItemEditCard({
   type,
 }: {
   item: Service | Product;
-  onSave: (id: number, data: Partial<Service & { mediaItems: MediaItem[] }>) => Promise<void>;
+  onSave: (id: number, data: Partial<Service & Product & { mediaItems: MediaItem[] }>) => Promise<void>;
   type: "services" | "products";
 }) {
   const { toast } = useToast();
@@ -430,13 +432,17 @@ function ItemEditCard({
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(
     type === "products" ? (item as Product).mediaItems ?? [] : []
   );
+  const [unit, setUnit] = useState(type === "products" ? (item as Product).unit ?? "pcs" : "pcs");
+  const [unitOptionsRaw, setUnitOptionsRaw] = useState(
+    type === "products" ? ((item as Product).unitOptions ?? []).join(", ") : ""
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
     setSaving(true);
     try {
-      const payload: Partial<Service & { mediaItems: MediaItem[] }> = {
+      const payload: Partial<Service & Product & { mediaItems: MediaItem[] }> = {
         name,
         description: description || null,
         price: parseFloat(price) || 0,
@@ -444,7 +450,14 @@ function ItemEditCard({
           ? (mediaItems.find((m) => m.type === "image")?.url ?? imageUrl)
           : imageUrl,
       };
-      if (type === "products") payload.mediaItems = mediaItems;
+      if (type === "products") {
+        payload.mediaItems = mediaItems;
+        payload.unit = unit.trim() || "pcs";
+        payload.unitOptions = unitOptionsRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
       await onSave(item.id, payload);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -485,6 +498,26 @@ function ItemEditCard({
                 min="0"
               />
             </div>
+            {type === "products" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Satuan Utama</Label>
+                  <Input
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    placeholder="pcs, kg, dus, karton..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Pilihan Satuan Lain <span className="text-muted-foreground font-normal">(pisahkan dengan koma)</span></Label>
+                  <Input
+                    value={unitOptionsRaw}
+                    onChange={(e) => setUnitOptionsRaw(e.target.value)}
+                    placeholder="cth: pcs, dus, karton"
+                  />
+                </div>
+              </>
+            )}
           </div>
           <div className="space-y-1.5">
             {type === "products" ? (
@@ -540,7 +573,7 @@ function ServicesTab() {
 
   useEffect(() => { void fetchServices(); }, []);
 
-  async function handleSave(id: number, data: Partial<Service & { mediaItems: MediaItem[] }>) {
+  async function handleSave(id: number, data: Partial<Service & Product & { mediaItems: MediaItem[] }>) {
     await apiPut(`/api/portal/admin/services/${id}`, data);
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...data } : s)));
   }
@@ -705,6 +738,8 @@ function ProductsTab() {
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newPrice, setNewPrice] = useState("");
+  const [newUnit, setNewUnit] = useState("pcs");
+  const [newUnitOptions, setNewUnitOptions] = useState("");
   const [newImageUrl, setNewImageUrl] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -722,7 +757,7 @@ function ProductsTab() {
     })();
   }, []);
 
-  async function handleSave(id: number, data: Partial<Product & { mediaItems: MediaItem[] }>) {
+  async function handleSave(id: number, data: Partial<Service & Product & { mediaItems: MediaItem[] }>) {
     await apiPut(`/api/portal/admin/products/${id}`, data);
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
   }
@@ -734,17 +769,25 @@ function ProductsTab() {
     }
     setAdding(true);
     try {
+      const parsedUnitOptions = newUnitOptions
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const created = await apiPost<Product>("/api/portal/admin/products", {
         name: newName.trim(),
         description: newDesc.trim() || null,
         price: parseFloat(newPrice) || 0,
         imageUrl: newImageUrl,
+        unit: newUnit.trim() || "pcs",
+        unitOptions: parsedUnitOptions,
       });
       setProducts((prev) => [created, ...prev]);
       setShowAdd(false);
       setNewName("");
       setNewDesc("");
       setNewPrice("");
+      setNewUnit("pcs");
+      setNewUnitOptions("");
       setNewImageUrl(null);
       toast({ title: "Produk berhasil ditambahkan" });
     } catch (err) {
@@ -850,6 +893,16 @@ function ProductsTab() {
             <div className="space-y-1.5">
               <Label>Harga (0 = Negosiasi)</Label>
               <Input type="number" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0" min="0" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Satuan Utama</Label>
+                <Input value={newUnit} onChange={(e) => setNewUnit(e.target.value)} placeholder="pcs, kg, dus..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Pilihan Satuan Lain</Label>
+                <Input value={newUnitOptions} onChange={(e) => setNewUnitOptions(e.target.value)} placeholder="pcs, dus, karton" />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Gambar Produk</Label>
