@@ -28,11 +28,19 @@ export default function Orders() {
   const [, setLocation] = useLocation();
   const token = getAuthToken();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>(
+    () => new URLSearchParams(window.location.search).get("status") ?? ""
+  );
   const [cancellingKey, setCancellingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
+
+  function clearStatusFilter() {
+    setStatusFilter("");
+    setLocation("/orders");
+  }
 
   const headers = getAuthHeaders() as Record<string, string>;
   const queryClient = useQueryClient();
@@ -86,13 +94,19 @@ export default function Orders() {
 
   const isLoading = isLoadingCrm || isLoadingLogistic;
 
+  const statusFiltered = statusFilter
+    ? statusFilter === "active"
+      ? allOrders.filter((o) => o.status === "processing" || o.status === "shipped")
+      : allOrders.filter((o) => o.status === statusFilter)
+    : allOrders;
+
   const filtered = search.trim()
-    ? allOrders.filter(
+    ? statusFiltered.filter(
         (o) =>
           o.displayNumber.toLowerCase().includes(search.toLowerCase()) ||
           o.subtitle.toLowerCase().includes(search.toLowerCase())
       )
-    : allOrders;
+    : statusFiltered;
 
   const handleCancel = async (order: typeof allOrders[number]) => {
     if (!confirm(`Batalkan pesanan ${order.displayNumber}?`)) return;
@@ -116,7 +130,7 @@ export default function Orders() {
     <div className="min-h-[calc(100vh-80px)] bg-gray-50 py-8">
       <div className="container px-4 md:px-6">
         
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold mb-2">Order History</h1>
             <p className="text-muted-foreground">
@@ -134,6 +148,22 @@ export default function Orders() {
             />
           </div>
         </div>
+
+        {statusFilter && (
+          <div className="flex items-center gap-2 mb-6">
+            <span className="text-sm text-muted-foreground">Filter aktif:</span>
+            <span className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-sm font-medium px-3 py-1 rounded-full">
+              {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+              <button
+                onClick={clearStatusFilter}
+                className="hover:text-primary/70 transition-colors ml-0.5"
+                aria-label="Hapus filter"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          </div>
+        )}
 
         <Card className="border-none shadow-sm overflow-hidden">
           <div className="overflow-x-auto">

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useEditMode } from "@/contexts/EditModeContext";
 import {
   Package, Truck, Ship, Plane, Box, Archive, BarChart2, Layers,
@@ -292,6 +293,8 @@ export function StatCardManagerPanel({ orders, statusFilter, onFilterChange }: S
     );
   }
 
+  const [, setLocation] = useLocation();
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-8">
       {cards.map((card) => (
@@ -299,8 +302,12 @@ export function StatCardManagerPanel({ orders, statusFilter, onFilterChange }: S
           key={card.id}
           card={card}
           count={getCount(card.metric)}
-          isActive={statusFilter === card.metric}
-          onClick={() => onFilterChange(statusFilter === card.metric ? "" : card.metric)}
+          isActive={false}
+          onClick={() =>
+            setLocation(
+              card.metric === "total" ? "/orders" : `/orders?status=${encodeURIComponent(card.metric)}`
+            )
+          }
         />
       ))}
     </div>

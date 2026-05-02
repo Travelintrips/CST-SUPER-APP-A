@@ -41,7 +41,9 @@ export default function AdminPage() {
   const queryClient = useQueryClient();
   const updateStatus = useUpdateLogisticOrderStatus();
 
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>(
+    () => new URLSearchParams(window.location.search).get("status") ?? ""
+  );
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [search, setSearch] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
@@ -108,6 +110,15 @@ export default function AdminPage() {
     localStorage.removeItem(ADMIN_KEY);
     setAuthed(false);
     setPassword("");
+  }
+
+  function setStatusFilterAndUrl(status: string) {
+    setStatusFilter(status);
+    if (status) {
+      setLocation(`/admin?status=${encodeURIComponent(status)}`);
+    } else {
+      setLocation("/admin");
+    }
   }
 
   function handleInlineStatusChange(orderId: number, status: string) {
@@ -178,20 +189,26 @@ export default function AdminPage() {
           <div className="space-y-3">
             {/* Top row: Total + Revenue */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between">
+              <button
+                onClick={() => setStatusFilterAndUrl("")}
+                className="bg-primary text-primary-foreground rounded-xl p-5 flex items-center justify-between w-full cursor-pointer hover:brightness-95 transition-all text-left"
+              >
                 <div>
                   <p className="text-xs text-primary-foreground/60 mb-1">Total Pesanan</p>
                   <p className="text-4xl font-bold">{summary.totalOrders}</p>
                 </div>
                 <Package className="w-10 h-10 opacity-20" />
-              </div>
-              <div className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between">
+              </button>
+              <button
+                onClick={() => setStatusFilterAndUrl("")}
+                className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between w-full cursor-pointer hover:brightness-95 transition-all text-left"
+              >
                 <div>
                   <p className="text-xs text-accent-foreground/70 mb-1">Estimasi Revenue</p>
                   <p className="text-xl font-bold leading-tight">{formatCurrency(summary.totalEstimatedRevenue)}</p>
                 </div>
                 <TrendingUp className="w-10 h-10 opacity-20" />
-              </div>
+              </button>
             </div>
 
             {/* Status breakdown */}
@@ -207,8 +224,8 @@ export default function AdminPage() {
               ].map(({ label, value, bg, border, text, num }) => (
                 <button
                   key={label}
-                  onClick={() => setStatusFilter(statusFilter === label ? "" : label)}
-                  className={`${bg} border ${border} rounded-lg p-3 text-left transition-all hover:shadow-sm ${statusFilter === label ? "ring-2 ring-offset-1 ring-current" : ""}`}
+                  onClick={() => setStatusFilterAndUrl(statusFilter === label ? "" : label)}
+                  className={`${bg} border ${border} rounded-lg p-3 text-left transition-all hover:shadow-sm cursor-pointer ${statusFilter === label ? "ring-2 ring-offset-1 ring-current" : ""}`}
                 >
                   <p className={`text-2xl font-bold ${num}`}>{value}</p>
                   <p className={`text-xs font-medium mt-0.5 ${text} leading-tight`}>{label}</p>
