@@ -6,12 +6,14 @@ import { assetUrl } from "@/lib/utils";
 import { useEditMode } from "@/contexts/EditModeContext";
 import { EditableText } from "@/components/EditableText";
 import { EditableImage } from "@/components/EditableImage";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 export default function Home() {
   const { data: company } = useGetPortalCompany({
     query: { queryKey: ["getPortalCompany"] }
   });
   const { content } = useEditMode();
+  const { t } = useLanguage();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -27,12 +29,12 @@ export default function Home() {
         />
         <div className="container relative z-20 px-4 md:px-6 text-center text-white">
           <span className="inline-block py-1 px-3 rounded-full bg-accent/20 border border-accent/50 text-accent-foreground text-sm font-medium mb-6">
-            <EditableText contentKey="hero_tagline" defaultValue={company?.tagline || "Solusi Logistik Terintegrasi & Berbasis Teknologi"} />
+            <EditableText contentKey="hero_tagline" defaultValue={content["hero_tagline"] || t("hero_badge")} />
           </span>
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-display font-bold tracking-tight mb-6 max-w-4xl mx-auto">
             <EditableText
               contentKey="hero_title"
-              defaultValue="Logistik Global, Presisi Tanpa Kompromi."
+              defaultValue={content["hero_title"] || t("hero_title")}
               as="span"
               multiline
             />
@@ -40,19 +42,19 @@ export default function Home() {
           <p className="text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto">
             <EditableText
               contentKey="hero_subtitle"
-              defaultValue="Solusi ekspor, impor, dan kepabeanan yang andal — menghubungkan bisnis Anda ke seluruh dunia dengan aman dan tepat waktu."
+              defaultValue={content["hero_subtitle"] || t("hero_description")}
               multiline
             />
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/services">
               <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground h-12 px-8 text-base gap-2">
-                <EditableText contentKey="hero_cta" defaultValue="Lihat Layanan" /> <ArrowRight className="h-4 w-4" />
+                {t("hero_primary_cta")} <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/register">
               <Button size="lg" variant="outline" className="bg-transparent border-white text-white hover:bg-white/10 h-12 px-8 text-base">
-                Daftar sebagai Mitra
+                {t("hero_secondary_cta")}
               </Button>
             </Link>
           </div>

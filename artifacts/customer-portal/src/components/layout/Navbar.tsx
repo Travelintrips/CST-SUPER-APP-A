@@ -13,6 +13,7 @@ import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useCart } from "@/lib/cart";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -21,6 +22,7 @@ export function Navbar() {
   const isAuth = isAuthenticated();
   const isAdmin = isPortalAdmin();
   const { count, openCart } = useCart();
+  const { t } = useLanguage();
 
   const { data: company } = useGetPortalCompany({
     query: { queryKey: ["getPortalCompany"] },
@@ -53,12 +55,12 @@ export function Navbar() {
     | { name: string; type: "link"; path: string }
     | { name: string; type: "scroll"; anchor: string }
   > = [
-    { name: "Beranda", type: "link", path: "/" },
-    { name: "Produk", type: "link", path: "/products" },
-    { name: "Jasa/Services", type: "link", path: "/jasa" },
-    { name: "Tentang Kami", type: "scroll", anchor: "tentang" },
-    { name: "Kontak", type: "scroll", anchor: "kontak" },
-    { name: "Lacak Pesanan", type: "link", path: "/track" },
+    { name: t("nav_home"), type: "link", path: "/" },
+    { name: t("nav_products"), type: "link", path: "/products" },
+    { name: t("nav_services"), type: "link", path: "/jasa" },
+    { name: t("nav_about"), type: "scroll", anchor: "tentang" },
+    { name: t("nav_contact"), type: "scroll", anchor: "kontak" },
+    { name: t("nav_tracking"), type: "link", path: "/track" },
   ];
 
   return (
@@ -139,14 +141,14 @@ export function Navbar() {
                         className="gap-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                       >
                         <Shield className="h-4 w-4" />
-                        Admin
+                        {t("nav_admin")}
                       </Button>
                     </Link>
                   )}
                   <Link href="/dashboard">
                     <Button variant="ghost" size="sm" className="gap-2">
                       <LayoutDashboard className="h-4 w-4" />
-                      Dashboard
+                      {t("nav_dashboard")}
                     </Button>
                   </Link>
                   <Button
@@ -156,14 +158,14 @@ export function Navbar() {
                     className="gap-2"
                   >
                     <LogOut className="h-4 w-4" />
-                    Keluar
+                    {t("nav_logout")}
                   </Button>
                 </>
               ) : (
                 <>
                   <Link href="/login">
                     <Button variant="ghost" size="sm">
-                      Masuk
+                      {t("nav_login")}
                     </Button>
                   </Link>
                   <Link href="/register">
@@ -171,7 +173,7 @@ export function Navbar() {
                       size="sm"
                       className="bg-accent text-accent-foreground hover:bg-accent/90"
                     >
-                      Daftar Sekarang
+                      {t("nav_register")}
                     </Button>
                   </Link>
                 </>
@@ -243,7 +245,7 @@ export function Navbar() {
                         className="w-full justify-start gap-2 text-amber-600 border-amber-200"
                       >
                         <Shield className="h-4 w-4" />
-                        Admin Panel
+                        {t("nav_admin")}
                       </Button>
                     </Link>
                   )}
@@ -253,7 +255,7 @@ export function Navbar() {
                       className="w-full justify-start gap-2"
                     >
                       <LayoutDashboard className="h-4 w-4" />
-                      Dashboard
+                      {t("nav_dashboard")}
                     </Button>
                   </Link>
                   <Button
@@ -265,19 +267,19 @@ export function Navbar() {
                     }}
                   >
                     <LogOut className="h-4 w-4" />
-                    Keluar
+                    {t("nav_logout")}
                   </Button>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <Link href="/login" onClick={() => setIsOpen(false)}>
                     <Button variant="outline" className="w-full">
-                      Masuk
+                      {t("nav_login")}
                     </Button>
                   </Link>
                   <Link href="/register" onClick={() => setIsOpen(false)}>
                     <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
-                      Daftar Sekarang
+                      {t("nav_register")}
                     </Button>
                   </Link>
                 </div>

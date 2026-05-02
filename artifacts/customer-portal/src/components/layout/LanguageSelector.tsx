@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Globe } from "lucide-react";
-
-const STORAGE_KEY = "app_locale";
+import { useLanguage } from "@/i18n/LanguageContext";
 
 const LANGUAGES = [
   { code: "id-ID", flag: "🇮🇩", language: "Bahasa Indonesia", country: "Indonesia", label: "ID" },
@@ -23,28 +22,19 @@ const LANGUAGES = [
   { code: "vi-VN", flag: "🇻🇳", language: "Tiếng Việt", country: "Vietnam", label: "VI" },
 ];
 
-function getInitialLocale(): string {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && LANGUAGES.find((l) => l.code === stored)) return stored;
-  const browser = navigator.language;
-  const match = LANGUAGES.find((l) => l.code === browser || l.code.startsWith(browser.split("-")[0]));
-  return match?.code ?? "id-ID";
-}
-
 interface LanguageSelectorProps {
   compact?: boolean;
 }
 
 export function LanguageSelector({ compact = false }: LanguageSelectorProps) {
-  const [locale, setLocale] = useState(getInitialLocale);
+  const { locale, setLanguage } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const current = LANGUAGES.find((l) => l.code === locale) ?? LANGUAGES[0];
 
   function selectLocale(code: string) {
-    setLocale(code);
-    localStorage.setItem(STORAGE_KEY, code);
+    setLanguage(code);
     setOpen(false);
   }
 
@@ -70,6 +60,7 @@ export function LanguageSelector({ compact = false }: LanguageSelectorProps) {
         className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-muted-foreground hover:text-foreground ${open ? "bg-muted text-foreground" : ""}`}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label="Pilih bahasa"
         title="Select language"
       >
         <Globe className="h-4 w-4 flex-shrink-0" />
@@ -90,7 +81,7 @@ export function LanguageSelector({ compact = false }: LanguageSelectorProps) {
                 aria-selected={locale === lang.code}
                 onClick={() => selectLocale(lang.code)}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:bg-muted ${
-                  locale === lang.code ? "bg-accent/10 text-accent font-medium" : "text-foreground"
+                  locale === lang.code ? "bg-primary/10 text-primary font-medium" : "text-foreground"
                 }`}
               >
                 <span className="text-base leading-none">{lang.flag}</span>
@@ -99,7 +90,7 @@ export function LanguageSelector({ compact = false }: LanguageSelectorProps) {
                   <span className="text-[10px] text-muted-foreground leading-tight">{lang.country}</span>
                 </div>
                 {locale === lang.code && (
-                  <span className="ml-auto text-accent text-xs font-bold">✓</span>
+                  <span className="ml-auto text-primary text-xs font-bold">✓</span>
                 )}
               </button>
             ))}

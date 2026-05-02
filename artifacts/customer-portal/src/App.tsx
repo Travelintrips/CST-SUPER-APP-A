@@ -10,6 +10,7 @@ import { CartDrawer } from "@/components/CartDrawer";
 import { EditModeProvider } from "@/contexts/EditModeContext";
 import { AdminToolbar } from "@/components/AdminToolbar";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { LanguageProvider } from "@/i18n/LanguageContext";
 
 // Portal pages
 import Home from "@/pages/home";
@@ -86,14 +87,16 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <CartProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <EditModeProvider>
-              <AppShell />
-            </EditModeProvider>
-          </WouterRouter>
-        </CartProvider>
-        <Toaster />
+        <LanguageProvider>
+          <CartProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <EditModeProvider>
+                <AppShell />
+              </EditModeProvider>
+            </WouterRouter>
+          </CartProvider>
+          <Toaster />
+        </LanguageProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
