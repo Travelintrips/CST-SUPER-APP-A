@@ -62,6 +62,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Siap mempercepat logistik global Anda?",
+      titleHighlight: "global Anda",
       description: "mempercayakan kargo mereka kepada",
       suffix: "Bergabunglah dan rasakan perbedaannya.",
       prefix: "Ribuan pelaku bisnis",
@@ -502,6 +503,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
+      titleHighlight: "global logistics",
       description: "have entrusted their cargo to",
       suffix: "Join us and experience the difference.",
       prefix: "Thousands of businesses",
@@ -940,6 +942,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
+      titleHighlight: "global logistics",
       description: "have entrusted their cargo to",
       suffix: "Join us and experience the difference.",
       prefix: "Thousands of businesses",
@@ -1251,6 +1254,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "准备好加速您的全球物流了吗？",
+      titleHighlight: "全球物流",
       description: "将货物委托给",
       suffix: "加入我们，体验与众不同。",
       prefix: "数千家企业",
@@ -1530,6 +1534,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "準備好加速您的全球物流了嗎？",
+      titleHighlight: "全球物流",
       description: "將貨物委託給",
       suffix: "加入我們，體驗與眾不同。",
       prefix: "數千家企業",
@@ -1809,6 +1814,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "グローバル物流を加速する準備はできていますか？",
+      titleHighlight: "グローバル物流",
       description: "が貨物を任せている",
       suffix: "私たちに参加して、その違いを体験してください。",
       prefix: "数千の企業",
@@ -2087,6 +2093,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "글로벌 물류를 가속할 준비가 되셨나요?",
+      titleHighlight: "글로벌 물류",
       description: "화물을 맡긴",
       suffix: "저희와 함께하여 차이를 경험하세요.",
       prefix: "수천 개의 기업이",
@@ -2365,6 +2372,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Bersedia untuk mempercepatkan logistik global anda?",
+      titleHighlight: "logistik global",
       description: "mempercayakan kargo mereka kepada",
       suffix: "Sertai kami dan rasai perbezaannya.",
       prefix: "Ribuan perniagaan",
@@ -2643,6 +2651,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
+      titleHighlight: "global logistics",
       description: "have entrusted their cargo to",
       suffix: "Join us and experience the difference.",
       prefix: "Thousands of businesses",
@@ -2953,6 +2962,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Bereit, Ihre globale Logistik zu beschleunigen?",
+      titleHighlight: "globale Logistik",
       description: "haben ihre Fracht anvertraut",
       suffix: "Treten Sie uns bei und erleben Sie den Unterschied.",
       prefix: "Tausende von Unternehmen",
@@ -3231,6 +3241,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Prêt à accélérer votre logistique mondiale ?",
+      titleHighlight: "logistique mondiale",
       description: "ont confié leur fret à",
       suffix: "Rejoignez-nous et vivez la différence.",
       prefix: "Des milliers d'entreprises",
@@ -3509,6 +3520,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Klaar om uw wereldwijde logistiek te versnellen?",
+      titleHighlight: "wereldwijde logistiek",
       description: "hebben hun vracht toevertrouwd aan",
       suffix: "Doe mee en ervaar het verschil.",
       prefix: "Duizenden bedrijven",
@@ -5177,6 +5189,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
+      titleHighlight: "global logistics",
       description: "have entrusted their cargo to",
       suffix: "Join us and experience the difference.",
       prefix: "Thousands of businesses",
