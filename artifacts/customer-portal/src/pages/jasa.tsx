@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, Ship, Plane, Package, Warehouse, Truck, FileCheck,
-  Shield, FileText, ArrowRight, ChevronRight, Scale,
+  Shield, FileText, ArrowRight, ChevronRight, Scale, Calculator,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -229,6 +229,10 @@ export default function Jasa() {
                         ))}
                       </div>
                       <CardTitle className="text-sm leading-snug">{service.name}</CardTitle>
+                      <div className="flex items-center gap-1 mt-1">
+                        <Calculator className="h-3 w-3 text-primary/70" />
+                        <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">Kalkulator Biaya</span>
+                      </div>
                     </CardHeader>
                     {service.description && (
                       <CardContent className="px-4 pb-3">
@@ -237,7 +241,7 @@ export default function Jasa() {
                     )}
                     <CardContent className="px-4 pb-4 pt-0">
                       <Button size="sm" className="w-full gap-1 text-xs h-8 group-hover:bg-primary/90">
-                        {t("jasa.viewDetail")} <ArrowRight className="h-3 w-3" />
+                        <Calculator className="h-3 w-3" /> Hitung Biaya <ArrowRight className="h-3 w-3" />
                       </Button>
                     </CardContent>
                   </Card>
