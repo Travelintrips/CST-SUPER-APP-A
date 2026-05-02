@@ -119,6 +119,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       track: "Lacak Pesanan",
       calculator: "Kalkulator Biaya",
       about: "Tentang Kami",
+      backToTop: "Kembali ke Atas",
     },
     testimonials: {
       label: "Testimoni Klien",
@@ -558,6 +559,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       track: "Track Order",
       calculator: "Cost Calculator",
       about: "About Us",
+      backToTop: "Back to Top",
     },
     testimonials: {
       label: "Client Testimonials",
@@ -995,6 +997,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       track: "Track Order",
       calculator: "Cost Calculator",
       about: "About Us",
+      backToTop: "Back to Top",
     },
     testimonials: {
       label: "Client Testimonials",
@@ -1292,6 +1295,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       domestic: "国内配送",
       allRights: "版权所有。",
       tagline: "为您的全球业务提供一体化物流解决方案。",
+      backToTop: "返回顶部",
     },
     login: {
       welcomeBack: "欢迎回来",
@@ -1570,6 +1574,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       domestic: "國內配送",
       allRights: "版權所有。",
       tagline: "為您的全球業務提供一體化物流解決方案。",
+      backToTop: "返回頂部",
     },
     login: {
       welcomeBack: "歡迎回來",

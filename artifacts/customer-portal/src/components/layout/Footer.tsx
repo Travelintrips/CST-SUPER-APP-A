@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { Mail, MapPin, Phone, MessageCircle } from "lucide-react";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -14,12 +14,44 @@ const FOOTER_STYLE: React.CSSProperties = {
   background: "linear-gradient(150deg, #0F172A 0%, #1E293B 50%, #0C4A6E 100%)",
 };
 
-const DIVIDER: React.CSSProperties = {
-  borderColor: "rgba(255,255,255,0.12)",
-};
-
 const linkCls =
-  "text-white/70 hover:text-white hover:translate-x-1 transition-all duration-200 inline-block text-sm leading-relaxed";
+  "text-white/70 hover:text-white hover:translate-x-1 transition-all duration-200 inline-block text-sm leading-relaxed cursor-pointer";
+
+interface NavItem {
+  label: string;
+  href: string;
+}
+
+function FooterNavLink({ label, href }: NavItem) {
+  const [, setLocation] = useLocation();
+
+  function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault();
+    const hashIdx = href.indexOf("#");
+    if (hashIdx >= 0) {
+      const path = href.slice(0, hashIdx) || "/";
+      const hash = href.slice(hashIdx + 1);
+      setLocation(path);
+      setTimeout(() => {
+        const el = document.getElementById(hash);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth" });
+        } else {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }, 120);
+    } else {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
+      setLocation(href);
+    }
+  }
+
+  return (
+    <a href={href} onClick={handleClick} className={linkCls}>
+      {label}
+    </a>
+  );
+}
 
 export function Footer() {
   const { data: company } = useGetPortalCompany({
@@ -40,6 +72,21 @@ export function Footer() {
   const mapsHref = company?.address
     ? `https://maps.google.com/?q=${encodeURIComponent(company.address)}`
     : null;
+
+  const quickLinks: NavItem[] = [
+    { label: t("footer.home"), href: "/" },
+    { label: t("footer.about"), href: "/#tentang" },
+    { label: t("footer.calculator"), href: "/calculator" },
+    { label: t("footer.track"), href: "/track" },
+    { label: t("footer.customerPortal"), href: "/login" },
+  ];
+
+  const serviceLinks: NavItem[] = [
+    { label: t("footer.seaFreight"), href: "/freight-forwarding" },
+    { label: t("footer.airFreight"), href: "/freight-forwarding" },
+    { label: t("footer.customsBrokerage"), href: "/pabean" },
+    { label: t("footer.domesticDistribution"), href: "/jasa" },
+  ];
 
   return (
     <footer style={FOOTER_STYLE} className="text-white">
@@ -87,17 +134,9 @@ export function Footer() {
               {t("footer.quickLinks")}
             </h4>
             <ul className="space-y-3">
-              {[
-                { label: t("footer.home"), href: "/" },
-                { label: t("footer.about"), href: "/#tentang" },
-                { label: t("footer.calculator"), href: "/calculator" },
-                { label: t("footer.track"), href: "/track" },
-                { label: t("footer.customerPortal"), href: "/login" },
-              ].map(({ label, href }) => (
-                <li key={href}>
-                  <Link href={href} className={linkCls}>
-                    {label}
-                  </Link>
+              {quickLinks.map(({ label, href }) => (
+                <li key={href + label}>
+                  <FooterNavLink label={label} href={href} />
                 </li>
               ))}
             </ul>
@@ -109,16 +148,9 @@ export function Footer() {
               {t("footer.servicesTitle")}
             </h4>
             <ul className="space-y-3">
-              {[
-                { label: t("footer.seaFreight"), href: "/freight-forwarding" },
-                { label: t("footer.airFreight"), href: "/freight-forwarding" },
-                { label: t("footer.customsBrokerage"), href: "/pabean" },
-                { label: t("footer.domesticDistribution"), href: "/jasa" },
-              ].map(({ label, href }) => (
+              {serviceLinks.map(({ label, href }) => (
                 <li key={label}>
-                  <Link href={href} className={linkCls}>
-                    {label}
-                  </Link>
+                  <FooterNavLink label={label} href={href} />
                 </li>
               ))}
             </ul>
