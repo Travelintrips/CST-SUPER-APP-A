@@ -272,7 +272,7 @@ router.post("/documents", async (req, res) => {
   const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
   if (adminWa) {
     const docLabel = docKind === "quote" ? "Sales Quotation" : "Sales Order";
-    const tanggal = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+    const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
     const msg =
       `📋 *${docLabel} Baru*\n` +
       `No: ${docNumber}\n` +
@@ -402,11 +402,12 @@ router.post("/documents/:id/action", async (req, res) => {
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
 
   // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
-  if (action === "confirm") {
+  // Guard: only send if status was not already "confirmed" to prevent duplicate notifications on retries
+  if (action === "confirm" && doc.status !== "confirmed") {
     const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
     if (adminWa) {
       const soTotal = Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0);
-      const tanggal = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+      const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
       const msg =
         `📋 *Sales Order Baru (Dikonfirmasi)*\n` +
         `No: ${doc.docNumber}\n` +
