@@ -8,6 +8,7 @@ export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
   customerName: text("customer_name").notNull(),
   customerEmail: text("customer_email").notNull(),
+  customerPhone: text("customer_phone"),
   status: orderStatusEnum("status").default("pending").notNull(),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   taxAmount: numeric("tax_amount", { precision: 12, scale: 2 }).default("0").notNull(),
