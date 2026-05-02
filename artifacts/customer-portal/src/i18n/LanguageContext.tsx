@@ -1,6 +1,6 @@
 // @refresh reset
-import { createContext, useContext, useState, ReactNode } from "react";
-import { TRANSLATIONS, SUPPORTED_LOCALES, type SupportedLocale } from "./translations";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { TRANSLATIONS, SUPPORTED_LOCALES, RTL_LOCALES, type SupportedLocale } from "./translations";
 
 const STORAGE_KEY = "app_language";
 
@@ -14,8 +14,10 @@ function resolve(obj: Record<string, any>, keys: string[]): string | undefined {
 }
 
 function getInitialLocale(): string {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) return stored;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && SUPPORTED_LOCALES.includes(stored as SupportedLocale)) return stored;
+  } catch {}
   const browser = navigator.language;
   const exact = SUPPORTED_LOCALES.find((l) => l === browser);
   if (exact) return exact;
@@ -23,6 +25,12 @@ function getInitialLocale(): string {
     (l) => l.split("-")[0] === browser.split("-")[0]
   );
   return partial ?? "id-ID";
+}
+
+function applyDocumentLocale(locale: string) {
+  const isRTL = RTL_LOCALES.includes(locale);
+  document.documentElement.dir = isRTL ? "rtl" : "ltr";
+  document.documentElement.lang = locale;
 }
 
 interface LanguageContextValue {
@@ -36,9 +44,16 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<string>(getInitialLocale);
 
+  useEffect(() => {
+    applyDocumentLocale(locale);
+  }, [locale]);
+
   function setLanguage(code: string) {
     setLocale(code);
-    localStorage.setItem(STORAGE_KEY, code);
+    try {
+      localStorage.setItem(STORAGE_KEY, code);
+    } catch {}
+    applyDocumentLocale(code);
   }
 
   function t(key: string, fallback?: string): string {
