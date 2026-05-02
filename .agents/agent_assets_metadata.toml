@@ -24,8 +24,44 @@ uri = "file://artifacts/customer-portal/public/images/customs.png"
 type = "image"
 title = "customs clearance documents"
 
+[[generated]]
+id = "6ibROT7cSC5kR4XueK50B"
+uri = "file://artifacts/customer-portal/public/images/product-hero-brand.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
 type = "image"
 title = "Logo on New Background (High-Res PNG)"
+
+[[outputs]]
+id = "aqypkF9v_tQrpBfeQs_nE"
+uri = "file://attached_assets/stock_images/warehouse-cargo_1.jpg"
+type = "image"
+title = "warehouse logistics cargo pallets boxes inventory professional photography"
+
+[[outputs]]
+id = "V6IS5iiI-a4EX-vr68FZ1"
+uri = "file://attached_assets/stock_images/warehouse-cargo_2.jpg"
+type = "image"
+title = "warehouse logistics cargo pallets boxes inventory professional photography"
+
+[[outputs]]
+id = "D0zrdTijUYlsKjJgREipI"
+uri = "file://attached_assets/stock_images/warehouse-cargo_3.jpg"
+type = "image"
+title = "warehouse logistics cargo pallets boxes inventory professional photography"
+
+[[outputs]]
+id = "BxFgN1ph6XcoUj4mlufXr"
+uri = "file://attached_assets/stock_images/freight-cargo_1.jpg"
+type = "image"
+title = "freight forwarding cargo shipping containers warehouse corporate"
+
+[[outputs]]
+id = "ot7y2ZA1zJzOAHJPYDpXY"
+uri = "file://attached_assets/stock_images/freight-cargo_2.jpg"
+type = "image"
+title = "freight forwarding cargo shipping containers warehouse corporate"

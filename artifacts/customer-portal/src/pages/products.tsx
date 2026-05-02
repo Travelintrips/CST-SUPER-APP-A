@@ -532,7 +532,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
 }
 
 // ── Product hero background — swap this path to change the image ───────────
-const PRODUCT_HERO_BG = `${import.meta.env.BASE_URL}images/warehouse.png`;
+const PRODUCT_HERO_BG = `${import.meta.env.BASE_URL}images/product-hero-brand.png`;
 
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function Products() {
@@ -569,8 +569,7 @@ export default function Products() {
         className="relative overflow-hidden"
         style={{
           backgroundImage: [
-            "linear-gradient(135deg, rgba(14,165,233,0.83) 0%, rgba(37,99,235,0.60) 100%)",
-            "linear-gradient(rgba(15,23,42,0.20) 0%, rgba(15,23,42,0.30) 100%)",
+            "linear-gradient(90deg, rgba(15,23,42,0.72) 0%, rgba(14,165,233,0.55) 45%, rgba(37,99,235,0.30) 100%)",
             `url(${PRODUCT_HERO_BG})`,
           ].join(", "),
           backgroundSize: "cover",
