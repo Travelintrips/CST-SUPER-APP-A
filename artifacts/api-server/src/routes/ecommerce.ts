@@ -4,6 +4,7 @@ import { eq, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postEcommerceOrder } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -366,8 +367,8 @@ router.post("/orders", async (req, res) => {
   }).returning();
 
   // Notify admin via WhatsApp (fire-and-forget)
-  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
-  if (adminWa) {
+  getAdminWa().then((adminWa) => {
+    if (!adminWa) return;
     const itemSummary = parsedLineItems && parsedLineItems.length > 0
       ? parsedLineItems.slice(0, 3).map((li) => `- ${li.name} (${li.qty}x)`).join("\n") +
         (parsedLineItems.length > 3 ? `\n+ ${parsedLineItems.length - 3} item lainnya` : "")
@@ -378,8 +379,8 @@ router.post("/orders", async (req, res) => {
       (customerEmail ? `Email: ${customerEmail}\n` : "") +
       `Item:\n${itemSummary}\n` +
       `Total: Rp ${grand.toLocaleString("id-ID")}`;
-    sendWhatsApp(adminWa, msg).catch(() => undefined);
-  }
+    return sendWhatsApp(adminWa, msg);
+  }).catch(() => undefined);
 
   return res.status(201).json(serializeOrder(order));
 });

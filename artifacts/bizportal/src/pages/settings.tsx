@@ -1,10 +1,116 @@
+import { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
-import { UserButton, useUser } from "@clerk/react";
+import { UserButton, useUser, useAuth } from "@clerk/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Mail, Briefcase, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+
+function WhatsAppNotificationCard() {
+  const { getToken } = useAuth();
+  const { toast } = useToast();
+  const [adminWa, setAdminWa] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/settings/notifications", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json() as { adminWa: string };
+          setAdminWa(data.adminWa ?? "");
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [getToken]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/settings/notifications", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ adminWa }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      toast({ title: "Nomor WhatsApp admin berhasil disimpan" });
+    } catch (err) {
+      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <MessageCircle className="h-5 w-5 text-primary" />
+          Notifikasi WhatsApp
+        </CardTitle>
+        <CardDescription>
+          Nomor WhatsApp admin yang menerima notifikasi saat ada order atau dokumen baru.
+          Admin akan mendapat pesan otomatis untuk Sales Quotation, Sales Order, Logistik, dan E-commerce Order.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <Skeleton className="h-10 w-full max-w-sm bg-muted" />
+        ) : (
+          <div className="flex flex-col gap-3 max-w-sm">
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-wa">Nomor WhatsApp Admin</Label>
+              <Input
+                id="admin-wa"
+                value={adminWa}
+                onChange={(e) => setAdminWa(e.target.value)}
+                placeholder="628xxxxxxxxxx"
+              />
+              <p className="text-xs text-muted-foreground">
+                Format: kode negara + nomor tanpa tanda +, spasi, atau strip. Contoh: <code>6281234567890</code>
+              </p>
+            </div>
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              size="sm"
+              className="gap-2 w-fit"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : saved ? (
+                <CheckCircle className="h-4 w-4 text-green-500" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
@@ -17,6 +123,7 @@ export default function SettingsPage() {
   });
 
   const isLoading = !isLoaded || dbLoading;
+  const isAdmin = dbUser?.role === "admin";
 
   return (
     <AppShell>
@@ -137,6 +244,8 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {isAdmin && <WhatsAppNotificationCard />}
         </div>
       </div>
     </AppShell>

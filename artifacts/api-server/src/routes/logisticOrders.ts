@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte";
+import { getAdminWa } from "../lib/adminWa";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -117,8 +118,8 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       : [];
 
   // Notify admin via WhatsApp (fire-and-forget)
-  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
-  if (adminWa) {
+  getAdminWa().then((adminWa) => {
+    if (!adminWa) return;
     const msg =
       `🚢 *Order Logistik Baru*\n` +
       `No: ${orderNumber}\n` +
@@ -127,8 +128,8 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       `Jenis: ${body.shipmentType}\n` +
       `Total: Rp ${Number(body.grandTotal).toLocaleString("id-ID")}\n` +
       `HP: ${body.phone}`;
-    sendWhatsApp(adminWa, msg).catch(() => undefined);
-  }
+    return sendWhatsApp(adminWa, msg);
+  }).catch(() => undefined);
 
   return res.status(201).json({
     ...toOrder(order),

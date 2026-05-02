@@ -14,6 +14,7 @@ import { postSalesInvoice } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -269,8 +270,8 @@ router.post("/documents", async (req, res) => {
   const detail = await loadDocWithLines(doc.id);
 
   // Notify admin via WhatsApp (fire-and-forget)
-  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
-  if (adminWa) {
+  getAdminWa().then((adminWa) => {
+    if (!adminWa) return;
     const docLabel = docKind === "quote" ? "Sales Quotation" : "Sales Order";
     const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
     const msg =
@@ -279,8 +280,8 @@ router.post("/documents", async (req, res) => {
       `Customer: ${customerName}\n` +
       `Total: Rp ${grandTotal.toLocaleString("id-ID")}\n` +
       `Tanggal: ${tanggal}`;
-    sendWhatsApp(adminWa, msg).catch(() => undefined);
-  }
+    return sendWhatsApp(adminWa, msg);
+  }).catch(() => undefined);
 
   return res.status(201).json(detail);
 });
@@ -404,8 +405,8 @@ router.post("/documents/:id/action", async (req, res) => {
   // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
   // Guard: only send if status was not already "confirmed" to prevent duplicate notifications on retries
   if (action === "confirm" && doc.status !== "confirmed") {
-    const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
-    if (adminWa) {
+    getAdminWa().then((adminWa) => {
+      if (!adminWa) return;
       const soTotal = Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0);
       const tanggal = doc.createdAt.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
       const msg =
@@ -414,8 +415,8 @@ router.post("/documents/:id/action", async (req, res) => {
         `Customer: ${doc.customerName}\n` +
         `Total: Rp ${soTotal.toLocaleString("id-ID")}\n` +
         `Tanggal: ${tanggal}`;
-      sendWhatsApp(adminWa, msg).catch(() => undefined);
-    }
+      return sendWhatsApp(adminWa, msg);
+    }).catch(() => undefined);
   }
 
   // Auto-post journal entry when newly invoiced

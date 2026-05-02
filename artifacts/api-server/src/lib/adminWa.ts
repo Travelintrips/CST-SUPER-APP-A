@@ -1,0 +1,27 @@
+import { db, portalContentTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+
+const ADMIN_WA_KEY = "fonnte_admin_wa";
+
+export async function getAdminWa(): Promise<string> {
+  try {
+    const [row] = await db
+      .select()
+      .from(portalContentTable)
+      .where(eq(portalContentTable.key, ADMIN_WA_KEY));
+    if (row && row.value.trim()) return row.value.trim();
+  } catch {
+    // fall through to env var
+  }
+  return process.env.FONNTE_ADMIN_WA ?? "";
+}
+
+export async function setAdminWa(value: string): Promise<void> {
+  await db
+    .insert(portalContentTable)
+    .values({ key: ADMIN_WA_KEY, value: value.trim(), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: value.trim(), updatedAt: new Date() },
+    });
+}

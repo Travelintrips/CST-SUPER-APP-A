@@ -19,6 +19,7 @@ import scanDocumentRouter from "./scanDocument";
 import expensesRouter from "./expenses";
 import portalRouter from "./portal";
 import { logisticOrdersRouter } from "./logisticOrders";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -41,6 +42,7 @@ router.use("/scan-document", scanDocumentRouter);
 router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
 router.use("/logistic/orders", logisticOrdersRouter);
+router.use("/settings", settingsRouter);
 router.use(storageRouter);
 
 export default router;
