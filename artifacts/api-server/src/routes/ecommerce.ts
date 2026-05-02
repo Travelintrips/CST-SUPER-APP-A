@@ -3,6 +3,7 @@ import { db, productsTable, ordersTable, productCategoriesTable, productCategory
 import { eq, count, inArray, and, ilike, or, type SQL } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postEcommerceOrder } from "../lib/accounting.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -363,6 +364,23 @@ router.post("/orders", async (req, res) => {
     grandTotal: String(grand),
     status: "pending",
   }).returning();
+
+  // Notify admin via WhatsApp (fire-and-forget)
+  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
+  if (adminWa) {
+    const itemSummary = parsedLineItems && parsedLineItems.length > 0
+      ? parsedLineItems.slice(0, 3).map((li) => `- ${li.name} (${li.qty}x)`).join("\n") +
+        (parsedLineItems.length > 3 ? `\n+ ${parsedLineItems.length - 3} item lainnya` : "")
+      : (legacyItems ?? "—");
+    const msg =
+      `🛒 *E-commerce Order Baru*\n` +
+      `Customer: ${customerName}\n` +
+      (customerEmail ? `Email: ${customerEmail}\n` : "") +
+      `Item:\n${itemSummary}\n` +
+      `Total: Rp ${grand.toLocaleString("id-ID")}`;
+    sendWhatsApp(adminWa, msg).catch(() => undefined);
+  }
+
   return res.status(201).json(serializeOrder(order));
 });
 

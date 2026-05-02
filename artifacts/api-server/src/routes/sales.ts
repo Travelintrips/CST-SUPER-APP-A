@@ -13,6 +13,7 @@ import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postSalesInvoice } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -266,6 +267,21 @@ router.post("/documents", async (req, res) => {
   );
 
   const detail = await loadDocWithLines(doc.id);
+
+  // Notify admin via WhatsApp (fire-and-forget)
+  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
+  if (adminWa) {
+    const docLabel = docKind === "quote" ? "Sales Quotation" : "Sales Order";
+    const tanggal = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+    const msg =
+      `📋 *${docLabel} Baru*\n` +
+      `No: ${docNumber}\n` +
+      `Customer: ${customerName}\n` +
+      `Total: Rp ${grandTotal.toLocaleString("id-ID")}\n` +
+      `Tanggal: ${tanggal}`;
+    sendWhatsApp(adminWa, msg).catch(() => undefined);
+  }
+
   return res.status(201).json(detail);
 });
 
