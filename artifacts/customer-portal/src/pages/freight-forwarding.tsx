@@ -17,6 +17,7 @@ import {
 /* ─── Types ──────────────────────────────────────────────────────── */
 type Direction = "Impor" | "Ekspor" | "Domestic";
 type Mode = "Sea" | "Air";
+type SeaType = "LCL" | "FCL";
 type Variant = "D2D" | "D2P" | "P2D" | "P2P";
 type GoodsCategory = "Non DG" | "DG";
 
@@ -154,6 +155,7 @@ export default function FreightForwarding() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [direction, setDirection] = useState<Direction | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
+  const [seaType, setSeaType] = useState<SeaType | null>(null);
   const [variant, setVariant] = useState<Variant | null>(null);
 
   // Form state
@@ -276,7 +278,7 @@ export default function FreightForwarding() {
   function canProceed() {
     if (step === 1) return !!direction;
     if (step === 2) return !!mode;
-    if (step === 3) return !!variant;
+    if (step === 3) return !!variant && (mode !== "Sea" || !!seaType);
     return missingFields().length === 0;
   }
 
@@ -287,7 +289,8 @@ export default function FreightForwarding() {
     }
     setSubmitting(true);
     try {
-      const serviceLabel = `Freight Forwarding — ${direction} ${modeLabel(mode!)} ${VARIANT_LABELS[variant!]}`;
+      const seaTypeLabel = mode === "Sea" && seaType ? ` (${seaType})` : "";
+      const serviceLabel = `Freight Forwarding — ${direction} ${modeLabel(mode!)}${seaTypeLabel} ${VARIANT_LABELS[variant!]}`;
       const docsList = [
         docInvoice ? `Invoice: ${docInvoice.objectPath}` : null,
         docPackingList ? `Packing List: ${docPackingList.objectPath}` : null,
@@ -297,7 +300,7 @@ export default function FreightForwarding() {
       ].filter(Boolean).join("\n");
 
       const ffData = JSON.stringify({
-        direction, mode: modeLabel(mode!), variant: VARIANT_LABELS[variant!],
+        direction, mode: modeLabel(mode!), ...(mode === "Sea" && seaType ? { seaType } : {}), variant: VARIANT_LABELS[variant!],
         sender: { name: senderName, address: senderAddress },
         receiver: { name: receiverName, address: receiverAddress },
         commodity, goodsCategory,
@@ -479,7 +482,7 @@ export default function FreightForwarding() {
               {MODES.map((m) => (
                 <button
                   key={m.label}
-                  onClick={() => setMode(m.label)}
+                  onClick={() => { setMode(m.label); if (m.label !== "Sea") setSeaType(null); }}
                   className={`rounded-2xl border-2 p-6 text-left transition-all ${
                     mode === m.label
                       ? "border-primary bg-primary/5 shadow-md"
@@ -515,6 +518,38 @@ export default function FreightForwarding() {
               <h2 className="text-xl font-bold text-foreground">Pilih Jenis Layanan</h2>
               <p className="text-sm text-muted-foreground mt-1">Tentukan rute pengiriman dari titik asal ke tujuan</p>
             </div>
+
+            {/* ── LCL / FCL selector (Sea Freight only) ─────────── */}
+            {mode === "Sea" && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Tipe Kontainer</p>
+                <div className="flex gap-2">
+                  {(["LCL", "FCL"] as SeaType[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setSeaType(t)}
+                      className={`px-5 py-2 rounded-full text-sm font-bold border-2 transition-all ${
+                        seaType === t
+                          ? t === "LCL"
+                            ? "bg-amber-400 border-amber-400 text-black shadow-sm"
+                            : "bg-gray-900 border-gray-900 text-white shadow-sm"
+                          : "bg-card border-border text-muted-foreground hover:border-primary/40"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                {seaType && (
+                  <p className="text-xs text-muted-foreground">
+                    {seaType === "LCL"
+                      ? "Less than Container Load — barang digabung bersama kargo lain dalam satu kontainer (cocok untuk muatan kecil)"
+                      : "Full Container Load — satu kontainer penuh untuk kargo Anda (cocok untuk muatan besar, lebih efisien)"}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 gap-3">
               {availableVariants().map((v) => (
                 <button
@@ -550,6 +585,11 @@ export default function FreightForwarding() {
               <div className="flex flex-wrap gap-2 mb-2">
                 <Badge variant="secondary">{direction}</Badge>
                 <Badge variant="outline">{modeLabel(mode!)}</Badge>
+                {mode === "Sea" && seaType && (
+                  <Badge className={seaType === "LCL" ? "bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100" : "bg-gray-900 text-white border-gray-900 hover:bg-gray-900"}>
+                    {seaType}
+                  </Badge>
+                )}
                 <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">{VARIANT_LABELS[variant!]}</Badge>
               </div>
               <h2 className="text-xl font-bold text-foreground">Data Pengiriman & Dokumen</h2>
