@@ -36,7 +36,7 @@ import Calculator from "@/pages/calculator";
 
 const queryClient = new QueryClient();
 
-const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/track", "/logistic-admin", "/freight-forwarding", "/pabean"];
+const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin"];
 const NO_SHELL_PREFIXES = ["/jasa/"];
 
 function AppShell() {
