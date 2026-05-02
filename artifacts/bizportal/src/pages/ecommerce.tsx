@@ -561,6 +561,7 @@ export default function EcommercePage() {
       data: {
         customerName: formData.get("customerName") as string,
         customerEmail: formData.get("customerEmail") as string,
+        customerPhone: (formData.get("customerPhone") as string) || undefined,
         lineItems: validLineItems.map(({ name, qty, unitPrice }) => ({ name, qty, unitPrice })),
         totalAmount: validSubtotal,
         taxAmount: validTax,
@@ -590,6 +591,7 @@ export default function EcommercePage() {
       data: {
         customerName: formData.get("customerName") as string,
         customerEmail: formData.get("customerEmail") as string,
+        customerPhone: (formData.get("customerPhone") as string) || undefined,
         ...(finalLineItems.length > 0 ? { lineItems: finalLineItems } : {}),
         totalAmount: finalSubtotal,
         taxAmount: finalTax,
@@ -1096,6 +1098,7 @@ export default function EcommercePage() {
                     <div className="grid gap-4 py-4">
                       <div className="grid gap-2"><Label htmlFor="customerName">Nama Pelanggan</Label><Input id="customerName" name="customerName" required data-testid="input-order-customer-name" /></div>
                       <div className="grid gap-2"><Label htmlFor="customerEmail">Email Pelanggan</Label><Input id="customerEmail" name="customerEmail" type="email" required data-testid="input-order-customer-email" /></div>
+                      <div className="grid gap-2"><Label htmlFor="customerPhone">No. WhatsApp / HP <span className="text-muted-foreground font-normal text-xs">(opsional, untuk notifikasi)</span></Label><Input id="customerPhone" name="customerPhone" type="tel" placeholder="628xxxxxxxxxx" data-testid="input-order-customer-phone" /></div>
                       <div className="grid gap-1">
                         <Label>Item Pesanan</Label>
                         <div className="border rounded-md overflow-hidden">
@@ -1687,6 +1690,7 @@ export default function EcommercePage() {
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2"><Label htmlFor="edit-customer-name">Nama Pelanggan</Label><Input id="edit-customer-name" name="customerName" defaultValue={editingOrder.customerName} required data-testid="input-edit-order-customer-name" /></div>
                 <div className="grid gap-2"><Label htmlFor="edit-customer-email">Email Pelanggan</Label><Input id="edit-customer-email" name="customerEmail" type="email" defaultValue={editingOrder.customerEmail} required data-testid="input-edit-order-customer-email" /></div>
+                <div className="grid gap-2"><Label htmlFor="edit-customer-phone">No. WhatsApp / HP <span className="text-muted-foreground font-normal text-xs">(opsional, untuk notifikasi)</span></Label><Input id="edit-customer-phone" name="customerPhone" type="tel" placeholder="628xxxxxxxxxx" defaultValue={editingOrder.customerPhone ?? ""} data-testid="input-edit-order-customer-phone" /></div>
                 <div className="grid gap-1">
                   <Label>Item Pesanan</Label>
                   <div className="border rounded-md overflow-hidden">

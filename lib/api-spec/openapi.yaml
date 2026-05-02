@@ -3038,6 +3038,9 @@ components:
           type: string
         customerEmail:
           type: string
+        customerPhone:
+          type: string
+          nullable: true
         status:
           type: string
           enum: [pending, processing, shipped, delivered, cancelled]
@@ -3066,6 +3069,9 @@ components:
           type: string
         customerEmail:
           type: string
+        customerPhone:
+          type: string
+          nullable: true
         items:
           type: string
           nullable: true
@@ -3100,6 +3106,9 @@ components:
           type: string
         customerEmail:
           type: string
+        customerPhone:
+          type: string
+          nullable: true
         items:
           type: string
           nullable: true

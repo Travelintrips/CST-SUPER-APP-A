@@ -425,11 +425,11 @@ router.put("/orders/:id", async (req, res) => {
     });
   }
 
-  // Notify customer via WhatsApp on status change to confirmed or delivered (fire-and-forget)
-  const notifyStatuses = ["confirmed", "delivered"] as const;
+  // Notify customer via WhatsApp on status change to processing or delivered (fire-and-forget)
+  const notifyStatuses = ["processing", "delivered"] as const;
   type NotifyStatus = typeof notifyStatuses[number];
   const statusLabels: Record<NotifyStatus, string> = {
-    confirmed: "Dikonfirmasi ✅",
+    processing: "Dikonfirmasi & Diproses ✅",
     delivered: "Terkirim 📦",
   };
   const isNotifyStatus = (s: unknown): s is NotifyStatus =>

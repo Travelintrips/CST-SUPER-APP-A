@@ -127,6 +127,7 @@ export interface Order {
   id: number;
   customerName: string;
   customerEmail: string;
+  customerPhone?: string | null;
   status: OrderStatus;
   totalAmount: number;
   taxAmount: number;
@@ -139,6 +140,7 @@ export interface Order {
 export interface CreateOrderBody {
   customerName: string;
   customerEmail: string;
+  customerPhone?: string | null;
   items?: string | null;
   lineItems?: LineItem[] | null;
   totalAmount: number;
@@ -176,6 +178,7 @@ export const UpdateOrderBodyStatus = {
 export interface UpdateOrderBody {
   customerName: string;
   customerEmail: string;
+  customerPhone?: string | null;
   items?: string | null;
   lineItems?: LineItem[] | null;
   totalAmount: number;
