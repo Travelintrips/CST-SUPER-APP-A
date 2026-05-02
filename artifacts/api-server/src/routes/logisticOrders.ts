@@ -6,6 +6,7 @@ import {
   portalContentTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
+import { sendWhatsApp } from "../lib/fonnte";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -114,6 +115,20 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     itemValues.length > 0
       ? await db.insert(logisticOrderItemsTable).values(itemValues).returning()
       : [];
+
+  // Notify admin via WhatsApp (fire-and-forget)
+  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
+  if (adminWa) {
+    const msg =
+      `🚢 *Order Logistik Baru*\n` +
+      `No: ${orderNumber}\n` +
+      `Customer: ${body.customerName} (${body.companyName})\n` +
+      `Rute: ${body.origin} → ${body.destination}\n` +
+      `Jenis: ${body.shipmentType}\n` +
+      `Total: Rp ${Number(body.grandTotal).toLocaleString("id-ID")}\n` +
+      `HP: ${body.phone}`;
+    sendWhatsApp(adminWa, msg).catch(() => undefined);
+  }
 
   return res.status(201).json({
     ...toOrder(order),
@@ -302,6 +317,26 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     .returning();
 
   if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // Notify customer via WhatsApp (fire-and-forget)
+  if (updated.phone) {
+    const statusLabels: Record<string, string> = {
+      "New Order": "Order Baru",
+      "Under Review": "Sedang Ditinjau",
+      "Quotation Sent": "Penawaran Telah Dikirim",
+      "Confirmed": "Dikonfirmasi",
+      "In Progress": "Sedang Diproses",
+      "Completed": "Selesai",
+      "Cancelled": "Dibatalkan",
+    };
+    const label = statusLabels[status] ?? status;
+    const msg =
+      `📦 *Update Status Order Anda*\n` +
+      `No Order: ${updated.orderNumber}\n` +
+      `Status: *${label}*\n\n` +
+      `Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.`;
+    sendWhatsApp(updated.phone, msg).catch(() => undefined);
+  }
 
   return res.json(toOrder(updated));
 });

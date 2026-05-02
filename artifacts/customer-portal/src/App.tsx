@@ -9,6 +9,7 @@ import { CartProvider } from "@/lib/cart";
 import { CartDrawer } from "@/components/CartDrawer";
 import { EditModeProvider } from "@/contexts/EditModeContext";
 import { AdminToolbar } from "@/components/AdminToolbar";
+import { WhatsAppButton } from "@/components/WhatsAppButton";
 
 // Portal pages
 import Home from "@/pages/home";
@@ -76,6 +77,7 @@ function AppShell() {
       <Footer />
       <CartDrawer />
       <AdminToolbar />
+      <WhatsAppButton />
     </div>
   );
 }

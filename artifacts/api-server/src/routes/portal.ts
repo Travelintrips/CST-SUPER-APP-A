@@ -3,6 +3,7 @@ import { db, productsTable, productCategoryMapTable, productCategoriesTable, por
 import { eq, inArray, and, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { sendWhatsApp } from "../lib/fonnte";
 
 const router = Router();
 
@@ -95,13 +96,14 @@ async function getProductCategories(productIds: number[]): Promise<Record<number
 // GET /api/portal/company
 router.get("/company", async (_req, res) => {
   const [settings] = await db.select().from(accountingSettingsTable).limit(1);
+  const adminWa = process.env.FONNTE_ADMIN_WA ?? null;
   return res.json({
     name: settings?.companyName ?? "PT. Cahaya Sejati Teknologi",
     tagline: "Solusi Logistik Terintegrasi & Berbasis Teknologi",
     logoUrl: settings?.companyLogoUrl ?? null,
     address: settings?.companyAddress ?? null,
     email: null,
-    phone: null,
+    phone: adminWa,
   });
 });
 
@@ -629,6 +631,20 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
         subtotal: (item.quantity * (item.unitPrice ?? 0)).toFixed(2),
       }))
     );
+  }
+
+  // Notify admin via WhatsApp (fire-and-forget)
+  const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
+  if (adminWa) {
+    const totalFmt = Number(doc!.grandTotal ?? 0).toLocaleString("id-ID");
+    const msg =
+      `🛒 *Order Portal Baru*\n` +
+      `No: ${doc!.docNumber}\n` +
+      `Customer: ${portalCustomer.name}${portalCustomer.company ? ` (${portalCustomer.company})` : ""}\n` +
+      `Email: ${portalCustomer.email}\n` +
+      `Total: Rp ${totalFmt}\n` +
+      `Item: ${orderItems.length} produk/jasa`;
+    sendWhatsApp(adminWa, msg).catch(() => undefined);
   }
 
   return res.status(201).json({
