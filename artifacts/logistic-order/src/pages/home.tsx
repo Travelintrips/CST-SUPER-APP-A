@@ -70,7 +70,7 @@ export default function HomePage() {
       <section className="bg-primary text-primary-foreground">
         <div className="max-w-7xl mx-auto px-6 py-20 md:py-28">
           <div className="max-w-3xl">
-            <Badge className="mb-6 bg-accent text-accent-foreground border-0 text-xs font-semibold tracking-wider uppercase">
+            <Badge className="mb-6 bg-orange-500 text-white border-0 text-xs font-semibold tracking-wider uppercase">
               Export Import & Logistics
             </Badge>
             <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-6">
@@ -85,7 +85,7 @@ export default function HomePage() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 size="lg"
-                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+                className="bg-orange-500 hover:bg-orange-600 text-white font-semibold"
                 onClick={() => setLocation("/book")}
               >
                 Start Booking <ArrowRight className="ml-2 w-4 h-4" />
@@ -113,7 +113,7 @@ export default function HomePage() {
             { icon: Award, label: "ISO Certified" },
           ].map(({ icon: Icon, label }) => (
             <div key={label} className="flex items-center gap-3">
-              <Icon className="w-5 h-5 text-accent flex-shrink-0" />
+              <Icon className="w-5 h-5 text-orange-500 flex-shrink-0" />
               <span className="text-sm font-medium text-foreground">
                 {label}
               </span>
@@ -175,7 +175,7 @@ export default function HomePage() {
                 key={label}
                 className="bg-card border border-border rounded-lg p-5 hover:shadow-md transition-shadow"
               >
-                <Icon className="w-6 h-6 text-accent mb-3" />
+                <Icon className="w-6 h-6 text-orange-500 mb-3" />
                 <h3 className="font-semibold text-foreground text-sm mb-1">
                   {label}
                 </h3>
@@ -196,7 +196,7 @@ export default function HomePage() {
           </p>
           <Button
             size="lg"
-            className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-semibold"
             onClick={() => setLocation("/book")}
           >
             Get Estimate Now <ArrowRight className="ml-2 w-4 h-4" />

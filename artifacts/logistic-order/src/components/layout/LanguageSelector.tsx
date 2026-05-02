@@ -90,7 +90,7 @@ export function LanguageSelector({ compact = false }: LanguageSelectorProps) {
                 aria-selected={locale === lang.code}
                 onClick={() => selectLocale(lang.code)}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:bg-muted ${
-                  locale === lang.code ? "bg-accent/10 text-accent font-medium" : "text-foreground"
+                  locale === lang.code ? "bg-primary/10 text-primary font-medium" : "text-foreground"
                 }`}
               >
                 <span className="text-base leading-none">{lang.flag}</span>
@@ -99,7 +99,7 @@ export function LanguageSelector({ compact = false }: LanguageSelectorProps) {
                   <span className="text-[10px] text-muted-foreground leading-tight">{lang.country}</span>
                 </div>
                 {locale === lang.code && (
-                  <span className="ml-auto text-accent text-xs font-bold">✓</span>
+                  <span className="ml-auto text-primary text-xs font-bold">✓</span>
                 )}
               </button>
             ))}

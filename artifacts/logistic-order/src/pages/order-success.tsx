@@ -36,7 +36,7 @@ export default function OrderSuccessPage() {
       {/* Header */}
       <div className="bg-primary text-primary-foreground">
         <div className="max-w-2xl mx-auto px-4 py-10 text-center">
-          <CheckCircle2 className="w-14 h-14 text-accent mx-auto mb-4" />
+          <CheckCircle2 className="w-14 h-14 text-orange-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-2">Pesanan Berhasil Dikirim!</h1>
           <p className="text-primary-foreground/70 text-sm">
             Tim kami akan menghubungi Anda segera untuk konfirmasi dan penawaran final.
@@ -77,7 +77,7 @@ export default function OrderSuccessPage() {
                   <Badge variant="outline" className="text-xs mr-2">{item.category}</Badge>
                   <span className="text-sm font-medium text-foreground">{item.serviceName}</span>
                 </div>
-                <span className="text-sm font-bold text-accent flex-shrink-0">{formatCurrency(item.subtotal)}</span>
+                <span className="text-sm font-bold text-orange-500 flex-shrink-0">{formatCurrency(item.subtotal)}</span>
               </div>
             ))}
           </div>
@@ -93,7 +93,7 @@ export default function OrderSuccessPage() {
             </div>
             <div className="flex justify-between font-bold">
               <span>Total Estimasi</span>
-              <span className="text-accent">{formatCurrency(order.grandTotal)}</span>
+              <span className="text-orange-500 font-bold">{formatCurrency(order.grandTotal)}</span>
             </div>
           </div>
           <p className="text-xs text-muted-foreground italic mt-3">
@@ -111,7 +111,7 @@ export default function OrderSuccessPage() {
             <Search className="w-4 h-4 mr-2" /> Lacak Pesanan
           </Button>
           <Button
-            className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
             onClick={() => setLocation("/book")}
           >
             <Ship className="w-4 h-4 mr-2" /> Buat Pesanan Baru <ArrowRight className="w-4 h-4 ml-1" />

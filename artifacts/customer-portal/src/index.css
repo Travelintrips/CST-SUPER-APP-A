@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap');
 
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -98,8 +98,8 @@
   --chart-4: 210 40% 96.1%;
   --chart-5: 0 84.2% 60.2%;
 
-  --app-font-sans: 'DM Sans', sans-serif;
-  --app-font-display: 'Outfit', sans-serif;
+  --app-font-sans: 'Inter', sans-serif;
+  --app-font-display: 'Poppins', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
 }

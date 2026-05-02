@@ -1,19 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, X, Ship } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 
-const NAV_LINKS = [
+const BASE_NAV_LINKS = [
   { label: "Beranda", path: "/" },
   { label: "Booking", path: "/book" },
   { label: "Lacak Pesanan", path: "/track" },
-  { label: "Admin", path: "/admin" },
 ];
+
+const ADMIN_LINK = { label: "Admin", path: "/admin" };
 
 export function Navbar() {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    setIsAdmin(Boolean(localStorage.getItem("logistic_admin_auth")));
+  }, []);
+
+  const NAV_LINKS = isAdmin ? [...BASE_NAV_LINKS, ADMIN_LINK] : BASE_NAV_LINKS;
 
   function isActive(path: string) {
     if (path === "/") return location === "/";
