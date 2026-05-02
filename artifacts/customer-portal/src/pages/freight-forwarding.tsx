@@ -472,7 +472,7 @@ export default function FreightForwarding() {
                 return (
                   <div key={d.label} className="relative">
                     <button
-                      onClick={() => !editMode && setDirection(d.label)}
+                      onClick={() => { if (!editMode) { setDirection(d.label); setStep(2); } }}
                       className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
                         direction === d.label && !editMode
                           ? `${d.color} border-opacity-100 shadow-md scale-[1.01]`
