@@ -164,7 +164,7 @@ export default function Jasa() {
                 </div>
               </div>
               <div>
-                <p className="font-bold text-foreground">Jasa Pengurusan Pabean / PPJK</p>
+                <p className="font-bold text-foreground">Pengurusan Pabean / PPJK</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {["PIB/PEB", "Handling Clearance", "Konsultasi Pabean", "Undername"].map((s) => (
                     <Badge key={s} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100">{s}</Badge>

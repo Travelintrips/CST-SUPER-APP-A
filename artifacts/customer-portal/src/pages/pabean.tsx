@@ -366,7 +366,7 @@ export default function Pabean() {
         body: JSON.stringify({
           notes: fullNotes,
           items: orderItems.length > 0 ? orderItems : [{
-            name: `Jasa Pengurusan Pabean PPJK — ${svcLabels}`,
+            name: `Pengurusan Pabean PPJK — ${svcLabels}`,
             quantity: 1,
             unitPrice: estimatedTotal(),
           }],
@@ -405,7 +405,7 @@ export default function Pabean() {
           <div className="w-px h-4 bg-primary-foreground/30" />
           <div className="flex items-center gap-2">
             <FileCheck className="h-5 w-5 text-orange-300" />
-            <span className="font-semibold text-sm">Jasa Pengurusan Pabean / PPJK</span>
+            <span className="font-semibold text-sm">Pengurusan Pabean / PPJK</span>
           </div>
         </div>
       </div>
