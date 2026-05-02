@@ -401,6 +401,22 @@ router.post("/documents/:id/action", async (req, res) => {
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
 
+  // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
+  if (action === "confirm") {
+    const adminWa = process.env.FONNTE_ADMIN_WA ?? "";
+    if (adminWa) {
+      const soTotal = Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0);
+      const tanggal = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+      const msg =
+        `📋 *Sales Order Baru (Dikonfirmasi)*\n` +
+        `No: ${doc.docNumber}\n` +
+        `Customer: ${doc.customerName}\n` +
+        `Total: Rp ${soTotal.toLocaleString("id-ID")}\n` +
+        `Tanggal: ${tanggal}`;
+      sendWhatsApp(adminWa, msg).catch(() => undefined);
+    }
+  }
+
   // Auto-post journal entry when newly invoiced
   if (
     action === "mark_invoiced" &&
