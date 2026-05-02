@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, Ship, Plane, Package, Warehouse, Truck, FileCheck,
-  Shield, FileText, ArrowRight, ChevronRight,
+  Shield, FileText, ArrowRight, ChevronRight, Scale, BookOpen, Users,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -113,37 +113,72 @@ export default function Jasa() {
           ))}
         </div>
 
-        {/* ── Freight Forwarding featured banner ── */}
-        <div className="mb-6 rounded-2xl border-2 border-primary/20 bg-gradient-to-r from-primary/5 via-sky-50 to-blue-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex items-center gap-4 flex-1">
-            <div className="flex gap-2 shrink-0">
-              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                <Ship className="h-5 w-5 text-blue-600" />
+        {/* ── Featured service banners ── */}
+        <div className="mb-6 space-y-3">
+          {/* Freight Forwarding */}
+          <div className="rounded-2xl border-2 border-primary/20 bg-gradient-to-r from-primary/5 via-sky-50 to-blue-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-4 flex-1">
+              <div className="flex gap-2 shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <Ship className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center">
+                  <Plane className="h-5 w-5 text-sky-600" />
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center">
-                <Plane className="h-5 w-5 text-sky-600" />
+              <div>
+                <p className="font-bold text-foreground">Freight Forwarding</p>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {["Impor", "Ekspor", "Domestic"].map((d) => (
+                    <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0">{d}</Badge>
+                  ))}
+                  <span className="text-[10px] text-muted-foreground">×</span>
+                  {["Sea Freight", "Air Freight"].map((m) => (
+                    <Badge key={m} variant="outline" className="text-[10px] px-1.5 py-0">{m}</Badge>
+                  ))}
+                  <span className="text-[10px] text-muted-foreground">×</span>
+                  {["D2D", "D2P", "P2D", "P2P"].map((v) => (
+                    <Badge key={v} className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">{v}</Badge>
+                  ))}
+                </div>
               </div>
             </div>
-            <div>
-              <p className="font-bold text-foreground">Freight Forwarding</p>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {["Impor", "Ekspor", "Domestic"].map((d) => (
-                  <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0">{d}</Badge>
-                ))}
-                <span className="text-[10px] text-muted-foreground">×</span>
-                {["Sea Freight", "Air Freight"].map((m) => (
-                  <Badge key={m} variant="outline" className="text-[10px] px-1.5 py-0">{m}</Badge>
-                ))}
-                <span className="text-[10px] text-muted-foreground">×</span>
-                {["D2D", "D2P", "P2D", "P2P"].map((v) => (
-                  <Badge key={v} className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">{v}</Badge>
-                ))}
-              </div>
-            </div>
+            <Button onClick={() => setLocation("/freight-forwarding")} className="gap-2 shrink-0">
+              Buat Pesanan <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-          <Button onClick={() => setLocation("/freight-forwarding")} className="gap-2 shrink-0">
-            Buat Pesanan <ChevronRight className="h-4 w-4" />
-          </Button>
+
+          {/* Jasa Pengurusan Pabean / PPJK */}
+          <div className="rounded-2xl border-2 border-orange-200 bg-gradient-to-r from-orange-50 via-amber-50 to-yellow-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-4 flex-1">
+              <div className="flex gap-2 shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
+                  <FileCheck className="h-5 w-5 text-orange-600" />
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                  <Scale className="h-5 w-5 text-amber-600" />
+                </div>
+              </div>
+              <div>
+                <p className="font-bold text-foreground">Jasa Pengurusan Pabean / PPJK</p>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {["PIB/PEB", "Handling Clearance", "Konsultasi Pabean", "Undername"].map((s) => (
+                    <Badge key={s} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100">{s}</Badge>
+                  ))}
+                  <span className="text-[10px] text-muted-foreground">×</span>
+                  {["Impor", "Ekspor"].map((d) => (
+                    <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0">{d}</Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Button
+              onClick={() => setLocation("/pabean")}
+              className="gap-2 shrink-0 bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              Ajukan Layanan <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Services grid */}
