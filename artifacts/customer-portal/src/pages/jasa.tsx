@@ -44,6 +44,8 @@ const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: strin
 
 const DEFAULT_COLOR = { bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-700" };
 
+const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
+
 export default function Jasa() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -211,7 +213,7 @@ export default function Jasa() {
                       <div className="h-32 overflow-hidden">
                         <img
                           src={imgUrl}
-                          alt={service.name}
+                          alt={stripJasa(service.name)}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
                       </div>
@@ -228,7 +230,7 @@ export default function Jasa() {
                           </Badge>
                         ))}
                       </div>
-                      <CardTitle className="text-sm leading-snug">{service.name}</CardTitle>
+                      <CardTitle className="text-sm leading-snug">{stripJasa(service.name)}</CardTitle>
                       <div className="flex items-center gap-1 mt-1">
                         <Calculator className="h-3 w-3 text-primary/70" />
                         <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">Kalkulator Biaya</span>

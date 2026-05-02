@@ -12,6 +12,8 @@ import { useLanguage } from "@/i18n/LanguageContext";
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
+const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
+
 export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const { addItem, items } = useCart();
@@ -99,7 +101,7 @@ export default function Services() {
                   </div>
                 </div>
                 <CardHeader>
-                  <CardTitle className="text-xl">{service.name}</CardTitle>
+                  <CardTitle className="text-xl">{stripJasa(service.name)}</CardTitle>
                   <CardDescription className="text-sm mt-2 leading-relaxed">
                     {service.description}
                   </CardDescription>
@@ -118,7 +120,7 @@ export default function Services() {
                     variant={isInCart(service.id) ? "outline" : "default"}
                     onClick={() => addItem({
                       productId: service.id,
-                      name: service.name,
+                      name: stripJasa(service.name),
                       unitPrice: service.price,
                       itemType: "jasa",
                     })}

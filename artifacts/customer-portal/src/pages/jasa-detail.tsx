@@ -27,6 +27,8 @@ import { isAuthenticated } from "@/lib/auth";
 import { AirportCombobox } from "@/components/AirportCombobox";
 import { LocationCombobox, type GeoLocation } from "@/components/LocationCombobox";
 
+const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
+
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Ship, Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
@@ -209,8 +211,8 @@ export default function JasaDetail() {
   const item = dbService
     ? {
         id: String(dbService.id),
-        name: dbService.name,
-        description: dbService.description ?? `Layanan ${dbService.name} profesional`,
+        name: stripJasa(dbService.name),
+        description: dbService.description ?? `Layanan ${stripJasa(dbService.name)} profesional`,
         category: serviceCategory,
         calculatorType,
       }
@@ -324,7 +326,7 @@ export default function JasaDetail() {
     .slice(0, 3)
     .map((s) => ({
       id: String(s.id),
-      name: s.name,
+      name: stripJasa(s.name),
       description: s.description ?? "",
       category: (CAT_TO_SERVICE_CAT[(s.categories ?? [])[0] ?? ""] ?? "Freight") as ServiceCategory,
       calculatorType: (CAT_TO_CALC[(s.categories ?? [])[0] ?? ""] ?? "generic") as CalculatorType,
