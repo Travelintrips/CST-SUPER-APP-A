@@ -652,12 +652,26 @@ export default function Products() {
                   <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug mb-2">
                     {product.name}
                   </p>
-                  {product.price > 0 ? (
-                    <p className="text-sm font-bold text-primary">{formatIDR(product.price)}</p>
-                  ) : (
-                    <p className="text-xs font-semibold text-amber-600">{t("products.negotiable")}</p>
-                  )}
-                  <div className="flex items-center gap-1 mt-1.5">
+                  <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                    {product.price > 0 ? (
+                      <p className="text-sm font-bold text-primary">{formatIDR(product.price)}</p>
+                    ) : (
+                      <p className="text-xs font-semibold text-amber-600">{t("products.negotiable")}</p>
+                    )}
+                    {/* Unit badge */}
+                    {product.unit && (
+                      <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-md font-semibold">
+                        /{product.unit}
+                      </span>
+                    )}
+                    {/* Multi-unit indicator */}
+                    {(product.unitOptions ?? []).length > 1 && (
+                      <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-medium">
+                        {product.unitOptions.length} satuan
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
                     <div className="flex text-amber-400">
                       {[1,2,3,4,5].map((s) => <Star key={s} className="h-2.5 w-2.5 fill-current" />)}
                     </div>

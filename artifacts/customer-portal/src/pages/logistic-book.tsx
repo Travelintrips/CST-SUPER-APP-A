@@ -338,6 +338,7 @@ export default function BookPage() {
     companyName: "", customerName: "", email: "", phone: "",
     origin: "", destination: "", commodity: "", cargoDescription: "",
     grossWeight: "", volumeCbm: "", requiredDate: "", notes: "",
+    quantity: "", unit: "",
   });
   const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
@@ -370,7 +371,12 @@ export default function BookPage() {
 
     if (commodity) {
       setFromProduct({ name: commodity, qty, price: productPrice, unit });
-      setCustomerForm((prev) => ({ ...prev, commodity }));
+      setCustomerForm((prev) => ({
+        ...prev,
+        commodity,
+        quantity: String(qty),
+        unit: unit ?? prev.unit,
+      }));
     }
 
     const serviceId = params.get("service");
@@ -435,7 +441,10 @@ export default function BookPage() {
       grossWeight: parseFloat(customerForm.grossWeight) || null,
       volumeCbm: parseFloat(customerForm.volumeCbm) || null,
       requiredDate: customerForm.requiredDate || null,
-      notes: customerForm.notes || null,
+      notes: [
+        customerForm.quantity ? `Qty: ${customerForm.quantity}${customerForm.unit ? ` ${customerForm.unit}` : ""}` : "",
+        customerForm.notes,
+      ].filter(Boolean).join(" | ") || null,
       paymentType: paymentType
         ? paymentType === "termin" && paymentTerm
           ? `termin:${paymentTerm}`
@@ -723,6 +732,34 @@ export default function BookPage() {
                 )}
               </div>
               <div><Label className="text-xs">Required Date</Label><Input type="date" value={f.requiredDate} onChange={e => set("requiredDate", e.target.value)} /></div>
+              <div>
+                <Label className="text-xs">Jumlah (Qty)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="1"
+                  value={f.quantity}
+                  onChange={e => set("quantity", e.target.value)}
+                  readOnly={!!fromProduct}
+                  className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
+                />
+                {fromProduct && (
+                  <p className="text-xs text-amber-600 mt-0.5">Dari produk yang dipilih</p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs">Satuan</Label>
+                <Input
+                  placeholder="pcs, kg, cbm..."
+                  value={f.unit}
+                  onChange={e => set("unit", e.target.value)}
+                  readOnly={!!fromProduct}
+                  className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
+                />
+                {fromProduct && (
+                  <p className="text-xs text-amber-600 mt-0.5">Dari produk yang dipilih</p>
+                )}
+              </div>
               <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={f.grossWeight} onChange={e => set("grossWeight", e.target.value)} /></div>
               <div><Label className="text-xs">Volume / CBM</Label><Input type="number" placeholder="0" value={f.volumeCbm} onChange={e => set("volumeCbm", e.target.value)} /></div>
             </div>

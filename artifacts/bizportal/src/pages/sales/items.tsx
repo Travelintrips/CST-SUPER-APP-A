@@ -358,7 +358,16 @@ export default function SalesItemsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-slate-300 text-sm">{p.subcategory ?? "-"}</TableCell>
-                        <TableCell className="text-slate-400 text-sm">{p.unit}</TableCell>
+                        <TableCell className="text-slate-400 text-sm">
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <span>{p.unit}</span>
+                            {p.itemType === "barang" && Array.isArray((p as unknown as { unitOptions?: string[] }).unitOptions) && ((p as unknown as { unitOptions?: string[] }).unitOptions ?? []).length > 0 && (
+                              (p as unknown as { unitOptions?: string[] }).unitOptions!.filter((u) => u !== p.unit).map((u) => (
+                                <Badge key={u} className="text-[9px] px-1 py-0 h-4 bg-slate-700 text-slate-300 border-slate-600">{u}</Badge>
+                              ))
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right font-mono text-sm text-slate-300">
                           {p.price > 0 ? idr(p.price) : <span className="text-slate-500 text-xs">—</span>}
                         </TableCell>
