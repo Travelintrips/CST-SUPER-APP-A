@@ -5,7 +5,7 @@ import { randomUUID } from "crypto";
 import { createHmac } from "crypto";
 import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTable, freightShipmentsTable } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
-import { requireAdmin } from "../lib/requireAdmin";
+import { requireClerkUser } from "../lib/requireAdmin";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
@@ -350,7 +350,7 @@ router.post("/location", requireDriverAuth, async (req, res) => {
 // ─── ADMIN DRIVER ROUTES ─────────────────────────────────────────────────────
 
 adminRouter.use(async (req, res, next) => {
-  if (!(await requireAdmin(req, res))) return;
+  if (!(await requireClerkUser(req, res))) return;
   next();
 });
 

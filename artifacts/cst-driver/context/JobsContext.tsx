@@ -64,9 +64,10 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   useEffect(() => {
-    if (isAuthenticated && token) {
-      refreshJobs();
-    }
+    if (!isAuthenticated || !token) return;
+    refreshJobs();
+    const pollInterval = setInterval(refreshJobs, 30_000);
+    return () => clearInterval(pollInterval);
   }, [isAuthenticated, token, refreshJobs]);
 
   useEffect(() => {

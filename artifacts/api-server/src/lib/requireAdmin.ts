@@ -34,7 +34,27 @@ async function fetchClerkEmail(userId: string) {
   }
 }
 
+const PORTAL_ADMIN_KEY = process.env["PORTAL_ADMIN_KEY"] ?? "";
+
+/** Any authenticated Clerk user — used for BizPortal staff operations */
+export async function requireClerkUser(req: Request, res: Response): Promise<boolean> {
+  if (PORTAL_ADMIN_KEY && req.headers["x-admin-key"] === PORTAL_ADMIN_KEY) {
+    return true;
+  }
+  const { userId } = getAuth(req);
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
 export async function requireAdmin(req: Request, res: Response): Promise<boolean> {
+  // Allow server-to-server calls with PORTAL_ADMIN_KEY header
+  if (PORTAL_ADMIN_KEY && req.headers["x-admin-key"] === PORTAL_ADMIN_KEY) {
+    return true;
+  }
+
   const { userId } = getAuth(req);
   if (!userId) {
     res.status(401).json({ message: "Unauthorized" });

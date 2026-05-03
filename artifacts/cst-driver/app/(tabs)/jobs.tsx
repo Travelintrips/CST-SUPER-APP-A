@@ -16,7 +16,7 @@ type Filter = 'all' | 'ASSIGNED' | 'ACCEPTED' | 'IN_TRANSIT';
 export default function JobsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { activeJobs } = useJobs();
+  const { activeJobs, refreshJobs } = useJobs();
   const [filter, setFilter] = useState<Filter>('all');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -35,8 +35,11 @@ export default function JobsScreen() {
 
   async function onRefresh() {
     setRefreshing(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setRefreshing(false);
+    try {
+      await refreshJobs();
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   function renderJob({ item }: { item: Job }) {

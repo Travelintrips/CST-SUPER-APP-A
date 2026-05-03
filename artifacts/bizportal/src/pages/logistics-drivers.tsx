@@ -12,7 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp, Activity } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp, Activity, ClipboardList } from "lucide-react";
 
 interface Driver {
   id: number;
@@ -103,6 +105,11 @@ export default function LogisticsDriversPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
+  const [showJobDialog, setShowJobDialog] = useState(false);
+  const [jobTargetDriver, setJobTargetDriver] = useState<Driver | null>(null);
+  const EMPTY_JOB = { pickupAddress: "", deliveryAddress: "", cargoDescription: "", specialInstruction: "", weight: "", customerName: "" };
+  const [jobForm, setJobForm] = useState(EMPTY_JOB);
+
   const { data: drivers = [], isLoading } = useQuery<Driver[]>({
     queryKey: ["drivers"],
     queryFn: async () => {
@@ -176,6 +183,39 @@ export default function LogisticsDriversPage() {
     },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
+
+  const createJobMutation = useMutation({
+    mutationFn: async (data: typeof EMPTY_JOB & { driverId: number }) => {
+      const token = await getToken();
+      return apiFetch("/api/drivers/jobs", token!, {
+        method: "POST",
+        body: JSON.stringify({
+          driverId: data.driverId,
+          customerName: data.customerName || null,
+          pickupAddress: data.pickupAddress || null,
+          deliveryAddress: data.deliveryAddress || null,
+          cargoDescription: data.cargoDescription || null,
+          specialInstruction: data.specialInstruction || null,
+          weight: data.weight || null,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["driver-jobs-all"] });
+      queryClient.invalidateQueries({ queryKey: ["driver-detail", jobTargetDriver?.id] });
+      toast({ title: "Job berhasil dibuat", description: `Job dikirim ke ${jobTargetDriver?.name}` });
+      setShowJobDialog(false);
+      setJobForm(EMPTY_JOB);
+      setJobTargetDriver(null);
+    },
+    onError: (e: Error) => toast({ title: "Gagal membuat job", description: e.message, variant: "destructive" }),
+  });
+
+  function openCreateJob(driver: Driver) {
+    setJobTargetDriver(driver);
+    setJobForm({ ...EMPTY_JOB });
+    setShowJobDialog(true);
+  }
 
   function openCreate() {
     setEditDriver(null);
@@ -386,7 +426,19 @@ export default function LogisticsDriversPage() {
                           <TableRow key={`${driver.id}-detail`}>
                             <TableCell colSpan={8} className="bg-muted/20 p-4">
                               <div className="space-y-3">
-                                <h3 className="text-sm font-semibold">Riwayat Job — {driver.name}</h3>
+                                <div className="flex items-center justify-between">
+                                  <h3 className="text-sm font-semibold">Riwayat Job — {driver.name}</h3>
+                                  {driver.isActive && (
+                                    <Button
+                                      size="sm"
+                                      className="gap-1.5 text-xs"
+                                      onClick={(e) => { e.stopPropagation(); openCreateJob(driver); }}
+                                    >
+                                      <ClipboardList className="w-3.5 h-3.5" />
+                                      Buat Job
+                                    </Button>
+                                  )}
+                                </div>
                                 {!expandedDetail || expandedDetail.id !== driver.id ? (
                                   <Skeleton className="h-20 w-full" />
                                 ) : expandedDetail.jobs.length === 0 ? (
@@ -423,6 +475,58 @@ export default function LogisticsDriversPage() {
         </Card>
       </div>
 
+      {/* ── Dialog Buat Job ── */}
+      <Dialog open={showJobDialog} onOpenChange={(open) => { if (!open) { setShowJobDialog(false); setJobTargetDriver(null); setJobForm(EMPTY_JOB); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Buat Job untuk {jobTargetDriver?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+              <Truck className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">{jobTargetDriver?.vehiclePlate ?? "—"} · {jobTargetDriver?.vehicleType ?? "—"}</span>
+            </div>
+            <Separator />
+            <div className="space-y-1.5">
+              <Label>Nama Customer</Label>
+              <Input placeholder="PT. Maju Bersama" value={jobForm.customerName} onChange={(e) => setJobForm({ ...jobForm, customerName: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Alamat Pickup</Label>
+              <Input placeholder="Pelabuhan Tanjung Priok, Jakarta" value={jobForm.pickupAddress} onChange={(e) => setJobForm({ ...jobForm, pickupAddress: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Alamat Tujuan</Label>
+              <Input placeholder="Gudang Cibitung, Bekasi" value={jobForm.deliveryAddress} onChange={(e) => setJobForm({ ...jobForm, deliveryAddress: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Kargo</Label>
+                <Input placeholder="Elektronik, 5 palet" value={jobForm.cargoDescription} onChange={(e) => setJobForm({ ...jobForm, cargoDescription: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Berat</Label>
+                <Input placeholder="2.5 ton" value={jobForm.weight} onChange={(e) => setJobForm({ ...jobForm, weight: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Instruksi Khusus</Label>
+              <Textarea placeholder="Handle with care..." rows={2} value={jobForm.specialInstruction} onChange={(e) => setJobForm({ ...jobForm, specialInstruction: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowJobDialog(false); setJobTargetDriver(null); setJobForm(EMPTY_JOB); }}>Batal</Button>
+            <Button
+              onClick={() => jobTargetDriver && createJobMutation.mutate({ ...jobForm, driverId: jobTargetDriver.id })}
+              disabled={createJobMutation.isPending || !jobTargetDriver}
+            >
+              {createJobMutation.isPending ? "Membuat..." : "Buat Job"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog Tambah/Edit Driver ── */}
       <Dialog open={showDialog} onOpenChange={(open) => { if (!open) { setShowDialog(false); setEditDriver(null); setForm(EMPTY_FORM); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
