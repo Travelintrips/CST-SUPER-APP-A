@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { api } from '@/services/api';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import * as Location from 'expo-location';
+import { Platform } from 'react-native';
+import { api, API_BASE_URL } from '@/services/api';
 import { useAuth } from './AuthContext';
 import { Job, ShipmentStatus } from '@/types';
 
@@ -31,11 +33,21 @@ const JobsContext = createContext<JobsContextType>({
   refreshJobs: async () => {},
 });
 
+function toAbsoluteUrl(url: string): string {
+  if (!url) return url;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('/')) return `${API_BASE_URL}${url}`;
+  return url;
+}
+
+const LOCATION_INTERVAL_MS = 60_000;
+
 export function JobsProvider({ children }: { children: React.ReactNode }) {
   const { token, isAuthenticated } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const locationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshJobs = useCallback(async () => {
     if (!token) return;
@@ -43,8 +55,8 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const data = await api.getJobs(token);
-      setJobs(data.map(mapApiJob));
-    } catch (e) {
+      setJobs((data as Record<string, unknown>[]).map(mapApiJob));
+    } catch {
       setError('Gagal memuat data pekerjaan');
     } finally {
       setIsLoading(false);
@@ -57,21 +69,64 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, token, refreshJobs]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !token) {
+      if (locationTimerRef.current) {
+        clearInterval(locationTimerRef.current);
+        locationTimerRef.current = null;
+      }
+      return;
+    }
+
+    async function startLocationTracking() {
+      if (Platform.OS === 'web') return;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+
+        async function postLocation() {
+          if (!token) return;
+          try {
+            const loc = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            await api.updateLocation(token, loc.coords.latitude, loc.coords.longitude);
+          } catch {
+          }
+        }
+
+        await postLocation();
+        locationTimerRef.current = setInterval(postLocation, LOCATION_INTERVAL_MS);
+      } catch {
+      }
+    }
+
+    startLocationTracking();
+
+    return () => {
+      if (locationTimerRef.current) {
+        clearInterval(locationTimerRef.current);
+        locationTimerRef.current = null;
+      }
+    };
+  }, [isAuthenticated, token]);
+
   async function updateJobStatus(id: string, status: ShipmentStatus, note?: string) {
     if (!token) return;
     const updated = await api.updateStatus(token, id, status, note);
     setJobs((prev) =>
-      prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated) : j))
+      prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated as Record<string, unknown>) : j))
     );
   }
 
   async function addJobPhoto(id: string, uri: string, type = 'general') {
     if (!token) return;
     const photo = await api.uploadPhoto(token, id, uri, type);
+    const photoUrl = toAbsoluteUrl((photo as Record<string, string>).url ?? uri);
     setJobs((prev) =>
       prev.map((j) =>
         j.id === id
-          ? { ...j, photos: [...j.photos, (photo as Record<string, string>).url ?? uri] }
+          ? { ...j, photos: [...j.photos, photoUrl] }
           : j
       )
     );
@@ -81,7 +136,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
     const updated = await api.submitPOD(token, id, receiverName);
     setJobs((prev) =>
-      prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated) : j))
+      prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated as Record<string, unknown>) : j))
     );
   }
 
@@ -133,7 +188,7 @@ function mapApiJob(d: Record<string, unknown>): Job {
     deliveryDateTime: String(d.deliveryDateTime ?? ''),
     specialInstruction: d.specialInstruction ? String(d.specialInstruction) : undefined,
     status: String(d.status ?? 'ASSIGNED') as ShipmentStatus,
-    photos: photos.map((p) => String((p as Record<string, unknown>).url ?? '')),
+    photos: photos.map((p) => toAbsoluteUrl(String((p as Record<string, unknown>).url ?? ''))),
     statusLogs: logs.map((l) => ({
       status: String((l as Record<string, unknown>).status ?? '') as ShipmentStatus,
       timestamp: String((l as Record<string, unknown>).timestamp ?? ''),

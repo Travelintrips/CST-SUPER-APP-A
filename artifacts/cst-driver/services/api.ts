@@ -1,8 +1,10 @@
 import { Job, ShipmentStatus } from '@/types';
 
-const BASE_URL = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
-  : '/api';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : '';
+
+const BASE_URL = `${API_BASE_URL}/api`;
 
 export const api = {
   async login(email: string, password: string) {
