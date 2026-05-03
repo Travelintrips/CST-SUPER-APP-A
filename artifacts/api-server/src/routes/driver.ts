@@ -7,6 +7,7 @@ import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTabl
 import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage";
+import { sendWhatsApp } from "../lib/fonnte";
 
 const router = Router();
 const adminRouter = Router();
@@ -479,6 +480,25 @@ adminRouter.post("/jobs", async (req, res) => {
     note: "Job diterima sistem",
     timestamp: new Date(),
   });
+
+  // Kirim notifikasi WhatsApp ke driver
+  if (driver.phone) {
+    const pickup = job.pickupAddress ?? "-";
+    const delivery = job.deliveryAddress ?? "-";
+    const customer = job.customerName ?? "-";
+    const msg = [
+      `🚚 *Job Baru: ${jobNumber}*`,
+      ``,
+      `Pelanggan: ${customer}`,
+      `Pickup: ${pickup}`,
+      `Tujuan: ${delivery}`,
+      job.cargoDescription ? `Muatan: ${job.cargoDescription}` : null,
+      job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
+      ``,
+      `Silakan buka aplikasi CST Driver untuk menerima job.`,
+    ].filter(Boolean).join("\n");
+    sendWhatsApp(driver.phone, msg).catch(() => {});
+  }
 
   res.status(201).json(serializeJob(job));
 });
