@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { api, API_BASE_URL } from '@/services/api';
 import { useAuth } from './AuthContext';
 import { Job, ShipmentStatus } from '@/types';
+import { notifyNewJob } from '@/services/notifications';
 
 interface JobsContextType {
   jobs: Job[];
@@ -48,6 +49,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const locationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const knownJobIdsRef = useRef<Set<string> | null>(null);
 
   const refreshJobs = useCallback(async () => {
     if (!token) return;
@@ -55,7 +57,23 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const data = await api.getJobs(token);
-      setJobs((data as unknown as Record<string, unknown>[]).map(mapApiJob));
+      const newJobs = (data as unknown as Record<string, unknown>[]).map(mapApiJob);
+
+      if (knownJobIdsRef.current === null) {
+        knownJobIdsRef.current = new Set(newJobs.map((j) => j.id));
+      } else {
+        for (const job of newJobs) {
+          if (
+            !knownJobIdsRef.current.has(job.id) &&
+            job.status === 'ASSIGNED'
+          ) {
+            notifyNewJob(job.jobNumber, job.customerName, job.pickupAddress);
+          }
+        }
+        knownJobIdsRef.current = new Set(newJobs.map((j) => j.id));
+      }
+
+      setJobs(newJobs);
     } catch {
       setError('Gagal memuat data pekerjaan');
     } finally {
