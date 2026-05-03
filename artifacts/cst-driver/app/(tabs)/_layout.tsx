@@ -1,9 +1,9 @@
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
-import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { Icon } from "@/components/Icon";
 
 export default function TabLayout() {
   const colors = useColors();
@@ -44,28 +44,28 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Dashboard",
-          tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Icon name="home" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="jobs"
         options={{
           title: "Jobs",
-          tabBarIcon: ({ color }) => <Feather name="truck" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Icon name="truck" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
           title: "Riwayat",
-          tabBarIcon: ({ color }) => <Feather name="clock" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Icon name="clock" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profil",
-          tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Icon name="user" size={22} color={color} />,
         }}
       />
     </Tabs>

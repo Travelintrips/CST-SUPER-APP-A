@@ -4,12 +4,12 @@ import {
   RefreshControl, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
 import { JobCard } from '@/components/JobCard';
 import { Job } from '@/types';
+import { Icon } from '@/components/Icon';
 
 type Filter = 'all' | 'ASSIGNED' | 'ACCEPTED' | 'IN_TRANSIT';
 
@@ -102,7 +102,7 @@ export default function JobsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="inbox" size={40} color={colors.mutedForeground} />
+            <Icon name="inbox" size={40} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Tidak ada job</Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
               Belum ada job dengan filter ini

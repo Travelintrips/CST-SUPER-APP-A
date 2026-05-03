@@ -4,12 +4,12 @@ import {
   FlatList, Alert, Platform, ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
+import { Icon } from '@/components/Icon';
 
 export default function PhotosScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
@@ -96,7 +96,7 @@ export default function PhotosScreen() {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="camera" size={48} color={colors.mutedForeground} />
+            <Icon name="camera" size={48} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Belum ada foto</Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
               Tambahkan foto bukti pickup, kargo, atau pengiriman
@@ -118,7 +118,7 @@ export default function PhotosScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Feather name="camera" size={20} color="#fff" />
+              <Icon name="camera" size={20} color="#fff" />
               <Text style={styles.addBtnText}>Tambah Foto</Text>
             </>
           )}

@@ -4,11 +4,11 @@ import {
   ActivityIndicator, Alert, Platform, PanResponder, GestureResponderEvent,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
+import { Icon } from '@/components/Icon';
 
 export default function PODScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
@@ -112,7 +112,7 @@ export default function PODScreen() {
       <View style={styles.content}>
         {/* Job Summary */}
         <View style={[styles.summaryCard, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
-          <Feather name="package" size={18} color="#0F3460" />
+          <Icon name="package" size={18} color="#0F3460" />
           <View style={{ flex: 1 }}>
             <Text style={styles.summaryJob}>{job.jobNumber}</Text>
             <Text style={styles.summaryCustomer}>{job.customerName}</Text>
@@ -139,7 +139,7 @@ export default function PODScreen() {
             <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Tanda Tangan Penerima *</Text>
             {isSigned && (
               <TouchableOpacity onPress={clearSignature} style={styles.clearBtn}>
-                <Feather name="trash-2" size={14} color="#EF4444" />
+                <Icon name="trash-2" size={14} color="#EF4444" />
                 <Text style={styles.clearText}>Hapus</Text>
               </TouchableOpacity>
             )}
@@ -150,7 +150,7 @@ export default function PODScreen() {
           >
             {!isSigned && (
               <View style={styles.sigPlaceholder}>
-                <Feather name="edit-3" size={24} color={colors.mutedForeground} />
+                <Icon name="edit-3" size={24} color={colors.mutedForeground} />
                 <Text style={[styles.sigPlaceholderText, { color: colors.mutedForeground }]}>
                   Tanda tangan di sini
                 </Text>
@@ -173,7 +173,7 @@ export default function PODScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Feather name="check-circle" size={20} color="#fff" />
+              <Icon name="check-circle" size={20} color="#fff" />
               <Text style={styles.confirmText}>Konfirmasi Pengiriman</Text>
             </>
           )}

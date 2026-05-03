@@ -4,13 +4,13 @@ import {
   ActivityIndicator, Platform, Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ShipmentStatus, STATUS_LABELS, NEXT_ACTION_LABEL } from '@/types';
+import { Icon } from '@/components/Icon';
 
 export default function UpdateStatusScreen() {
   const { jobId, nextStatus } = useLocalSearchParams<{ jobId: string; nextStatus: string }>();
@@ -51,7 +51,7 @@ export default function UpdateStatusScreen() {
               <Text style={[styles.fromLabel, { color: colors.mutedForeground }]}>Status Saat Ini</Text>
               <StatusBadge status={job.status} />
             </View>
-            <Feather name="arrow-right" size={22} color="#0EA5E9" />
+            <Icon name="arrow-right" size={22} color="#0EA5E9" />
             <View style={styles.statusTo}>
               <Text style={[styles.fromLabel, { color: colors.mutedForeground }]}>Status Baru</Text>
               <StatusBadge status={status} />
@@ -97,7 +97,7 @@ export default function UpdateStatusScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Feather name="check" size={18} color="#fff" />
+              <Icon name="check" size={18} color="#fff" />
               <Text style={styles.confirmText}>Konfirmasi</Text>
             </>
           )}

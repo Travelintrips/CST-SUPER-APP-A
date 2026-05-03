@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { StatusBadge } from './StatusBadge';
 import { Job } from '@/types';
+import { Icon } from '@/components/Icon';
 
 interface JobCardProps {
   job: Job;
@@ -30,7 +30,7 @@ export function JobCard({ job, onPress, compact = false }: JobCardProps) {
           <Text style={[styles.jobNumber, { color: colors.primary }]}>{job.jobNumber}</Text>
           <StatusBadge status={job.status} size="sm" />
         </View>
-        <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+        <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
       </View>
 
       <Text style={[styles.customer, { color: colors.foreground }]} numberOfLines={1}>
@@ -57,20 +57,20 @@ export function JobCard({ job, onPress, compact = false }: JobCardProps) {
 
           <View style={styles.meta}>
             <View style={styles.metaItem}>
-              <Feather name="clock" size={12} color={colors.mutedForeground} />
+              <Icon name="clock" size={12} color={colors.mutedForeground} />
               <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
                 {formatDate(job.pickupDateTime)}
               </Text>
             </View>
             {job.distance && (
               <View style={styles.metaItem}>
-                <Feather name="map-pin" size={12} color={colors.mutedForeground} />
+                <Icon name="map-pin" size={12} color={colors.mutedForeground} />
                 <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{job.distance}</Text>
               </View>
             )}
             {job.weight && (
               <View style={styles.metaItem}>
-                <Feather name="package" size={12} color={colors.mutedForeground} />
+                <Icon name="package" size={12} color={colors.mutedForeground} />
                 <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{job.weight}</Text>
               </View>
             )}

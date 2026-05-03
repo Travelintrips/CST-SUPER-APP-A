@@ -3,11 +3,11 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
 import { Job } from '@/types';
+import { Icon } from '@/components/Icon';
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('id-ID', {
@@ -32,33 +32,33 @@ export default function HistoryScreen() {
         <View style={styles.cardHeader}>
           <Text style={[styles.jobNumber, { color: '#0F3460' }]}>{item.jobNumber}</Text>
           <View style={styles.completedBadge}>
-            <Feather name="check-circle" size={12} color="#10B981" />
+            <Icon name="check-circle" size={12} color="#10B981" />
             <Text style={styles.completedText}>Selesai</Text>
           </View>
         </View>
         <Text style={[styles.customer, { color: colors.foreground }]}>{item.customerName}</Text>
         <View style={styles.routeRow}>
-          <Feather name="map-pin" size={12} color={colors.mutedForeground} />
+          <Icon name="map-pin" size={12} color={colors.mutedForeground} />
           <Text style={[styles.routeText, { color: colors.mutedForeground }]} numberOfLines={1}>
             {item.pickupAddress.split(',')[0]} → {item.deliveryAddress.split(',').slice(-2).join(',')}
           </Text>
         </View>
         <View style={styles.cardFooter}>
           <View style={styles.metaItem}>
-            <Feather name="calendar" size={11} color={colors.mutedForeground} />
+            <Icon name="calendar" size={11} color={colors.mutedForeground} />
             <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
               {completedLog ? formatDate(completedLog.timestamp) : formatDate(item.deliveryDateTime)}
             </Text>
           </View>
           {item.weight && (
             <View style={styles.metaItem}>
-              <Feather name="package" size={11} color={colors.mutedForeground} />
+              <Icon name="package" size={11} color={colors.mutedForeground} />
               <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{item.weight}</Text>
             </View>
           )}
           {item.receiverName && (
             <View style={styles.metaItem}>
-              <Feather name="user" size={11} color={colors.mutedForeground} />
+              <Icon name="user" size={11} color={colors.mutedForeground} />
               <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{item.receiverName}</Text>
             </View>
           )}
@@ -88,7 +88,7 @@ export default function HistoryScreen() {
         scrollEnabled={!!completedJobs.length}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="clock" size={40} color={colors.mutedForeground} />
+            <Icon name="clock" size={40} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Belum ada riwayat</Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
               Job yang sudah selesai akan muncul di sini

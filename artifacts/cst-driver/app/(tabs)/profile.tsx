@@ -4,15 +4,15 @@ import {
   Alert, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/context/AuthContext';
 import { useJobs } from '@/context/JobsContext';
+import { Icon, FeatherName } from '@/components/Icon';
 
 interface MenuItemProps {
-  icon: string;
+  icon: FeatherName;
   label: string;
   value?: string;
   onPress?: () => void;
@@ -28,13 +28,13 @@ function MenuItem({ icon, label, value, onPress, danger }: MenuItemProps) {
       activeOpacity={onPress ? 0.7 : 1}
     >
       <View style={[styles.menuIcon, { backgroundColor: danger ? '#FEE2E2' : '#EFF6FF' }]}>
-        <Feather name={icon as never} size={18} color={danger ? '#EF4444' : '#0F3460'} />
+        <Icon name={icon} size={18} color={danger ? '#EF4444' : '#0F3460'} />
       </View>
       <Text style={[styles.menuLabel, { color: danger ? '#EF4444' : colors.foreground }]}>{label}</Text>
       {value ? (
         <Text style={[styles.menuValue, { color: colors.mutedForeground }]}>{value}</Text>
       ) : onPress ? (
-        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+        <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
       ) : null}
     </TouchableOpacity>
   );
@@ -79,7 +79,7 @@ export default function ProfileScreen() {
         <Text style={styles.driverId}>{driver?.id}</Text>
         <View style={styles.ratingRow}>
           {[1, 2, 3, 4, 5].map((s) => (
-            <Feather
+            <Icon
               key={s}
               name="star"
               size={14}

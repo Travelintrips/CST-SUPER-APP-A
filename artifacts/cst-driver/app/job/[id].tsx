@@ -4,7 +4,6 @@ import {
   Alert, Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
@@ -12,13 +11,14 @@ import { useJobs } from '@/context/JobsContext';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StepIndicator } from '@/components/StepIndicator';
 import { NEXT_ACTION_LABEL, NEXT_STATUS } from '@/types';
+import { Icon, FeatherName } from '@/components/Icon';
 
-function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+function InfoRow({ icon, label, value }: { icon: FeatherName; label: string; value: string }) {
   const colors = useColors();
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoIcon}>
-        <Feather name={icon as never} size={15} color="#0F3460" />
+        <Icon name={icon} size={15} color="#0F3460" />
       </View>
       <View style={styles.infoContent}>
         <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>{label}</Text>
@@ -45,23 +45,24 @@ export default function JobDetailScreen() {
   if (!job) {
     return (
       <View style={[styles.notFound, { backgroundColor: colors.background }]}>
-        <Feather name="alert-circle" size={40} color={colors.mutedForeground} />
+        <Icon name="alert-circle" size={40} color={colors.mutedForeground} />
         <Text style={[styles.notFoundText, { color: colors.foreground }]}>Job tidak ditemukan</Text>
       </View>
     );
   }
 
-  const nextStatus = NEXT_STATUS[job.status];
-  const actionLabel = NEXT_ACTION_LABEL[job.status];
-  const isCompleted = job.status === 'COMPLETED' || job.status === 'CANCELLED';
-  const isPODStep = job.status === 'ARRIVED_AT_DESTINATION';
+  const currentJob = job;
+  const nextStatus = NEXT_STATUS[currentJob.status];
+  const actionLabel = NEXT_ACTION_LABEL[currentJob.status];
+  const isCompleted = currentJob.status === 'COMPLETED' || currentJob.status === 'CANCELLED';
+  const isPODStep = currentJob.status === 'ARRIVED_AT_DESTINATION';
 
   async function handleAction() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (isPODStep) {
-      router.push({ pathname: '/job/pod', params: { jobId: job.id } });
+      router.push({ pathname: '/job/pod', params: { jobId: currentJob.id } });
     } else if (nextStatus) {
-      router.push({ pathname: '/job/update', params: { jobId: job.id, nextStatus } });
+      router.push({ pathname: '/job/update', params: { jobId: currentJob.id, nextStatus } });
     }
   }
 
@@ -73,7 +74,7 @@ export default function JobDetailScreen() {
         style: 'destructive',
         onPress: async () => {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          await rejectJob(job.id);
+          await rejectJob(currentJob.id);
           router.back();
         },
       },
@@ -139,12 +140,12 @@ export default function JobDetailScreen() {
           style={[styles.card, styles.photoBtn, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
           onPress={() => router.push({ pathname: '/job/photos', params: { jobId: job.id } })}
         >
-          <Feather name="camera" size={20} color="#0F3460" />
+          <Icon name="camera" size={20} color="#0F3460" />
           <View style={styles.photoBtnText}>
             <Text style={styles.photoBtnTitle}>Foto Bukti</Text>
             <Text style={styles.photoBtnSub}>{job.photos.length} foto tersimpan</Text>
           </View>
-          <Feather name="chevron-right" size={18} color="#0F3460" />
+          <Icon name="chevron-right" size={18} color="#0F3460" />
         </TouchableOpacity>
 
         {/* Status logs */}
@@ -172,14 +173,14 @@ export default function JobDetailScreen() {
         <View style={[styles.actionBar, { paddingBottom: Platform.OS === 'web' ? 16 : insets.bottom + 8 }]}>
           {job.status === 'ASSIGNED' && (
             <TouchableOpacity style={styles.rejectBtn} onPress={handleReject}>
-              <Feather name="x" size={18} color="#EF4444" />
+              <Icon name="x" size={18} color="#EF4444" />
               <Text style={styles.rejectText}>Tolak</Text>
             </TouchableOpacity>
           )}
           {actionLabel && (
             <TouchableOpacity style={styles.actionBtn} onPress={handleAction} activeOpacity={0.85}>
               <Text style={styles.actionBtnText}>{actionLabel}</Text>
-              <Feather name="arrow-right" size={20} color="#fff" />
+              <Icon name="arrow-right" size={20} color="#fff" />
             </TouchableOpacity>
           )}
         </View>
@@ -187,7 +188,7 @@ export default function JobDetailScreen() {
 
       {job.status === 'COMPLETED' && (
         <View style={[styles.completedBar, { paddingBottom: Platform.OS === 'web' ? 16 : insets.bottom + 8 }]}>
-          <Feather name="check-circle" size={20} color="#10B981" />
+          <Icon name="check-circle" size={20} color="#10B981" />
           <Text style={styles.completedBarText}>Job Selesai</Text>
           {job.receiverName && <Text style={styles.completedReceiver}>Penerima: {job.receiverName}</Text>}
         </View>

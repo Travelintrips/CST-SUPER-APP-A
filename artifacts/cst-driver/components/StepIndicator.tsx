@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { ShipmentStatus, STATUS_FLOW, STATUS_LABELS } from '@/types';
+import { Icon } from '@/components/Icon';
 
 interface StepIndicatorProps {
   currentStatus: ShipmentStatus;
@@ -43,7 +43,7 @@ export function StepIndicator({ currentStatus }: StepIndicatorProps) {
                   ]}
                 >
                   {isDone ? (
-                    <Feather name="check" size={10} color="#fff" />
+                    <Icon name="check" size={10} color="#fff" />
                   ) : (
                     <Text style={[styles.circleNum, { color: isCurrent ? '#fff' : colors.mutedForeground }]}>
                       {idx + 1}

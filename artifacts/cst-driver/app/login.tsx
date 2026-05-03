@@ -5,10 +5,10 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/AuthContext';
+import { Icon } from '@/components/Icon';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('driver@cst.co.id');
@@ -41,7 +41,7 @@ export default function LoginScreen() {
       {/* Navy gradient top half */}
       <View style={[styles.topSection, { paddingTop: insets.top + 40 }]}>
         <View style={styles.logoCircle}>
-          <Feather name="truck" size={38} color="#fff" />
+          <Icon name="truck" size={38} color="#fff" />
         </View>
         <Text style={styles.appName}>CST Driver</Text>
         <Text style={styles.appTagline}>Logistics Operations Platform</Text>
@@ -63,7 +63,7 @@ export default function LoginScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email / ID Driver</Text>
             <View style={styles.inputWrapper}>
-              <Feather name="user" size={18} color="#64748B" style={styles.inputIcon} />
+              <Icon name="user" size={18} color="#64748B" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 value={email}
@@ -82,7 +82,7 @@ export default function LoginScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Password</Text>
             <View style={styles.inputWrapper}>
-              <Feather name="lock" size={18} color="#64748B" style={styles.inputIcon} />
+              <Icon name="lock" size={18} color="#64748B" style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, { flex: 1 }]}
                 value={password}
@@ -95,7 +95,7 @@ export default function LoginScreen() {
                 onSubmitEditing={handleLogin}
               />
               <TouchableOpacity onPress={() => setShowPassword((v) => !v)} style={styles.eyeBtn}>
-                <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color="#64748B" />
+                <Icon name={showPassword ? 'eye-off' : 'eye'} size={18} color="#64748B" />
               </TouchableOpacity>
             </View>
           </View>
@@ -112,14 +112,14 @@ export default function LoginScreen() {
             ) : (
               <>
                 <Text style={styles.loginBtnText}>Masuk</Text>
-                <Feather name="arrow-right" size={20} color="#fff" />
+                <Icon name="arrow-right" size={20} color="#fff" />
               </>
             )}
           </TouchableOpacity>
 
           {/* Demo hint */}
           <View style={styles.demoHint}>
-            <Feather name="info" size={13} color="#94A3B8" />
+            <Icon name="info" size={13} color="#94A3B8" />
             <Text style={styles.demoText}>Demo: driver@cst.co.id / driver123</Text>
           </View>
         </ScrollView>

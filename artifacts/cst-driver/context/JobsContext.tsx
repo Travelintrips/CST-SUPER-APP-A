@@ -55,7 +55,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const data = await api.getJobs(token);
-      setJobs((data as Record<string, unknown>[]).map(mapApiJob));
+      setJobs((data as unknown as Record<string, unknown>[]).map(mapApiJob));
     } catch {
       setError('Gagal memuat data pekerjaan');
     } finally {

@@ -4,13 +4,13 @@ import {
   Platform,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/context/AuthContext';
 import { useJobs } from '@/context/JobsContext';
 import { JobCard } from '@/components/JobCard';
 import { StatusBadge } from '@/components/StatusBadge';
+import { Icon } from '@/components/Icon';
 
 export default function DashboardScreen() {
   const colors = useColors();
@@ -34,12 +34,12 @@ export default function DashboardScreen() {
           <Text style={styles.greeting}>Selamat datang,</Text>
           <Text style={styles.driverName}>{driver?.name ?? 'Driver'}</Text>
           <View style={styles.truckBadge}>
-            <Feather name="truck" size={12} color="#0EA5E9" />
+            <Icon name="truck" size={12} color="#0EA5E9" />
             <Text style={styles.truckText}>{driver?.truckPlate}</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.notifBtn}>
-          <Feather name="bell" size={20} color="#fff" />
+          <Icon name="bell" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -66,9 +66,10 @@ export default function DashboardScreen() {
       {/* Active job in progress */}
       {inTransitJob && (
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            <Feather name="navigation" size={14} color="#0EA5E9" /> Sedang Berjalan
-          </Text>
+          <View style={styles.sectionTitleRow}>
+            <Icon name="navigation" size={14} color="#0EA5E9" />
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Sedang Berjalan</Text>
+          </View>
           <TouchableOpacity
             style={styles.activeJobCard}
             onPress={() => router.push({ pathname: '/job/[id]', params: { id: inTransitJob.id } })}
@@ -81,12 +82,12 @@ export default function DashboardScreen() {
             <Text style={styles.activeJobCustomer}>{inTransitJob.customerName}</Text>
             <View style={styles.activeJobRoute}>
               <View style={styles.routeItem}>
-                <Feather name="circle" size={10} color="#0EA5E9" />
+                <Icon name="circle" size={10} color="#0EA5E9" />
                 <Text style={styles.routeText} numberOfLines={1}>{inTransitJob.pickupAddress.split(',').slice(0, 2).join(',')}</Text>
               </View>
               <View style={styles.routeDash} />
               <View style={styles.routeItem}>
-                <Feather name="map-pin" size={10} color="#10B981" />
+                <Icon name="map-pin" size={10} color="#10B981" />
                 <Text style={styles.routeText} numberOfLines={1}>{inTransitJob.deliveryAddress.split(',').slice(0, 2).join(',')}</Text>
               </View>
             </View>
@@ -95,7 +96,7 @@ export default function DashboardScreen() {
               {inTransitJob.weight && <Text style={styles.activeJobMeta}>{inTransitJob.weight}</Text>}
               <View style={styles.detailBtn}>
                 <Text style={styles.detailBtnText}>Lihat Detail</Text>
-                <Feather name="chevron-right" size={14} color="#0EA5E9" />
+                <Icon name="chevron-right" size={14} color="#0EA5E9" />
               </View>
             </View>
           </TouchableOpacity>
@@ -106,9 +107,10 @@ export default function DashboardScreen() {
       {assignedJobs.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              <Feather name="inbox" size={14} color="#F59E0B" /> Job Menunggu ({assignedJobs.length})
-            </Text>
+            <View style={styles.sectionTitleRow}>
+              <Icon name="inbox" size={14} color="#F59E0B" />
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Job Menunggu ({assignedJobs.length})</Text>
+            </View>
             <TouchableOpacity onPress={() => router.push('/(tabs)/jobs')}>
               <Text style={styles.seeAll}>Lihat Semua</Text>
             </TouchableOpacity>
@@ -126,7 +128,7 @@ export default function DashboardScreen() {
       {/* Empty state */}
       {activeJobs.length === 0 && (
         <View style={styles.emptyState}>
-          <Feather name="check-circle" size={48} color="#10B981" />
+          <Icon name="check-circle" size={48} color="#10B981" />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Semua Job Selesai</Text>
           <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
             Tidak ada job aktif saat ini
@@ -173,7 +175,8 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 10, color: '#64748B', fontFamily: 'Inter_500Medium', marginTop: 2 },
   section: { paddingHorizontal: 16, marginBottom: 8 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sectionTitle: { fontSize: 14, fontFamily: 'Inter_700Bold', marginBottom: 10 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  sectionTitle: { fontSize: 14, fontFamily: 'Inter_700Bold' },
   seeAll: { fontSize: 13, color: '#0EA5E9', fontFamily: 'Inter_600SemiBold' },
   activeJobCard: {
     backgroundColor: '#0F3460', borderRadius: 20, padding: 18, gap: 10,
