@@ -51,10 +51,38 @@ export default function Login() {
 
   return (
     <div className="min-h-[calc(100vh-80px)] grid md:grid-cols-2 bg-background">
-      <div className="hidden md:flex flex-col justify-center p-12 lg:p-24 bg-primary text-primary-foreground relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 bg-cover bg-center mix-blend-overlay" style={{ backgroundImage: `url(${assetUrl("/images/warehouse.png")})` }} />
-        <div className="relative z-10 max-w-lg">
-          <div className="inline-flex mb-8 bg-white/95 rounded-xl p-2 shadow-sm">
+      {/* ── Left panel ─────────────────────────────────────────── */}
+      <div
+        className="hidden md:flex flex-col justify-center p-12 lg:p-16 relative overflow-hidden"
+        style={{
+          backgroundImage: [
+            "linear-gradient(120deg, rgba(15,23,42,0.72) 0%, rgba(14,165,233,0.55) 45%, rgba(14,165,233,0.32) 100%)",
+            `url(${assetUrl("/images/warehouse.png")})`,
+          ].join(", "),
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        {/* subtle vignette */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{ boxShadow: "inset 0 0 80px 12px rgba(11,29,50,0.50)" }}
+        />
+
+        <div className="relative z-10" style={{ maxWidth: "480px" }}>
+          {/* Logo */}
+          <div
+            className="inline-flex mb-10"
+            style={{
+              background: "rgba(255,255,255,0.90)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              borderRadius: "18px",
+              padding: "12px 16px",
+              boxShadow: "0 12px 35px rgba(15,23,42,0.22)",
+            }}
+          >
             <img
               src={assetUrl("/images/logo.png")}
               alt="Logo"
@@ -62,21 +90,63 @@ export default function Login() {
               style={{ maxWidth: "160px" }}
             />
           </div>
-          <h1 className="text-4xl lg:text-5xl font-display font-bold leading-tight mb-6">
+
+          {/* Headline */}
+          <h1
+            className="font-display mb-6"
+            style={{
+              fontWeight: 800,
+              fontSize: "clamp(36px, 4vw, 56px)",
+              lineHeight: 1.08,
+              letterSpacing: "-0.04em",
+              color: "#ffffff",
+              textShadow: "0 6px 24px rgba(15,23,42,0.55)",
+            }}
+          >
             {t("login.sideTitle")}
           </h1>
-          <p className="text-xl text-primary-foreground/80 mb-8">
+
+          {/* Description */}
+          <p
+            className="mb-10"
+            style={{
+              fontSize: "clamp(17px, 1.6vw, 21px)",
+              lineHeight: 1.6,
+              maxWidth: "420px",
+              color: "rgba(255,255,255,0.94)",
+              textShadow: "0 3px 14px rgba(15,23,42,0.45)",
+            }}
+          >
             {t("login.sideDesc")}
           </p>
-          <div className="flex items-center gap-4 text-sm font-medium">
-            <div className="flex -space-x-3">
-              {[1,2,3].map(i => (
-                <div key={i} className="w-10 h-10 rounded-full border-2 border-primary bg-accent flex items-center justify-center text-accent-foreground font-bold">
+
+          {/* Badge row + trust text */}
+          <div className="flex items-center gap-4">
+            <div className="flex -space-x-2">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white"
+                  style={{
+                    background: "#0F172A",
+                    border: "2px solid rgba(255,255,255,0.55)",
+                    boxShadow: "0 8px 20px rgba(15,23,42,0.25)",
+                  }}
+                >
                   {String.fromCharCode(64 + i)}
                 </div>
               ))}
             </div>
-            <span>{t("login.sideTrust")}</span>
+            <span
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#ffffff",
+                textShadow: "0 2px 10px rgba(15,23,42,0.45)",
+              }}
+            >
+              {t("login.sideTrust")}
+            </span>
           </div>
         </div>
       </div>
