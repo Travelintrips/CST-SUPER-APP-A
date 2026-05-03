@@ -495,7 +495,8 @@ adminRouter.post("/jobs", async (req, res) => {
       job.cargoDescription ? `Muatan: ${job.cargoDescription}` : null,
       job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
       ``,
-      `Silakan buka aplikasi CST Driver untuk menerima job.`,
+      `Ketuk link berikut untuk membuka aplikasi CST Driver:`,
+      `cst-driver://(tabs)/jobs`,
     ].filter(Boolean).join("\n");
     sendWhatsApp(driver.phone, msg).catch(() => {});
   }
