@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useGetPortalCompany } from "@workspace/api-client-react";
-import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight, Ship, Plane, FileCheck, Warehouse, Sparkles, Calculator, Tag, ChevronRight, Star } from "lucide-react";
+import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight, Ship, FileCheck, Warehouse, Truck, Sparkles, Calculator, Tag, ChevronRight, Star } from "lucide-react";
 import { assetUrl } from "@/lib/utils";
 import { useEditMode } from "@/contexts/EditModeContext";
 import { EditableText } from "@/components/EditableText";
@@ -200,9 +200,9 @@ export default function Home() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {[
               { icon: Ship, titleKey: "homePromo.services.item1Title", descKey: "homePromo.services.item1Desc", color: "from-sky-500 to-blue-600", href: "/freight-forwarding" },
-              { icon: Plane, titleKey: "homePromo.services.item2Title", descKey: "homePromo.services.item2Desc", color: "from-violet-500 to-purple-600", href: "/freight-forwarding" },
-              { icon: FileCheck, titleKey: "homePromo.services.item3Title", descKey: "homePromo.services.item3Desc", color: "from-emerald-500 to-teal-600", href: "/pabean" },
-              { icon: Warehouse, titleKey: "homePromo.services.item4Title", descKey: "homePromo.services.item4Desc", color: "from-amber-500 to-orange-600", href: "/jasa" },
+              { icon: FileCheck, titleKey: "homePromo.services.item2Title", descKey: "homePromo.services.item2Desc", color: "from-emerald-500 to-teal-600", href: "/pabean" },
+              { icon: Warehouse, titleKey: "homePromo.services.item3Title", descKey: "homePromo.services.item3Desc", color: "from-amber-500 to-orange-600", href: "/jasa" },
+              { icon: Truck, titleKey: "homePromo.services.item4Title", descKey: "homePromo.services.item4Desc", color: "from-rose-500 to-red-600", href: "/jasa" },
             ].map(({ icon: Icon, titleKey, descKey, color, href }) => (
               <Link key={titleKey} href={href}>
                 <div className="group bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 cursor-pointer h-full">
