@@ -1,6 +1,7 @@
 import { pgTable, serial, integer, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { driversTable } from "./drivers";
 import { freightShipmentsTable } from "./freightShipments";
+import { logisticOrdersTable } from "./logisticOrders";
 
 export const driverJobStatusEnum = pgEnum("driver_job_status", [
   "ASSIGNED",
@@ -22,6 +23,10 @@ export const driverJobsTable = pgTable("driver_jobs", {
     .references(() => driversTable.id, { onDelete: "cascade" }),
   freightShipmentId: integer("freight_shipment_id").references(
     () => freightShipmentsTable.id,
+    { onDelete: "set null" }
+  ),
+  logisticOrderId: integer("logistic_order_id").references(
+    () => logisticOrdersTable.id,
     { onDelete: "set null" }
   ),
   jobNumber: text("job_number").notNull().unique(),

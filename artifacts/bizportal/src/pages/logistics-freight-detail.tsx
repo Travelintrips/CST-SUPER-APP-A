@@ -48,6 +48,7 @@ import {
   type FreightRfqWithQuotes,
   type FreightQuote,
   type ShipmentStage,
+  type FreightShipmentDetail,
 } from "@workspace/api-client-react";
 import { Link } from "wouter";
 
@@ -97,8 +98,9 @@ export default function LogisticsFreightDetailPage() {
   const { toast } = useToast();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
-  const salesDocId = (shipment as any)?.salesDocId as number | null | undefined;
-  const purchaseDocId = (shipment as any)?.purchaseDocId as number | null | undefined;
+  const typedShipment = shipment as FreightShipmentDetail | undefined;
+  const salesDocId = typedShipment?.salesDocId;
+  const purchaseDocId = typedShipment?.purchaseDocId;
   const { data: linkedSalesDoc } = useGetSalesDocument(salesDocId ?? 0, { query: { queryKey: getGetSalesDocumentQueryKey(salesDocId ?? 0), enabled: !!salesDocId } });
   const { data: linkedPurchaseDoc } = useGetPurchaseDocument(purchaseDocId ?? 0, { query: { queryKey: getGetPurchaseDocumentQueryKey(purchaseDocId ?? 0), enabled: !!purchaseDocId } });
   const { data: expenses = [], isLoading: expensesLoading } = useListExpenses({ shipmentId: id });
@@ -159,8 +161,8 @@ export default function LogisticsFreightDetailPage() {
   const [expenseFilter, setExpenseFilter] = useState<"all" | "approved">("all");
 
   useEffect(() => {
-    if (shipment && (shipment as any).stages && !stagesInitialized) {
-      const stages: ShipmentStage[] = (shipment as any).stages ?? [];
+    if (typedShipment?.stages && !stagesInitialized) {
+      const stages: ShipmentStage[] = typedShipment.stages ?? [];
       setStageForms((prev) => {
         const next = { ...prev };
         for (const s of stages) {
@@ -185,7 +187,7 @@ export default function LogisticsFreightDetailPage() {
   const handleSaveStage = (stageType: StageType) => {
     const f = stageForms[stageType];
     upsertStage.mutate(
-      { shipmentId: id, data: { stageType, vendorName: f.vendorName || null, date: f.date || null, status: f.status as any, notes: f.notes || null } },
+      { shipmentId: id, data: { stageType, vendorName: f.vendorName || null, date: f.date || null, status: f.status as "pending" | "in_progress" | "done" | "cancelled", notes: f.notes || null } },
       {
         onSuccess: () => { invalidate(); toast({ title: `Tahap ${stageType} disimpan` }); },
         onError: () => toast({ title: "Gagal menyimpan tahap", variant: "destructive" }),
@@ -679,7 +681,7 @@ export default function LogisticsFreightDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {STAGE_DEFS.map(({ type, label }) => {
                 const f = stageForms[type];
-                const existingStage = ((shipment as any).stages ?? []).find((s: ShipmentStage) => s.stageType === type);
+                const existingStage = (typedShipment?.stages ?? []).find((s: ShipmentStage) => s.stageType === type);
                 const statusColor: Record<string, string> = {
                   pending: "bg-muted text-muted-foreground",
                   in_progress: "bg-blue-500/10 text-blue-500 border-blue-500/20",
@@ -1132,10 +1134,10 @@ export default function LogisticsFreightDetailPage() {
           <CardContent>
             <DriverAssignmentPanel
               shipmentId={id}
-              shipperName={(shipment as any)?.shipperName}
-              commodity={(shipment as any)?.commodity}
-              origin={(shipment as any)?.origin}
-              destination={(shipment as any)?.destination}
+              shipperName={typedShipment?.shipperName}
+              commodity={typedShipment?.commodity}
+              origin={typedShipment?.origin}
+              destination={typedShipment?.destination}
             />
           </CardContent>
         </Card>

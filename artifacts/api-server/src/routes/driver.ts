@@ -1,9 +1,10 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import multer from "multer";
-import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
+import { createHmac } from "crypto";
 import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTable, freightShipmentsTable } from "@workspace/db";
-import { eq, and, desc, or, ne } from "drizzle-orm";
+import { eq, and, desc, ne } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage";
 
@@ -12,10 +13,24 @@ const adminRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const objectStorageService = new ObjectStorageService();
 
-const JWT_SECRET = process.env.SESSION_SECRET ?? "portal-dev-secret";
+const JWT_SECRET = process.env.SESSION_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("SESSION_SECRET environment variable is required for driver auth");
+}
 
-function hashPassword(password: string): string {
-  return crypto.createHmac("sha256", JWT_SECRET).update(password).digest("hex");
+const BCRYPT_ROUNDS = 12;
+
+async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  if (!hash) return false;
+  if (hash.startsWith("$2b$") || hash.startsWith("$2a$")) {
+    return bcrypt.compare(password, hash);
+  }
+  const legacyHash = createHmac("sha256", JWT_SECRET!).update(password).digest("hex");
+  return legacyHash === hash;
 }
 
 function signDriverToken(payload: Record<string, unknown>): string {
@@ -23,14 +38,14 @@ function signDriverToken(payload: Record<string, unknown>): string {
   const body = Buffer.from(
     JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 })
   ).toString("base64url");
-  const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
+  const sig = createHmac("sha256", JWT_SECRET!).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${sig}`;
 }
 
 function verifyDriverToken(token: string): Record<string, unknown> | null {
   try {
     const [header, body, sig] = token.split(".");
-    const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
+    const expected = createHmac("sha256", JWT_SECRET!).update(`${header}.${body}`).digest("base64url");
     if (sig !== expected) return null;
     const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Record<string, unknown>;
     if (typeof payload.exp === "number" && payload.exp < Math.floor(Date.now() / 1000)) return null;
@@ -38,6 +53,38 @@ function verifyDriverToken(token: string): Record<string, unknown> | null {
     return payload;
   } catch {
     return null;
+  }
+}
+
+// Status transition state machine — defines which statuses a driver may move to from each current status
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  ASSIGNED:               ["ACCEPTED", "CANCELLED"],
+  ACCEPTED:               ["ON_THE_WAY_TO_PICKUP", "CANCELLED"],
+  ON_THE_WAY_TO_PICKUP:   ["ARRIVED_AT_PICKUP", "CANCELLED"],
+  ARRIVED_AT_PICKUP:      ["PICKED_UP", "CANCELLED"],
+  PICKED_UP:              ["IN_TRANSIT", "CANCELLED"],
+  IN_TRANSIT:             ["ARRIVED_AT_DESTINATION", "CANCELLED"],
+  ARRIVED_AT_DESTINATION: ["DELIVERED", "CANCELLED"],
+  DELIVERED:              ["COMPLETED"],
+  COMPLETED:              [],
+  CANCELLED:              [],
+};
+
+// Sync parent freight shipment status based on driver job status changes
+async function syncParentFreightStatus(
+  freightShipmentId: number | null,
+  newJobStatus: string
+): Promise<void> {
+  if (!freightShipmentId) return;
+  const [freight] = await db
+    .select({ id: freightShipmentsTable.id, status: freightShipmentsTable.status })
+    .from(freightShipmentsTable)
+    .where(eq(freightShipmentsTable.id, freightShipmentId));
+  if (!freight) return;
+  if (newJobStatus === "IN_TRANSIT" && freight.status === "confirmed") {
+    await db.update(freightShipmentsTable).set({ status: "in_transit" }).where(eq(freightShipmentsTable.id, freightShipmentId));
+  } else if (newJobStatus === "COMPLETED" && freight.status === "in_transit") {
+    await db.update(freightShipmentsTable).set({ status: "completed" }).where(eq(freightShipmentsTable.id, freightShipmentId));
   }
 }
 
@@ -107,9 +154,18 @@ router.post("/login", async (req, res) => {
     .select()
     .from(driversTable)
     .where(and(eq(driversTable.email, String(email)), eq(driversTable.isActive, true)));
-  if (!driver || driver.passwordHash !== hashPassword(String(password))) {
+  if (!driver) {
     res.status(401).json({ message: "Email atau password salah" });
     return;
+  }
+  const passwordOk = await verifyPassword(String(password), driver.passwordHash);
+  if (!passwordOk) {
+    res.status(401).json({ message: "Email atau password salah" });
+    return;
+  }
+  if (driver.passwordHash && !driver.passwordHash.startsWith("$2")) {
+    const newHash = await hashPassword(String(password));
+    await db.update(driversTable).set({ passwordHash: newHash }).where(eq(driversTable.id, driver.id));
   }
   const token = signDriverToken({ driverId: driver.id, email: driver.email });
   const { passwordHash: _ph, ...safeDriver } = driver;
@@ -163,6 +219,7 @@ router.get("/jobs", requireDriverAuth, async (req, res) => {
         ...serializeJob(job),
         statusLogs: logs.map((l) => ({ ...l, timestamp: l.timestamp.toISOString() })),
         photos: photos.map((p) => ({ ...p, takenAt: p.takenAt.toISOString() })),
+        validNextStatuses: VALID_TRANSITIONS[job.status] ?? [],
       };
     })
   );
@@ -182,6 +239,16 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
     .where(and(eq(driverJobsTable.id, jobId), eq(driverJobsTable.driverId, driverId)));
   if (!job) { res.status(404).json({ message: "Job not found" }); return; }
 
+  const allowed = VALID_TRANSITIONS[job.status] ?? [];
+  if (!allowed.includes(String(status))) {
+    res.status(400).json({
+      message: `Transisi status tidak valid: ${job.status} → ${status}. Status yang diperbolehkan: ${allowed.join(", ") || "(tidak ada)"}`,
+      currentStatus: job.status,
+      allowedTransitions: allowed,
+    });
+    return;
+  }
+
   const completedAt = status === "COMPLETED" ? new Date() : null;
   const [updated] = await db
     .update(driverJobsTable)
@@ -196,7 +263,9 @@ router.put("/jobs/:jobId/status", requireDriverAuth, async (req, res) => {
     timestamp: new Date(),
   });
 
-  res.json(serializeJob(updated));
+  await syncParentFreightStatus(job.freightShipmentId, String(status));
+
+  res.json({ ...serializeJob(updated), validNextStatuses: VALID_TRANSITIONS[String(status)] ?? [] });
 });
 
 // POST /api/driver/jobs/:jobId/photos
@@ -242,6 +311,12 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
     .where(and(eq(driverJobsTable.id, jobId), eq(driverJobsTable.driverId, driverId)));
   if (!job) { res.status(404).json({ message: "Job not found" }); return; }
 
+  const allowed = VALID_TRANSITIONS[job.status] ?? [];
+  if (!allowed.includes("DELIVERED") && job.status !== "ARRIVED_AT_DESTINATION") {
+    res.status(400).json({ message: "POD hanya dapat disubmit pada status Tiba di Tujuan" });
+    return;
+  }
+
   const [updated] = await db
     .update(driverJobsTable)
     .set({ podReceiverName: String(receiverName), status: "DELIVERED" })
@@ -255,7 +330,9 @@ router.post("/jobs/:jobId/pod", requireDriverAuth, async (req, res) => {
     timestamp: new Date(),
   });
 
-  res.json(serializeJob(updated));
+  await syncParentFreightStatus(job.freightShipmentId, "DELIVERED");
+
+  res.json({ ...serializeJob(updated), validNextStatuses: VALID_TRANSITIONS["DELIVERED"] });
 });
 
 // POST /api/driver/location
@@ -295,7 +372,7 @@ adminRouter.post("/", async (req, res) => {
   const [driver] = await db.insert(driversTable).values({
     name: String(name),
     email: String(email),
-    passwordHash: hashPassword(String(password)),
+    passwordHash: await hashPassword(String(password)),
     phone: phone ? String(phone) : null,
     licenseNumber: licenseNumber ? String(licenseNumber) : null,
     vehiclePlate: vehiclePlate ? String(vehiclePlate) : null,
@@ -327,7 +404,7 @@ adminRouter.put("/:id", async (req, res) => {
   const updateData: Record<string, unknown> = {};
   if (name) updateData.name = String(name);
   if (email) updateData.email = String(email);
-  if (password) updateData.passwordHash = hashPassword(String(password));
+  if (password) updateData.passwordHash = await hashPassword(String(password));
   if (phone !== undefined) updateData.phone = phone ? String(phone) : null;
   if (licenseNumber !== undefined) updateData.licenseNumber = licenseNumber ? String(licenseNumber) : null;
   if (vehiclePlate !== undefined) updateData.vehiclePlate = vehiclePlate ? String(vehiclePlate) : null;
@@ -347,7 +424,7 @@ adminRouter.delete("/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /api/drivers/jobs — list all driver jobs (admin)
+// GET /api/drivers/jobs/list — list all driver jobs (admin)
 adminRouter.get("/jobs/list", async (req, res) => {
   const shipmentId = req.query.shipmentId ? Number(req.query.shipmentId) : undefined;
   const driverId = req.query.driverId ? Number(req.query.driverId) : undefined;
@@ -358,6 +435,9 @@ adminRouter.get("/jobs/list", async (req, res) => {
       driverPhone: driversTable.phone,
       driverEmail: driversTable.email,
       vehiclePlate: driversTable.vehiclePlate,
+      lastLocationAt: driversTable.lastLocationAt,
+      currentLat: driversTable.currentLat,
+      currentLng: driversTable.currentLng,
     })
     .from(driverJobsTable)
     .leftJoin(driversTable, eq(driverJobsTable.driverId, driversTable.id))
@@ -369,19 +449,35 @@ adminRouter.get("/jobs/list", async (req, res) => {
           : undefined
     )
     .orderBy(desc(driverJobsTable.createdAt));
-  res.json(jobs.map(({ job, driverName, driverPhone, driverEmail, vehiclePlate }) => ({
-    ...serializeJob(job),
-    driverName,
-    driverPhone,
-    driverEmail,
-    vehiclePlate,
-  })));
+
+  const jobsWithPhotos = await Promise.all(
+    jobs.map(async ({ job, driverName, driverPhone, driverEmail, vehiclePlate, lastLocationAt, currentLat, currentLng }) => {
+      const photos = await db
+        .select()
+        .from(driverPhotosTable)
+        .where(eq(driverPhotosTable.driverJobId, job.id))
+        .orderBy(driverPhotosTable.takenAt);
+      return {
+        ...serializeJob(job),
+        driverName,
+        driverPhone,
+        driverEmail,
+        vehiclePlate,
+        lastLocationAt: lastLocationAt?.toISOString() ?? null,
+        currentLat: currentLat ?? null,
+        currentLng: currentLng ?? null,
+        photos: photos.map((p) => ({ ...p, takenAt: p.takenAt.toISOString() })),
+        validNextStatuses: VALID_TRANSITIONS[job.status] ?? [],
+      };
+    })
+  );
+  res.json(jobsWithPhotos);
 });
 
 // POST /api/drivers/jobs — assign driver to a freight shipment (admin)
 adminRouter.post("/jobs", async (req, res) => {
   const {
-    driverId, freightShipmentId, customerName, pickupAddress, deliveryAddress,
+    driverId, freightShipmentId, logisticOrderId, customerName, pickupAddress, deliveryAddress,
     cargoDescription, vehicleType, truckPlate, pickupDateTime, deliveryDateTime,
     specialInstruction, weight, distance, notes,
   } = req.body ?? {};
@@ -402,6 +498,7 @@ adminRouter.post("/jobs", async (req, res) => {
   const [job] = await db.insert(driverJobsTable).values({
     driverId: Number(driverId),
     freightShipmentId: freightShipmentId ? Number(freightShipmentId) : null,
+    logisticOrderId: logisticOrderId ? Number(logisticOrderId) : null,
     jobNumber,
     customerName: customerName ? String(customerName) : (shipmentInfo ? String(shipmentInfo.shipperName ?? "") : null),
     pickupAddress: pickupAddress ? String(pickupAddress) : null,
@@ -432,7 +529,21 @@ adminRouter.put("/jobs/:jobId", async (req, res) => {
   const jobId = Number(req.params.jobId);
   const { status, notes, customerName, pickupAddress, deliveryAddress, cargoDescription } = req.body ?? {};
   const update: Record<string, unknown> = {};
-  if (status) update.status = status;
+  if (status) {
+    const [current] = await db.select({ status: driverJobsTable.status }).from(driverJobsTable).where(eq(driverJobsTable.id, jobId));
+    if (current) {
+      const allowed = VALID_TRANSITIONS[current.status] ?? [];
+      if (!allowed.includes(String(status))) {
+        res.status(400).json({
+          message: `Transisi status tidak valid: ${current.status} → ${status}`,
+          currentStatus: current.status,
+          allowedTransitions: allowed,
+        });
+        return;
+      }
+    }
+    update.status = status;
+  }
   if (notes !== undefined) update.notes = notes;
   if (customerName) update.customerName = customerName;
   if (pickupAddress) update.pickupAddress = pickupAddress;
@@ -440,6 +551,17 @@ adminRouter.put("/jobs/:jobId", async (req, res) => {
   if (cargoDescription) update.cargoDescription = cargoDescription;
   const [job] = await db.update(driverJobsTable).set(update).where(eq(driverJobsTable.id, jobId)).returning();
   if (!job) { res.status(404).json({ message: "Job not found" }); return; }
+
+  if (status) {
+    await db.insert(driverJobLogsTable).values({
+      driverJobId: jobId,
+      status,
+      note: "Status diperbarui oleh admin",
+      timestamp: new Date(),
+    });
+    await syncParentFreightStatus(job.freightShipmentId, String(status));
+  }
+
   res.json(serializeJob(job));
 });
 

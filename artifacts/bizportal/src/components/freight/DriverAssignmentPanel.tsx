@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, MapPin, Clock, UserCheck, Plus, RefreshCw } from "lucide-react";
+import { Truck, MapPin, Clock, UserCheck, Plus, RefreshCw, Camera, Navigation } from "lucide-react";
 
 interface Driver {
   id: number;
@@ -21,6 +21,17 @@ interface Driver {
   vehiclePlate: string | null;
   vehicleType: string | null;
   isActive: boolean;
+  currentLat: string | null;
+  currentLng: string | null;
+  lastLocationAt: string | null;
+}
+
+interface Photo {
+  id: number;
+  driverJobId: number;
+  url: string;
+  photoType: string;
+  takenAt: string;
 }
 
 interface DriverJob {
@@ -41,6 +52,10 @@ interface DriverJob {
   driverPhone: string | null;
   driverEmail: string | null;
   vehiclePlate: string | null;
+  lastLocationAt: string | null;
+  currentLat: string | null;
+  currentLng: string | null;
+  photos: Photo[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -69,7 +84,7 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
-async function apiFetch(url: string, token: string, opts?: RequestInit) {
+async function apiFetch<T>(url: string, token: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...opts,
     headers: {
@@ -82,7 +97,18 @@ async function apiFetch(url: string, token: string, opts?: RequestInit) {
     const err = await res.json().catch(() => ({})) as Record<string, unknown>;
     throw new Error(String(err.message ?? "Request gagal"));
   }
-  return res.json();
+  return res.json() as Promise<T>;
+}
+
+function formatRelativeTime(isoDate: string | null): string | null {
+  if (!isoDate) return null;
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "baru saja";
+  if (mins < 60) return `${mins} menit lalu`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} jam lalu`;
+  return new Date(isoDate).toLocaleDateString("id-ID");
 }
 
 interface Props {
@@ -99,6 +125,7 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
   const { toast } = useToast();
 
   const [showDialog, setShowDialog] = useState(false);
+  const [showPhotosJobId, setShowPhotosJobId] = useState<number | null>(null);
   const [form, setForm] = useState({
     driverId: "",
     pickupAddress: origin ?? "",
@@ -109,11 +136,11 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
     notes: "",
   });
 
-  const { data: jobs = [], isLoading: jobsLoading } = useQuery<DriverJob[]>({
+  const { data: jobs = [], isLoading: jobsLoading, refetch } = useQuery<DriverJob[]>({
     queryKey: ["driver-jobs-by-shipment", shipmentId],
     queryFn: async () => {
       const token = await getToken();
-      return apiFetch(`/api/drivers/jobs/list?shipmentId=${shipmentId}`, token!);
+      return apiFetch<DriverJob[]>(`/api/drivers/jobs/list?shipmentId=${shipmentId}`, token!);
     },
   });
 
@@ -121,12 +148,13 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
     queryKey: ["drivers"],
     queryFn: async () => {
       const token = await getToken();
-      return apiFetch("/api/drivers", token!);
+      return apiFetch<Driver[]>("/api/drivers", token!);
     },
   });
 
   const activeDrivers = drivers.filter((d) => d.isActive);
   const activeJob = jobs.find((j) => j.status !== "COMPLETED" && j.status !== "CANCELLED");
+  const photosForJob = showPhotosJobId != null ? jobs.find((j) => j.id === showPhotosJobId)?.photos ?? [] : [];
 
   const assignMutation = useMutation({
     mutationFn: async (data: typeof form) => {
@@ -183,10 +211,11 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
               {STATUS_LABELS[activeJob.status] ?? activeJob.status}
             </Badge>
           </div>
+
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Truck className="h-3.5 w-3.5 shrink-0" />
-              <span>{activeJob.vehiclePlate ?? activeJob.vehicleType ?? "—"}</span>
+              <span>{activeJob.vehiclePlate ?? activeJob.truckPlate ?? activeJob.vehicleType ?? "—"}</span>
             </div>
             {activeJob.driverPhone && (
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -196,11 +225,56 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
             )}
             {activeJob.pickupAddress && (
               <div className="flex items-center gap-2 text-muted-foreground col-span-2">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-red-400" />
                 <span className="truncate">{activeJob.pickupAddress}</span>
               </div>
             )}
+            {activeJob.deliveryAddress && (
+              <div className="flex items-center gap-2 text-muted-foreground col-span-2">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                <span className="truncate">{activeJob.deliveryAddress}</span>
+              </div>
+            )}
           </div>
+
+          {activeJob.lastLocationAt && (
+            <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+              <Navigation className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+              <span>
+                Lokasi terakhir: {formatRelativeTime(activeJob.lastLocationAt)}
+                {activeJob.currentLat && activeJob.currentLng && (
+                  <> &middot; <a
+                    href={`https://maps.google.com/?q=${activeJob.currentLat},${activeJob.currentLng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-500 hover:underline ml-1"
+                  >Buka Maps</a></>
+                )}
+              </span>
+            </div>
+          )}
+
+          {activeJob.photos.length > 0 && (
+            <div>
+              <button
+                className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                onClick={() => setShowPhotosJobId(activeJob.id === showPhotosJobId ? null : activeJob.id)}
+              >
+                <Camera className="h-3.5 w-3.5" />
+                {activeJob.photos.length} foto
+              </button>
+              {showPhotosJobId === activeJob.id && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {photosForJob.map((ph) => (
+                    <a key={ph.id} href={ph.url} target="_blank" rel="noreferrer">
+                      <img src={ph.url} alt={ph.photoType} className="h-16 w-16 object-cover rounded-md border" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end">
             <Button variant="outline" size="sm" onClick={openAssign} className="text-xs gap-1">
               <Plus className="h-3.5 w-3.5" />
@@ -227,7 +301,7 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
               variant="ghost"
               size="sm"
               className="h-6 text-xs gap-1"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ["driver-jobs-by-shipment", shipmentId] })}
+              onClick={() => refetch()}
             >
               <RefreshCw className="h-3 w-3" />
               Refresh
@@ -236,11 +310,26 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
           <div className="space-y-1">
             {jobs.map((job) => (
               <div key={job.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="font-mono text-xs font-medium">{job.jobNumber}</span>
-                  <span className="text-muted-foreground ml-2 text-xs">{job.driverName}</span>
+                  <span className="text-muted-foreground text-xs">{job.driverName}</span>
+                  {job.photos.length > 0 && (
+                    <button
+                      className="text-xs text-blue-500 hover:underline flex items-center gap-0.5"
+                      onClick={() => setShowPhotosJobId(job.id === showPhotosJobId ? null : job.id)}
+                    >
+                      <Camera className="h-3 w-3" />
+                      {job.photos.length}
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
+                  {job.lastLocationAt && (
+                    <span className="text-xs text-muted-foreground hidden md:flex items-center gap-1">
+                      <Navigation className="h-3 w-3 text-blue-400" />
+                      {formatRelativeTime(job.lastLocationAt)}
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {new Date(job.assignedAt).toLocaleDateString("id-ID")}
                   </span>
@@ -251,6 +340,15 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
               </div>
             ))}
           </div>
+          {showPhotosJobId != null && photosForJob.length > 0 && !jobs.find(j => j.id === showPhotosJobId && (j.status !== "COMPLETED" && j.status !== "CANCELLED")) && (
+            <div className="flex flex-wrap gap-2 pt-1 pb-2">
+              {photosForJob.map((ph) => (
+                <a key={ph.id} href={ph.url} target="_blank" rel="noreferrer">
+                  <img src={ph.url} alt={ph.photoType} className="h-16 w-16 object-cover rounded-md border" />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
