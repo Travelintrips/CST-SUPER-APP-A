@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -41,6 +42,25 @@ export default function RootLayout() {
     Inter_700Bold,
     ...Feather.font,
   });
+
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const styleId = "feather-icons-font";
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = `
+          @font-face {
+            font-family: 'feather';
+            src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@15.1.1/build/vendor/react-native-vector-icons/Fonts/Feather.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
