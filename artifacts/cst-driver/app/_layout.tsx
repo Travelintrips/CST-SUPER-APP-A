@@ -23,6 +23,27 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
+// Inject @font-face via CSS on web BEFORE React renders anything so that
+// FontObserver (used by expo-font) finds the font already present when icons mount.
+// Metro serves TTF via localhost which is inaccessible from the browser proxy,
+// so we use jsDelivr CDN for the web bundle only.
+if (Platform.OS === "web" && typeof document !== "undefined") {
+  const STYLE_ID = "feather-icons-fontface";
+  if (!document.getElementById(STYLE_ID)) {
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = [
+      "@font-face {",
+      "  font-family: 'feather';",
+      "  src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@15.1.1/build/vendor/react-native-vector-icons/Fonts/Feather.ttf') format('truetype');",
+      "  font-weight: normal;",
+      "  font-style: normal;",
+      "}",
+    ].join("\n");
+    document.head.appendChild(style);
+  }
+}
+
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -40,27 +61,11 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    ...Feather.font,
+    // On native (Expo Go / dev build), include Feather font via the bundled asset.
+    // On web we use the CSS @font-face above; spreading here would override that
+    // with the unreachable Metro localhost URL, so we skip it.
+    ...(Platform.OS !== "web" ? Feather.font : {}),
   });
-
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      const styleId = "feather-icons-font";
-      if (!document.getElementById(styleId)) {
-        const style = document.createElement("style");
-        style.id = styleId;
-        style.textContent = `
-          @font-face {
-            font-family: 'feather';
-            src: url('https://cdn.jsdelivr.net/npm/@expo/vector-icons@15.1.1/build/vendor/react-native-vector-icons/Fonts/Feather.ttf') format('truetype');
-            font-weight: normal;
-            font-style: normal;
-          }
-        `;
-        document.head.appendChild(style);
-      }
-    }
-  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
