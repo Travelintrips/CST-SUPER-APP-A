@@ -382,49 +382,8 @@ adminRouter.post("/", async (req, res) => {
   res.status(201).json(safeDriver);
 });
 
-// GET /api/drivers/:id
-adminRouter.get("/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const [driver] = await db.select().from(driversTable).where(eq(driversTable.id, id));
-  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
-  const jobs = await db
-    .select()
-    .from(driverJobsTable)
-    .where(eq(driverJobsTable.driverId, id))
-    .orderBy(desc(driverJobsTable.createdAt))
-    .limit(20);
-  const { passwordHash: _ph, ...safeDriver } = driver;
-  res.json({ ...safeDriver, jobs: jobs.map(serializeJob) });
-});
-
-// PUT /api/drivers/:id
-adminRouter.put("/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const { name, email, password, phone, licenseNumber, vehiclePlate, vehicleType, isActive } = req.body ?? {};
-  const updateData: Record<string, unknown> = {};
-  if (name) updateData.name = String(name);
-  if (email) updateData.email = String(email);
-  if (password) updateData.passwordHash = await hashPassword(String(password));
-  if (phone !== undefined) updateData.phone = phone ? String(phone) : null;
-  if (licenseNumber !== undefined) updateData.licenseNumber = licenseNumber ? String(licenseNumber) : null;
-  if (vehiclePlate !== undefined) updateData.vehiclePlate = vehiclePlate ? String(vehiclePlate) : null;
-  if (vehicleType !== undefined) updateData.vehicleType = vehicleType ? String(vehicleType) : null;
-  if (isActive !== undefined) updateData.isActive = Boolean(isActive);
-  const [driver] = await db.update(driversTable).set(updateData).where(eq(driversTable.id, id)).returning();
-  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
-  const { passwordHash: _ph, ...safeDriver } = driver;
-  res.json(safeDriver);
-});
-
-// DELETE /api/drivers/:id — soft delete (deactivate)
-adminRouter.delete("/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const [driver] = await db.update(driversTable).set({ isActive: false }).where(eq(driversTable.id, id)).returning();
-  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
-  res.json({ ok: true });
-});
-
 // GET /api/drivers/jobs/list — list all driver jobs (admin)
+// IMPORTANT: must be registered BEFORE /:id to avoid Express swallowing it
 adminRouter.get("/jobs/list", async (req, res) => {
   const shipmentId = req.query.shipmentId ? Number(req.query.shipmentId) : undefined;
   const driverId = req.query.driverId ? Number(req.query.driverId) : undefined;
@@ -563,6 +522,51 @@ adminRouter.put("/jobs/:jobId", async (req, res) => {
   }
 
   res.json(serializeJob(job));
+});
+
+// GET /api/drivers/:id — must be AFTER /jobs/list to avoid route shadowing
+adminRouter.get("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
+  const [driver] = await db.select().from(driversTable).where(eq(driversTable.id, id));
+  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
+  const jobs = await db
+    .select()
+    .from(driverJobsTable)
+    .where(eq(driverJobsTable.driverId, id))
+    .orderBy(desc(driverJobsTable.createdAt))
+    .limit(20);
+  const { passwordHash: _ph, ...safeDriver } = driver;
+  res.json({ ...safeDriver, jobs: jobs.map(serializeJob) });
+});
+
+// PUT /api/drivers/:id — must be AFTER /jobs/* routes
+adminRouter.put("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
+  const { name, email, password, phone, licenseNumber, vehiclePlate, vehicleType, isActive } = req.body ?? {};
+  const updateData: Record<string, unknown> = {};
+  if (name) updateData.name = String(name);
+  if (email) updateData.email = String(email);
+  if (password) updateData.passwordHash = await hashPassword(String(password));
+  if (phone !== undefined) updateData.phone = phone ? String(phone) : null;
+  if (licenseNumber !== undefined) updateData.licenseNumber = licenseNumber ? String(licenseNumber) : null;
+  if (vehiclePlate !== undefined) updateData.vehiclePlate = vehiclePlate ? String(vehiclePlate) : null;
+  if (vehicleType !== undefined) updateData.vehicleType = vehicleType ? String(vehicleType) : null;
+  if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+  const [driver] = await db.update(driversTable).set(updateData).where(eq(driversTable.id, id)).returning();
+  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
+  const { passwordHash: _ph, ...safeDriver } = driver;
+  res.json(safeDriver);
+});
+
+// DELETE /api/drivers/:id — soft delete (deactivate); must be AFTER /jobs/* routes
+adminRouter.delete("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
+  const [driver] = await db.update(driversTable).set({ isActive: false }).where(eq(driversTable.id, id)).returning();
+  if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
+  res.json({ ok: true });
 });
 
 export { router as driverRouter, adminRouter as driversAdminRouter };
