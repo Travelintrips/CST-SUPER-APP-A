@@ -39,14 +39,8 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    ...Feather.font,
   });
-
-  // Load vector icon fonts asynchronously — works on both web and native.
-  // On native (Expo Go) these are already bundled; loadFont() is a safe no-op.
-  // On web they must be loaded explicitly for glyphs to render.
-  useEffect(() => {
-    Feather.loadFont().catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
