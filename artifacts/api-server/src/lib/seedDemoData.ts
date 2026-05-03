@@ -11,7 +11,9 @@ import {
   expensesTable,
   chartOfAccountsTable,
   productsTable,
+  driversTable,
 } from "@workspace/db";
+import bcrypt from "bcryptjs";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.js";
 
@@ -492,5 +494,52 @@ export async function seedDemoData(): Promise<void> {
     );
   } catch (err) {
     logger.error({ err }, "Failed to seed demo data");
+  }
+}
+
+const DEMO_DRIVERS = [
+  {
+    name: "Demo Driver",
+    email: "driver@cst.co.id",
+    password: "driver123",
+    phone: "+62 812-0000-0001",
+    licenseNumber: "SIM-B2-DEMO-001",
+    vehiclePlate: "B 1234 CST",
+    vehicleType: "Truk Engkel",
+  },
+  {
+    name: "Budi Santoso",
+    email: "budi@cst.co.id",
+    password: "driver123",
+    phone: "+62 812-0000-0002",
+    licenseNumber: "SIM-B2-DEMO-002",
+    vehiclePlate: "B 5678 CST",
+    vehicleType: "Truk Fuso",
+  },
+];
+
+export async function seedDemoDrivers() {
+  try {
+    const existing = await db.select({ id: driversTable.id }).from(driversTable).limit(1);
+    if (existing.length > 0) {
+      logger.info("Demo drivers: already seeded, skipping");
+      return;
+    }
+    for (const d of DEMO_DRIVERS) {
+      const passwordHash = await bcrypt.hash(d.password, 10);
+      await db.insert(driversTable).values({
+        name: d.name,
+        email: d.email,
+        passwordHash,
+        phone: d.phone,
+        licenseNumber: d.licenseNumber,
+        vehiclePlate: d.vehiclePlate,
+        vehicleType: d.vehicleType,
+        isActive: true,
+      }).onConflictDoNothing();
+    }
+    logger.info(`Demo drivers seeded: ${DEMO_DRIVERS.map(d => d.email).join(", ")}`);
+  } catch (err) {
+    logger.error({ err }, "Failed to seed demo drivers");
   }
 }
