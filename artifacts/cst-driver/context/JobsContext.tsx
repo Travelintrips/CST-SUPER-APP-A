@@ -1,192 +1,93 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { storage } from '@/services/storage';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { api } from '@/services/api';
+import { useAuth } from './AuthContext';
 import { Job, ShipmentStatus } from '@/types';
-
-const DUMMY_JOBS: Job[] = [
-  {
-    id: 'job-001',
-    jobNumber: 'TRK-2026-001',
-    customerName: 'PT Garuda Nusantara',
-    pickupAddress: 'Pelabuhan Tanjung Priok, Jl. Enggano No.1, Jakarta Utara',
-    deliveryAddress: 'Kawasan Industri Pulogadung, Jl. Bekasi Raya KM 22, Jakarta Timur',
-    cargoDescription: 'Kontainer 20ft — Electronic Components',
-    vehicleType: 'Truk Engkel',
-    truckPlate: 'B 8234 CST',
-    driverName: 'Ahmad Rizki',
-    pickupDateTime: '2026-05-04T08:00:00',
-    deliveryDateTime: '2026-05-04T12:00:00',
-    specialInstruction: 'Handle with care, fragile items. Koordinasi dengan pihak gudang sebelum bongkar muat.',
-    status: 'ASSIGNED',
-    photos: [],
-    statusLogs: [
-      { status: 'ASSIGNED', timestamp: '2026-05-03T14:00:00', note: 'Job diterima sistem' },
-    ],
-    weight: '5.2 ton',
-    distance: '28 km',
-  },
-  {
-    id: 'job-002',
-    jobNumber: 'TRK-2026-002',
-    customerName: 'CV Maju Bersama',
-    pickupAddress: 'Gudang CST Logistics, Jl. Raya Cikupa KM 5, Tangerang',
-    deliveryAddress: 'Pelabuhan Tanjung Emas, Jl. Coaster No.10, Semarang, Jawa Tengah',
-    cargoDescription: 'Barang Elektronik + Spare Parts Otomotif',
-    vehicleType: 'Truk CDD Long',
-    truckPlate: 'B 8234 CST',
-    driverName: 'Ahmad Rizki',
-    pickupDateTime: '2026-05-03T06:00:00',
-    deliveryDateTime: '2026-05-04T18:00:00',
-    specialInstruction: 'Keep dry, barang sensitif kelembaban. Jangan ditumpuk lebih dari 2 layer.',
-    status: 'IN_TRANSIT',
-    photos: [],
-    statusLogs: [
-      { status: 'ASSIGNED', timestamp: '2026-05-02T20:00:00' },
-      { status: 'ACCEPTED', timestamp: '2026-05-02T20:15:00' },
-      { status: 'ON_THE_WAY_TO_PICKUP', timestamp: '2026-05-03T05:30:00' },
-      { status: 'ARRIVED_AT_PICKUP', timestamp: '2026-05-03T06:05:00' },
-      { status: 'PICKED_UP', timestamp: '2026-05-03T07:20:00' },
-      { status: 'IN_TRANSIT', timestamp: '2026-05-03T07:30:00' },
-    ],
-    weight: '8.7 ton',
-    distance: '460 km',
-  },
-  {
-    id: 'job-003',
-    jobNumber: 'TRK-2026-000',
-    customerName: 'PT Sinar Cahaya Global',
-    pickupAddress: 'MM2100 Industrial Town, Cikarang Barat, Bekasi',
-    deliveryAddress: 'Terminal Petikemas Surabaya, Jl. Tanjung Sadari, Surabaya',
-    cargoDescription: 'Mesin Industri + Spare Parts',
-    vehicleType: 'Truk CDE',
-    truckPlate: 'B 8234 CST',
-    driverName: 'Ahmad Rizki',
-    pickupDateTime: '2026-05-01T07:00:00',
-    deliveryDateTime: '2026-05-02T16:00:00',
-    status: 'COMPLETED',
-    photos: [],
-    statusLogs: [
-      { status: 'ASSIGNED', timestamp: '2026-04-30T15:00:00' },
-      { status: 'ACCEPTED', timestamp: '2026-04-30T15:10:00' },
-      { status: 'ON_THE_WAY_TO_PICKUP', timestamp: '2026-05-01T06:30:00' },
-      { status: 'ARRIVED_AT_PICKUP', timestamp: '2026-05-01T07:05:00' },
-      { status: 'PICKED_UP', timestamp: '2026-05-01T08:00:00' },
-      { status: 'IN_TRANSIT', timestamp: '2026-05-01T08:10:00' },
-      { status: 'ARRIVED_AT_DESTINATION', timestamp: '2026-05-02T15:40:00' },
-      { status: 'DELIVERED', timestamp: '2026-05-02T16:00:00' },
-      { status: 'COMPLETED', timestamp: '2026-05-02T16:05:00' },
-    ],
-    podSigned: true,
-    receiverName: 'Budi Santoso',
-    weight: '12.5 ton',
-    distance: '740 km',
-  },
-  {
-    id: 'job-004',
-    jobNumber: 'TRK-2026-999',
-    customerName: 'PT Indo Makmur',
-    pickupAddress: 'Kawasan Berikat Nusantara, Marunda, Jakarta Utara',
-    deliveryAddress: 'IKM Sentra Batik, Yogyakarta',
-    cargoDescription: 'Bahan Baku Tekstil',
-    vehicleType: 'Truk Engkel',
-    truckPlate: 'B 8234 CST',
-    driverName: 'Ahmad Rizki',
-    pickupDateTime: '2026-04-28T08:00:00',
-    deliveryDateTime: '2026-04-29T14:00:00',
-    status: 'COMPLETED',
-    photos: [],
-    statusLogs: [
-      { status: 'ASSIGNED', timestamp: '2026-04-27T09:00:00' },
-      { status: 'ACCEPTED', timestamp: '2026-04-27T09:05:00' },
-      { status: 'ON_THE_WAY_TO_PICKUP', timestamp: '2026-04-28T07:30:00' },
-      { status: 'ARRIVED_AT_PICKUP', timestamp: '2026-04-28T08:10:00' },
-      { status: 'PICKED_UP', timestamp: '2026-04-28T09:00:00' },
-      { status: 'IN_TRANSIT', timestamp: '2026-04-28T09:10:00' },
-      { status: 'ARRIVED_AT_DESTINATION', timestamp: '2026-04-29T13:50:00' },
-      { status: 'DELIVERED', timestamp: '2026-04-29T14:00:00' },
-      { status: 'COMPLETED', timestamp: '2026-04-29T14:10:00' },
-    ],
-    podSigned: true,
-    receiverName: 'Dewi Rahayu',
-    weight: '3.8 ton',
-    distance: '520 km',
-  },
-];
 
 interface JobsContextType {
   jobs: Job[];
   activeJobs: Job[];
   completedJobs: Job[];
+  isLoading: boolean;
+  error: string | null;
   getJob: (id: string) => Job | undefined;
-  updateJobStatus: (id: string, status: ShipmentStatus, note?: string) => void;
-  addJobPhoto: (id: string, uri: string) => void;
-  submitPOD: (id: string, receiverName: string) => void;
-  rejectJob: (id: string) => void;
+  updateJobStatus: (id: string, status: ShipmentStatus, note?: string) => Promise<void>;
+  addJobPhoto: (id: string, uri: string, type?: string) => Promise<void>;
+  submitPOD: (id: string, receiverName: string) => Promise<void>;
+  rejectJob: (id: string) => Promise<void>;
+  refreshJobs: () => Promise<void>;
 }
 
 const JobsContext = createContext<JobsContextType>({
   jobs: [],
   activeJobs: [],
   completedJobs: [],
+  isLoading: false,
+  error: null,
   getJob: () => undefined,
-  updateJobStatus: () => {},
-  addJobPhoto: () => {},
-  submitPOD: () => {},
-  rejectJob: () => {},
+  updateJobStatus: async () => {},
+  addJobPhoto: async () => {},
+  submitPOD: async () => {},
+  rejectJob: async () => {},
+  refreshJobs: async () => {},
 });
 
 export function JobsProvider({ children }: { children: React.ReactNode }) {
-  const [jobs, setJobs] = useState<Job[]>(DUMMY_JOBS);
+  const { token, isAuthenticated } = useAuth();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshJobs = useCallback(async () => {
+    if (!token) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await api.getJobs(token);
+      setJobs(data.map(mapApiJob));
+    } catch (e) {
+      setError('Gagal memuat data pekerjaan');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
-    loadJobs();
-  }, []);
-
-  async function loadJobs() {
-    try {
-      const stored = await storage.getJobs();
-      if (stored) {
-        setJobs(JSON.parse(stored) as Job[]);
-      }
-    } catch {
-      setJobs(DUMMY_JOBS);
+    if (isAuthenticated && token) {
+      refreshJobs();
     }
-  }
+  }, [isAuthenticated, token, refreshJobs]);
 
-  async function saveJobs(updatedJobs: Job[]) {
-    setJobs(updatedJobs);
-    await storage.setJobs(updatedJobs);
-  }
-
-  function updateJobStatus(id: string, status: ShipmentStatus, note?: string) {
-    const updated = jobs.map((j) => {
-      if (j.id !== id) return j;
-      const log = { status, timestamp: new Date().toISOString(), note };
-      return { ...j, status, statusLogs: [...j.statusLogs, log] };
-    });
-    saveJobs(updated);
-  }
-
-  function addJobPhoto(id: string, uri: string) {
-    const updated = jobs.map((j) =>
-      j.id === id ? { ...j, photos: [...j.photos, uri] } : j
+  async function updateJobStatus(id: string, status: ShipmentStatus, note?: string) {
+    if (!token) return;
+    const updated = await api.updateStatus(token, id, status, note);
+    setJobs((prev) =>
+      prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated) : j))
     );
-    saveJobs(updated);
   }
 
-  function submitPOD(id: string, receiverName: string) {
-    const updated = jobs.map((j) =>
-      j.id === id ? { ...j, podSigned: true, receiverName } : j
+  async function addJobPhoto(id: string, uri: string, type = 'general') {
+    if (!token) return;
+    const photo = await api.uploadPhoto(token, id, uri, type);
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === id
+          ? { ...j, photos: [...j.photos, (photo as Record<string, string>).url ?? uri] }
+          : j
+      )
     );
-    saveJobs(updated);
   }
 
-  function rejectJob(id: string) {
-    const updated = jobs.map((j) =>
-      j.id === id
-        ? { ...j, status: 'CANCELLED' as ShipmentStatus, statusLogs: [...j.statusLogs, { status: 'CANCELLED' as ShipmentStatus, timestamp: new Date().toISOString(), note: 'Ditolak oleh driver' }] }
-        : j
+  async function submitPOD(id: string, receiverName: string) {
+    if (!token) return;
+    const updated = await api.submitPOD(token, id, receiverName);
+    setJobs((prev) =>
+      prev.map((j) => (j.id === id ? mergeJobUpdate(j, updated) : j))
     );
-    saveJobs(updated);
+  }
+
+  async function rejectJob(id: string) {
+    if (!token) return;
+    await updateJobStatus(id, 'CANCELLED', 'Ditolak oleh driver');
   }
 
   const activeJobs = jobs.filter(
@@ -200,16 +101,64 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         jobs,
         activeJobs,
         completedJobs,
+        isLoading,
+        error,
         getJob: (id) => jobs.find((j) => j.id === id),
         updateJobStatus,
         addJobPhoto,
         submitPOD,
         rejectJob,
+        refreshJobs,
       }}
     >
       {children}
     </JobsContext.Provider>
   );
+}
+
+function mapApiJob(d: Record<string, unknown>): Job {
+  const logs = (d.statusLogs as Record<string, unknown>[] | undefined) ?? [];
+  const photos = (d.photos as Record<string, unknown>[] | undefined) ?? [];
+  return {
+    id: String(d.id ?? ''),
+    jobNumber: String(d.jobNumber ?? ''),
+    customerName: String(d.customerName ?? ''),
+    pickupAddress: String(d.pickupAddress ?? ''),
+    deliveryAddress: String(d.deliveryAddress ?? ''),
+    cargoDescription: String(d.cargoDescription ?? ''),
+    vehicleType: String(d.vehicleType ?? ''),
+    truckPlate: String(d.truckPlate ?? ''),
+    driverName: '',
+    pickupDateTime: String(d.pickupDateTime ?? ''),
+    deliveryDateTime: String(d.deliveryDateTime ?? ''),
+    specialInstruction: d.specialInstruction ? String(d.specialInstruction) : undefined,
+    status: String(d.status ?? 'ASSIGNED') as ShipmentStatus,
+    photos: photos.map((p) => String((p as Record<string, unknown>).url ?? '')),
+    statusLogs: logs.map((l) => ({
+      status: String((l as Record<string, unknown>).status ?? '') as ShipmentStatus,
+      timestamp: String((l as Record<string, unknown>).timestamp ?? ''),
+      note: (l as Record<string, unknown>).note ? String((l as Record<string, unknown>).note) : undefined,
+    })),
+    podSigned: !!d.podReceiverName,
+    receiverName: d.podReceiverName ? String(d.podReceiverName) : undefined,
+    weight: d.weight ? String(d.weight) : undefined,
+    distance: d.distance ? String(d.distance) : undefined,
+  };
+}
+
+function mergeJobUpdate(existing: Job, updated: Record<string, unknown>): Job {
+  return {
+    ...existing,
+    status: String(updated.status ?? existing.status) as ShipmentStatus,
+    podSigned: !!updated.podReceiverName || existing.podSigned,
+    receiverName: updated.podReceiverName ? String(updated.podReceiverName) : existing.receiverName,
+    statusLogs: [
+      ...existing.statusLogs,
+      ...(updated.status && updated.status !== existing.status
+        ? [{ status: String(updated.status) as ShipmentStatus, timestamp: new Date().toISOString() }]
+        : []),
+    ],
+  };
 }
 
 export const useJobs = () => useContext(JobsContext);

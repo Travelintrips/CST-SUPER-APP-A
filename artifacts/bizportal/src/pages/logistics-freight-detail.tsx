@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
-  TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart, Package,
+  TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart, Package, Truck,
 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { FreightAttachmentsPanel } from "@/components/freight/FreightAttachmentsPanel";
 import { FreightCustomsPanel } from "@/components/freight/FreightCustomsPanel";
+import { DriverAssignmentPanel } from "@/components/freight/DriverAssignmentPanel";
 import { useToast } from "@/hooks/use-toast";
 import {
   useGetFreightShipment,
@@ -1117,6 +1118,25 @@ export default function LogisticsFreightDetailPage() {
                 </div>
               );
             })()}
+          </CardContent>
+        </Card>
+
+        {/* Driver Assignment Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Truck className="h-4 w-4 text-primary" />
+              Driver Trucking
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DriverAssignmentPanel
+              shipmentId={id}
+              shipperName={(shipment as any)?.shipperName}
+              commodity={(shipment as any)?.commodity}
+              origin={(shipment as any)?.origin}
+              destination={(shipment as any)?.destination}
+            />
           </CardContent>
         </Card>
 

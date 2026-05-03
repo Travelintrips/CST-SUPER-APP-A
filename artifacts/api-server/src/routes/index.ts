@@ -20,6 +20,7 @@ import expensesRouter from "./expenses";
 import portalRouter from "./portal";
 import { logisticOrdersRouter } from "./logisticOrders";
 import settingsRouter from "./settings";
+import { driverRouter, driversAdminRouter } from "./driver";
 
 const router: IRouter = Router();
 
@@ -43,6 +44,8 @@ router.use("/expenses", expensesRouter);
 router.use("/portal", portalRouter);
 router.use("/logistic/orders", logisticOrdersRouter);
 router.use("/settings", settingsRouter);
+router.use("/driver", driverRouter);
+router.use("/drivers", driversAdminRouter);
 router.use(storageRouter);
 
 export default router;

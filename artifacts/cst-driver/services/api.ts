@@ -11,7 +11,18 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) throw new Error('Login failed');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as Record<string, unknown>;
+      throw new Error(String(err.message ?? 'Login gagal'));
+    }
+    return res.json();
+  },
+
+  async getMe(token: string) {
+    const res = await fetch(`${BASE_URL}/driver/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Session tidak valid');
     return res.json();
   },
 
@@ -19,7 +30,7 @@ export const api = {
     const res = await fetch(`${BASE_URL}/driver/jobs`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) throw new Error('Failed to fetch jobs');
+    if (!res.ok) throw new Error('Gagal memuat daftar pekerjaan');
     return res.json();
   },
 
@@ -32,7 +43,7 @@ export const api = {
       },
       body: JSON.stringify({ status, note }),
     });
-    if (!res.ok) throw new Error('Failed to update status');
+    if (!res.ok) throw new Error('Gagal update status');
     return res.json();
   },
 
@@ -45,7 +56,7 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
-    if (!res.ok) throw new Error('Failed to upload photo');
+    if (!res.ok) throw new Error('Gagal unggah foto');
     return res.json();
   },
 
@@ -58,7 +69,7 @@ export const api = {
       },
       body: JSON.stringify({ receiverName }),
     });
-    if (!res.ok) throw new Error('Failed to submit POD');
+    if (!res.ok) throw new Error('Gagal submit POD');
     return res.json();
   },
 

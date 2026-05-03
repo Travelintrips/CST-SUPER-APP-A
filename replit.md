@@ -70,6 +70,8 @@ BizPortal is an Odoo-style, multi-module ERP built as a **pnpm workspace monorep
 | `transactions.ts` | `transactions` — POS / trading transactions |
 | `apiResponseTimes.ts` | `apiResponseTimes` — Internal API latency logging |
 | `portalCustomers.ts` | `portal_customers` — Public portal customer accounts (separate from Clerk users); `portal_customer_services` — service subscriptions |
+| `drivers.ts` | `drivers` — CST Driver accounts (email/password, vehicle info, license); auth via custom HMAC-SHA256 JWT |
+| `driverJobs.ts` | `driver_jobs` (pgEnum `driver_job_status`), `driver_job_logs` (status history), `driver_photos` (delivery/POD photos) |
 
 ## API Routes (`artifacts/api-server/src/routes/`)
 
@@ -92,6 +94,7 @@ BizPortal is an Odoo-style, multi-module ERP built as a **pnpm workspace monorep
 | `ecommerce.ts` | `/api/ecommerce` | Ecommerce product/order management |
 | `trading.ts` | `/api/trading` | Trading module |
 | `pos.ts` | `/api/pos` | POS module |
+| `driver.ts` | `/api/driver` (mobile) + `/api/drivers` (admin) | Driver mobile auth (login/me), job list/status updates, photo/POD upload; admin CRUD for drivers + job assignment to freight shipments |
 
 Document numbering follows the pattern `PREFIX/YYYY/NNNNNN` (e.g., `SHP/2026/123456`).
 
@@ -104,7 +107,8 @@ Document numbering follows the pattern `PREFIX/YYYY/NNNNNN` (e.g., `SHP/2026/123
 | `purchase/` | `/purchase/*` | Vendor list, RFQ/PO editor, detail view |
 | `logistics.tsx` | `/logistics` | Logistics overview |
 | `logistics-freight.tsx` | `/logistics/freight` | Freight shipment list with status filter |
-| `logistics-freight-detail.tsx` | `/logistics/freight/:id` | Shipment detail, RFQ/quote management, stage tracking, Biaya Operasional expenses with cost comparison summary (vs. approved quote + actualCost), attachments, profitability |
+| `logistics-freight-detail.tsx` | `/logistics/freight/:id` | Shipment detail, RFQ/quote management, stage tracking, Biaya Operasional expenses with cost comparison summary (vs. approved quote + actualCost), attachments, profitability, **Driver Trucking panel** (assign driver, view job status) |
+| `logistics-drivers.tsx` | `/logistics/drivers` | Driver management — list/create/edit drivers, stats cards, job history expansion |
 | `logistics-freight-editor.tsx` | `/logistics/freight/edit/:id` | Edit shipment fields |
 | `logistics-freight-bl.tsx` | `/logistics/freight/:id/bl` | Bill of Lading print view |
 | `expense/` | `/expense/*` | Expense list, new/edit form, detail view |
