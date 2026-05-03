@@ -46,7 +46,7 @@ export default function PhotosScreen() {
       setUploading(true);
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await new Promise((r) => setTimeout(r, 600));
-      addJobPhoto(jobId, result.assets[0].uri);
+      await addJobPhoto(jobId, result.assets[0].uri);
       setUploading(false);
     }
   }

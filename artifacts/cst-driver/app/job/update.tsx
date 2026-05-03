@@ -31,7 +31,7 @@ export default function UpdateStatusScreen() {
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 500));
-      updateJobStatus(jobId, status, note.trim() || undefined);
+      await updateJobStatus(jobId, status, note.trim() || undefined);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch {

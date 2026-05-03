@@ -73,7 +73,7 @@ export default function JobDetailScreen() {
         style: 'destructive',
         onPress: async () => {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          rejectJob(job.id);
+          await rejectJob(job.id);
           router.back();
         },
       },

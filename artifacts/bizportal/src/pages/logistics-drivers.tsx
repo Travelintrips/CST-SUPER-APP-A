@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp, Activity } from "lucide-react";
 
 interface Driver {
   id: number;
@@ -39,6 +39,14 @@ interface DriverJob {
   assignedAt: string;
   completedAt: string | null;
   freightShipmentId: number | null;
+}
+
+interface ActiveJob {
+  id: number;
+  jobNumber: string;
+  driverId: number;
+  customerName: string | null;
+  status: string;
 }
 
 interface DriverDetail extends Driver {
@@ -102,6 +110,22 @@ export default function LogisticsDriversPage() {
       return apiFetch("/api/drivers", token!);
     },
   });
+
+  const { data: allJobs = [] } = useQuery<ActiveJob[]>({
+    queryKey: ["driver-jobs-all"],
+    queryFn: async () => {
+      const token = await getToken();
+      return apiFetch("/api/drivers/jobs/list", token!);
+    },
+    staleTime: 30_000,
+  });
+
+  const activeJobByDriver = allJobs.reduce<Record<number, ActiveJob>>((acc, job) => {
+    if (job.status !== "COMPLETED" && job.status !== "CANCELLED") {
+      if (!acc[job.driverId]) acc[job.driverId] = job;
+    }
+    return acc;
+  }, {});
 
   const { data: expandedDetail } = useQuery<DriverDetail>({
     queryKey: ["driver-detail", expandedId],
@@ -257,6 +281,7 @@ export default function LogisticsDriversPage() {
                   <TableHead>Kendaraan</TableHead>
                   <TableHead>SIM</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Job Aktif</TableHead>
                   <TableHead>Lokasi Terakhir</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
@@ -265,7 +290,7 @@ export default function LogisticsDriversPage() {
                 {isLoading
                   ? Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 7 }).map((_, j) => (
+                        {Array.from({ length: 8 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-4 w-24" /></TableCell>
                         ))}
                       </TableRow>
@@ -273,7 +298,7 @@ export default function LogisticsDriversPage() {
                   : drivers.length === 0
                     ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                        <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                           Belum ada driver. Klik "Tambah Driver" untuk memulai.
                         </TableCell>
                       </TableRow>
@@ -317,6 +342,23 @@ export default function LogisticsDriversPage() {
                               {driver.isActive ? "Aktif" : "Nonaktif"}
                             </Badge>
                           </TableCell>
+                          <TableCell>
+                            {activeJobByDriver[driver.id] ? (
+                              <div className="flex items-center gap-1.5">
+                                <Activity className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-mono font-medium text-orange-600">
+                                    {activeJobByDriver[driver.id].jobNumber}
+                                  </span>
+                                  <Badge variant="outline" className={`text-xs mt-0.5 ${STATUS_COLORS[activeJobByDriver[driver.id].status] ?? ""}`}>
+                                    {STATUS_LABELS[activeJobByDriver[driver.id].status] ?? activeJobByDriver[driver.id].status}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {driver.lastLocationAt
                               ? new Date(driver.lastLocationAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })
@@ -342,7 +384,7 @@ export default function LogisticsDriversPage() {
                         </TableRow>
                         {expandedId === driver.id && (
                           <TableRow key={`${driver.id}-detail`}>
-                            <TableCell colSpan={7} className="bg-muted/20 p-4">
+                            <TableCell colSpan={8} className="bg-muted/20 p-4">
                               <div className="space-y-3">
                                 <h3 className="text-sm font-semibold">Riwayat Job — {driver.name}</h3>
                                 {!expandedDetail || expandedDetail.id !== driver.id ? (

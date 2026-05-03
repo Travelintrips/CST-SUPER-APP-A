@@ -9,13 +9,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useJobs } from '@/context/JobsContext';
-import { ShipmentStatus } from '@/types';
 
 export default function PODScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { getJob, submitPOD, updateJobStatus } = useJobs();
+  const { getJob, submitPOD } = useJobs();
   const [receiverName, setReceiverName] = useState('');
   const [isSigned, setIsSigned] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -55,9 +54,7 @@ export default function PODScreen() {
     }
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 600));
-      submitPOD(jobId, receiverName.trim());
-      updateJobStatus(jobId, 'DELIVERED' as ShipmentStatus);
+      await submitPOD(jobId, receiverName.trim());
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Berhasil!', 'Bukti pengiriman berhasil disimpan', [
         { text: 'OK', onPress: () => router.replace('/(tabs)') },
