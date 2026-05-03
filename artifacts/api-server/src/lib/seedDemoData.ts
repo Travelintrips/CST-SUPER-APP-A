@@ -520,11 +520,6 @@ const DEMO_DRIVERS = [
 
 export async function seedDemoDrivers() {
   try {
-    const existing = await db.select({ id: driversTable.id }).from(driversTable).limit(1);
-    if (existing.length > 0) {
-      logger.info("Demo drivers: already seeded, skipping");
-      return;
-    }
     for (const d of DEMO_DRIVERS) {
       const passwordHash = await bcrypt.hash(d.password, 10);
       await db.insert(driversTable).values({
@@ -536,9 +531,12 @@ export async function seedDemoDrivers() {
         vehiclePlate: d.vehiclePlate,
         vehicleType: d.vehicleType,
         isActive: true,
-      }).onConflictDoNothing();
+      }).onConflictDoUpdate({
+        target: driversTable.email,
+        set: { isActive: true },
+      });
     }
-    logger.info(`Demo drivers seeded: ${DEMO_DRIVERS.map(d => d.email).join(", ")}`);
+    logger.info(`Demo drivers: seeded/ensured active (${DEMO_DRIVERS.map(d => d.email).join(", ")})`);
   } catch (err) {
     logger.error({ err }, "Failed to seed demo drivers");
   }
