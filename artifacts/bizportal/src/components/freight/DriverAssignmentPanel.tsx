@@ -142,6 +142,7 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
       const token = await getToken();
       return apiFetch<DriverJob[]>(`/api/drivers/jobs/list?shipmentId=${shipmentId}`, token!);
     },
+    refetchInterval: 15_000,
   });
 
   const { data: drivers = [] } = useQuery<Driver[]>({
@@ -150,6 +151,7 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
       const token = await getToken();
       return apiFetch<Driver[]>("/api/drivers", token!);
     },
+    refetchInterval: 30_000,
   });
 
   const activeDrivers = drivers.filter((d) => d.isActive);
@@ -207,9 +209,15 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
               <span className="font-semibold text-sm">{activeJob.driverName ?? "Driver"}</span>
               <span className="text-xs text-muted-foreground font-mono">{activeJob.jobNumber}</span>
             </div>
-            <Badge variant="outline" className={`text-xs ${STATUS_COLORS[activeJob.status] ?? ""}`}>
-              {STATUS_LABELS[activeJob.status] ?? activeJob.status}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 text-xs text-emerald-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </div>
+              <Badge variant="outline" className={`text-xs ${STATUS_COLORS[activeJob.status] ?? ""}`}>
+                {STATUS_LABELS[activeJob.status] ?? activeJob.status}
+              </Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm">

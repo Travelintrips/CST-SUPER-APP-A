@@ -116,6 +116,7 @@ export default function LogisticsDriversPage() {
       const token = await getToken();
       return apiFetch("/api/drivers", token!);
     },
+    refetchInterval: 30_000,
   });
 
   const { data: allJobs = [] } = useQuery<ActiveJob[]>({
@@ -124,7 +125,8 @@ export default function LogisticsDriversPage() {
       const token = await getToken();
       return apiFetch("/api/drivers/jobs/list", token!);
     },
-    staleTime: 30_000,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
   });
 
   const activeJobByDriver = allJobs.reduce<Record<number, ActiveJob>>((acc, job) => {
@@ -141,6 +143,7 @@ export default function LogisticsDriversPage() {
       return apiFetch(`/api/drivers/${expandedId}`, token!);
     },
     enabled: expandedId !== null,
+    refetchInterval: expandedId !== null ? 15_000 : false,
   });
 
   const createMutation = useMutation({
@@ -260,10 +263,16 @@ export default function LogisticsDriversPage() {
               {drivers.length} total · {activeCount} aktif · {inactiveCount} nonaktif
             </p>
           </div>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" />
-            Tambah Driver
-          </Button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live · refresh 15s
+            </div>
+            <Button onClick={openCreate}>
+              <Plus className="w-4 h-4 mr-2" />
+              Tambah Driver
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4">
