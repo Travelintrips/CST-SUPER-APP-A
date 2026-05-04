@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import cstLogo from "@assets/WhatsApp_Image_2026-05-04_at_18.59.18__1_-removebg-preview_1777916047606.png";
 import { useParams, Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -484,12 +485,19 @@ export default function JasaDetail() {
             Kembali ke Katalog Jasa
           </Link>
           <div className="flex items-start gap-5">
-            <div className={ct === "trucking"
-              ? "bg-white/10 backdrop-blur-sm rounded-2xl p-4 flex-shrink-0 ring-1 ring-white/20 shadow-lg"
-              : `${colors.bg} rounded-2xl p-5 flex-shrink-0`
-            }>
-              <IconComp className={ct === "trucking" ? "h-10 w-10 text-white" : `h-12 w-12 ${colors.text}`} />
-            </div>
+            {ct === "trucking" ? (
+              <div className="flex-shrink-0 bg-white/15 backdrop-blur-sm rounded-2xl p-3 ring-1 ring-white/20 shadow-lg">
+                <img
+                  src={cstLogo}
+                  alt="CST Logistic"
+                  className="h-14 w-auto sm:h-[72px] md:h-[88px] max-w-[160px] object-contain"
+                />
+              </div>
+            ) : (
+              <div className={`${colors.bg} rounded-2xl p-5 flex-shrink-0`}>
+                <IconComp className={`h-12 w-12 ${colors.text}`} />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <Badge className={ct === "trucking"
                 ? "bg-white/20 text-white border-white/30 font-medium mb-2 text-xs"
