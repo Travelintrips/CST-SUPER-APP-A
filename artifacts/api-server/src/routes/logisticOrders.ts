@@ -117,6 +117,29 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       ? await db.insert(logisticOrderItemsTable).values(itemValues).returning()
       : [];
 
+  const grandTotalFmt = Number(body.grandTotal).toLocaleString("id-ID");
+  const serviceList = body.items.map((i) => `• ${i.serviceName}`).join("\n");
+
+  // Notify customer via WhatsApp (fire-and-forget)
+  if (body.phone) {
+    const customerMsg =
+      `🎉 *Pesanan Diterima!*\n` +
+      `No. Pesanan: *${orderNumber}*\n\n` +
+      `Halo ${body.customerName},\n` +
+      `Pesanan logistik Anda telah kami terima dan sedang diproses.\n\n` +
+      `📦 *Detail Pesanan:*\n` +
+      `Jenis: ${body.shipmentType}\n` +
+      `Rute: ${body.origin} → ${body.destination}\n` +
+      (body.commodity ? `Komoditi: ${body.commodity}\n` : ``) +
+      `Layanan:\n${serviceList}\n` +
+      `Total: Rp ${grandTotalFmt}\n\n` +
+      `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n` +
+      `Terima kasih telah menggunakan layanan CST Logistics. 🚢`;
+    sendWhatsApp(body.phone, customerMsg).catch((err: unknown) => {
+      req.log.error({ err, phone: body.phone }, "sendWhatsApp to customer failed (logistic order)");
+    });
+  }
+
   // Notify admin via WhatsApp (fire-and-forget)
   getAdminWa().then((adminWa) => {
     if (!adminWa) return;
@@ -126,7 +149,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       `Customer: ${body.customerName} (${body.companyName})\n` +
       `Rute: ${body.origin} → ${body.destination}\n` +
       `Jenis: ${body.shipmentType}\n` +
-      `Total: Rp ${Number(body.grandTotal).toLocaleString("id-ID")}\n` +
+      `Total: Rp ${grandTotalFmt}\n` +
       `HP: ${body.phone}`;
     return sendWhatsApp(adminWa, msg);
   }).catch(() => undefined);

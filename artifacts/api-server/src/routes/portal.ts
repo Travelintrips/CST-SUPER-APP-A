@@ -645,10 +645,29 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
     );
   }
 
+  const totalFmt = Number(doc!.grandTotal ?? 0).toLocaleString("id-ID");
+  const itemList = orderItems.map((i) => `• ${i.name} (${i.quantity}x)`).join("\n");
+
+  // Notify customer via WhatsApp (fire-and-forget)
+  if (portalCustomer.phone) {
+    const customerMsg =
+      `🎉 *Pesanan Diterima!*\n` +
+      `No. Pesanan: *${doc!.docNumber}*\n\n` +
+      `Halo ${portalCustomer.name},\n` +
+      `Pesanan Anda telah kami terima dan sedang diproses.\n\n` +
+      `🛒 *Detail Pesanan:*\n` +
+      `${itemList}\n` +
+      `Total: Rp ${totalFmt}\n\n` +
+      `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n` +
+      `Terima kasih telah menggunakan layanan CST Logistics. 🚢`;
+    sendWhatsApp(portalCustomer.phone, customerMsg).catch((err: unknown) => {
+      req.log.error({ err, phone: portalCustomer.phone }, "sendWhatsApp to customer failed (portal order)");
+    });
+  }
+
   // Notify admin via WhatsApp (fire-and-forget)
   getAdminWa().then((adminWa) => {
     if (!adminWa) return;
-    const totalFmt = Number(doc!.grandTotal ?? 0).toLocaleString("id-ID");
     const msg =
       `🛒 *Order Portal Baru*\n` +
       `No: ${doc!.docNumber}\n` +
