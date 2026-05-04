@@ -10,7 +10,7 @@ export interface CartItem {
   subtotal: number;
 }
 
-const CART_KEY = "logistic_cart";
+export const CART_KEY = "logistic_cart";
 
 export function useCart() {
   const [items, setItems] = useState<CartItem[]>(() => {

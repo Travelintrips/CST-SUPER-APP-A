@@ -8,6 +8,7 @@ import { useEditMode } from "@/contexts/EditModeContext";
 import { EditableText } from "@/components/EditableText";
 import { EditableImage } from "@/components/EditableImage";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { CART_KEY } from "@/lib/logistic-cart";
 
 export default function Home() {
   const { data: company } = useGetPortalCompany({
@@ -20,7 +21,7 @@ export default function Home() {
   const [draftDismissed, setDraftDismissed] = useState(false);
   const [draftCount, setDraftCount] = useState<number>(() => {
     try {
-      const raw = localStorage.getItem("logistic_cart");
+      const raw = localStorage.getItem(CART_KEY);
       if (!raw) return 0;
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.length : 0;
@@ -30,10 +31,14 @@ export default function Home() {
   useEffect(() => {
     function readCount() {
       try {
-        const raw = localStorage.getItem("logistic_cart");
+        const raw = localStorage.getItem(CART_KEY);
         if (!raw) { setDraftCount(0); return; }
         const parsed = JSON.parse(raw);
-        setDraftCount(Array.isArray(parsed) ? parsed.length : 0);
+        const count = Array.isArray(parsed) ? parsed.length : 0;
+        setDraftCount((prev) => {
+          if (prev === 0 && count > 0) setDraftDismissed(false);
+          return count;
+        });
       } catch { setDraftCount(0); }
     }
     window.addEventListener("logistic-cart-change", readCount);
