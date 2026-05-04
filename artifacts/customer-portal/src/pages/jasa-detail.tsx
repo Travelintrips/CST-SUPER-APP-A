@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -295,10 +295,6 @@ export default function JasaDetail() {
       return;
     }
     if (item.calculatorType === "trucking") {
-      if (state.vehicleType === "Trailer" && !state.trailerSize) {
-        toast({ title: "Ukuran Trailer wajib dipilih", variant: "destructive" });
-        return;
-      }
       if (!state.pickupDate) {
         toast({ title: "Tanggal penjemputan wajib diisi", variant: "destructive" });
         return;
@@ -546,45 +542,56 @@ export default function JasaDetail() {
                   </div>
                   <div><Label>Vehicle Type</Label>
                     <Select
-                      value={state.vehicleType || ""}
+                      value={
+                        state.vehicleType === "Trailer" && state.trailerSize
+                          ? `Trailer|${state.trailerSize}`
+                          : (state.vehicleType || "")
+                      }
                       onValueChange={v => {
-                        const r = truckingRates[v];
-                        setState(prev => ({
-                          ...prev,
-                          vehicleType: v,
-                          trailerSize: "",
-                          ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
-                        }));
+                        if (v.startsWith("Trailer|")) {
+                          const size = v.slice(8);
+                          const r = truckingRates["Trailer"];
+                          setState(prev => ({
+                            ...prev,
+                            vehicleType: "Trailer",
+                            trailerSize: size,
+                            ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
+                          }));
+                        } else {
+                          const r = truckingRates[v];
+                          setState(prev => ({
+                            ...prev,
+                            vehicleType: v,
+                            trailerSize: "",
+                            ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
+                          }));
+                        }
                       }}
                     >
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Pilih kendaraan">
+                          {state.vehicleType === "Trailer" && state.trailerSize
+                            ? `Trailer - ${state.trailerSize}`
+                            : state.vehicleType || undefined}
+                        </SelectValue>
+                      </SelectTrigger>
                       <SelectContent>
-                        {Object.keys(truckingRates).length > 0
-                          ? Object.keys(truckingRates).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)
-                          : ["CDE", "CDD", "Fuso", "Wingbox", "Trailer"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)
-                        }
+                        {(Object.keys(truckingRates).length > 0
+                          ? Object.keys(truckingRates).filter(v => v !== "Trailer")
+                          : ["CDE", "CDD", "Fuso", "Wingbox"]
+                        ).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                        <SelectGroup>
+                          <SelectLabel className="text-foreground font-semibold px-2 py-1.5 text-sm flex items-center gap-1.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><rect width="7" height="7" x="14" y="14" rx="1"/><path d="M5 17h2"/><path d="M14 14H9"/></svg>
+                            Trailer
+                          </SelectLabel>
+                          <SelectItem value="Trailer|Standar" className="pl-7 text-sm">Trailer - Standar</SelectItem>
+                          <SelectItem value="Trailer|20 Feet" className="pl-7 text-sm">Trailer - 20 Feet</SelectItem>
+                          <SelectItem value="Trailer|40 Feet" className="pl-7 text-sm">Trailer - 40 Feet</SelectItem>
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </div>
-                  {state.vehicleType === "Trailer" && (
-                    <div>
-                      <Label>
-                        Ukuran Trailer
-                        {!state.trailerSize && <span className="text-destructive ml-1">*</span>}
-                      </Label>
-                      <Select
-                        value={state.trailerSize || ""}
-                        onValueChange={v => set("trailerSize", v)}
-                      >
-                        <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih ukuran trailer" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Standar">Standar</SelectItem>
-                          <SelectItem value="20 Feet">20 Feet</SelectItem>
-                          <SelectItem value="40 Feet">40 Feet</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>
@@ -713,8 +720,7 @@ export default function JasaDetail() {
                     className="w-full gap-2 h-12 text-base"
                     onClick={handleAddToCart}
                     disabled={ct === "trucking"
-                      ? subtotal <= 0 || !state.pickupDate || !state.pickupTime ||
-                        (state.vehicleType === "Trailer" && !state.trailerSize)
+                      ? subtotal <= 0 || !state.pickupDate || !state.pickupTime
                       : subtotal <= 0}
                   >
                     <ShoppingCart className="h-5 w-5" />
