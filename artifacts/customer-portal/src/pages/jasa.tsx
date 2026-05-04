@@ -13,6 +13,7 @@ import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { translateServiceName, translateCategory } from "@/i18n/serviceData";
 
 const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   "Udara": Plane,
@@ -49,8 +50,8 @@ const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 export default function Jasa() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
-  const { t } = useLanguage();
-  const [activeCategory, setActiveCategory] = useState<string>(() => t("jasa.all"));
+  const { t, locale } = useLanguage();
+  const [activeCategory, setActiveCategory] = useState<string>("__all__");
 
   const { data: servicesRaw, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServicesJasa"] },
@@ -62,17 +63,18 @@ export default function Jasa() {
     new Set(services.flatMap((s) => s.categories ?? []))
   ).sort();
 
-  const allLabel = t("jasa.all");
-
   const filtered = services.filter((s) => {
     const q = searchQuery.toLowerCase();
     const matchSearch =
       !q ||
       s.name.toLowerCase().includes(q) ||
+      translateServiceName(s.name, locale).toLowerCase().includes(q) ||
       (s.description ?? "").toLowerCase().includes(q) ||
-      (s.categories ?? []).some((c) => c.toLowerCase().includes(q));
+      (s.categories ?? []).some((c) =>
+        c.toLowerCase().includes(q) || translateCategory(c, locale).toLowerCase().includes(q)
+      );
     const matchCat =
-      activeCategory === allLabel ||
+      activeCategory === "__all__" ||
       (s.categories ?? []).includes(activeCategory);
     return matchSearch && matchCat;
   });
@@ -249,7 +251,18 @@ export default function Jasa() {
       <div className="container px-4 md:px-6 mt-6">
         {/* Category filter tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
-          {[allLabel, ...allCategories].map((cat) => (
+          <button
+            key="__all__"
+            onClick={() => setActiveCategory("__all__")}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+              activeCategory === "__all__"
+                ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                : "bg-white text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+            }`}
+          >
+            {t("jasa.all")}
+          </button>
+          {allCategories.map((cat) => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
@@ -259,7 +272,7 @@ export default function Jasa() {
                   : "bg-white text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
               }`}
             >
-              {cat}
+              {translateCategory(cat, locale)}
             </button>
           ))}
         </div>
@@ -280,11 +293,11 @@ export default function Jasa() {
               <div>
                 <p className="font-bold text-foreground">Freight Forwarding</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {["Impor", "Ekspor", "Domestic"].map((d) => (
+                  {[t("jasa.importLabel"), t("jasa.exportLabel"), t("jasa.domesticLabel")].map((d) => (
                     <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0">{d}</Badge>
                   ))}
                   <span className="text-[10px] text-muted-foreground">×</span>
-                  {["Sea Freight", "Air Freight"].map((m) => (
+                  {[translateCategory("Laut", locale), translateCategory("Udara", locale)].map((m) => (
                     <Badge key={m} variant="outline" className="text-[10px] px-1.5 py-0">{m}</Badge>
                   ))}
                   <span className="text-[10px] text-muted-foreground">×</span>
@@ -311,13 +324,13 @@ export default function Jasa() {
                 </div>
               </div>
               <div>
-                <p className="font-bold text-foreground">Pengurusan Pabean / PPJK</p>
+                <p className="font-bold text-foreground">{t("jasa.customsTitle")}</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {["PIB/PEB", "Handling Clearance", "Konsultasi Pabean", "Undername"].map((s) => (
+                  {["PIB/PEB", "Handling Clearance", "Undername"].map((s) => (
                     <Badge key={s} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100">{s}</Badge>
                   ))}
                   <span className="text-[10px] text-muted-foreground">×</span>
-                  {["Impor", "Ekspor"].map((d) => (
+                  {[t("jasa.importLabel"), t("jasa.exportLabel")].map((d) => (
                     <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0">{d}</Badge>
                   ))}
                 </div>
@@ -371,14 +384,14 @@ export default function Jasa() {
                       <div className="flex flex-wrap gap-1 mb-1">
                         {(service.categories ?? []).map((cat) => (
                           <Badge key={cat} className={`text-[10px] px-1.5 py-0 ${COLOR_BY_CATEGORY[cat]?.badge ?? DEFAULT_COLOR.badge}`}>
-                            {cat}
+                            {translateCategory(cat, locale)}
                           </Badge>
                         ))}
                       </div>
-                      <CardTitle className="text-sm leading-snug">{stripJasa(service.name)}</CardTitle>
+                      <CardTitle className="text-sm leading-snug">{translateServiceName(stripJasa(service.name), locale)}</CardTitle>
                       <div className="flex items-center gap-1 mt-1">
                         <Calculator className="h-3 w-3 text-primary/70" />
-                        <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">Kalkulator Biaya</span>
+                        <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">{t("jasa.calcCost")}</span>
                       </div>
                     </CardHeader>
                     {service.description && (
@@ -388,7 +401,7 @@ export default function Jasa() {
                     )}
                     <CardContent className="px-4 pb-4 pt-0">
                       <Button size="sm" className="w-full gap-1 text-xs h-8 group-hover:bg-primary/90">
-                        <Calculator className="h-3 w-3" /> Hitung Biaya <ArrowRight className="h-3 w-3" />
+                        <Calculator className="h-3 w-3" /> {t("jasa.calcButton")} <ArrowRight className="h-3 w-3" />
                       </Button>
                     </CardContent>
                   </Card>

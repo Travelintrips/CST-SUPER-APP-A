@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useCart } from "@/lib/cart";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { translateServiceName, translateCategory } from "@/i18n/serviceData";
 
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -17,7 +18,7 @@ const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const { addItem, items } = useCart();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
@@ -245,13 +246,13 @@ export default function Services() {
                   <div className="absolute top-3 left-3 flex flex-wrap gap-2">
                     {service.categories?.map((cat: string, i: number) => (
                       <Badge key={i} className="bg-background/90 text-foreground backdrop-blur-sm border-none shadow-sm">
-                        {cat}
+                        {translateCategory(cat, locale)}
                       </Badge>
                     ))}
                   </div>
                 </div>
                 <CardHeader>
-                  <CardTitle className="text-xl">{stripJasa(service.name)}</CardTitle>
+                  <CardTitle className="text-xl">{translateServiceName(stripJasa(service.name), locale)}</CardTitle>
                   <CardDescription className="text-sm mt-2 leading-relaxed">
                     {service.description}
                   </CardDescription>
