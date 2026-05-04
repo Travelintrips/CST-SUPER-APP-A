@@ -44,16 +44,16 @@ function getServiceDetailRows(
   }
   if (calculatorType === "air_freight") {
     return [
-      { label: "Origin Airport", value: str(inputData.originAirport) || "-" },
-      { label: "Destination Airport", value: str(inputData.destinationAirport) || "-" },
+      ...(inputData.originAirport ? [{ label: "Origin Airport", value: str(inputData.originAirport) }] : []),
+      ...(inputData.destinationAirport ? [{ label: "Destination Airport", value: str(inputData.destinationAirport) }] : []),
       ...(inputData.grossWeight ? [{ label: "Gross Weight", value: `${inputData.grossWeight} kg` }] : []),
       ...(inputData.quantity ? [{ label: "Quantity", value: `${inputData.quantity} pcs` }] : []),
     ];
   }
   if (calculatorType === "sea_fcl") {
     return [
-      { label: "Origin Port", value: str(inputData.originPort) || "-" },
-      { label: "Destination Port", value: str(inputData.destinationPort) || "-" },
+      ...(inputData.originPort ? [{ label: "Origin Port", value: str(inputData.originPort) }] : []),
+      ...(inputData.destinationPort ? [{ label: "Destination Port", value: str(inputData.destinationPort) }] : []),
       ...(inputData.containerType ? [{ label: "Container Type", value: str(inputData.containerType) }] : []),
     ];
   }
