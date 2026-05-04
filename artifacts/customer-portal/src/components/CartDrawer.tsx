@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { X, Minus, Plus, Trash2, ShoppingCart, ArrowRight, CheckCircle, AlertCircle } from "lucide-react";
+import { X, Minus, Plus, Trash2, ShoppingCart, ArrowRight, CheckCircle, AlertCircle, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart";
+import { CART_KEY } from "@/lib/logistic-cart";
 import { getAuthToken, getAuthHeaders } from "@/lib/auth";
 
 const formatIDR = (v: number) =>
@@ -14,6 +15,30 @@ export function CartDrawer() {
   const { items, removeItem, updateQty, updatePrice, clearCart, total, count, isOpen, closeCart, pendingCheckout, clearPendingCheckout } = useCart();
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<Step>("cart");
+
+  // Logistic booking draft (separate localStorage-based cart)
+  const [logisticCount, setLogisticCount] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem(CART_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch { return 0; }
+  });
+  useEffect(() => {
+    function sync() {
+      try {
+        const raw = localStorage.getItem(CART_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        setLogisticCount(Array.isArray(parsed) ? parsed.length : 0);
+      } catch { setLogisticCount(0); }
+    }
+    window.addEventListener("logistic-cart-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("logistic-cart-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (isOpen && pendingCheckout) {
@@ -138,8 +163,26 @@ export function CartDrawer() {
           {/* ── STEP: CART ── */}
           {step === "cart" && (
             <div className="p-6 space-y-4">
+              {/* Logistic booking draft notice */}
+              {logisticCount > 0 && (
+                <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
+                  <FileText className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-sky-900">Draft Booking Logistik</p>
+                    <p className="text-xs text-sky-700 mt-0.5">
+                      {logisticCount} layanan tersimpan di draft pemesanan.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { closeCart(); setLocation("/book"); }}
+                    className="shrink-0 text-xs font-semibold text-sky-700 hover:text-sky-900 bg-white border border-sky-200 rounded-lg px-3 py-1.5 transition-colors"
+                  >
+                    Resume →
+                  </button>
+                </div>
+              )}
               {items.length === 0 ? (
-                <div className="text-center py-16 text-muted-foreground">
+                <div className="text-center py-12 text-muted-foreground">
                   <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-30" />
                   <p className="font-medium">Keranjang Anda kosong</p>
                   <p className="text-sm mt-1">Tambahkan layanan atau produk untuk mulai memesan</p>

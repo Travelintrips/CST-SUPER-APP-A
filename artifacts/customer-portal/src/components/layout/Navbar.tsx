@@ -9,6 +9,7 @@ import {
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useCart } from "@/lib/cart";
+import { CART_KEY } from "@/lib/logistic-cart";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { useLanguage } from "@/i18n/LanguageContext";
 
@@ -61,6 +62,32 @@ export function Navbar() {
   const isAdmin = isPortalAdmin();
   const { count, openCart } = useCart();
   const { t } = useLanguage();
+
+  // Logistic booking cart count (persisted in localStorage)
+  const [logisticCount, setLogisticCount] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem(CART_KEY);
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch { return 0; }
+  });
+  useEffect(() => {
+    function sync() {
+      try {
+        const raw = localStorage.getItem(CART_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        setLogisticCount(Array.isArray(parsed) ? parsed.length : 0);
+      } catch { setLogisticCount(0); }
+    }
+    window.addEventListener("logistic-cart-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("logistic-cart-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  const totalCount = count + logisticCount;
   const servicesRef = useRef<HTMLDivElement>(null);
   const moreRef     = useRef<HTMLDivElement>(null);
 
@@ -295,9 +322,9 @@ export function Navbar() {
               aria-label={t("nav.cart")}
             >
               <ShoppingCart className="h-[18px] w-[18px]" />
-              {count > 0 && (
+              {totalCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 bg-sky-500 text-white text-[9px] font-bold min-w-[16px] h-4 flex items-center justify-center rounded-full px-0.5 leading-none">
-                  {count}
+                  {totalCount}
                 </span>
               )}
             </button>
@@ -354,9 +381,9 @@ export function Navbar() {
               aria-label={t("nav.cart")}
             >
               <ShoppingCart className="h-[18px] w-[18px]" />
-              {count > 0 && (
+              {totalCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 bg-sky-500 text-white text-[9px] font-bold min-w-[16px] h-4 flex items-center justify-center rounded-full px-0.5 leading-none">
-                  {count}
+                  {totalCount}
                 </span>
               )}
             </button>
