@@ -161,6 +161,8 @@ export default function JasaDetail() {
   const [pickupGeo, setPickupGeo] = useState<GeoLocation | undefined>();
   const [destGeo, setDestGeo] = useState<GeoLocation | undefined>();
   const [calcDist, setCalcDist] = useState(false);
+  const [truckingStep, setTruckingStep] = useState(1);
+  const [vehicleOpen, setVehicleOpen] = useState(false);
 
   const [pendingOrder, setPendingOrder] = useState<{ serviceId: number; productName: string } | null>(null);
   const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
@@ -288,6 +290,47 @@ export default function JasaDetail() {
     if (geo && pickupGeo) fetchDistance(pickupGeo, geo);
   }
 
+  function handleNextStep() {
+    if (truckingStep === 1) {
+      if (!state.vehicleType) {
+        toast({ title: "Pilih kendaraan terlebih dahulu", variant: "destructive" });
+        return;
+      }
+      if (state.vehicleType === "Trailer Truck" && !state.trailerSize) {
+        toast({ title: "Pilih ukuran trailer", variant: "destructive" });
+        return;
+      }
+      if (!state.pickupCity) {
+        toast({ title: "Isi kota asal", variant: "destructive" });
+        return;
+      }
+      if (!state.destCity) {
+        toast({ title: "Isi kota tujuan", variant: "destructive" });
+        return;
+      }
+      setVehicleOpen(false);
+      setTruckingStep(2);
+    } else if (truckingStep === 2) {
+      const svc = state.serviceType || "Quick";
+      if (svc !== "Quick") {
+        if (!state.pickupDate) {
+          toast({ title: "Pilih tanggal penjemputan", variant: "destructive" });
+          return;
+        }
+        const today = new Date().toISOString().split("T")[0];
+        if (state.pickupDate < today) {
+          toast({ title: "Tanggal penjemputan tidak boleh sebelum hari ini", variant: "destructive" });
+          return;
+        }
+        if (!state.pickupTime) {
+          toast({ title: "Pilih jam penjemputan", variant: "destructive" });
+          return;
+        }
+      }
+      setTruckingStep(3);
+    }
+  }
+
   function handleAddToCart() {
     if (!item) return;
     if (subtotal <= 0) {
@@ -303,18 +346,20 @@ export default function JasaDetail() {
         toast({ title: "Pilih ukuran Trailer", variant: "destructive" });
         return;
       }
-      if (!state.pickupDate) {
-        toast({ title: "Tanggal penjemputan wajib diisi", variant: "destructive" });
-        return;
-      }
-      const today = new Date().toISOString().split("T")[0];
-      if (state.pickupDate < today) {
-        toast({ title: "Tanggal penjemputan tidak boleh sebelum hari ini", variant: "destructive" });
-        return;
-      }
-      if (!state.pickupTime) {
-        toast({ title: "Jam penjemputan wajib diisi", variant: "destructive" });
-        return;
+      if ((state.serviceType || "Quick") !== "Quick") {
+        if (!state.pickupDate) {
+          toast({ title: "Tanggal penjemputan wajib diisi", variant: "destructive" });
+          return;
+        }
+        const today = new Date().toISOString().split("T")[0];
+        if (state.pickupDate < today) {
+          toast({ title: "Tanggal penjemputan tidak boleh sebelum hari ini", variant: "destructive" });
+          return;
+        }
+        if (!state.pickupTime) {
+          toast({ title: "Jam penjemputan wajib diisi", variant: "destructive" });
+          return;
+        }
       }
     }
     addItem({
@@ -381,14 +426,16 @@ export default function JasaDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Calculator section */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
-              <div className="border-b border-border px-6 py-4 flex items-center gap-2">
-                <Calculator className="h-5 w-5 text-accent" />
-                <h2 className="text-lg font-bold">Kalkulator Estimasi Biaya</h2>
-                <span className="text-sm text-muted-foreground ml-1">— isi data untuk mendapatkan estimasi</span>
-              </div>
+            <div className={ct === "trucking" ? "" : "bg-white rounded-2xl border border-border shadow-sm overflow-hidden"}>
+              {ct !== "trucking" && (
+                <div className="border-b border-border px-6 py-4 flex items-center gap-2">
+                  <Calculator className="h-5 w-5 text-accent" />
+                  <h2 className="text-lg font-bold">Kalkulator Estimasi Biaya</h2>
+                  <span className="text-sm text-muted-foreground ml-1">— isi data untuk mendapatkan estimasi</span>
+                </div>
+              )}
 
-              <div className="p-6 space-y-4">
+              <div className={ct === "trucking" ? "flex justify-center" : "p-6 space-y-4"}>
                 {ct === "air_freight" && <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -529,232 +576,267 @@ export default function JasaDetail() {
                   </div>
                 </>}
 
-                {ct === "trucking" && <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Pickup City</Label>
-                      <LocationCombobox
-                        value={state.pickupCity || ""}
-                        onChange={handlePickupChange}
-                        placeholder="Cari kota asal..."
-                      />
-                    </div>
-                    <div>
-                      <Label>Destination City</Label>
-                      <LocationCombobox
-                        value={state.destCity || ""}
-                        onChange={handleDestChange}
-                        placeholder="Cari kota tujuan..."
-                      />
-                    </div>
-                  </div>
-                  {/* ── Vehicle Type — visual card grid ─────────────── */}
-                  <div>
-                    <Label className="mb-2 block">
-                      Vehicle Type
-                      {!state.vehicleType && <span className="text-destructive ml-1">*</span>}
-                    </Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(
-                        Object.keys(truckingRates).length > 0
-                          ? Object.keys(truckingRates)
-                              .filter(k => k !== "Trailer")
-                              .map(k => ({ key: k, label: k, rateKey: k }))
-                          : [
-                              { key: "CDE", label: "CDE", rateKey: "CDE" },
-                              { key: "CDD", label: "CDD", rateKey: "CDD" },
-                              { key: "Fuso", label: "Fuso", rateKey: "Fuso" },
-                              { key: "Wingbox", label: "Wingbox", rateKey: "Wingbox" },
-                            ]
-                      ).map(v => {
-                        const isSel = state.vehicleType === v.key;
-                        return (
-                          <button
-                            key={v.key}
-                            type="button"
-                            onClick={() => {
-                              const r = truckingRates[v.rateKey];
-                              setState(prev => ({
-                                ...prev,
-                                vehicleType: v.key,
-                                trailerSize: "",
-                                ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
-                              }));
-                            }}
-                            className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30 ${
-                              isSel
-                                ? "border-[#0EA5E9] bg-[#0EA5E9] text-white shadow-md shadow-sky-200"
-                                : "border-border bg-white hover:border-[#0EA5E9]/50 hover:bg-sky-50 text-foreground"
-                            }`}
-                          >
-                            <svg viewBox="0 0 44 22" className="w-9 h-5 flex-shrink-0" fill={isSel ? "white" : "#0284C7"}>
-                              <rect x="0" y="6" width="13" height="11" rx="2"/>
-                              <rect x="2" y="7.5" width="8" height="5" rx="1" fill={isSel ? "#0EA5E9" : "white"} opacity="0.5"/>
-                              <rect x="13" y="2" width="29" height="15" rx="2" opacity="0.85"/>
-                              <circle cx="8" cy="20" r="2.8"/>
-                              <circle cx="32" cy="20" r="2.8"/>
-                              <circle cx="40" cy="20" r="2.8"/>
-                            </svg>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-sm leading-none">{v.label}</p>
-                              {truckingRates[v.rateKey] && (
-                                <p className={`text-[10px] mt-0.5 ${isSel ? "text-blue-100" : "text-muted-foreground"}`}>
-                                  Rp {(truckingRates[v.rateKey].ratePerKm / 1000).toFixed(0)}k/km
-                                </p>
-                              )}
-                            </div>
-                            {isSel && (
-                              <span className="absolute top-1.5 right-1.5 flex h-3 w-3 items-center justify-center rounded-full bg-white/30">
-                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                {ct === "trucking" && (
+                  <div className="w-full max-w-[390px]">
+                    <div className="bg-[#16A34A] rounded-2xl overflow-hidden shadow-xl">
+                      {/* ── Stepper ── */}
+                      <div className="flex items-center px-4 pt-4 pb-3">
+                        {([{n:1,l:"Route"},{n:2,l:"Services"},{n:3,l:"Summary"}]).map((s, i, arr) => (
+                          <div key={s.n} className="flex items-center flex-1 min-w-0">
+                            <div className={`flex items-center gap-1.5 ${truckingStep >= s.n ? "text-white" : "text-green-300"}`}>
+                              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold flex-shrink-0 ${truckingStep >= s.n ? "bg-white text-[#16A34A]" : "border border-green-300 text-green-300"}`}>
+                                {truckingStep > s.n ? "✓" : s.n}
                               </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                      {/* Trailer Truck — full-width card */}
-                      {(() => {
-                        const isSel = state.vehicleType === "Trailer Truck";
-                        const r = truckingRates["Trailer"];
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setState(prev => ({
-                                ...prev,
-                                vehicleType: "Trailer Truck",
-                                trailerSize: "",
-                                ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
-                              }));
-                            }}
-                            className={`col-span-2 relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30 ${
-                              isSel
-                                ? "border-[#0EA5E9] bg-[#0EA5E9] text-white shadow-md shadow-sky-200"
-                                : "border-border bg-white hover:border-[#0EA5E9]/50 hover:bg-sky-50 text-foreground"
-                            }`}
-                          >
-                            <svg viewBox="0 0 64 22" className="w-12 h-5 flex-shrink-0" fill={isSel ? "white" : "#0284C7"}>
-                              <rect x="0" y="6" width="13" height="11" rx="2"/>
-                              <rect x="2" y="7.5" width="8" height="5" rx="1" fill={isSel ? "#0EA5E9" : "white"} opacity="0.5"/>
-                              <rect x="15" y="0" width="47" height="17" rx="2" opacity="0.85"/>
-                              <line x1="15" y1="0" x2="15" y2="17" stroke={isSel ? "white" : "#0F172A"} strokeWidth="1" opacity="0.3"/>
-                              <circle cx="8" cy="20" r="2.8"/>
-                              <circle cx="40" cy="20" r="2.8"/>
-                              <circle cx="48" cy="20" r="2.8"/>
-                              <circle cx="57" cy="20" r="2.8"/>
-                            </svg>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm leading-none">Trailer Truck</p>
-                              <p className={`text-[10px] mt-0.5 ${isSel ? "text-blue-100" : "text-muted-foreground"}`}>
-                                20 ft · 40 ft · Flatbed
-                                {r ? ` · Rp ${(r.ratePerKm / 1000).toFixed(0)}k/km` : ""}
-                              </p>
+                              <span className="text-xs font-medium whitespace-nowrap">{s.l}</span>
                             </div>
-                            {isSel && (
-                              <span className="absolute top-1.5 right-1.5 flex h-3 w-3 items-center justify-center rounded-full bg-white/30">
-                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* ── Trailer size — segmented control ──────────────── */}
-                  {state.vehicleType === "Trailer Truck" && (
-                    <div>
-                      <Label className="mb-2 block text-sm">
-                        Ukuran Trailer
-                        {!state.trailerSize && <span className="text-destructive ml-1">*</span>}
-                      </Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(["20 ft", "40 ft", "Flatbed"] as const).map(size => {
-                          const isSel = state.trailerSize === size;
-                          return (
-                            <button
-                              key={size}
-                              type="button"
-                              onClick={() => set("trailerSize", size)}
-                              className={`py-2.5 rounded-lg border-2 text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30 ${
-                                isSel
-                                  ? "border-[#0284C7] bg-[#0284C7] text-white shadow-sm"
-                                  : "border-border bg-white hover:border-[#0EA5E9]/50 hover:bg-sky-50 text-foreground"
-                              }`}
-                            >
-                              {size === "Flatbed" ? "Flatbed" : `Trailer ${size}`}
-                            </button>
-                          );
-                        })}
+                            {i < arr.length - 1 && <div className={`flex-1 h-px mx-2 ${truckingStep > s.n ? "bg-white/60" : "bg-green-400/40"}`} />}
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>
-                        Tanggal Penjemputan
-                        {!state.pickupDate && <span className="text-destructive ml-1">*</span>}
-                      </Label>
-                      <Input
-                        type="date"
-                        className="mt-1"
-                        min={new Date().toISOString().split("T")[0]}
-                        value={state.pickupDate || ""}
-                        onChange={e => set("pickupDate", e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label>
-                        Jam Penjemputan
-                        {!state.pickupTime && <span className="text-destructive ml-1">*</span>}
-                      </Label>
-                      <Input
-                        type="time"
-                        className="mt-1"
-                        value={state.pickupTime || ""}
-                        onChange={e => set("pickupTime", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="flex items-center gap-1.5">
-                        Distance (km)
-                        {calcDist && <span className="text-xs text-blue-600 font-normal flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>menghitung...</span>}
-                        {!calcDist && pickupGeo && destGeo && state.distance && <span className="text-xs text-green-600 font-normal">✓ otomatis</span>}
-                      </Label>
-                      <Input type="number" placeholder="0" className="mt-1" value={state.distance || ""} onChange={e => set("distance", e.target.value)} disabled={calcDist} />
-                    </div>
-                    <div>
-                      <Label className="flex items-center gap-2">
-                        Trucking Rate (IDR/km)
-                        {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && (
-                          <span className="text-xs text-green-600 font-normal">✓ dari admin</span>
-                        )}
-                      </Label>
-                      <Input type="number" placeholder="0" className="mt-1" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)} />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="flex items-center gap-2">
-                      Loading Fee (IDR)
-                      {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && (
-                        <span className="text-xs text-green-600 font-normal">✓ dari admin</span>
+
+                      {/* ── Step 1: Route ── */}
+                      {truckingStep === 1 && (
+                        <div className="px-3 pb-5 space-y-2.5">
+                          {/* Vehicle Dropdown */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setVehicleOpen(v => !v)}
+                              className="w-full bg-white rounded-xl px-4 py-3 flex items-center gap-3 text-left shadow-sm"
+                            >
+                              <svg viewBox="0 0 64 22" className="w-10 h-5 flex-shrink-0" fill="#16A34A">
+                                <rect x="0" y="6" width="13" height="11" rx="2"/>
+                                <rect x="13" y="2" width="49" height="15" rx="2" opacity="0.8"/>
+                                <circle cx="8" cy="20" r="2.5"/>
+                                <circle cx="38" cy="20" r="2.5"/>
+                                <circle cx="55" cy="20" r="2.5"/>
+                              </svg>
+                              <span className={`flex-1 text-sm font-medium ${state.vehicleType ? "text-gray-900" : "text-gray-400"}`}>
+                                {state.vehicleType || "Pilih Kendaraan"}
+                              </span>
+                              <svg className={`h-4 w-4 text-gray-400 transition-transform flex-shrink-0 ${vehicleOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            {vehicleOpen && (
+                              <div className="absolute top-[calc(100%+4px)] left-0 right-0 bg-white rounded-xl shadow-2xl z-30 overflow-hidden border border-gray-100">
+                                {(Object.keys(truckingRates).length > 0
+                                  ? [
+                                      ...Object.keys(truckingRates).filter(k => k !== "Trailer").map(k => ({key: k, label: k})),
+                                      ...(truckingRates["Trailer"] ? [{key: "Trailer Truck", label: "Trailer Truck"}] : []),
+                                    ]
+                                  : [{key:"CDE",label:"CDE"},{key:"CDD",label:"CDD"},{key:"Fuso",label:"Fuso"},{key:"Wingbox",label:"Wingbox"},{key:"Trailer Truck",label:"Trailer Truck"}]
+                                ).map(v => {
+                                  const isSel = state.vehicleType === v.key;
+                                  const rk = v.key === "Trailer Truck" ? "Trailer" : v.key;
+                                  const r = truckingRates[rk];
+                                  return (
+                                    <button
+                                      key={v.key}
+                                      type="button"
+                                      onClick={() => {
+                                        setState(prev => ({...prev, vehicleType: v.key, trailerSize: "", ...(r ? {truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee)} : {})}));
+                                        setVehicleOpen(false);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-green-50 text-left border-b border-gray-100 last:border-0 transition-colors"
+                                    >
+                                      <svg viewBox="0 0 44 22" className="w-8 h-4 flex-shrink-0" fill={isSel ? "#16A34A" : "#9CA3AF"}>
+                                        <rect x="0" y="6" width="13" height="11" rx="2"/>
+                                        <rect x="13" y="2" width="29" height="15" rx="2" opacity="0.8"/>
+                                        <circle cx="8" cy="20" r="2.5"/><circle cx="32" cy="20" r="2.5"/><circle cx="40" cy="20" r="2.5"/>
+                                      </svg>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`text-sm font-medium ${isSel ? "text-[#16A34A]" : "text-gray-800"}`}>{v.label}</p>
+                                        {r && <p className="text-[11px] text-gray-400">Rp {(r.ratePerKm/1000).toFixed(0)}k/km</p>}
+                                      </div>
+                                      {isSel && <CheckCircle2 className="h-4 w-4 text-[#16A34A] flex-shrink-0"/>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Trailer sizes */}
+                          {state.vehicleType === "Trailer Truck" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {(["20 ft","40 ft","Flatbed"] as const).map((size, i) => (
+                                <button
+                                  key={size}
+                                  type="button"
+                                  onClick={() => set("trailerSize", size)}
+                                  className={`${i === 2 ? "col-span-2" : ""} py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                                    state.trailerSize === size ? "bg-white text-[#16A34A] border-white" : "bg-transparent text-white border-white/40 hover:border-white/70"
+                                  }`}
+                                >
+                                  {size === "Flatbed" ? "Trailer Flatbed" : `Trailer ${size}`}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Service type */}
+                          <div className="grid grid-cols-3 gap-2">
+                            {(["Quick","Schedule","Full Day"] as const).map(t => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => set("serviceType", t)}
+                                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-semibold transition-all ${
+                                  (state.serviceType || "Quick") === t ? "bg-white text-[#16A34A]" : "bg-white/15 text-white hover:bg-white/25"
+                                }`}
+                              >
+                                {t === "Quick" && <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
+                                {t === "Schedule" && <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+                                {t === "Full Day" && <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>}
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Route Card */}
+                          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <div className="flex items-stretch">
+                              <div className="flex flex-col items-center pt-4 pb-4 pl-4 pr-2">
+                                <div className="w-3 h-3 rounded-full bg-[#16A34A] ring-2 ring-[#16A34A]/20"/>
+                                <div className="flex-1 w-0.5 min-h-[24px] bg-gray-200 my-1"/>
+                                <div className="w-3 h-3 rounded-full bg-amber-400 ring-2 ring-amber-200"/>
+                              </div>
+                              <div className="flex-1 min-w-0 divide-y divide-gray-100">
+                                <div className="py-2 pr-3">
+                                  <LocationCombobox value={state.pickupCity || ""} onChange={handlePickupChange} placeholder="Kota asal..."/>
+                                </div>
+                                <div className="py-2 pr-3">
+                                  <LocationCombobox value={state.destCity || ""} onChange={handleDestChange} placeholder="Kota tujuan..."/>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="border-t border-gray-100 px-4 py-2.5">
+                              <button type="button" className="flex items-center gap-1.5 text-[#16A34A] text-sm font-semibold">
+                                <Plus className="h-3.5 w-3.5"/>
+                                Add Stop
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       )}
-                    </Label>
-                    <Input type="number" placeholder="0" className="mt-1" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)} />
-                  </div>
-                  {(parseFloat(state.distance) || 0) > 0 && (parseFloat(state.truckingRate) || 0) > 0 && (
-                    <div className="bg-orange-50 border border-orange-100 rounded-lg p-4 text-sm space-y-1.5">
-                      <p className="text-orange-700 font-medium">Rincian Kalkulasi:</p>
-                      <p className="text-muted-foreground">
-                        Jarak × Rate: <span className="font-semibold text-foreground">{parseFloat(state.distance) || 0} km × {formatCurrency(parseFloat(state.truckingRate) || 0)}/km = {formatCurrency((parseFloat(state.distance) || 0) * (parseFloat(state.truckingRate) || 0))}</span>
-                      </p>
-                      <p className="text-muted-foreground">
-                        Loading Fee: <span className="font-semibold text-foreground">{formatCurrency(parseFloat(state.loadingFee) || 0)}</span>
-                      </p>
+
+                      {/* ── Step 2: Services ── */}
+                      {truckingStep === 2 && (
+                        <div className="px-3 pb-5 space-y-2.5">
+                          <div className="bg-white rounded-xl p-4 space-y-3 shadow-sm">
+                            <p className="text-sm font-semibold text-gray-700">
+                              Jadwal Penjemputan
+                              {(state.serviceType || "Quick") === "Quick" && <span className="text-xs text-gray-400 font-normal ml-2">opsional</span>}
+                            </p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Tanggal</label>
+                                <Input type="date" min={new Date().toISOString().split("T")[0]} value={state.pickupDate || ""} onChange={e => set("pickupDate", e.target.value)}/>
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Jam</label>
+                                <Input type="time" value={state.pickupTime || ""} onChange={e => set("pickupTime", e.target.value)}/>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="bg-white rounded-xl p-4 shadow-sm">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-semibold text-gray-700">Jarak (km)</p>
+                              {calcDist && <span className="text-xs text-[#16A34A] flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Menghitung...</span>}
+                              {!calcDist && pickupGeo && destGeo && state.distance && <span className="text-xs text-[#16A34A]">✓ Otomatis</span>}
+                            </div>
+                            <Input type="number" placeholder="0" value={state.distance || ""} onChange={e => set("distance", e.target.value)} disabled={calcDist}/>
+                          </div>
+                          <div className="bg-white rounded-xl p-4 space-y-3 shadow-sm">
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-xs text-gray-500 font-medium">Trucking Rate (IDR/km)</label>
+                                {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && <span className="text-xs text-[#16A34A]">✓ dari admin</span>}
+                              </div>
+                              <Input type="number" placeholder="0" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)}/>
+                            </div>
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-xs text-gray-500 font-medium">Loading Fee (IDR)</label>
+                                {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && <span className="text-xs text-[#16A34A]">✓ dari admin</span>}
+                              </div>
+                              <Input type="number" placeholder="0" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)}/>
+                            </div>
+                          </div>
+                          {(parseFloat(state.distance)||0) > 0 && (parseFloat(state.truckingRate)||0) > 0 && (
+                            <div className="bg-white/15 rounded-xl px-3 py-2.5 text-white text-xs space-y-0.5">
+                              <p className="font-semibold text-sm mb-1">Estimasi Biaya:</p>
+                              <p>{parseFloat(state.distance)||0} km × {formatCurrency(parseFloat(state.truckingRate)||0)}/km = {formatCurrency((parseFloat(state.distance)||0)*(parseFloat(state.truckingRate)||0))}</p>
+                              {(parseFloat(state.loadingFee)||0) > 0 && <p>Loading Fee: +{formatCurrency(parseFloat(state.loadingFee)||0)}</p>}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Step 3: Summary ── */}
+                      {truckingStep === 3 && (
+                        <div className="px-3 pb-5 space-y-2.5">
+                          <div className="bg-white rounded-xl p-4 shadow-sm">
+                            <p className="font-semibold text-gray-900 text-sm mb-2">Ringkasan Pesanan</p>
+                            <div className="divide-y divide-gray-100 text-sm">
+                              <div className="flex justify-between py-2">
+                                <span className="text-gray-500">Kendaraan</span>
+                                <span className="font-medium">{state.vehicleType === "Trailer Truck" && state.trailerSize ? `Trailer Truck - ${state.trailerSize}` : (state.vehicleType || "-")}</span>
+                              </div>
+                              <div className="flex justify-between py-2">
+                                <span className="text-gray-500">Layanan</span>
+                                <span className="font-medium">{state.serviceType || "Quick"}</span>
+                              </div>
+                              <div className="flex items-start justify-between py-2 gap-2">
+                                <span className="text-gray-500 flex-shrink-0">Rute</span>
+                                <span className="font-medium text-right text-xs leading-snug">{(state.pickupCity||"").split(",")[0]} → {(state.destCity||"").split(",")[0]}</span>
+                              </div>
+                              {state.pickupDate && (
+                                <div className="flex justify-between py-2">
+                                  <span className="text-gray-500">Penjemputan</span>
+                                  <span className="font-medium text-xs">{state.pickupDate} {state.pickupTime}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between py-2">
+                                <span className="text-gray-500">Jarak</span>
+                                <span className="font-medium">{state.distance || 0} km</span>
+                              </div>
+                            </div>
+                          </div>
+                          {subtotal > 0 ? (
+                            <div className="bg-white rounded-xl p-4 shadow-sm space-y-1.5 text-sm">
+                              <p className="font-semibold text-gray-900">Rincian Biaya</p>
+                              <div className="flex justify-between text-gray-500">
+                                <span>{parseFloat(state.distance)||0} km × {formatCurrency(parseFloat(state.truckingRate)||0)}/km</span>
+                                <span>{formatCurrency((parseFloat(state.distance)||0)*(parseFloat(state.truckingRate)||0))}</span>
+                              </div>
+                              {(parseFloat(state.loadingFee)||0) > 0 && (
+                                <div className="flex justify-between text-gray-500">
+                                  <span>Loading Fee</span>
+                                  <span>{formatCurrency(parseFloat(state.loadingFee)||0)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between font-bold text-gray-900 border-t border-gray-100 pt-2">
+                                <span>Total Estimasi</span>
+                                <span className="text-[#16A34A] text-base">{formatCurrency(subtotal)}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="bg-white/15 rounded-xl p-3 text-white text-sm text-center space-y-2">
+                              <p>Isi jarak dan rate untuk melihat estimasi biaya.</p>
+                              <button type="button" onClick={() => setTruckingStep(2)} className="text-xs underline">← Kembali ke Services</button>
+                            </div>
+                          )}
+                          {added && (
+                            <div className="bg-white rounded-xl p-3.5 flex items-center gap-2 shadow-sm">
+                              <CheckCircle2 className="h-5 w-5 text-[#16A34A] flex-shrink-0"/>
+                              <p className="text-sm font-medium text-gray-800">{item.name} berhasil ditambahkan ke pesanan!</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </>}
+                  </div>
+                )}
 
                 {ct === "storage" && <>
                   <div className="grid grid-cols-2 gap-4">
@@ -795,49 +877,50 @@ export default function JasaDetail() {
                   <div><Label>Notes (optional)</Label><Input placeholder="Detail tambahan..." className="mt-1" value={state.notes || ""} onChange={e => set("notes", e.target.value)} /></div>
                 </>}
 
-                <Separator />
+                {ct !== "trucking" && (
+                  <>
+                    <Separator />
 
-                <div className={`rounded-xl p-4 flex items-center justify-between ${subtotal > 0 ? `${colors.bg} border ${colors.text.replace("text", "border").replace("700", "200")}` : "bg-muted"}`}>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Estimasi Subtotal</p>
-                    <p className={`text-2xl font-bold ${subtotal > 0 ? colors.text : "text-foreground"}`}>
-                      {ct === "trucking" ? formatCurrency(subtotal) : (subtotal > 0 ? formatCurrency(subtotal) : "—")}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 italic">
-                      {ct === "trucking" ? "Harga fix berdasarkan kalkulasi jarak" : "Harga estimasi, final dikonfirmasi tim kami"}
-                    </p>
-                  </div>
-                  {subtotal > 0 && <CheckCircle2 className={`h-8 w-8 ${colors.text} opacity-60`} />}
-                </div>
+                    <div className={`rounded-xl p-4 flex items-center justify-between ${subtotal > 0 ? `${colors.bg} border ${colors.text.replace("text", "border").replace("700", "200")}` : "bg-muted"}`}>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Estimasi Subtotal</p>
+                        <p className={`text-2xl font-bold ${subtotal > 0 ? colors.text : "text-foreground"}`}>
+                          {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5 italic">
+                          Harga estimasi, final dikonfirmasi tim kami
+                        </p>
+                      </div>
+                      {subtotal > 0 && <CheckCircle2 className={`h-8 w-8 ${colors.text} opacity-60`} />}
+                    </div>
 
-                {!added ? (
-                  <Button
-                    size="lg"
-                    className="w-full gap-2 h-12 text-base"
-                    onClick={handleAddToCart}
-                    disabled={ct === "trucking"
-                      ? subtotal <= 0 || !state.vehicleType || !state.pickupDate || !state.pickupTime ||
-                        (state.vehicleType === "Trailer Truck" && !state.trailerSize)
-                      : subtotal <= 0}
-                  >
-                    <ShoppingCart className="h-5 w-5" />
-                    Tambahkan ke Pesanan
-                  </Button>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-green-600 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm font-medium">
-                      <CheckCircle2 className="h-4 w-4" />
-                      {item.name} berhasil ditambahkan ke pesanan
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button variant="outline" onClick={() => { setAdded(false); setState({}); setAirRows([newAirRow()]); }} className="gap-1.5">
-                        <Calculator className="h-4 w-4" /> Hitung Ulang
+                    {!added ? (
+                      <Button
+                        size="lg"
+                        className="w-full gap-2 h-12 text-base"
+                        onClick={handleAddToCart}
+                        disabled={subtotal <= 0}
+                      >
+                        <ShoppingCart className="h-5 w-5" />
+                        Tambahkan ke Pesanan
                       </Button>
-                      <Button onClick={handleProceed} className="gap-1.5">
-                        <ArrowRight className="h-4 w-4" /> Lanjut Pesan
-                      </Button>
-                    </div>
-                  </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-green-600 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm font-medium">
+                          <CheckCircle2 className="h-4 w-4" />
+                          {item.name} berhasil ditambahkan ke pesanan
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button variant="outline" onClick={() => { setAdded(false); setState({}); setAirRows([newAirRow()]); }} className="gap-1.5">
+                            <Calculator className="h-4 w-4" /> Hitung Ulang
+                          </Button>
+                          <Button onClick={handleProceed} className="gap-1.5">
+                            <ArrowRight className="h-4 w-4" /> Lanjut Pesan
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -903,6 +986,52 @@ export default function JasaDetail() {
           </div>
         </div>
       </div>
+
+      {/* Sticky Next / Add-to-Cart button for trucking */}
+      {ct === "trucking" && !pendingOrder && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#166534] px-4 pt-3 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.25)]">
+          <div className="max-w-[390px] mx-auto">
+            {!added ? (
+              truckingStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="w-full bg-white text-[#166534] py-4 rounded-xl font-bold text-base shadow-md hover:bg-gray-50 transition-colors"
+                >
+                  Next →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={subtotal <= 0}
+                  className="w-full bg-white text-[#166534] py-4 rounded-xl font-bold text-base shadow-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  Tambahkan ke Pesanan
+                </button>
+              )
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setAdded(false); setState({}); setTruckingStep(1); setVehicleOpen(false); }}
+                  className="py-3.5 rounded-xl border-2 border-white/50 text-white font-semibold text-sm hover:bg-white/10 transition-colors"
+                >
+                  Hitung Ulang
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProceed}
+                  className="py-3.5 rounded-xl bg-white text-[#166534] font-bold text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  Lanjut Pesan <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Pending-order confirm banner */}
       {pendingOrder && (
