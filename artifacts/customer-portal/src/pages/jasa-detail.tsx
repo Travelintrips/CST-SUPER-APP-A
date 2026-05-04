@@ -165,6 +165,42 @@ const VEHICLE_SUBTYPES: Record<string, string[]> = {
   "Trailer Truck / Kontainer": ["Trailer 20 ft", "Trailer 40 ft", "Trailer Flatbed"],
 };
 
+const VEHICLE_CAPACITY: Record<string, string> = {
+  "CDE":                       "Maks. kapasitas 2 Ton",
+  "CDD":                       "Maks. kapasitas 5 Ton",
+  "Fuso":                      "Maks. kapasitas 10 Ton",
+  "Tronton":                   "Maks. kapasitas 25 Ton",
+  "Trailer Truck / Kontainer": "Maks. kapasitas 40 ft",
+};
+
+type SubtypeSpec = {
+  dims: string;
+  volume: string;
+  weight: string;
+  note?: string;
+  warning?: string;
+};
+
+const SUBTYPE_SPECS: Record<string, SubtypeSpec> = {
+  "CDE Bak":                      { dims: "320 × 170 × 180 cm", volume: "9,8 m³", weight: "2,6 Ton", note: "Dimensi rata-rata, bisa sedikit berbeda." },
+  "CDE Box":                      { dims: "320 × 170 × 170 cm", volume: "9,2 m³", weight: "2,2 Ton", note: "Dimensi rata-rata, bisa sedikit berbeda." },
+  "CDD Bak":                      { dims: "440 × 200 × 200 cm", volume: "17,6 m³", weight: "5 Ton",  warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "CDD Box":                      { dims: "440 × 200 × 190 cm", volume: "16,7 m³", weight: "5 Ton",  warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Fuso Box (8 Tons)":            { dims: "620 × 235 × 235 cm", volume: "34,2 m³", weight: "8 Ton",  warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Fuso Box (10 Tons)":           { dims: "620 × 235 × 235 cm", volume: "34,2 m³", weight: "10 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Fuso Pickup (8 Tons)":         { dims: "660 × 235 × 245 cm", volume: "38 m³",   weight: "8 Ton",  warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Fuso Pickup (10 Tons)":        { dims: "660 × 235 × 245 cm", volume: "38 m³",   weight: "10 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Tronton Wing Box (18 Tons)":   { dims: "950 × 245 × 250 cm", volume: "58,2 m³", weight: "18 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Tronton Wing Box (22 Tons)":   { dims: "950 × 245 × 250 cm", volume: "58,2 m³", weight: "22 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Tronton Wing Box (25 Tons)":   { dims: "950 × 245 × 250 cm", volume: "58,2 m³", weight: "25 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Tronton Pickup (18 Tons)":     { dims: "950 × 245 × 260 cm", volume: "60,5 m³", weight: "18 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Tronton Pickup (22 Tons)":     { dims: "950 × 245 × 260 cm", volume: "60,5 m³", weight: "22 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Tronton Pickup (25 Tons)":     { dims: "950 × 245 × 260 cm", volume: "60,5 m³", weight: "25 Ton", warning: "⚠ Akses jalan terbatas (Jakarta 06:00–22:00)" },
+  "Trailer 20 ft":                { dims: "—", volume: "—", weight: "Maks. 25 Ton (termasuk container)", note: "Container tidak termasuk. Harus disiapkan sendiri." },
+  "Trailer 40 ft":                { dims: "—", volume: "—", weight: "Maks. 30 Ton (termasuk container)", note: "Container tidak termasuk. Harus disiapkan sendiri." },
+  "Trailer Flatbed":              { dims: "1200 × 240 × 240 cm", volume: "69 m³",  weight: "30 Ton", note: "Container tidak termasuk. Harus disiapkan sendiri." },
+};
+
 export default function JasaDetail() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -189,6 +225,11 @@ export default function JasaDetail() {
       .then(setTruckingRates)
       .catch(() => {/* fallback: empty, user can input manually */});
   }, []);
+
+  // Trucking always uses Schedule
+  useEffect(() => {
+    setState(prev => ({ ...prev, serviceType: "Schedule" }));
+  }, [params.id]);
 
   useEffect(() => {
     try {
@@ -654,7 +695,7 @@ export default function JasaDetail() {
                                       </svg>
                                       <div className="flex-1 min-w-0">
                                         <p className={`text-sm font-medium ${isSel ? "text-[#16A34A]" : "text-gray-800"}`}>{v.label}</p>
-                                        {r && <p className="text-[11px] text-gray-400">Rp {(r.ratePerKm/1000).toFixed(0)}k/km</p>}
+                                        <p className={`text-[11px] ${isSel ? "text-[#16A34A]/70" : "text-gray-400"}`}>{VEHICLE_CAPACITY[v.key]}</p>
                                       </div>
                                       {isSel && <CheckCircle2 className="h-4 w-4 text-[#16A34A] flex-shrink-0"/>}
                                     </button>
@@ -702,23 +743,50 @@ export default function JasaDetail() {
                             </div>
                           )}
 
-                          {/* Service type */}
-                          <div className="grid grid-cols-3 gap-2">
-                            {(["Quick","Schedule","Full Day"] as const).map(t => (
-                              <button
-                                key={t}
-                                type="button"
-                                onClick={() => set("serviceType", t)}
-                                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-semibold transition-all ${
-                                  (state.serviceType || "Quick") === t ? "bg-white text-[#16A34A]" : "bg-white/15 text-white hover:bg-white/25"
-                                }`}
-                              >
-                                {t === "Quick" && <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
-                                {t === "Schedule" && <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-                                {t === "Full Day" && <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>}
-                                {t}
-                              </button>
-                            ))}
+                          {/* Subtype spec card */}
+                          {state.vehicleSubtype && SUBTYPE_SPECS[state.vehicleSubtype] && (() => {
+                            const sp = SUBTYPE_SPECS[state.vehicleSubtype!];
+                            const isTrailer = state.vehicleSubtype.startsWith("Trailer");
+                            return (
+                              <div className="bg-white rounded-xl px-4 py-3 shadow-sm space-y-1.5">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className="text-base">📦</span>
+                                  <p className="text-xs font-semibold text-gray-700">Spesifikasi Kendaraan</p>
+                                </div>
+                                {sp.warning && (
+                                  <p className="text-[11px] text-amber-600 font-medium bg-amber-50 rounded-lg px-2 py-1">{sp.warning}</p>
+                                )}
+                                {!isTrailer && sp.dims !== "—" && (
+                                  <div className="flex items-baseline justify-between text-[11px]">
+                                    <span className="text-gray-400">Dimensi (P×L×T)</span>
+                                    <span className="font-medium text-gray-700">{sp.dims}</span>
+                                  </div>
+                                )}
+                                {!isTrailer && sp.volume !== "—" && (
+                                  <div className="flex items-baseline justify-between text-[11px]">
+                                    <span className="text-gray-400">Volume</span>
+                                    <span className="font-medium text-gray-700">{sp.volume}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-baseline justify-between text-[11px]">
+                                  <span className="text-gray-400">Kapasitas</span>
+                                  <span className="font-semibold text-[#16A34A]">{sp.weight}</span>
+                                </div>
+                                {sp.note && (
+                                  <p className="text-[10px] text-gray-400 italic pt-0.5">{sp.note}</p>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          {/* Service type — Schedule only */}
+                          <div className="flex items-center gap-2 bg-white rounded-xl px-4 py-3 shadow-sm">
+                            <svg className="w-5 h-5 text-[#16A34A] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-gray-900">Schedule</p>
+                              <p className="text-[11px] text-gray-400">Tentukan tanggal &amp; jam penjemputan</p>
+                            </div>
+                            <CheckCircle2 className="h-4 w-4 text-[#16A34A] flex-shrink-0"/>
                           </div>
 
                           {/* Route Card */}
