@@ -509,7 +509,7 @@ export default function JasaDetail() {
                 <div className="flex flex-wrap gap-2 mt-4">
                   {["5 Jenis Armada", "Kalkulasi Jarak Otomatis", "Harga Transparan", "Berlisensi & Profesional"].map(f => (
                     <span key={f} className="text-[11px] px-2.5 py-1 bg-white/10 rounded-full text-white/85 ring-1 ring-white/20 flex items-center gap-1">
-                      <span className="text-green-300">✓</span> {f}
+                      <span className="text-blue-200">✓</span> {f}
                     </span>
                   ))}
                 </div>
@@ -675,18 +675,18 @@ export default function JasaDetail() {
 
                 {ct === "trucking" && (
                   <div className="w-full">
-                    <div className="bg-[#16A34A] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-green-800/20">
+                    <div className="bg-gradient-to-b from-[#0D6EFD] via-[#0B5CAD] to-[#083B70] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-blue-900/40">
                       {/* ── Stepper ── */}
                       <div className="flex items-center px-4 pt-4 pb-3">
                         {([{n:1,l:"Route"},{n:2,l:"Services"},{n:3,l:"Summary"}]).map((s, i, arr) => (
                           <div key={s.n} className="flex items-center flex-1 min-w-0">
-                            <div className={`flex items-center gap-1.5 ${truckingStep >= s.n ? "text-white" : "text-green-300"}`}>
-                              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold flex-shrink-0 ${truckingStep >= s.n ? "bg-white text-[#16A34A]" : "border border-green-300 text-green-300"}`}>
+                            <div className={`flex items-center gap-1.5 ${truckingStep >= s.n ? "text-white" : "text-blue-200"}`}>
+                              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold flex-shrink-0 ${truckingStep >= s.n ? "bg-white text-[#0B5CAD]" : "border border-blue-300 text-blue-200"}`}>
                                 {truckingStep > s.n ? "✓" : s.n}
                               </span>
                               <span className="text-xs font-medium whitespace-nowrap">{s.l}</span>
                             </div>
-                            {i < arr.length - 1 && <div className={`flex-1 h-px mx-2 ${truckingStep > s.n ? "bg-white/60" : "bg-green-400/40"}`} />}
+                            {i < arr.length - 1 && <div className={`flex-1 h-px mx-2 ${truckingStep > s.n ? "bg-white/60" : "bg-blue-300/30"}`} />}
                           </div>
                         ))}
                       </div>
@@ -701,7 +701,7 @@ export default function JasaDetail() {
                               onClick={() => setVehicleOpen(v => !v)}
                               className="w-full bg-white rounded-xl px-4 py-3 flex items-center gap-3 text-left shadow-sm"
                             >
-                              <svg viewBox="0 0 64 22" className="w-10 h-5 flex-shrink-0" fill="#16A34A">
+                              <svg viewBox="0 0 64 22" className="w-10 h-5 flex-shrink-0" fill="#0B5CAD">
                                 <rect x="0" y="6" width="13" height="11" rx="2"/>
                                 <rect x="13" y="2" width="49" height="15" rx="2" opacity="0.8"/>
                                 <circle cx="8" cy="20" r="2.5"/>
@@ -726,18 +726,18 @@ export default function JasaDetail() {
                                         setState(prev => ({...prev, vehicleType: v.key, vehicleSubtype: "", trailerSize: "", ...(r ? {truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee)} : {})}));
                                         setVehicleOpen(false);
                                       }}
-                                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-green-50 text-left border-b border-gray-100 last:border-0 transition-colors"
+                                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 text-left border-b border-gray-100 last:border-0 transition-colors"
                                     >
-                                      <svg viewBox="0 0 44 22" className="w-8 h-4 flex-shrink-0" fill={isSel ? "#16A34A" : "#9CA3AF"}>
+                                      <svg viewBox="0 0 44 22" className="w-8 h-4 flex-shrink-0" fill={isSel ? "#0B5CAD" : "#9CA3AF"}>
                                         <rect x="0" y="6" width="13" height="11" rx="2"/>
                                         <rect x="13" y="2" width="29" height="15" rx="2" opacity="0.8"/>
                                         <circle cx="8" cy="20" r="2.5"/><circle cx="32" cy="20" r="2.5"/><circle cx="40" cy="20" r="2.5"/>
                                       </svg>
                                       <div className="flex-1 min-w-0">
-                                        <p className={`text-sm font-medium ${isSel ? "text-[#16A34A]" : "text-gray-800"}`}>{v.label}</p>
-                                        <p className={`text-[11px] ${isSel ? "text-[#16A34A]/70" : "text-gray-400"}`}>{VEHICLE_CAPACITY[v.key]}</p>
+                                        <p className={`text-sm font-medium ${isSel ? "text-[#0B5CAD]" : "text-gray-800"}`}>{v.label}</p>
+                                        <p className={`text-[11px] ${isSel ? "text-blue-500" : "text-gray-400"}`}>{VEHICLE_CAPACITY[v.key]}</p>
                                       </div>
-                                      {isSel && <CheckCircle2 className="h-4 w-4 text-[#16A34A] flex-shrink-0"/>}
+                                      {isSel && <CheckCircle2 className="h-4 w-4 text-[#0B5CAD] flex-shrink-0"/>}
                                     </button>
                                   );
                                 })}
@@ -771,7 +771,7 @@ export default function JasaDetail() {
                                     }}
                                     className={`${isOdd && isLast ? "col-span-2" : ""} py-2.5 px-3 rounded-xl text-xs font-semibold border-2 transition-all flex items-center justify-between gap-1 ${
                                       isSelected
-                                        ? "bg-white text-[#16A34A] border-white"
+                                        ? "bg-white text-[#0B5CAD] border-white"
                                         : "bg-transparent text-white border-white/40 hover:border-white/70"
                                     }`}
                                   >
@@ -810,7 +810,7 @@ export default function JasaDetail() {
                                 )}
                                 <div className="flex items-baseline justify-between text-[11px]">
                                   <span className="text-gray-400">Kapasitas</span>
-                                  <span className="font-semibold text-[#16A34A]">{sp.weight}</span>
+                                  <span className="font-semibold text-[#0B5CAD]">{sp.weight}</span>
                                 </div>
                                 {sp.note && (
                                   <p className="text-[10px] text-gray-400 italic pt-0.5">{sp.note}</p>
@@ -822,15 +822,15 @@ export default function JasaDetail() {
                           {/* Service type — Schedule with inline date/time */}
                           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                             <div className="flex items-center gap-2 px-4 py-3">
-                              <svg className="w-5 h-5 text-[#16A34A] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                              <svg className="w-5 h-5 text-[#0B5CAD] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                               <div className="flex-1">
                                 <p className="text-sm font-semibold text-gray-900">Schedule</p>
                                 {state.pickupDate && state.pickupTime
-                                  ? <p className="text-[11px] text-[#16A34A] font-medium">{state.pickupDate} · {state.pickupTime}</p>
+                                  ? <p className="text-[11px] text-[#0B5CAD] font-medium">{state.pickupDate} · {state.pickupTime}</p>
                                   : <p className="text-[11px] text-gray-400">Pilih tanggal &amp; jam penjemputan</p>
                                 }
                               </div>
-                              {state.pickupDate && state.pickupTime && <CheckCircle2 className="h-4 w-4 text-[#16A34A] flex-shrink-0"/>}
+                              {state.pickupDate && state.pickupTime && <CheckCircle2 className="h-4 w-4 text-[#0B5CAD] flex-shrink-0"/>}
                             </div>
                             <div className="border-t border-gray-100 px-4 pb-4 pt-3 grid grid-cols-2 gap-3">
                               <div>
@@ -858,7 +858,7 @@ export default function JasaDetail() {
                             <div className="flex items-stretch">
                               {/* Connector line column */}
                               <div className="flex flex-col items-center pt-4 pb-4 pl-4 pr-2 flex-shrink-0">
-                                <div className="w-3 h-3 rounded-full bg-[#16A34A] ring-2 ring-[#16A34A]/20 flex-shrink-0"/>
+                                <div className="w-3 h-3 rounded-full bg-[#0B5CAD] ring-2 ring-[#0B5CAD]/20 flex-shrink-0"/>
                                 <div className="flex-1 w-0.5 bg-gray-200 my-1"/>
                                 {truckingStops.map((_s, i) => (
                                   <div key={i} className="flex flex-col items-center w-full">
@@ -902,7 +902,7 @@ export default function JasaDetail() {
                               <button
                                 type="button"
                                 onClick={addTruckingStop}
-                                className="flex items-center gap-1.5 text-[#16A34A] text-sm font-semibold hover:text-[#15803d] transition-colors"
+                                className="flex items-center gap-1.5 text-[#0B5CAD] text-sm font-semibold hover:text-[#083B70] transition-colors"
                               >
                                 <Plus className="h-3.5 w-3.5"/>
                                 Add Stop
@@ -934,8 +934,8 @@ export default function JasaDetail() {
                           <div className="bg-white rounded-xl p-4 shadow-sm">
                             <div className="flex items-center justify-between mb-2">
                               <p className="text-sm font-semibold text-gray-700">Jarak (km)</p>
-                              {calcDist && <span className="text-xs text-[#16A34A] flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Menghitung...</span>}
-                              {!calcDist && pickupGeo && destGeo && state.distance && <span className="text-xs text-[#16A34A]">✓ Otomatis</span>}
+                              {calcDist && <span className="text-xs text-[#0B5CAD] flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Menghitung...</span>}
+                              {!calcDist && pickupGeo && destGeo && state.distance && <span className="text-xs text-[#0B5CAD]">✓ Otomatis</span>}
                             </div>
                             <Input type="number" placeholder="0" value={state.distance || ""} onChange={e => set("distance", e.target.value)} disabled={calcDist}/>
                           </div>
@@ -943,14 +943,14 @@ export default function JasaDetail() {
                             <div>
                               <div className="flex items-center justify-between mb-1">
                                 <label className="text-xs text-gray-500 font-medium">Trucking Rate (IDR/km)</label>
-                                {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && <span className="text-xs text-[#16A34A]">✓ dari admin</span>}
+                                {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && <span className="text-xs text-[#0B5CAD]">✓ dari admin</span>}
                               </div>
                               <Input type="number" placeholder="0" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)}/>
                             </div>
                             <div>
                               <div className="flex items-center justify-between mb-1">
                                 <label className="text-xs text-gray-500 font-medium">Loading Fee (IDR)</label>
-                                {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && <span className="text-xs text-[#16A34A]">✓ dari admin</span>}
+                                {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && <span className="text-xs text-[#0B5CAD]">✓ dari admin</span>}
                               </div>
                               <Input type="number" placeholder="0" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)}/>
                             </div>
@@ -1010,7 +1010,7 @@ export default function JasaDetail() {
                               )}
                               <div className="flex justify-between font-bold text-gray-900 border-t border-gray-100 pt-2">
                                 <span>Total Estimasi</span>
-                                <span className="text-[#16A34A] text-base">{formatCurrency(subtotal)}</span>
+                                <span className="text-[#0B5CAD] text-base">{formatCurrency(subtotal)}</span>
                               </div>
                             </div>
                           ) : (
@@ -1021,7 +1021,7 @@ export default function JasaDetail() {
                           )}
                           {added && (
                             <div className="bg-white rounded-xl p-3.5 flex items-center gap-2 shadow-sm">
-                              <CheckCircle2 className="h-5 w-5 text-[#16A34A] flex-shrink-0"/>
+                              <CheckCircle2 className="h-5 w-5 text-[#0B5CAD] flex-shrink-0"/>
                               <p className="text-sm font-medium text-gray-800">{item.name} berhasil ditambahkan ke pesanan!</p>
                             </div>
                           )}
@@ -1160,7 +1160,7 @@ export default function JasaDetail() {
               </div>
               <button
                 onClick={requireAuthThenBook}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-slate-200 text-slate-700 text-sm font-semibold hover:border-green-400 hover:text-green-700 hover:bg-green-50 transition-all duration-200"
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-slate-200 text-slate-700 text-sm font-semibold hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 transition-all duration-200"
               >
                 <ShoppingCart className="h-4 w-4" />
                 Lihat Keranjang Pesanan
@@ -1216,7 +1216,7 @@ export default function JasaDetail() {
                 <button
                   type="button"
                   onClick={handleNextStep}
-                  className="sm:min-w-[200px] bg-gradient-to-r from-green-600 to-green-500 text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-green-700 hover:to-green-600 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                  className="sm:min-w-[200px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                   Lanjut <ArrowRight className="h-4 w-4" />
                 </button>
@@ -1225,7 +1225,7 @@ export default function JasaDetail() {
                   type="button"
                   onClick={handleAddToCart}
                   disabled={subtotal <= 0}
-                  className="sm:min-w-[220px] bg-gradient-to-r from-green-600 to-green-500 text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-green-700 hover:to-green-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  className="sm:min-w-[220px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
                   <ShoppingCart className="h-4 w-4" />
                   Tambahkan ke Pesanan
@@ -1243,7 +1243,7 @@ export default function JasaDetail() {
                 <button
                   type="button"
                   onClick={handleProceed}
-                  className="flex-1 sm:flex-none sm:min-w-[160px] py-3.5 px-5 rounded-xl bg-gradient-to-r from-green-600 to-green-500 text-white font-bold text-sm shadow-md hover:from-green-700 hover:to-green-600 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                  className="flex-1 sm:flex-none sm:min-w-[160px] py-3.5 px-5 rounded-xl bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
                 >
                   Lanjut Pesan <ArrowRight className="h-4 w-4" />
                 </button>
