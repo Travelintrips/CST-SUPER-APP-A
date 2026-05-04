@@ -3,8 +3,8 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
-  ChevronDown, Ship, Plane, FileCheck, Truck, Package, Globe,
-  Search, Warehouse, Calculator, ChevronRight, MapPin, Phone, Info,
+  ChevronDown, Ship, FileCheck, Truck,
+  Search, Calculator, ChevronRight, MapPin, Phone, Info,
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
@@ -14,14 +14,11 @@ import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { useLanguage } from "@/i18n/LanguageContext";
 
 const SERVICES_ITEMS = [
-  { icon: Ship,      titleKey: "servicesMenu.seaFreight.title",  descKey: "servicesMenu.seaFreight.desc",  href: "/freight-forwarding" },
-  { icon: Plane,     titleKey: "servicesMenu.airFreight.title",  descKey: "servicesMenu.airFreight.desc",  href: "/freight-forwarding" },
-  { icon: FileCheck, titleKey: "servicesMenu.customs.title",     descKey: "servicesMenu.customs.desc",     href: "/pabean" },
-  { icon: Truck,     titleKey: "servicesMenu.domestic.title",    descKey: "servicesMenu.domestic.desc",    href: "/jasa" },
-  { icon: Warehouse, titleKey: "servicesMenu.warehousing.title", descKey: "servicesMenu.warehousing.desc", href: "/jasa" },
-  { icon: Package,   titleKey: "servicesMenu.project.title",     descKey: "servicesMenu.project.desc",     href: "/jasa" },
-  { icon: Globe,     titleKey: "servicesMenu.consultation.title",descKey: "servicesMenu.consultation.desc",href: "/services" },
-  { icon: Search,    titleKey: "servicesMenu.tracking.title",    descKey: "servicesMenu.tracking.desc",    href: "/track" },
+  { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/freight-forwarding" },
+  { icon: FileCheck, titleKey: "servicesMenu.customs.title",   descKey: "servicesMenu.customs.desc",   href: "/pabean" },
+  { icon: Truck,     titleKey: "servicesMenu.domestic.title",  descKey: "servicesMenu.domestic.desc",  href: "/jasa" },
+  { icon: Truck,     titleKey: "servicesMenu.trucking.title",  descKey: "servicesMenu.trucking.desc",  href: "/jasa/15" },
+  { icon: Search,    titleKey: "servicesMenu.tracking.title",  descKey: "servicesMenu.tracking.desc",  href: "/track" },
 ];
 
 const NAV_GLASS: React.CSSProperties = {
