@@ -67,6 +67,35 @@ export default function Services() {
             pointerEvents: "none",
           }}
         />
+        {/* World map illustration — right side */}
+        <div
+          aria-hidden="true"
+          className="services-world-map"
+          style={{
+            position: "absolute",
+            right: "2%",
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: "52%",
+            height: "90%",
+            backgroundImage: "url(/images/world-map-logistics.svg)",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "center right",
+            backgroundSize: "contain",
+            opacity: 0.26,
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        />
+        <style>{`
+          @media (max-width: 768px) {
+            .services-world-map {
+              width: 90% !important;
+              right: -20% !important;
+              opacity: 0.10 !important;
+            }
+          }
+        `}</style>
 
         {/* Content */}
         <div className="container px-4 md:px-6" style={{ maxWidth: "760px", position: "relative", zIndex: 2 }}>
