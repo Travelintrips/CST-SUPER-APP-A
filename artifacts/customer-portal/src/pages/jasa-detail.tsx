@@ -295,6 +295,14 @@ export default function JasaDetail() {
       return;
     }
     if (item.calculatorType === "trucking") {
+      if (!state.vehicleType) {
+        toast({ title: "Pilih Vehicle Type terlebih dahulu", variant: "destructive" });
+        return;
+      }
+      if (state.vehicleType === "Trailer Truck" && !state.trailerSize) {
+        toast({ title: "Pilih ukuran Trailer", variant: "destructive" });
+        return;
+      }
       if (!state.pickupDate) {
         toast({ title: "Tanggal penjemputan wajib diisi", variant: "destructive" });
         return;
@@ -540,58 +548,146 @@ export default function JasaDetail() {
                       />
                     </div>
                   </div>
-                  <div><Label>Vehicle Type</Label>
-                    <Select
-                      value={
-                        state.vehicleType === "Trailer" && state.trailerSize
-                          ? `Trailer|${state.trailerSize}`
-                          : (state.vehicleType || "")
-                      }
-                      onValueChange={v => {
-                        if (v.startsWith("Trailer|")) {
-                          const size = v.slice(8);
-                          const r = truckingRates["Trailer"];
-                          setState(prev => ({
-                            ...prev,
-                            vehicleType: "Trailer",
-                            trailerSize: size,
-                            ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
-                          }));
-                        } else {
-                          const r = truckingRates[v];
-                          setState(prev => ({
-                            ...prev,
-                            vehicleType: v,
-                            trailerSize: "",
-                            ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
-                          }));
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Pilih kendaraan">
-                          {state.vehicleType === "Trailer" && state.trailerSize
-                            ? `Trailer - ${state.trailerSize}`
-                            : state.vehicleType || undefined}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(truckingRates).length > 0
-                          ? Object.keys(truckingRates).filter(v => v !== "Trailer")
-                          : ["CDE", "CDD", "Fuso", "Wingbox"]
-                        ).map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
-                        <SelectGroup>
-                          <SelectLabel className="text-foreground font-semibold px-2 py-1.5 text-sm flex items-center gap-1.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><rect width="7" height="7" x="14" y="14" rx="1"/><path d="M5 17h2"/><path d="M14 14H9"/></svg>
-                            Trailer
-                          </SelectLabel>
-                          <SelectItem value="Trailer|Standar" className="pl-7 text-sm">Trailer - Standar</SelectItem>
-                          <SelectItem value="Trailer|20 Feet" className="pl-7 text-sm">Trailer - 20 Feet</SelectItem>
-                          <SelectItem value="Trailer|40 Feet" className="pl-7 text-sm">Trailer - 40 Feet</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                  {/* ── Vehicle Type — visual card grid ─────────────── */}
+                  <div>
+                    <Label className="mb-2 block">
+                      Vehicle Type
+                      {!state.vehicleType && <span className="text-destructive ml-1">*</span>}
+                    </Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        Object.keys(truckingRates).length > 0
+                          ? Object.keys(truckingRates)
+                              .filter(k => k !== "Trailer")
+                              .map(k => ({ key: k, label: k, rateKey: k }))
+                          : [
+                              { key: "CDE", label: "CDE", rateKey: "CDE" },
+                              { key: "CDD", label: "CDD", rateKey: "CDD" },
+                              { key: "Fuso", label: "Fuso", rateKey: "Fuso" },
+                              { key: "Wingbox", label: "Wingbox", rateKey: "Wingbox" },
+                            ]
+                      ).map(v => {
+                        const isSel = state.vehicleType === v.key;
+                        return (
+                          <button
+                            key={v.key}
+                            type="button"
+                            onClick={() => {
+                              const r = truckingRates[v.rateKey];
+                              setState(prev => ({
+                                ...prev,
+                                vehicleType: v.key,
+                                trailerSize: "",
+                                ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
+                              }));
+                            }}
+                            className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30 ${
+                              isSel
+                                ? "border-[#0EA5E9] bg-[#0EA5E9] text-white shadow-md shadow-sky-200"
+                                : "border-border bg-white hover:border-[#0EA5E9]/50 hover:bg-sky-50 text-foreground"
+                            }`}
+                          >
+                            <svg viewBox="0 0 44 22" className="w-9 h-5 flex-shrink-0" fill={isSel ? "white" : "#0284C7"}>
+                              <rect x="0" y="6" width="13" height="11" rx="2"/>
+                              <rect x="2" y="7.5" width="8" height="5" rx="1" fill={isSel ? "#0EA5E9" : "white"} opacity="0.5"/>
+                              <rect x="13" y="2" width="29" height="15" rx="2" opacity="0.85"/>
+                              <circle cx="8" cy="20" r="2.8"/>
+                              <circle cx="32" cy="20" r="2.8"/>
+                              <circle cx="40" cy="20" r="2.8"/>
+                            </svg>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm leading-none">{v.label}</p>
+                              {truckingRates[v.rateKey] && (
+                                <p className={`text-[10px] mt-0.5 ${isSel ? "text-blue-100" : "text-muted-foreground"}`}>
+                                  Rp {(truckingRates[v.rateKey].ratePerKm / 1000).toFixed(0)}k/km
+                                </p>
+                              )}
+                            </div>
+                            {isSel && (
+                              <span className="absolute top-1.5 right-1.5 flex h-3 w-3 items-center justify-center rounded-full bg-white/30">
+                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {/* Trailer Truck — full-width card */}
+                      {(() => {
+                        const isSel = state.vehicleType === "Trailer Truck";
+                        const r = truckingRates["Trailer"];
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setState(prev => ({
+                                ...prev,
+                                vehicleType: "Trailer Truck",
+                                trailerSize: "",
+                                ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
+                              }));
+                            }}
+                            className={`col-span-2 relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30 ${
+                              isSel
+                                ? "border-[#0EA5E9] bg-[#0EA5E9] text-white shadow-md shadow-sky-200"
+                                : "border-border bg-white hover:border-[#0EA5E9]/50 hover:bg-sky-50 text-foreground"
+                            }`}
+                          >
+                            <svg viewBox="0 0 64 22" className="w-12 h-5 flex-shrink-0" fill={isSel ? "white" : "#0284C7"}>
+                              <rect x="0" y="6" width="13" height="11" rx="2"/>
+                              <rect x="2" y="7.5" width="8" height="5" rx="1" fill={isSel ? "#0EA5E9" : "white"} opacity="0.5"/>
+                              <rect x="15" y="0" width="47" height="17" rx="2" opacity="0.85"/>
+                              <line x1="15" y1="0" x2="15" y2="17" stroke={isSel ? "white" : "#0F172A"} strokeWidth="1" opacity="0.3"/>
+                              <circle cx="8" cy="20" r="2.8"/>
+                              <circle cx="40" cy="20" r="2.8"/>
+                              <circle cx="48" cy="20" r="2.8"/>
+                              <circle cx="57" cy="20" r="2.8"/>
+                            </svg>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-sm leading-none">Trailer Truck</p>
+                              <p className={`text-[10px] mt-0.5 ${isSel ? "text-blue-100" : "text-muted-foreground"}`}>
+                                20 ft · 40 ft · Flatbed
+                                {r ? ` · Rp ${(r.ratePerKm / 1000).toFixed(0)}k/km` : ""}
+                              </p>
+                            </div>
+                            {isSel && (
+                              <span className="absolute top-1.5 right-1.5 flex h-3 w-3 items-center justify-center rounded-full bg-white/30">
+                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })()}
+                    </div>
                   </div>
+
+                  {/* ── Trailer size — segmented control ──────────────── */}
+                  {state.vehicleType === "Trailer Truck" && (
+                    <div>
+                      <Label className="mb-2 block text-sm">
+                        Ukuran Trailer
+                        {!state.trailerSize && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(["20 ft", "40 ft", "Flatbed"] as const).map(size => {
+                          const isSel = state.trailerSize === size;
+                          return (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => set("trailerSize", size)}
+                              className={`py-2.5 rounded-lg border-2 text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30 ${
+                                isSel
+                                  ? "border-[#0284C7] bg-[#0284C7] text-white shadow-sm"
+                                  : "border-border bg-white hover:border-[#0EA5E9]/50 hover:bg-sky-50 text-foreground"
+                              }`}
+                            >
+                              {size === "Flatbed" ? "Flatbed" : `Trailer ${size}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>
@@ -631,7 +727,7 @@ export default function JasaDetail() {
                     <div>
                       <Label className="flex items-center gap-2">
                         Trucking Rate (IDR/km)
-                        {state.vehicleType && truckingRates[state.vehicleType] && (
+                        {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && (
                           <span className="text-xs text-green-600 font-normal">✓ dari admin</span>
                         )}
                       </Label>
@@ -641,7 +737,7 @@ export default function JasaDetail() {
                   <div>
                     <Label className="flex items-center gap-2">
                       Loading Fee (IDR)
-                      {state.vehicleType && truckingRates[state.vehicleType] && (
+                      {state.vehicleType && truckingRates[state.vehicleType === "Trailer Truck" ? "Trailer" : state.vehicleType] && (
                         <span className="text-xs text-green-600 font-normal">✓ dari admin</span>
                       )}
                     </Label>
@@ -720,7 +816,8 @@ export default function JasaDetail() {
                     className="w-full gap-2 h-12 text-base"
                     onClick={handleAddToCart}
                     disabled={ct === "trucking"
-                      ? subtotal <= 0 || !state.pickupDate || !state.pickupTime
+                      ? subtotal <= 0 || !state.vehicleType || !state.pickupDate || !state.pickupTime ||
+                        (state.vehicleType === "Trailer Truck" && !state.trailerSize)
                       : subtotal <= 0}
                   >
                     <ShoppingCart className="h-5 w-5" />

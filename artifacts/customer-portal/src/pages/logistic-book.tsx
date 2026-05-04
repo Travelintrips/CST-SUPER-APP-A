@@ -39,9 +39,10 @@ function getServiceDetailRows(
       { label: "Pickup City", value: str(inputData.pickupCity) || "-" },
       { label: "Destination City", value: str(inputData.destCity) || "-" },
       { label: "Distance", value: inputData.distance ? `${inputData.distance} KM` : "-" },
-      { label: "Vehicle Type", value: inputData.vehicleType === "Trailer" && inputData.trailerSize
-          ? `Trailer - ${str(inputData.trailerSize)}`
-          : str(inputData.vehicleType) || "Not specified" },
+      { label: "Vehicle Type", value:
+          (inputData.vehicleType === "Trailer Truck" || inputData.vehicleType === "Trailer") && inputData.trailerSize
+            ? `${str(inputData.vehicleType)} - ${str(inputData.trailerSize)}`
+            : str(inputData.vehicleType) || "Not specified" },
     ];
   }
   if (calculatorType === "air_freight") {
