@@ -587,7 +587,9 @@ adminRouter.post("/jobs", async (req, res) => {
       `Ketuk link berikut untuk membuka aplikasi CST Driver:`,
       `cst-driver://(tabs)/jobs`,
     ].filter(Boolean).join("\n");
-    sendWhatsApp(driver.phone, msg).catch(() => {});
+    sendWhatsApp(driver.phone, msg).catch((err: unknown) => {
+      req.log.error({ err, driverId: driver.id, phone: driver.phone }, "sendWhatsApp failed for job assignment");
+    });
   }
 
   res.status(201).json(serializeJob(job));
