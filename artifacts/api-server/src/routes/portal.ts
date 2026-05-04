@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer";
 
 const router = Router();
 
@@ -302,6 +303,81 @@ router.post("/auth/register", async (req, res) => {
       createdAt: customer!.createdAt.toISOString(),
     },
   });
+});
+
+// POST /api/portal/auth/forgot-password
+router.post("/auth/forgot-password", async (req, res) => {
+  const genericMsg = { message: "Jika email terdaftar, link reset password telah dikirim." };
+  const { email } = req.body ?? {};
+  if (!email || typeof email !== "string" || !email.includes("@")) return res.json(genericMsg);
+
+  const [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, email.toLowerCase().trim()));
+  if (!customer) return res.json(genericMsg);
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiry = new Date(Date.now() + 30 * 60 * 1000);
+  await db
+    .update(portalCustomersTable)
+    .set({ resetPasswordToken: token, resetPasswordExpiry: expiry })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  const appUrl =
+    process.env.APP_URL ??
+    `https://${(process.env.REPLIT_DOMAINS ?? "localhost").split(",")[0]}`;
+  const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+  if (isSmtpConfigured()) {
+    sendMail({
+      to: customer.email,
+      subject: "Reset Password — CST Logistics",
+      text: `Halo ${customer.name},\n\nKlik link berikut untuk reset password Anda (berlaku 30 menit):\n\n${resetUrl}\n\nJika Anda tidak meminta reset password, abaikan email ini.`,
+      html: `<p>Halo <strong>${customer.name}</strong>,</p>
+<p>Klik link berikut untuk reset password Anda (berlaku <strong>30 menit</strong>):</p>
+<p><a href="${resetUrl}" style="background:#0ea5e9;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Reset Password</a></p>
+<p style="color:#888;font-size:12px;">Atau salin link ini: ${resetUrl}</p>
+<p style="color:#888;font-size:12px;">Jika Anda tidak meminta reset password, abaikan email ini.</p>`,
+    }).catch((err: unknown) => {
+      req.log.error({ err, email: customer.email }, "Failed to send reset password email");
+    });
+  } else {
+    req.log.warn("SMTP not configured — reset password email not sent");
+  }
+
+  return res.json(genericMsg);
+});
+
+// POST /api/portal/auth/reset-password
+router.post("/auth/reset-password", async (req, res) => {
+  const { token, password } = req.body ?? {};
+  if (!token || !password) {
+    return res.status(400).json({ message: "Token dan password wajib diisi" });
+  }
+  if (typeof password !== "string" || password.length < 8) {
+    return res.status(400).json({ message: "Password minimal 8 karakter" });
+  }
+
+  const [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.resetPasswordToken, String(token)));
+
+  if (!customer || !customer.resetPasswordExpiry || customer.resetPasswordExpiry < new Date()) {
+    return res.status(400).json({ message: "Token tidak valid atau sudah kedaluwarsa" });
+  }
+
+  await db
+    .update(portalCustomersTable)
+    .set({
+      passwordHash: hashPassword(String(password)),
+      resetPasswordToken: null,
+      resetPasswordExpiry: null,
+    })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  return res.json({ message: "Password berhasil diubah. Silakan login kembali." });
 });
 
 // GET /api/portal/auth/me

@@ -35,6 +35,7 @@ import LogisticAdminOrderDetail from "@/pages/logistic-admin-order-detail";
 import FreightForwarding from "@/pages/freight-forwarding";
 import Pabean from "@/pages/pabean";
 import Calculator from "@/pages/calculator";
+import ResetPassword from "@/pages/reset-password";
 
 const queryClient = new QueryClient();
 
@@ -69,6 +70,7 @@ function AppShell() {
       <Route path="/logistic-admin" component={LogisticAdmin} />
       <Route path="/logistic-admin/orders/:id" component={LogisticAdminOrderDetail} />
       <Route path="/calculator" component={Calculator} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route component={NotFound} />
     </Switch>
   );

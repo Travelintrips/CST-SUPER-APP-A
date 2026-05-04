@@ -11,6 +11,8 @@ export const portalCustomersTable = pgTable("portal_customers", {
   company: text("company"),
   role: text("role").notNull().default("customer"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  resetPasswordToken: text("reset_password_token"),
+  resetPasswordExpiry: timestamp("reset_password_expiry"),
 });
 
 export const portalCustomerServicesTable = pgTable("portal_customer_services", {

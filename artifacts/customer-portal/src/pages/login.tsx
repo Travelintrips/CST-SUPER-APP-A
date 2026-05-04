@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { assetUrl } from "@/lib/utils";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -19,6 +19,9 @@ export default function Login() {
   const [errorMsg, setErrorMsg] = useState("");
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
   const { t } = useLanguage();
+
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const loginSchema = z.object({
     email: z.string().email({ message: t("login.email") }),
@@ -48,6 +51,36 @@ export default function Login() {
       }
     });
   };
+
+  async function handleForgotPassword() {
+    setForgotMsg(null);
+    const email = form.getValues("email").trim();
+
+    if (!email) {
+      setForgotMsg({ type: "err", text: "Masukkan email terlebih dahulu." });
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setForgotMsg({ type: "err", text: "Format email tidak valid." });
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`/api/portal/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json() as { message?: string };
+      setForgotMsg({ type: "ok", text: data.message ?? "Jika email terdaftar, link reset password telah dikirim." });
+    } catch {
+      setForgotMsg({ type: "err", text: "Gagal terhubung ke server. Coba lagi." });
+    } finally {
+      setForgotLoading(false);
+    }
+  }
 
   return (
     <div className="min-h-[calc(100vh-80px)] grid md:grid-cols-2 bg-background">
@@ -196,9 +229,14 @@ export default function Login() {
                     <FormItem>
                       <div className="flex items-center justify-between">
                         <FormLabel>{t("login.password")}</FormLabel>
-                        <Link href="#" className="text-sm font-medium text-accent hover:underline">
-                          {t("login.forgotPassword")}
-                        </Link>
+                        <button
+                          type="button"
+                          onClick={handleForgotPassword}
+                          disabled={forgotLoading}
+                          className="text-sm font-medium text-accent hover:underline disabled:opacity-60"
+                        >
+                          {forgotLoading ? "Mengirim..." : t("login.forgotPassword")}
+                        </button>
                       </div>
                       <FormControl>
                         <Input type="password" {...field} />
@@ -207,6 +245,21 @@ export default function Login() {
                     </FormItem>
                   )}
                 />
+
+                {forgotMsg && (
+                  <Alert
+                    variant={forgotMsg.type === "err" ? "destructive" : "default"}
+                    className={forgotMsg.type === "ok" ? "border-green-200 bg-green-50" : ""}
+                  >
+                    {forgotMsg.type === "ok"
+                      ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      : <AlertCircle className="h-4 w-4" />
+                    }
+                    <AlertDescription className={forgotMsg.type === "ok" ? "text-green-800" : ""}>
+                      {forgotMsg.text}
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <Button
                   type="submit"
