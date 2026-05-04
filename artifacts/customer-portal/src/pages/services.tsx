@@ -37,25 +37,106 @@ export default function Services() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-primary text-primary-foreground py-16 md:py-24">
-        <div className="container px-4 md:px-6">
-          <div className="max-w-2xl">
-            <p className="text-accent font-semibold text-sm uppercase tracking-widest mb-3">{t("services.catalogLabel")}</p>
-            <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">{t("services.title")}</h1>
-            <p className="text-lg text-primary-foreground/80 mb-8">
-              {t("services.description")}
-            </p>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-primary-foreground/50" />
-              <Input
-                type="text"
-                placeholder={t("services.search")}
-                className="w-full h-12 pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+      {/* Hero header */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #0B4F8A 0%, #0F8FD8 50%, #38BDF8 100%)",
+          padding: "clamp(56px, 8vw, 96px) 0 clamp(40px, 6vw, 72px)",
+        }}
+      >
+        {/* Overlay: dark vignette left→right */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(90deg, rgba(2,34,64,0.55) 0%, rgba(2,34,64,0.25) 40%, rgba(2,34,64,0.05) 100%)",
+            pointerEvents: "none",
+          }}
+        />
+        {/* Overlay: dot grid */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.15) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+            opacity: 0.25,
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* Content */}
+        <div className="container px-4 md:px-6" style={{ maxWidth: "760px", position: "relative", zIndex: 2 }}>
+          <p
+            className="font-semibold uppercase mb-3"
+            style={{ fontSize: "12px", letterSpacing: "0.14em", color: "rgba(255,255,255,0.85)" }}
+          >
+            {t("services.catalogLabel")}
+          </p>
+          <h1
+            className="font-display mb-4 text-white"
+            style={{
+              fontSize: "clamp(36px, 5vw, 64px)",
+              fontWeight: 800,
+              lineHeight: 1.08,
+              letterSpacing: "-0.02em",
+              textShadow: "0 6px 20px rgba(0,0,0,0.25)",
+            }}
+          >
+            {t("services.title")}
+          </h1>
+          <p
+            className="mb-8"
+            style={{
+              fontSize: "clamp(16px, 2vw, 22px)",
+              color: "rgba(255,255,255,0.90)",
+              maxWidth: "620px",
+              lineHeight: 1.6,
+            }}
+          >
+            {t("services.description")}
+          </p>
+
+          {/* Glassmorphism search */}
+          <div className="relative" style={{ maxWidth: "520px" }}>
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ width: "18px", height: "18px", color: "rgba(255,255,255,0.85)" }}
+            />
+            <input
+              id="services-hero-search"
+              type="text"
+              placeholder={t("services.search")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full focus:outline-none"
+              style={{
+                paddingLeft: "44px",
+                paddingRight: "16px",
+                paddingTop: "14px",
+                paddingBottom: "14px",
+                background: "rgba(255,255,255,0.15)",
+                border: "1px solid rgba(255,255,255,0.35)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                borderRadius: "14px",
+                fontSize: "15px",
+                color: "white",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.20)",
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.45), 0 10px 30px rgba(0,0,0,0.20)";
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.65)";
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.boxShadow = "0 10px 30px rgba(0,0,0,0.20)";
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)";
+              }}
+            />
+            <style>{`#services-hero-search::placeholder { color: rgba(255,255,255,0.75); }`}</style>
           </div>
         </div>
       </div>

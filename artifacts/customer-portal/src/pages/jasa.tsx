@@ -79,23 +79,99 @@ export default function Jasa() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-primary text-primary-foreground py-8 md:py-10">
-        <div className="container px-4 md:px-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      {/* Hero header */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #0B4F8A 0%, #0F8FD8 50%, #38BDF8 100%)",
+          padding: "clamp(48px, 7vw, 80px) 0 clamp(36px, 5vw, 60px)",
+        }}
+      >
+        {/* Overlay: dark vignette */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(90deg, rgba(2,34,64,0.55) 0%, rgba(2,34,64,0.25) 40%, rgba(2,34,64,0.05) 100%)",
+            pointerEvents: "none",
+          }}
+        />
+        {/* Overlay: dot grid */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.15) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+            opacity: 0.25,
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* Content */}
+        <div
+          className="container px-4 md:px-6"
+          style={{ position: "relative", zIndex: 2 }}
+        >
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
-              <p className="text-accent font-semibold text-xs uppercase tracking-widest mb-1">{t("jasa.catalogLabel")}</p>
-              <h1 className="text-2xl md:text-3xl font-display font-bold">{t("jasa.title")}</h1>
+              <p
+                className="font-semibold uppercase mb-2"
+                style={{ fontSize: "11px", letterSpacing: "0.14em", color: "rgba(255,255,255,0.85)" }}
+              >
+                {t("jasa.catalogLabel")}
+              </p>
+              <h1
+                className="font-display text-white"
+                style={{
+                  fontSize: "clamp(28px, 4vw, 52px)",
+                  fontWeight: 800,
+                  lineHeight: 1.1,
+                  textShadow: "0 6px 20px rgba(0,0,0,0.25)",
+                }}
+              >
+                {t("jasa.title")}
+              </h1>
             </div>
-            <div className="relative w-full md:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary-foreground/50" />
-              <Input
+            {/* Glassmorphism search */}
+            <div className="relative w-full md:w-80 shrink-0">
+              <Search
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ width: "16px", height: "16px", color: "rgba(255,255,255,0.85)" }}
+              />
+              <input
+                id="jasa-hero-search"
                 type="text"
                 placeholder={t("jasa.search")}
-                className="h-10 pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-accent"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full focus:outline-none"
+                style={{
+                  paddingLeft: "40px",
+                  paddingRight: "14px",
+                  paddingTop: "11px",
+                  paddingBottom: "11px",
+                  background: "rgba(255,255,255,0.15)",
+                  border: "1px solid rgba(255,255,255,0.35)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  borderRadius: "14px",
+                  fontSize: "14px",
+                  color: "white",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.20)",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.45), 0 10px 30px rgba(0,0,0,0.20)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.65)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.boxShadow = "0 10px 30px rgba(0,0,0,0.20)";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)";
+                }}
               />
+              <style>{`#jasa-hero-search::placeholder { color: rgba(255,255,255,0.75); }`}</style>
             </div>
           </div>
         </div>

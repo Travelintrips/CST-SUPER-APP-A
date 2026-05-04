@@ -568,50 +568,24 @@ export default function Products() {
       <div
         className="relative overflow-hidden"
         style={{
-          background: "linear-gradient(135deg, #0F8FD8 0%, #14A7E8 45%, #38BDF8 100%)",
+          backgroundImage: [
+            "linear-gradient(90deg, rgba(15,23,42,0.72) 0%, rgba(14,165,233,0.55) 45%, rgba(37,99,235,0.30) 100%)",
+            `url(${PRODUCT_HERO_BG})`,
+          ].join(", "),
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
           padding: "clamp(56px, 8vw, 96px) 0 clamp(40px, 6vw, 72px)",
         }}
       >
-        {/* Overlay: radial highlight + dark vignette */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: [
-              "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.18), transparent 28%)",
-              "linear-gradient(90deg, rgba(3,37,76,0.28), rgba(3,37,76,0.05))",
-            ].join(", "),
-            pointerEvents: "none",
-          }}
-        />
-        {/* Overlay: subtle dot grid */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage: "radial-gradient(rgba(255,255,255,0.13) 1px, transparent 1px)",
-            backgroundSize: "36px 36px",
-            opacity: 0.55,
-            pointerEvents: "none",
-          }}
-        />
-
-        {/* Content — above overlays */}
         <div
           className="container px-4 md:px-6"
-          style={{ maxWidth: "760px", position: "relative", zIndex: 1 }}
+          style={{ maxWidth: "760px" }}
         >
           {/* Label */}
           <p
-            className="font-bold uppercase mb-3"
-            style={{
-              fontSize: "12px",
-              letterSpacing: "0.14em",
-              color: "rgba(8,47,73,0.90)",
-              fontWeight: 700,
-            }}
+            className="font-extrabold uppercase text-white mb-3"
+            style={{ fontSize: "13px", letterSpacing: "0.14em", opacity: 0.92 }}
           >
             {t("products.catalogLabel")}
           </p>
@@ -623,8 +597,7 @@ export default function Products() {
               fontSize: "clamp(40px, 5vw, 68px)",
               lineHeight: 1.05,
               letterSpacing: "-0.02em",
-              fontWeight: 800,
-              textShadow: "0 6px 20px rgba(0,0,0,0.22)",
+              textShadow: "0 4px 18px rgba(15,23,42,0.25)",
             }}
           >
             {t("products.title")}
@@ -634,11 +607,11 @@ export default function Products() {
           <p
             className="mb-8"
             style={{
-              fontSize: "clamp(17px, 2vw, 22px)",
-              color: "rgba(255,255,255,0.92)",
+              fontSize: "clamp(16px, 2vw, 20px)",
+              color: "rgba(255,255,255,0.90)",
               maxWidth: "620px",
-              lineHeight: 1.6,
-              textShadow: "0 2px 8px rgba(3,37,76,0.18)",
+              lineHeight: 1.65,
+              textShadow: "0 2px 8px rgba(15,23,42,0.20)",
             }}
           >
             {t("products.description")}
@@ -648,41 +621,38 @@ export default function Products() {
           <div className="relative" style={{ maxWidth: "560px" }}>
             <Search
               className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ width: "18px", height: "18px", color: "rgba(255,255,255,0.85)" }}
+              style={{ width: "18px", height: "18px", color: "rgba(255,255,255,0.72)" }}
             />
             <input
-              id="product-hero-search"
               type="text"
               placeholder={t("products.search")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full focus:outline-none"
+              className="w-full text-white focus:outline-none"
               style={{
                 paddingLeft: "44px",
                 paddingRight: "16px",
                 paddingTop: "14px",
                 paddingBottom: "14px",
-                background: "rgba(255,255,255,0.18)",
-                border: "1px solid rgba(255,255,255,0.35)",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
-                borderRadius: "14px",
+                background: "rgba(255,255,255,0.15)",
+                border: "1px solid rgba(255,255,255,0.34)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                borderRadius: "16px",
                 fontSize: "15px",
-                boxShadow: "0 12px 30px rgba(2,44,80,0.18)",
+                boxShadow: "0 2px 14px rgba(15,23,42,0.14)",
                 color: "white",
               }}
               onFocus={(e) => {
-                e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.50), 0 12px 30px rgba(2,44,80,0.18)";
+                e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.45), 0 2px 14px rgba(15,23,42,0.14)";
                 e.currentTarget.style.borderColor = "rgba(255,255,255,0.65)";
               }}
               onBlur={(e) => {
-                e.currentTarget.style.boxShadow = "0 12px 30px rgba(2,44,80,0.18)";
-                e.currentTarget.style.borderColor = "rgba(255,255,255,0.35)";
+                e.currentTarget.style.boxShadow = "0 2px 14px rgba(15,23,42,0.14)";
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.34)";
               }}
             />
-            <style>{`
-              #product-hero-search::placeholder { color: rgba(255,255,255,0.78); }
-            `}</style>
+            <style>{`input::placeholder { color: rgba(255,255,255,0.58); }`}</style>
           </div>
         </div>
       </div>
