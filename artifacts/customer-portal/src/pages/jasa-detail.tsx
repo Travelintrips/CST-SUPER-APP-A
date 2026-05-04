@@ -294,6 +294,21 @@ export default function JasaDetail() {
       toast({ title: "Isi data kalkulator terlebih dahulu", variant: "destructive" });
       return;
     }
+    if (item.calculatorType === "trucking") {
+      if (!state.pickupDate) {
+        toast({ title: "Tanggal penjemputan wajib diisi", variant: "destructive" });
+        return;
+      }
+      const today = new Date().toISOString().split("T")[0];
+      if (state.pickupDate < today) {
+        toast({ title: "Tanggal penjemputan tidak boleh sebelum hari ini", variant: "destructive" });
+        return;
+      }
+      if (!state.pickupTime) {
+        toast({ title: "Jam penjemputan wajib diisi", variant: "destructive" });
+        return;
+      }
+    }
     addItem({
       category: item.category,
       serviceName: item.name,
@@ -552,6 +567,33 @@ export default function JasaDetail() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
+                      <Label>
+                        Tanggal Penjemputan
+                        {!state.pickupDate && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        type="date"
+                        className="mt-1"
+                        min={new Date().toISOString().split("T")[0]}
+                        value={state.pickupDate || ""}
+                        onChange={e => set("pickupDate", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label>
+                        Jam Penjemputan
+                        {!state.pickupTime && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Input
+                        type="time"
+                        className="mt-1"
+                        value={state.pickupTime || ""}
+                        onChange={e => set("pickupTime", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
                       <Label className="flex items-center gap-1.5">
                         Distance (km)
                         {calcDist && <span className="text-xs text-blue-600 font-normal flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>menghitung...</span>}
@@ -636,9 +678,11 @@ export default function JasaDetail() {
                   <div>
                     <p className="text-sm text-muted-foreground">Estimasi Subtotal</p>
                     <p className={`text-2xl font-bold ${subtotal > 0 ? colors.text : "text-foreground"}`}>
-                      {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                      {ct === "trucking" ? formatCurrency(subtotal) : (subtotal > 0 ? formatCurrency(subtotal) : "—")}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 italic">Harga estimasi, final dikonfirmasi tim kami</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 italic">
+                      {ct === "trucking" ? "Harga fix berdasarkan kalkulasi jarak" : "Harga estimasi, final dikonfirmasi tim kami"}
+                    </p>
                   </div>
                   {subtotal > 0 && <CheckCircle2 className={`h-8 w-8 ${colors.text} opacity-60`} />}
                 </div>
@@ -648,7 +692,9 @@ export default function JasaDetail() {
                     size="lg"
                     className="w-full gap-2 h-12 text-base"
                     onClick={handleAddToCart}
-                    disabled={subtotal <= 0}
+                    disabled={ct === "trucking"
+                      ? subtotal <= 0 || !state.pickupDate || !state.pickupTime
+                      : subtotal <= 0}
                   >
                     <ShoppingCart className="h-5 w-5" />
                     Tambahkan ke Pesanan
@@ -686,7 +732,10 @@ export default function JasaDetail() {
                 <Separator />
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Harga</span>
-                  <span className="font-semibold text-amber-600">Negosiasi / Quotation</span>
+                  {ct === "trucking"
+                    ? <span className="font-semibold text-green-700">Sesuai Kalkulasi Jarak</span>
+                    : <span className="font-semibold text-amber-600">Negosiasi / Quotation</span>
+                  }
                 </div>
                 <Separator />
                 <div className="flex justify-between">
