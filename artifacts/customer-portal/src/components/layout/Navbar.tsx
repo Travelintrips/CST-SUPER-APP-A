@@ -331,21 +331,14 @@ export function Navbar() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                {/* Masuk — plain text style */}
+              <div className="flex items-center gap-1">
                 <Link href="/login">
-                  <button className="px-[14px] py-[10px] text-[15px] font-semibold text-[#64748B] hover:text-slate-900 rounded-[14px] hover:bg-slate-50 transition-all duration-200 whitespace-nowrap">
+                  <button className="px-3.5 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100/70 transition-all duration-200 whitespace-nowrap">
                     {t("nav.login")}
                   </button>
                 </Link>
-                {/* Daftar — dark premium */}
                 <Link href="/register">
-                  <button
-                    className="px-[18px] py-[11px] text-[15px] font-semibold rounded-[16px] whitespace-nowrap transition-all duration-200 text-white"
-                    style={{ background: "#0F172A" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#1E293B"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "#0F172A"; }}
-                  >
+                  <button className="px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all duration-200 text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 hover:border-sky-300">
                     {t("nav.register")}
                   </button>
                 </Link>
@@ -528,15 +521,12 @@ export function Navbar() {
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <Link href="/login" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full rounded-[14px] text-[14px] font-semibold">
+                    <button className="w-full py-2 text-sm font-medium text-slate-500 hover:text-slate-800 rounded-lg border border-slate-200 hover:bg-slate-50 transition-all duration-200">
                       {t("nav.login")}
-                    </Button>
+                    </button>
                   </Link>
                   <Link href="/register" onClick={() => setIsOpen(false)}>
-                    <button
-                      className="w-full py-2 text-[14px] font-semibold rounded-[16px] text-white transition-all"
-                      style={{ background: "#0F172A" }}
-                    >
+                    <button className="w-full py-2 text-sm font-medium rounded-lg text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 transition-all duration-200">
                       {t("nav.register")}
                     </button>
                   </Link>
