@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useGetPortalCompany } from "@workspace/api-client-react";
@@ -16,18 +16,34 @@ export default function Home() {
   const { content } = useEditMode();
   const { t } = useLanguage();
 
-  // Draft banner: read cart from localStorage once on mount
+  // Draft banner: reactive to cart changes in same tab and cross-tab
   const [draftDismissed, setDraftDismissed] = useState(false);
-  const [draftCount] = useState<number>(() => {
+  const [draftCount, setDraftCount] = useState<number>(() => {
     try {
       const raw = localStorage.getItem("logistic_cart");
       if (!raw) return 0;
-      const items = JSON.parse(raw);
-      return Array.isArray(items) ? items.length : 0;
-    } catch {
-      return 0;
-    }
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch { return 0; }
   });
+
+  useEffect(() => {
+    function readCount() {
+      try {
+        const raw = localStorage.getItem("logistic_cart");
+        if (!raw) { setDraftCount(0); return; }
+        const parsed = JSON.parse(raw);
+        setDraftCount(Array.isArray(parsed) ? parsed.length : 0);
+      } catch { setDraftCount(0); }
+    }
+    window.addEventListener("logistic-cart-change", readCount);
+    window.addEventListener("storage", readCount);
+    return () => {
+      window.removeEventListener("logistic-cart-change", readCount);
+      window.removeEventListener("storage", readCount);
+    };
+  }, []);
+
   const showDraftBanner = draftCount > 0 && !draftDismissed;
 
   const whyCards = [

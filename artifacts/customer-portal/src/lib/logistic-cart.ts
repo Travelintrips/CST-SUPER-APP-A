@@ -24,6 +24,7 @@ export function useCart() {
 
   useEffect(() => {
     localStorage.setItem(CART_KEY, JSON.stringify(items));
+    window.dispatchEvent(new Event("logistic-cart-change"));
   }, [items]);
 
   function addItem(item: Omit<CartItem, "cartId">) {
