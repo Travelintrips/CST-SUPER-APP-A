@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useGetPortalCompany } from "@workspace/api-client-react";
-import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight, Ship, FileCheck, Warehouse, Truck, Sparkles, Calculator, Tag, ChevronRight, Star } from "lucide-react";
+import { Globe, ShieldCheck, Clock, Package, CheckCircle2, Mail, Phone, MapPin, ArrowRight, Ship, FileCheck, Warehouse, Truck, Sparkles, Calculator, Tag, ChevronRight, Star, X, ShoppingCart } from "lucide-react";
 import { assetUrl } from "@/lib/utils";
 import { useEditMode } from "@/contexts/EditModeContext";
 import { EditableText } from "@/components/EditableText";
@@ -14,6 +15,20 @@ export default function Home() {
   });
   const { content } = useEditMode();
   const { t } = useLanguage();
+
+  // Draft banner: read cart from localStorage once on mount
+  const [draftDismissed, setDraftDismissed] = useState(false);
+  const [draftCount] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem("logistic_cart");
+      if (!raw) return 0;
+      const items = JSON.parse(raw);
+      return Array.isArray(items) ? items.length : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const showDraftBanner = draftCount > 0 && !draftDismissed;
 
   const whyCards = [
     { titleKey: "why.card1Title", descKey: "why.card1Desc", href: "/services" },
@@ -34,6 +49,30 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen">
+
+      {/* ── Draft Resume Banner ───────────────────────────────────── */}
+      {showDraftBanner && (
+        <div className="bg-sky-50 border-b border-sky-200">
+          <div className="container px-4 md:px-6 py-2.5 flex items-center gap-3">
+            <ShoppingCart className="h-4 w-4 text-sky-600 shrink-0" />
+            <p className="text-sm text-sky-800 flex-1">
+              Kamu punya <span className="font-semibold">{draftCount} layanan</span> yang belum selesai dipesan.
+            </p>
+            <Link href="/book">
+              <Button size="sm" className="h-7 px-3 text-xs bg-sky-600 hover:bg-sky-700 text-white shrink-0">
+                Resume Pesanan →
+              </Button>
+            </Link>
+            <button
+              onClick={() => setDraftDismissed(true)}
+              aria-label="Tutup"
+              className="text-sky-400 hover:text-sky-700 transition-colors shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="relative w-full h-[90vh] min-h-[640px] flex items-center justify-center overflow-hidden">
