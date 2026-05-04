@@ -28,6 +28,63 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
 };
 
+function getServiceDetailRows(
+  calculatorType: string,
+  inputData: Record<string, unknown>
+): { label: string; value: string }[] {
+  const str = (v: unknown) => (v != null && v !== "" ? String(v) : "");
+
+  if (calculatorType === "trucking") {
+    return [
+      { label: "Pickup City", value: str(inputData.pickupCity) || "-" },
+      { label: "Destination City", value: str(inputData.destCity) || "-" },
+      { label: "Distance", value: inputData.distance ? `${inputData.distance} KM` : "-" },
+      { label: "Vehicle Type", value: str(inputData.vehicleType) || "Not specified" },
+    ];
+  }
+  if (calculatorType === "air_freight") {
+    return [
+      { label: "Origin Airport", value: str(inputData.originAirport) || "-" },
+      { label: "Destination Airport", value: str(inputData.destinationAirport) || "-" },
+      ...(inputData.grossWeight ? [{ label: "Gross Weight", value: `${inputData.grossWeight} kg` }] : []),
+      ...(inputData.quantity ? [{ label: "Quantity", value: `${inputData.quantity} pcs` }] : []),
+    ];
+  }
+  if (calculatorType === "sea_fcl") {
+    return [
+      { label: "Origin Port", value: str(inputData.originPort) || "-" },
+      { label: "Destination Port", value: str(inputData.destinationPort) || "-" },
+      ...(inputData.containerType ? [{ label: "Container Type", value: str(inputData.containerType) }] : []),
+    ];
+  }
+  if (calculatorType === "sea_lcl") {
+    return [
+      ...(inputData.cbm ? [{ label: "CBM", value: String(inputData.cbm) }] : []),
+      ...(inputData.weight ? [{ label: "Weight", value: `${inputData.weight} kg` }] : []),
+    ];
+  }
+  if (calculatorType === "customs") {
+    return [
+      ...(inputData.shipmentType ? [{ label: "Shipment Type", value: str(inputData.shipmentType) }] : []),
+    ];
+  }
+  if (calculatorType === "storage") {
+    return [
+      ...(inputData.days ? [{ label: "Days", value: String(inputData.days) }] : []),
+      ...(inputData.quantity ? [{ label: "Quantity", value: String(inputData.quantity) }] : []),
+      ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
+    ];
+  }
+  const skipped = new Set(["unitPrice", "serviceFee", "adminFee", "ratePerKg", "ratePerCbm", "minimumCharge", "freightRate", "handlingFee", "truckingRate", "loadingFee", "customsFee", "documentFee", "pibPebFee", "permitFee", "notes"]);
+  return Object.entries(inputData)
+    .filter(([k, v]) => v && !skipped.has(k))
+    .slice(0, 4)
+    .map(([k, v]) => ({
+      label: k.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()),
+      value: String(v),
+    }));
+}
+
 const STEPS = [
   "Tipe Pengiriman",
   "Pilih Layanan",
@@ -638,13 +695,14 @@ export default function BookPage() {
                     <div className="flex-1 min-w-0">
                       <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
                       <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {Object.entries(item.inputData)
-                          .filter(([, v]) => v)
-                          .slice(0, 3)
-                          .map(([k, v]) => `${k}: ${v}`)
-                          .join(" · ")}
-                      </p>
+                      <dl className="mt-2 space-y-1">
+                        {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
+                          <div key={label} className="flex gap-2 text-xs leading-relaxed">
+                            <dt className="font-medium text-foreground shrink-0 w-28">{label}</dt>
+                            <dd className="text-muted-foreground">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
