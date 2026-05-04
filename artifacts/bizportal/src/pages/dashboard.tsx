@@ -356,7 +356,7 @@ export default function DashboardPage() {
             {/* 4 clickable stat cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { key: "all",         label: "Total",       value: portalOrders.length,  color: "text-foreground",    bg: "bg-slate-50 hover:bg-slate-100",         ring: "ring-slate-300"  },
+                { key: "all",         label: "Total",       value: portalOrders.length,  color: "text-slate-900",     bg: "bg-slate-50 hover:bg-slate-100",         ring: "ring-slate-300"  },
                 { key: "New Order",   label: "New Order",   value: portalNew,             color: "text-yellow-700",    bg: "bg-yellow-50 hover:bg-yellow-100",       ring: "ring-yellow-400" },
                 { key: "In Progress", label: "In Progress", value: portalInProgress,      color: "text-orange-700",    bg: "bg-orange-50 hover:bg-orange-100",       ring: "ring-orange-400" },
                 { key: "Completed",   label: "Completed",   value: portalCompleted,       color: "text-green-700",     bg: "bg-green-50 hover:bg-green-100",         ring: "ring-green-500"  },

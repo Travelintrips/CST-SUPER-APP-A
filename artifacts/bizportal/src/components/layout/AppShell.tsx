@@ -97,7 +97,6 @@ export function AppShell({ children }: AppShellProps) {
 
   const navItems: NavItem[] = [
     { type: "flat", title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin"] },
-    { type: "flat", title: "Portal Orders", href: "/logistics/portal-orders", icon: PackageOpen, roles: ["admin", "logistics"] },
     {
       type: "group",
       title: "Sales",
