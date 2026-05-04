@@ -208,6 +208,29 @@ export function Footer() {
                       </span>
                     </div>
                   )}
+
+                  {/* Alamat lengkap kantor */}
+                  <div className="mt-3 ml-8 space-y-3 text-white/60">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45 mb-1">
+                        Alamat Kantor
+                      </p>
+                      <p className="text-xs leading-relaxed">
+                        Jln. Ternate No. 10<br />
+                        Jakarta, Indonesia 10150
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45 mb-1">
+                        Sport Center
+                      </p>
+                      <p className="text-xs leading-relaxed">
+                        Soekarno Hatta Jl. C3 No. 831 RT 001 RW 010<br />
+                        Belakang Masjid Nurul Barkah Pajang<br />
+                        Benda, Tangerang Kota, Banten 15126
+                      </p>
+                    </div>
+                  </div>
                 </li>
               )}
 
