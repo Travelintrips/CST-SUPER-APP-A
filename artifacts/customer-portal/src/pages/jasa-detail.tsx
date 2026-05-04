@@ -149,6 +149,22 @@ function calcResult(calcType: string, state: CalcState, airRows?: AirRow[]): Rec
   return { total: calcSubtotal(calcType, state).toFixed(2) };
 }
 
+const VEHICLE_LIST = [
+  { key: "CDE",                      label: "CDE",                      rateKey: "CDE"     },
+  { key: "CDD",                      label: "CDD",                      rateKey: "CDD"     },
+  { key: "Fuso",                     label: "Fuso",                     rateKey: "Fuso"    },
+  { key: "Tronton",                  label: "Tronton",                  rateKey: "Wingbox" },
+  { key: "Trailer Truck / Kontainer",label: "Trailer Truck / Kontainer",rateKey: "Trailer" },
+] as const;
+
+const VEHICLE_SUBTYPES: Record<string, string[]> = {
+  "CDE":                       ["CDE Bak", "CDE Box"],
+  "CDD":                       ["CDD Bak", "CDD Box"],
+  "Fuso":                      ["Fuso Box (8 Tons)", "Fuso Box (10 Tons)", "Fuso Pickup (8 Tons)", "Fuso Pickup (10 Tons)"],
+  "Tronton":                   ["Tronton Wing Box (18 Tons)", "Tronton Wing Box (22 Tons)", "Tronton Wing Box (25 Tons)", "Tronton Pickup (18 Tons)", "Tronton Pickup (22 Tons)", "Tronton Pickup (25 Tons)"],
+  "Trailer Truck / Kontainer": ["Trailer 20 ft", "Trailer 40 ft", "Trailer Flatbed"],
+};
+
 export default function JasaDetail() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -296,8 +312,8 @@ export default function JasaDetail() {
         toast({ title: "Pilih kendaraan terlebih dahulu", variant: "destructive" });
         return;
       }
-      if (state.vehicleType === "Trailer Truck" && !state.trailerSize) {
-        toast({ title: "Pilih ukuran trailer", variant: "destructive" });
+      if (!state.vehicleSubtype) {
+        toast({ title: "Pilih tipe kendaraan", variant: "destructive" });
         return;
       }
       if (!state.pickupCity) {
@@ -342,8 +358,8 @@ export default function JasaDetail() {
         toast({ title: "Pilih Vehicle Type terlebih dahulu", variant: "destructive" });
         return;
       }
-      if (state.vehicleType === "Trailer Truck" && !state.trailerSize) {
-        toast({ title: "Pilih ukuran Trailer", variant: "destructive" });
+      if (!state.vehicleSubtype) {
+        toast({ title: "Pilih tipe kendaraan", variant: "destructive" });
         return;
       }
       if ((state.serviceType || "Quick") !== "Quick") {
@@ -618,22 +634,15 @@ export default function JasaDetail() {
                             </button>
                             {vehicleOpen && (
                               <div className="absolute top-[calc(100%+4px)] left-0 right-0 bg-white rounded-xl shadow-2xl z-30 overflow-hidden border border-gray-100">
-                                {(Object.keys(truckingRates).length > 0
-                                  ? [
-                                      ...Object.keys(truckingRates).filter(k => k !== "Trailer").map(k => ({key: k, label: k})),
-                                      ...(truckingRates["Trailer"] ? [{key: "Trailer Truck", label: "Trailer Truck"}] : []),
-                                    ]
-                                  : [{key:"CDE",label:"CDE"},{key:"CDD",label:"CDD"},{key:"Fuso",label:"Fuso"},{key:"Wingbox",label:"Wingbox"},{key:"Trailer Truck",label:"Trailer Truck"}]
-                                ).map(v => {
+                                {VEHICLE_LIST.map(v => {
                                   const isSel = state.vehicleType === v.key;
-                                  const rk = v.key === "Trailer Truck" ? "Trailer" : v.key;
-                                  const r = truckingRates[rk];
+                                  const r = truckingRates[v.rateKey];
                                   return (
                                     <button
                                       key={v.key}
                                       type="button"
                                       onClick={() => {
-                                        setState(prev => ({...prev, vehicleType: v.key, trailerSize: "", ...(r ? {truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee)} : {})}));
+                                        setState(prev => ({...prev, vehicleType: v.key, vehicleSubtype: "", trailerSize: "", ...(r ? {truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee)} : {})}));
                                         setVehicleOpen(false);
                                       }}
                                       className="w-full flex items-center gap-3 px-4 py-3 hover:bg-green-50 text-left border-b border-gray-100 last:border-0 transition-colors"
@@ -655,21 +664,41 @@ export default function JasaDetail() {
                             )}
                           </div>
 
-                          {/* Trailer sizes */}
-                          {state.vehicleType === "Trailer Truck" && (
+                          {/* Vehicle Subtype grid */}
+                          {state.vehicleType && VEHICLE_SUBTYPES[state.vehicleType] && (
                             <div className="grid grid-cols-2 gap-2">
-                              {(["20 ft","40 ft","Flatbed"] as const).map((size, i) => (
-                                <button
-                                  key={size}
-                                  type="button"
-                                  onClick={() => set("trailerSize", size)}
-                                  className={`${i === 2 ? "col-span-2" : ""} py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
-                                    state.trailerSize === size ? "bg-white text-[#16A34A] border-white" : "bg-transparent text-white border-white/40 hover:border-white/70"
-                                  }`}
-                                >
-                                  {size === "Flatbed" ? "Trailer Flatbed" : `Trailer ${size}`}
-                                </button>
-                              ))}
+                              {VEHICLE_SUBTYPES[state.vehicleType].map((sub, i) => {
+                                const subtypes = VEHICLE_SUBTYPES[state.vehicleType!];
+                                const isOdd = subtypes.length % 2 !== 0;
+                                const isLast = i === subtypes.length - 1;
+                                const isSelected = state.vehicleSubtype === sub;
+                                return (
+                                  <button
+                                    key={sub}
+                                    type="button"
+                                    onClick={() => {
+                                      const trailerMap: Record<string, string> = {
+                                        "Trailer 20 ft": "20 ft",
+                                        "Trailer 40 ft": "40 ft",
+                                        "Trailer Flatbed": "Flatbed",
+                                      };
+                                      setState(prev => ({
+                                        ...prev,
+                                        vehicleSubtype: sub,
+                                        trailerSize: trailerMap[sub] ?? "",
+                                      }));
+                                    }}
+                                    className={`${isOdd && isLast ? "col-span-2" : ""} py-2.5 px-3 rounded-xl text-xs font-semibold border-2 transition-all flex items-center justify-between gap-1 ${
+                                      isSelected
+                                        ? "bg-white text-[#16A34A] border-white"
+                                        : "bg-transparent text-white border-white/40 hover:border-white/70"
+                                    }`}
+                                  >
+                                    <span className="flex-1 text-center leading-snug">{sub}</span>
+                                    {isSelected && <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0"/>}
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
 
@@ -778,9 +807,9 @@ export default function JasaDetail() {
                           <div className="bg-white rounded-xl p-4 shadow-sm">
                             <p className="font-semibold text-gray-900 text-sm mb-2">Ringkasan Pesanan</p>
                             <div className="divide-y divide-gray-100 text-sm">
-                              <div className="flex justify-between py-2">
-                                <span className="text-gray-500">Kendaraan</span>
-                                <span className="font-medium">{state.vehicleType === "Trailer Truck" && state.trailerSize ? `Trailer Truck - ${state.trailerSize}` : (state.vehicleType || "-")}</span>
+                              <div className="flex justify-between py-2 gap-2">
+                                <span className="text-gray-500 flex-shrink-0">Kendaraan</span>
+                                <span className="font-medium text-right text-xs leading-snug">{state.vehicleSubtype || state.vehicleType || "-"}</span>
                               </div>
                               <div className="flex justify-between py-2">
                                 <span className="text-gray-500">Layanan</span>
