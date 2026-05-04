@@ -118,15 +118,16 @@ export default function Jasa() {
             right: "2%",
             top: "50%",
             transform: "translateY(-50%)",
-            width: "48%",
-            height: "90%",
+            width: "54%",
+            height: "82%",
             backgroundImage: "url(/images/world-map-logistics.svg)",
             backgroundRepeat: "no-repeat",
             backgroundPosition: "center right",
             backgroundSize: "contain",
-            opacity: 0.26,
+            opacity: 0.34,
             pointerEvents: "none",
             zIndex: 1,
+            filter: "drop-shadow(0 0 18px rgba(255,255,255,0.25))",
           }}
         />
         <style>{`
@@ -134,7 +135,8 @@ export default function Jasa() {
             .jasa-world-map {
               width: 90% !important;
               right: -20% !important;
-              opacity: 0.10 !important;
+              opacity: 0.12 !important;
+              filter: none !important;
             }
           }
         `}</style>
