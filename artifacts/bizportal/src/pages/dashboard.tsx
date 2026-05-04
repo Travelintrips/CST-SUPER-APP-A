@@ -4,7 +4,13 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
+import type { LogisticOrder } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select as StatusSelect, SelectContent as StatusSelectContent, SelectItem as StatusSelectItem, SelectTrigger as StatusSelectTrigger, SelectValue as StatusSelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -157,15 +163,88 @@ export default function DashboardPage() {
   const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
   const inTransitCount = summary?.inTransitCount ?? 0;
 
-  const { data: portalOrders = [], isLoading: portalLoading } = useListLogisticOrders(undefined, {
+  const { data: portalOrders = [], isLoading: portalLoading, refetch: refetchPortal } = useListLogisticOrders(undefined, {
     query: { queryKey: ["dashboard-portal-orders"], refetchInterval },
   });
   const portalNew = portalOrders.filter((o) => o.status === "New Order").length;
   const portalInProgress = portalOrders.filter((o) => o.status === "In Progress").length;
   const portalCompleted = portalOrders.filter((o) => o.status === "Completed").length;
-  const latestPortalOrders = [...portalOrders]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
+
+  const [selectedPortalStatus, setSelectedPortalStatus] = useState<string | null>(null);
+  const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const updateStatus = useUpdateLogisticOrderStatus();
+  const createSalesDoc = useCreateSalesDocument();
+
+  const portalDetailOrders = selectedPortalStatus === "all"
+    ? [...portalOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    : [...portalOrders]
+        .filter((o) => o.status === selectedPortalStatus)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  function handlePortalStatusChange(id: number, status: string) {
+    setUpdatingId(id);
+    updateStatus.mutate(
+      { id, data: { status } },
+      {
+        onSuccess: () => {
+          toast({ title: `Status diperbarui: ${status}` });
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+          void refetchPortal();
+        },
+        onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
+        onSettled: () => setUpdatingId(null),
+      },
+    );
+  }
+
+  function handleCreateSalesOrder() {
+    if (!soDialog) return;
+    const o = soDialog;
+    createSalesDoc.mutate(
+      {
+        data: {
+          kind: "order",
+          customerName: o.companyName || o.customerName,
+          origin: o.origin,
+          destination: o.destination,
+          notes: [
+            `Ref Portal Order: ${o.orderNumber}`,
+            `Tipe: ${o.shipmentType}`,
+            o.commodity ? `Komoditi: ${o.commodity}` : null,
+            o.cargoDescription ? `Kargo: ${o.cargoDescription}` : null,
+            o.notes ?? null,
+          ].filter(Boolean).join(" | "),
+          lines: [
+            {
+              name: `Jasa Logistik ${o.shipmentType} — ${o.origin} → ${o.destination}`,
+              description: `Portal Order #${o.orderNumber} (${o.customerName})`,
+              quantity: 1,
+              unitPrice: o.grandTotal,
+            },
+          ],
+        },
+      },
+      {
+        onSuccess: (doc) => {
+          toast({ title: "Sales Order berhasil dibuat!", description: doc.docNumber });
+          setSoDialog(null);
+        },
+        onError: () => toast({ title: "Gagal membuat Sales Order", variant: "destructive" }),
+      },
+    );
+  }
+
+  const STATUS_OPTIONS_PORTAL = ["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"];
+  const STATUS_COLORS_PORTAL: Record<string, string> = {
+    "New Order":   "bg-yellow-100 text-yellow-800 border-yellow-200",
+    "Confirmed":   "bg-blue-100 text-blue-800 border-blue-200",
+    "In Progress": "bg-orange-100 text-orange-800 border-orange-200",
+    "Completed":   "bg-green-100 text-green-800 border-green-200",
+    "Cancelled":   "bg-red-100 text-red-800 border-red-200",
+  };
 
   const formatIDR = (value: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -246,6 +325,150 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* ── Portal Orders — always at the TOP ── */}
+        <Card className="border-primary/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PackageOpen className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Portal Orders</CardTitle>
+                {portalNew > 0 && (
+                  <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs">
+                    {portalNew} baru
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => void refetchPortal()}>
+                  <RefreshCw className="h-3 w-3" /> Refresh
+                </Button>
+                <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
+                  <Link href="/logistics/portal-orders">
+                    Lihat Semua <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+            <CardDescription>Pesanan masuk dari customer portal — klik kartu untuk melihat detail</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* 4 clickable stat cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { key: "all",         label: "Total",       value: portalOrders.length,  color: "text-foreground",    bg: "bg-slate-50 hover:bg-slate-100",         ring: "ring-slate-300"  },
+                { key: "New Order",   label: "New Order",   value: portalNew,             color: "text-yellow-700",    bg: "bg-yellow-50 hover:bg-yellow-100",       ring: "ring-yellow-400" },
+                { key: "In Progress", label: "In Progress", value: portalInProgress,      color: "text-orange-700",    bg: "bg-orange-50 hover:bg-orange-100",       ring: "ring-orange-400" },
+                { key: "Completed",   label: "Completed",   value: portalCompleted,       color: "text-green-700",     bg: "bg-green-50 hover:bg-green-100",         ring: "ring-green-500"  },
+              ].map((s) => {
+                const isSelected = selectedPortalStatus === s.key;
+                return (
+                  <button
+                    key={s.key}
+                    onClick={() => setSelectedPortalStatus(isSelected ? null : s.key)}
+                    className={`rounded-xl border-2 p-4 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                      ${isSelected ? `${s.bg} ring-2 ${s.ring} border-transparent shadow-md` : `border-border ${s.bg}`}
+                    `}
+                  >
+                    <p className="text-xs text-muted-foreground mb-1 font-medium">{s.label}</p>
+                    {portalLoading
+                      ? <Skeleton className="h-7 w-10 bg-muted" />
+                      : <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                    }
+                    <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-0.5">
+                      {isSelected
+                        ? <><ChevronUp className="h-3 w-3" /> Sembunyikan</>
+                        : <><ChevronDown className="h-3 w-3" /> Lihat detail</>
+                      }
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Inline detail panel — shown when a card is selected */}
+            {selectedPortalStatus && (
+              <div className="rounded-xl border border-border overflow-hidden bg-background">
+                <div className="px-4 py-2.5 border-b border-border bg-muted/40 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    {selectedPortalStatus === "all" ? "Semua Portal Order" : `Status: ${selectedPortalStatus}`}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">({portalDetailOrders.length} pesanan)</span>
+                  </p>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSelectedPortalStatus(null)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                {portalLoading ? (
+                  <div className="p-4 space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full bg-muted" />)}
+                  </div>
+                ) : portalDetailOrders.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">
+                    Tidak ada pesanan untuk status ini
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/60">
+                    {portalDetailOrders.map((o) => (
+                      <div key={o.id} className="px-4 py-3 flex flex-wrap md:flex-nowrap items-start md:items-center gap-3">
+                        {/* Order info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs text-muted-foreground">{o.orderNumber}</span>
+                            <Badge className={`text-[10px] px-1.5 py-0 border ${STATUS_COLORS_PORTAL[o.status] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}>
+                              {o.status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm font-medium truncate mt-0.5">{o.customerName}
+                            {o.companyName ? <span className="text-muted-foreground font-normal"> · {o.companyName}</span> : null}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{o.origin} → {o.destination} · {o.shipmentType}</p>
+                        </div>
+
+                        {/* Amount + date */}
+                        <div className="text-right shrink-0 hidden sm:block">
+                          <p className="text-sm font-semibold">
+                            {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(o.grandTotal)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(o.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                          </p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <StatusSelect
+                            value={o.status}
+                            onValueChange={(v) => handlePortalStatusChange(o.id, v)}
+                            disabled={updatingId === o.id}
+                          >
+                            <StatusSelectTrigger className="h-7 w-32 text-xs">
+                              <StatusSelectValue />
+                            </StatusSelectTrigger>
+                            <StatusSelectContent>
+                              {STATUS_OPTIONS_PORTAL.map((s) => (
+                                <StatusSelectItem key={s} value={s} className="text-xs">{s}</StatusSelectItem>
+                              ))}
+                            </StatusSelectContent>
+                          </StatusSelect>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-xs h-7 whitespace-nowrap"
+                            onClick={() => setSoDialog(o)}
+                            disabled={o.status === "Cancelled"}
+                          >
+                            <FilePlus className="h-3.5 w-3.5" /> Buat SO
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
           <StatCard
@@ -361,99 +584,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Portal Orders Widget */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <PackageOpen className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base">Portal Orders</CardTitle>
-                {portalNew > 0 && (
-                  <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs">
-                    {portalNew} baru
-                  </Badge>
-                )}
-              </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/logistics/portal-orders">
-                  Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-            <CardDescription>Permintaan jasa dari customer portal</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Status summary */}
-            <div className="grid grid-cols-3 gap-4">
-              <Link href="/logistics/portal-orders?status=New+Order" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-2xl font-bold text-yellow-600">{portalLoading ? "—" : portalNew}</p>
-                    {portalNew > 0 && <Clock className="h-4 w-4 text-yellow-500 shrink-0" />}
-                  </div>
-                  <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Baru Masuk</p>
-                </div>
-              </Link>
-              <Link href="/logistics/portal-orders?status=In+Progress" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50">
-                <div className="space-y-1">
-                  <p className="text-2xl font-bold text-orange-500">{portalLoading ? "—" : portalInProgress}</p>
-                  <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Diproses</p>
-                </div>
-              </Link>
-              <Link href="/logistics/portal-orders?status=Completed" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50">
-                <div className="space-y-1">
-                  <p className="text-2xl font-bold text-green-600">{portalLoading ? "—" : portalCompleted}</p>
-                  <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Selesai</p>
-                </div>
-              </Link>
-            </div>
-
-            {/* Latest orders list */}
-            {portalLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full bg-muted" />
-                ))}
-              </div>
-            ) : latestPortalOrders.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Belum ada portal order</p>
-            ) : (
-              <div className="divide-y divide-border/50">
-                {latestPortalOrders.map((o) => (
-                  <div key={o.id} className="flex items-center justify-between py-2 gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-muted-foreground">{o.orderNumber}</span>
-                        <Badge
-                          className={`text-[10px] px-1.5 py-0 border ${
-                            o.status === "New Order" ? "bg-yellow-100 text-yellow-800 border-yellow-200" :
-                            o.status === "In Progress" ? "bg-orange-100 text-orange-800 border-orange-200" :
-                            o.status === "Completed" ? "bg-green-100 text-green-800 border-green-200" :
-                            o.status === "Confirmed" ? "bg-blue-100 text-blue-800 border-blue-200" :
-                            "bg-gray-100 text-gray-700 border-gray-200"
-                          }`}
-                        >
-                          {o.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm font-medium truncate">{o.customerName} · {o.companyName}</p>
-                      <p className="text-xs text-muted-foreground truncate">{o.origin} → {o.destination} · {o.shipmentType}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold">
-                        {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(o.grandTotal)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(o.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {rtEntries.length > 0 && (
           <ResponseTimeTrendCard entries={rtEntries} />
         )}
@@ -461,6 +591,58 @@ export default function DashboardPage() {
           <ResponseTimeStatsCard stats={rtStats} />
         )}
       </div>
+
+      {/* Create Sales Order Dialog */}
+      <Dialog open={!!soDialog} onOpenChange={(open) => { if (!open) setSoDialog(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FilePlus className="h-5 w-5" /> Buat Sales Order
+            </DialogTitle>
+            <DialogDescription>
+              Sales Order akan dibuat dari portal order berikut.
+            </DialogDescription>
+          </DialogHeader>
+          {soDialog && (
+            <div className="space-y-3 py-2">
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">No. Order</span>
+                  <span className="font-mono font-medium">{soDialog.orderNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Pelanggan</span>
+                  <span className="font-medium">{soDialog.customerName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Perusahaan</span>
+                  <span>{soDialog.companyName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Rute</span>
+                  <span>{soDialog.origin} → {soDialog.destination}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 mt-1">
+                  <span className="text-muted-foreground font-medium">Total</span>
+                  <span className="font-bold text-base">
+                    {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(soDialog.grandTotal)}
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Sales Order akan dibuat dengan status <strong>Draft</strong>. Anda bisa mengubah detail di halaman Sales setelah dibuat.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSoDialog(null)}>Batal</Button>
+            <Button onClick={handleCreateSalesOrder} disabled={createSalesDoc.isPending} className="gap-2">
+              <FilePlus className="h-4 w-4" />
+              {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
