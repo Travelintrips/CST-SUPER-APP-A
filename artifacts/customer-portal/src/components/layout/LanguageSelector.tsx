@@ -6,12 +6,12 @@ const LANGUAGES = [
   { code: "id-ID", flag: "🇮🇩", language: "Bahasa Indonesia", country: "Indonesia", label: "ID" },
   { code: "en-US", flag: "🇺🇸", language: "English", country: "United States", label: "EN" },
   { code: "en-GB", flag: "🇬🇧", language: "English", country: "United Kingdom", label: "EN" },
-  { code: "ms-MY", flag: "🇲🇾", language: "Bahasa Melayu", country: "Malaysia", label: "MS" },
-  { code: "en-SG", flag: "🇸🇬", language: "English", country: "Singapore", label: "EN" },
-  { code: "zh-CN", flag: "🇨🇳", language: "中文（简体）", country: "China", label: "ZH" },
-  { code: "zh-TW", flag: "🇹🇼", language: "中文（繁體）", country: "Taiwan", label: "ZH" },
-  { code: "ja-JP", flag: "🇯🇵", language: "日本語", country: "Japan", label: "JA" },
-  { code: "ko-KR", flag: "🇰🇷", language: "한국어", country: "South Korea", label: "KO" },
+  { code: "ms-MY", flag: "🇲🇾", language: "Bahasa Melayu", country: "Malaysia", label: "MY" },
+  { code: "en-SG", flag: "🇸🇬", language: "English", country: "Singapore", label: "SG" },
+  { code: "zh-CN", flag: "🇨🇳", language: "中文（简体）", country: "China", label: "CN" },
+  { code: "zh-TW", flag: "🇹🇼", language: "中文（繁體）", country: "Taiwan", label: "TW" },
+  { code: "ja-JP", flag: "🇯🇵", language: "日本語", country: "Japan", label: "JP" },
+  { code: "ko-KR", flag: "🇰🇷", language: "한국어", country: "South Korea", label: "KR" },
   { code: "de-DE", flag: "🇩🇪", language: "Deutsch", country: "Germany", label: "DE" },
   { code: "fr-FR", flag: "🇫🇷", language: "Français", country: "France", label: "FR" },
   { code: "nl-NL", flag: "🇳🇱", language: "Nederlands", country: "Netherlands", label: "NL" },
@@ -20,7 +20,7 @@ const LANGUAGES = [
   { code: "hi-IN", flag: "🇮🇳", language: "हिन्दी", country: "India", label: "HI" },
   { code: "ar-AE", flag: "🇦🇪", language: "العربية", country: "UAE", label: "AR" },
   { code: "ar-SA", flag: "🇸🇦", language: "العربية", country: "Saudi Arabia", label: "AR" },
-  { code: "en-AU", flag: "🇦🇺", language: "English", country: "Australia", label: "EN" },
+  { code: "en-AU", flag: "🇦🇺", language: "English", country: "Australia", label: "AU" },
 ];
 
 interface LanguageSelectorProps {
