@@ -295,6 +295,10 @@ export default function JasaDetail() {
       return;
     }
     if (item.calculatorType === "trucking") {
+      if (state.vehicleType === "Trailer" && !state.trailerSize) {
+        toast({ title: "Ukuran Trailer wajib dipilih", variant: "destructive" });
+        return;
+      }
       if (!state.pickupDate) {
         toast({ title: "Tanggal penjemputan wajib diisi", variant: "destructive" });
         return;
@@ -544,16 +548,13 @@ export default function JasaDetail() {
                     <Select
                       value={state.vehicleType || ""}
                       onValueChange={v => {
-                        set("vehicleType", v);
                         const r = truckingRates[v];
-                        if (r) {
-                          setState(prev => ({
-                            ...prev,
-                            vehicleType: v,
-                            truckingRate: String(r.ratePerKm),
-                            loadingFee: String(r.loadingFee),
-                          }));
-                        }
+                        setState(prev => ({
+                          ...prev,
+                          vehicleType: v,
+                          trailerSize: "",
+                          ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
+                        }));
                       }}
                     >
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih kendaraan" /></SelectTrigger>
@@ -565,6 +566,25 @@ export default function JasaDetail() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {state.vehicleType === "Trailer" && (
+                    <div>
+                      <Label>
+                        Ukuran Trailer
+                        {!state.trailerSize && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                      <Select
+                        value={state.trailerSize || ""}
+                        onValueChange={v => set("trailerSize", v)}
+                      >
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="Pilih ukuran trailer" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Standar">Standar</SelectItem>
+                          <SelectItem value="20 Feet">20 Feet</SelectItem>
+                          <SelectItem value="40 Feet">40 Feet</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>
@@ -693,7 +713,8 @@ export default function JasaDetail() {
                     className="w-full gap-2 h-12 text-base"
                     onClick={handleAddToCart}
                     disabled={ct === "trucking"
-                      ? subtotal <= 0 || !state.pickupDate || !state.pickupTime
+                      ? subtotal <= 0 || !state.pickupDate || !state.pickupTime ||
+                        (state.vehicleType === "Trailer" && !state.trailerSize)
                       : subtotal <= 0}
                   >
                     <ShoppingCart className="h-5 w-5" />
