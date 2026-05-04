@@ -372,12 +372,14 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
 }
 
 export default function BookPage() {
+  const DRAFT_META_KEY = "logistic_draft_meta";
+
   const [step, setStep] = useState<Step>(0);
   const [shipmentType, setShipmentType] = useState<ShipmentType | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<ServiceItem | null>(null);
   const [editCartId, setEditCartId] = useState<string | null>(null);
-  const { items: cartItems, addItem, removeItem, subtotal, tax, grandTotal, taxRate } = useCart();
+  const { items: cartItems, addItem, removeItem, clearCart, subtotal, tax, grandTotal, taxRate } = useCart();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const createOrder = useCreateLogisticOrder();
@@ -400,6 +402,25 @@ export default function BookPage() {
   const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
+
+  // Persist shipmentType to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (shipmentType) {
+        localStorage.setItem(DRAFT_META_KEY, JSON.stringify({ shipmentType }));
+      }
+    } catch { /* ignore */ }
+  }, [shipmentType]);
+
+  function clearDraft() {
+    clearCart();
+    try { localStorage.removeItem(DRAFT_META_KEY); } catch { /* ignore */ }
+    setStep(0);
+    setShipmentType(null);
+    setSelectedCategory(null);
+    setSelectedItem(null);
+    toast({ title: "Draft dihapus", description: "Mulai pemesanan baru dari awal." });
+  }
 
   // Pre-fill form with logged-in user's profile data (only once, when data loads)
   useEffect(() => {
@@ -451,6 +472,14 @@ export default function BookPage() {
       // From product page without specific service → skip Tipe Pengiriman, go to Pilih Layanan
       setStep(1);
     } else if (cartItems.length > 0) {
+      // Restore draft: jump to Ringkasan and restore shipmentType if saved
+      try {
+        const meta = localStorage.getItem(DRAFT_META_KEY);
+        if (meta) {
+          const { shipmentType: saved } = JSON.parse(meta) as { shipmentType: ShipmentType };
+          if (saved) setShipmentType(saved);
+        }
+      } catch { /* ignore */ }
       setStep(2);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -524,6 +553,7 @@ export default function BookPage() {
       onSuccess: (data) => {
         localStorage.setItem("last_order", JSON.stringify(data));
         localStorage.removeItem("logistic_cart");
+        try { localStorage.removeItem(DRAFT_META_KEY); } catch { /* ignore */ }
         setLocation("/logistic-order-success");
       },
       onError: () => {
@@ -650,9 +680,19 @@ export default function BookPage() {
             <h2 className="text-xl font-bold text-foreground mb-1">Ringkasan Pesanan</h2>
             <p className="text-sm text-muted-foreground">{cartItems.length} layanan dipilih</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setStep(1)}>
-            <Plus className="w-3 h-3 mr-1" /> Tambah Layanan
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearDraft}
+              className="text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="w-3 h-3 mr-1" /> Hapus Draft
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setStep(1)}>
+              <Plus className="w-3 h-3 mr-1" /> Tambah Layanan
+            </Button>
+          </div>
         </div>
 
         {/* Product summary in cart */}
