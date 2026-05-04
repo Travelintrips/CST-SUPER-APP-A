@@ -67,33 +67,71 @@ export default function Services() {
             pointerEvents: "none",
           }}
         />
-        {/* World map illustration — right side */}
+        {/* Layer 1: CSS glow dots + route lines */}
         <div
           aria-hidden="true"
-          className="services-world-map"
+          className="svc-glow-layer"
           style={{
             position: "absolute",
-            right: "2%",
+            right: "-4%",
             top: "50%",
             transform: "translateY(-50%)",
-            width: "54%",
-            height: "82%",
-            backgroundImage: "url(/images/world-map-logistics.svg)",
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center right",
-            backgroundSize: "contain",
-            opacity: 0.34,
+            width: "58%",
+            height: "88%",
+            background: [
+              "radial-gradient(circle at 22% 44%, rgba(255,255,255,0.85) 0 3px, transparent 5px)",
+              "radial-gradient(circle at 42% 32%, rgba(255,255,255,0.80) 0 3px, transparent 5px)",
+              "radial-gradient(circle at 62% 48%, rgba(255,255,255,0.80) 0 3px, transparent 5px)",
+              "radial-gradient(circle at 78% 34%, rgba(255,255,255,0.75) 0 3px, transparent 5px)",
+              "radial-gradient(circle at 72% 68%, rgba(255,255,255,0.75) 0 3px, transparent 5px)",
+              "radial-gradient(circle at 22% 44%, rgba(255,255,255,0.22) 0 16px, transparent 38px)",
+              "radial-gradient(circle at 42% 32%, rgba(255,255,255,0.18) 0 14px, transparent 36px)",
+              "radial-gradient(circle at 62% 48%, rgba(255,255,255,0.18) 0 14px, transparent 36px)",
+              "radial-gradient(circle at 78% 34%, rgba(255,255,255,0.16) 0 13px, transparent 34px)",
+              "linear-gradient(25deg, transparent 17%, rgba(255,255,255,0.16) 18%, transparent 20%)",
+              "linear-gradient(145deg, transparent 33%, rgba(255,255,255,0.14) 34%, transparent 36%)",
+              "linear-gradient(78deg, transparent 49%, rgba(255,255,255,0.13) 50%, transparent 52%)",
+              "radial-gradient(ellipse at center, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 38%, transparent 70%)",
+            ].join(", "),
+            borderRadius: "999px",
+            opacity: 0.95,
+            filter: "drop-shadow(0 0 34px rgba(255,255,255,0.18))",
             pointerEvents: "none",
             zIndex: 1,
-            filter: "drop-shadow(0 0 18px rgba(255,255,255,0.25))",
+          }}
+        />
+        {/* Layer 2: Route curves SVG */}
+        <div
+          aria-hidden="true"
+          className="svc-routes-layer"
+          style={{
+            position: "absolute",
+            right: "3%",
+            top: "22%",
+            width: "48%",
+            height: "56%",
+            backgroundImage: "url(/images/logistics-routes.svg)",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "contain",
+            backgroundPosition: "center right",
+            opacity: 0.45,
+            filter: "drop-shadow(0 0 18px rgba(255,255,255,0.20))",
+            pointerEvents: "none",
+            zIndex: 1,
           }}
         />
         <style>{`
           @media (max-width: 768px) {
-            .services-world-map {
+            .svc-glow-layer {
+              width: 95% !important;
+              height: 75% !important;
+              right: -38% !important;
+              opacity: 0.45 !important;
+            }
+            .svc-routes-layer {
               width: 90% !important;
-              right: -20% !important;
-              opacity: 0.12 !important;
+              right: -42% !important;
+              opacity: 0.22 !important;
               filter: none !important;
             }
           }
