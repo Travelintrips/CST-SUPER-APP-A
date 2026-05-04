@@ -202,6 +202,15 @@ const SUBTYPE_SPECS: Record<string, SubtypeSpec> = {
   "Trailer Flatbed":              { dims: "1200 × 240 × 240 cm", volume: "69 m³",  weight: "30 Ton", note: "Container tidak termasuk. Harus disiapkan sendiri." },
 };
 
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export default function JasaDetail() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -216,7 +225,8 @@ export default function JasaDetail() {
   const [calcDist, setCalcDist] = useState(false);
   const [truckingStep, setTruckingStep] = useState(1);
   const [vehicleOpen, setVehicleOpen] = useState(false);
-  const [truckingStops, setTruckingStops] = useState<Array<{ id: string; city: string }>>([]);
+  const [truckingStops, setTruckingStops] = useState<Array<{ id: string; city: string; geo?: GeoLocation }>>([]);
+  const [optimizeRoute, setOptimizeRoute] = useState(false);
 
   const [pendingOrder, setPendingOrder] = useState<{ serviceId: number; productName: string } | null>(null);
   const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
@@ -301,6 +311,24 @@ export default function JasaDetail() {
     }
   }, [toast]);
 
+  useEffect(() => {
+    if (!pickupGeo) return;
+    const candidates: GeoLocation[] = [];
+    if (destGeo) candidates.push(destGeo);
+    truckingStops.forEach(s => { if (s.geo) candidates.push(s.geo!); });
+    if (candidates.length === 0) return;
+    let target = candidates[0];
+    if (candidates.length > 1) {
+      let maxD = -1;
+      for (const c of candidates) {
+        const d = haversine(pickupGeo.lat, pickupGeo.lon, c.lat, c.lon);
+        if (d > maxD) { maxD = d; target = c; }
+      }
+    }
+    fetchDistance(pickupGeo, target);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupGeo, destGeo, truckingStops]);
+
   const cat = CATEGORIES.find((c) => c.name === serviceCategory);
   const IconComp = cat ? (ICON_MAP[cat.icon] ?? Package) : Package;
   const colors = CATEGORY_COLORS_DETAIL[serviceCategory] ?? {
@@ -343,20 +371,54 @@ export default function JasaDetail() {
   function removeTruckingStop(id: string) {
     setTruckingStops(prev => prev.filter(s => s.id !== id));
   }
-  function updateTruckingStop(id: string, city: string) {
-    setTruckingStops(prev => prev.map(s => s.id === id ? { ...s, city } : s));
+  function updateTruckingStop(id: string, city: string, geo?: GeoLocation) {
+    setTruckingStops(prev => prev.map(s => s.id === id ? { ...s, city, geo } : s));
   }
 
   function handlePickupChange(label: string, geo?: GeoLocation) {
     set("pickupCity", label);
     setPickupGeo(geo);
-    if (geo && destGeo) fetchDistance(geo, destGeo);
   }
 
   function handleDestChange(label: string, geo?: GeoLocation) {
     set("destCity", label);
     setDestGeo(geo);
-    if (geo && pickupGeo) fetchDistance(pickupGeo, geo);
+  }
+
+  function handleOptimizeToggle(on: boolean) {
+    setOptimizeRoute(on);
+    if (!on || !pickupGeo) return;
+    type Dest = { id: string; city: string; geo?: GeoLocation; isMain?: true };
+    const allDests: Dest[] = [
+      ...truckingStops.map(s => ({ id: s.id, city: s.city, geo: s.geo })),
+      ...(state.destCity ? [{ id: "__dest__", city: state.destCity, geo: destGeo, isMain: true as const }] : []),
+    ];
+    if (allDests.length < 2) return;
+    const remaining = [...allDests];
+    const ordered: Dest[] = [];
+    let cur: GeoLocation = pickupGeo;
+    while (remaining.length > 0) {
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      remaining.forEach((d, i) => {
+        if (!d.geo) return;
+        const dist = haversine(cur.lat, cur.lon, d.geo.lat, d.geo.lon);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+      });
+      const chosen = remaining.splice(bestIdx, 1)[0];
+      ordered.push(chosen);
+      if (chosen.geo) cur = chosen.geo;
+    }
+    const newDestEntry = ordered[ordered.length - 1];
+    const newStopEntries = ordered.slice(0, -1);
+    if (newDestEntry.isMain) {
+      setTruckingStops(newStopEntries.map(s => ({ id: s.id, city: s.city, geo: s.geo })));
+    } else {
+      set("destCity", newDestEntry.city);
+      setDestGeo(newDestEntry.geo);
+      setTruckingStops(newStopEntries.map(s => ({ id: s.id, city: s.city, geo: s.geo })));
+    }
+    toast({ title: "Rute dioptimalkan", description: "Urutan stop disusun ulang secara otomatis." });
   }
 
   function handleNextStep() {
@@ -878,7 +940,7 @@ export default function JasaDetail() {
                                     <div className="flex-1 min-w-0">
                                       <LocationCombobox
                                         value={stop.city}
-                                        onChange={city => updateTruckingStop(stop.id, city)}
+                                        onChange={(city, geo) => updateTruckingStop(stop.id, city, geo)}
                                         placeholder={`Kota stop ${i + 1}...`}
                                         countryCode="id"
                                       />
@@ -907,6 +969,27 @@ export default function JasaDetail() {
                                 <Plus className="h-3.5 w-3.5"/>
                                 Add Stop
                               </button>
+                            </div>
+                            <div className="border-t border-gray-100 px-4 py-3 flex items-start gap-3">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={optimizeRoute}
+                                onClick={() => handleOptimizeToggle(!optimizeRoute)}
+                                className={`relative flex-shrink-0 mt-0.5 w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none ${optimizeRoute ? "bg-[#0B5CAD]" : "bg-gray-200"}`}
+                              >
+                                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${optimizeRoute ? "translate-x-5" : "translate-x-0"}`}/>
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-gray-800">Optimize Route (Optimasi Rute)</p>
+                                <p className="text-[11px] text-gray-400 leading-snug mt-0.5">Mengurutkan pemberhentian secara otomatis agar perjalanan lebih efisien.</p>
+                                {optimizeRoute && (
+                                  <p className="text-[11px] text-[#0B5CAD] font-semibold mt-1.5 flex items-center gap-1">
+                                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                    Rute dioptimalkan otomatis
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
