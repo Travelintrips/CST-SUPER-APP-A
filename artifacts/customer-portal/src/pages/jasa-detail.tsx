@@ -818,7 +818,7 @@ export default function JasaDetail() {
                               {/* Inputs column */}
                               <div className="flex-1 min-w-0 divide-y divide-gray-100">
                                 <div className="py-2 pr-3">
-                                  <LocationCombobox value={state.pickupCity || ""} onChange={handlePickupChange} placeholder="Kota asal..."/>
+                                  <LocationCombobox value={state.pickupCity || ""} onChange={handlePickupChange} placeholder="Kota asal..." countryCode="id"/>
                                 </div>
                                 {truckingStops.map((stop, i) => (
                                   <div key={stop.id} className="py-2 pr-3 flex items-center gap-1">
@@ -827,6 +827,7 @@ export default function JasaDetail() {
                                         value={stop.city}
                                         onChange={city => updateTruckingStop(stop.id, city)}
                                         placeholder={`Kota stop ${i + 1}...`}
+                                        countryCode="id"
                                       />
                                     </div>
                                     <button
@@ -840,7 +841,7 @@ export default function JasaDetail() {
                                   </div>
                                 ))}
                                 <div className="py-2 pr-3">
-                                  <LocationCombobox value={state.destCity || ""} onChange={handleDestChange} placeholder="Kota tujuan..."/>
+                                  <LocationCombobox value={state.destCity || ""} onChange={handleDestChange} placeholder="Kota tujuan..." countryCode="id"/>
                                 </div>
                               </div>
                             </div>

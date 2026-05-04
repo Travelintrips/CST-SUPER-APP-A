@@ -13,9 +13,10 @@ type Props = {
   onChange: (label: string, geo?: GeoLocation) => void;
   placeholder?: string;
   className?: string;
+  countryCode?: string;
 };
 
-export function LocationCombobox({ value, onChange, placeholder = "Ketik nama kota...", className }: Props) {
+export function LocationCombobox({ value, onChange, placeholder = "Ketik nama kota...", className, countryCode }: Props) {
   const [query, setQuery] = useState(value || "");
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<GeoLocation[]>([]);
@@ -31,7 +32,8 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
     if (!q || q.length < 3) { setResults([]); return; }
     setLoading(true);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1&accept-language=id,en`;
+      const country = countryCode ? `&countrycodes=${countryCode}` : "";
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1&accept-language=id,en${country}`;
       const res = await fetch(url, { headers: { "Accept-Language": "id,en" } });
       const data = await res.json();
       setResults(
