@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@clerk/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -104,6 +104,65 @@ export default function LogisticsDriversPage() {
   const [editDriver, setEditDriver] = useState<Driver | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [sseConnected, setSseConnected] = useState(false);
+  const sseRef = useRef<EventSource | null>(null);
+
+  // SSE real-time subscription untuk update status driver
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let active = true;
+
+    async function connect() {
+      if (!active) return;
+      const token = await getToken();
+      if (!token || !active) return;
+
+      es = new EventSource(`/api/drivers/events?token=${encodeURIComponent(token)}`);
+      sseRef.current = es;
+
+      es.addEventListener("connected", () => {
+        if (active) setSseConnected(true);
+      });
+
+      es.addEventListener("job_status_changed", (e: MessageEvent) => {
+        if (!active) return;
+        try {
+          const data = JSON.parse(e.data) as {
+            jobId: number;
+            jobNumber: string;
+            driverId: number;
+            status: string;
+            freightShipmentId: number | null;
+          };
+          queryClient.invalidateQueries({ queryKey: ["driver-jobs-all"] });
+          queryClient.invalidateQueries({ queryKey: ["driver-detail"] });
+          toast({
+            title: `Job ${data.jobNumber} — ${STATUS_LABELS[data.status] ?? data.status}`,
+            description: "Status diperbarui oleh driver",
+          });
+        } catch { /* ignore */ }
+      });
+
+      es.onerror = () => {
+        setSseConnected(false);
+        es?.close();
+        if (active) {
+          reconnectTimer = setTimeout(() => { if (active) connect(); }, 8_000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      active = false;
+      setSseConnected(false);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      es?.close();
+      sseRef.current = null;
+    };
+  }, [getToken, queryClient, toast]);
 
   const [showJobDialog, setShowJobDialog] = useState(false);
   const [jobTargetDriver, setJobTargetDriver] = useState<Driver | null>(null);
@@ -264,9 +323,13 @@ export default function LogisticsDriversPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live · refresh 15s
+            <div className={`flex items-center gap-1.5 text-xs rounded-full px-2.5 py-1 border ${
+              sseConnected
+                ? "text-emerald-600 bg-emerald-500/10 border-emerald-500/20"
+                : "text-amber-600 bg-amber-500/10 border-amber-500/20"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${sseConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+              {sseConnected ? "Realtime · SSE" : "Polling · 15s"}
             </div>
             <Button onClick={openCreate}>
               <Plus className="w-4 h-4 mr-2" />

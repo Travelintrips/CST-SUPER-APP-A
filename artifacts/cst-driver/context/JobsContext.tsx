@@ -5,6 +5,7 @@ import { api, API_BASE_URL } from '@/services/api';
 import { useAuth } from './AuthContext';
 import { Job, ShipmentStatus } from '@/types';
 import { notifyNewJob } from '@/services/notifications';
+import { connectDriverSSE } from '@/services/sseClient';
 
 interface JobsContextType {
   jobs: Job[];
@@ -81,11 +82,33 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [token]);
 
+  // Polling fallback — runs every 30s as backstop
   useEffect(() => {
     if (!isAuthenticated || !token) return;
     refreshJobs();
     const pollInterval = setInterval(refreshJobs, 30_000);
     return () => clearInterval(pollInterval);
+  }, [isAuthenticated, token, refreshJobs]);
+
+  // SSE real-time subscription — triggers immediate refresh on new_job event
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    const client = connectDriverSSE(token, {
+      new_job: (data) => {
+        const d = data as Record<string, unknown>;
+        // Immediately refresh to get full job details
+        refreshJobs();
+        // Also show local notification proactively from SSE data
+        if (d.jobNumber && d.pickupAddress) {
+          notifyNewJob(
+            String(d.jobNumber),
+            String(d.customerName ?? ''),
+            String(d.pickupAddress),
+          );
+        }
+      },
+    });
+    return () => client.close();
   }, [isAuthenticated, token, refreshJobs]);
 
   useEffect(() => {
