@@ -215,6 +215,7 @@ export default function JasaDetail() {
   const [calcDist, setCalcDist] = useState(false);
   const [truckingStep, setTruckingStep] = useState(1);
   const [vehicleOpen, setVehicleOpen] = useState(false);
+  const [truckingStops, setTruckingStops] = useState<Array<{ id: string; city: string }>>([]);
 
   const [pendingOrder, setPendingOrder] = useState<{ serviceId: number; productName: string } | null>(null);
   const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
@@ -335,6 +336,16 @@ export default function JasaDetail() {
   function addAirRow() { setAirRows((prev) => [...prev, newAirRow()]); }
   function removeAirRow(id: string) { setAirRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== id) : prev); }
 
+  function addTruckingStop() {
+    setTruckingStops(prev => [...prev, { id: crypto.randomUUID(), city: "" }]);
+  }
+  function removeTruckingStop(id: string) {
+    setTruckingStops(prev => prev.filter(s => s.id !== id));
+  }
+  function updateTruckingStop(id: string, city: string) {
+    setTruckingStops(prev => prev.map(s => s.id === id ? { ...s, city } : s));
+  }
+
   function handlePickupChange(label: string, geo?: GeoLocation) {
     set("pickupCity", label);
     setPickupGeo(geo);
@@ -423,7 +434,7 @@ export default function JasaDetail() {
       category: item.category,
       serviceName: item.name,
       calculatorType: item.calculatorType,
-      inputData: { ...state, ...(item.calculatorType === "air_freight" ? { airRows: JSON.stringify(airRows) } : {}) },
+      inputData: { ...state, ...(item.calculatorType === "air_freight" ? { airRows: JSON.stringify(airRows) } : {}), ...(item.calculatorType === "trucking" && truckingStops.length > 0 ? { stops: truckingStops.map(s => s.city).join(" → ") } : {}) },
       calculationResult: calcResult(item.calculatorType, state, airRows),
       subtotal,
     });
@@ -792,22 +803,53 @@ export default function JasaDetail() {
                           {/* Route Card */}
                           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                             <div className="flex items-stretch">
-                              <div className="flex flex-col items-center pt-4 pb-4 pl-4 pr-2">
-                                <div className="w-3 h-3 rounded-full bg-[#16A34A] ring-2 ring-[#16A34A]/20"/>
-                                <div className="flex-1 w-0.5 min-h-[24px] bg-gray-200 my-1"/>
-                                <div className="w-3 h-3 rounded-full bg-amber-400 ring-2 ring-amber-200"/>
+                              {/* Connector line column */}
+                              <div className="flex flex-col items-center pt-4 pb-4 pl-4 pr-2 flex-shrink-0">
+                                <div className="w-3 h-3 rounded-full bg-[#16A34A] ring-2 ring-[#16A34A]/20 flex-shrink-0"/>
+                                <div className="flex-1 w-0.5 bg-gray-200 my-1"/>
+                                {truckingStops.map((_s, i) => (
+                                  <div key={i} className="flex flex-col items-center w-full">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-blue-400 ring-2 ring-blue-100 flex-shrink-0"/>
+                                    <div className="flex-1 w-0.5 bg-gray-200 my-1"/>
+                                  </div>
+                                ))}
+                                <div className="w-3 h-3 rounded-full bg-amber-400 ring-2 ring-amber-200 flex-shrink-0"/>
                               </div>
+                              {/* Inputs column */}
                               <div className="flex-1 min-w-0 divide-y divide-gray-100">
                                 <div className="py-2 pr-3">
                                   <LocationCombobox value={state.pickupCity || ""} onChange={handlePickupChange} placeholder="Kota asal..."/>
                                 </div>
+                                {truckingStops.map((stop, i) => (
+                                  <div key={stop.id} className="py-2 pr-3 flex items-center gap-1">
+                                    <div className="flex-1 min-w-0">
+                                      <LocationCombobox
+                                        value={stop.city}
+                                        onChange={city => updateTruckingStop(stop.id, city)}
+                                        placeholder={`Kota stop ${i + 1}...`}
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeTruckingStop(stop.id)}
+                                      className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 hover:bg-red-100 hover:text-red-500 text-gray-400 flex items-center justify-center transition-colors"
+                                      aria-label="Hapus stop"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                  </div>
+                                ))}
                                 <div className="py-2 pr-3">
                                   <LocationCombobox value={state.destCity || ""} onChange={handleDestChange} placeholder="Kota tujuan..."/>
                                 </div>
                               </div>
                             </div>
                             <div className="border-t border-gray-100 px-4 py-2.5">
-                              <button type="button" className="flex items-center gap-1.5 text-[#16A34A] text-sm font-semibold">
+                              <button
+                                type="button"
+                                onClick={addTruckingStop}
+                                className="flex items-center gap-1.5 text-[#16A34A] text-sm font-semibold hover:text-[#15803d] transition-colors"
+                              >
                                 <Plus className="h-3.5 w-3.5"/>
                                 Add Stop
                               </button>
@@ -1112,7 +1154,7 @@ export default function JasaDetail() {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => { setAdded(false); setState({}); setTruckingStep(1); setVehicleOpen(false); }}
+                  onClick={() => { setAdded(false); setState({}); setTruckingStep(1); setVehicleOpen(false); setTruckingStops([]); }}
                   className="py-3.5 rounded-xl border-2 border-white/50 text-white font-semibold text-sm hover:bg-white/10 transition-colors"
                 >
                   Hitung Ulang
