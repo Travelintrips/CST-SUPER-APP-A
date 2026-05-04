@@ -469,31 +469,52 @@ export default function JasaDetail() {
     }));
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Dark header matching jasa.tsx style */}
-      <div className={`bg-primary text-primary-foreground py-12 md:py-20`}>
-        <div className="container px-4 md:px-6">
-          <Link href="/jasa" className="inline-flex items-center gap-1.5 text-primary-foreground/60 hover:text-primary-foreground text-sm mb-6 transition-colors">
+    <div className={`min-h-screen pb-28 ${ct === "trucking" ? "bg-slate-50" : "bg-gray-50"}`}>
+      {/* Hero */}
+      <div className={ct === "trucking"
+        ? "bg-gradient-to-br from-sky-600 via-blue-700 to-indigo-800 text-white py-10 md:py-14 relative overflow-hidden"
+        : "bg-primary text-primary-foreground py-12 md:py-20"
+      }>
+        {ct === "trucking" && (
+          <div className="absolute inset-0 opacity-10" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"}}/>
+        )}
+        <div className="container px-4 md:px-6 relative z-10">
+          <Link href="/jasa" className={`inline-flex items-center gap-1.5 text-sm mb-5 transition-colors ${ct === "trucking" ? "text-white/60 hover:text-white" : "text-primary-foreground/60 hover:text-primary-foreground"}`}>
             <ArrowLeft className="h-4 w-4" />
             Kembali ke Katalog Jasa
           </Link>
-          <div className="flex items-start gap-6">
-            <div className={`${colors.bg} rounded-2xl p-5 flex-shrink-0`}>
-              <IconComp className={`h-12 w-12 ${colors.text}`} />
+          <div className="flex items-start gap-5">
+            <div className={ct === "trucking"
+              ? "bg-white/10 backdrop-blur-sm rounded-2xl p-4 flex-shrink-0 ring-1 ring-white/20 shadow-lg"
+              : `${colors.bg} rounded-2xl p-5 flex-shrink-0`
+            }>
+              <IconComp className={ct === "trucking" ? "h-10 w-10 text-white" : `h-12 w-12 ${colors.text}`} />
             </div>
-            <div>
-              <Badge className={`${colors.badge} border-0 font-medium mb-3`}>{item.category}</Badge>
-              <h1 className="text-3xl md:text-4xl font-display font-bold mb-2">{item.name}</h1>
-              <p className="text-primary-foreground/80 text-lg max-w-2xl">{item.description}</p>
+            <div className="flex-1 min-w-0">
+              <Badge className={ct === "trucking"
+                ? "bg-white/20 text-white border-white/30 font-medium mb-2 text-xs"
+                : `${colors.badge} border-0 font-medium mb-3`
+              }>{item.category}</Badge>
+              <h1 className={`font-display font-bold ${ct === "trucking" ? "text-2xl md:text-3xl mt-1 mb-1.5" : "text-3xl md:text-4xl mb-2"}`}>{item.name}</h1>
+              <p className={ct === "trucking" ? "text-white/75 text-base max-w-xl" : "text-primary-foreground/80 text-lg max-w-2xl"}>{item.description}</p>
+              {ct === "trucking" && (
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {["5 Jenis Armada", "Kalkulasi Jarak Otomatis", "Harga Transparan", "Berlisensi & Profesional"].map(f => (
+                    <span key={f} className="text-[11px] px-2.5 py-1 bg-white/10 rounded-full text-white/85 ring-1 ring-white/20 flex items-center gap-1">
+                      <span className="text-green-300">✓</span> {f}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="container px-4 md:px-6 mt-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className={`${ct === "trucking" ? "max-w-[1200px] mx-auto" : "container"} px-4 md:px-6 mt-8`}>
+        <div className={ct === "trucking" ? "flex flex-col lg:flex-row gap-8 items-start" : "grid grid-cols-1 lg:grid-cols-3 gap-8"}>
           {/* Calculator section */}
-          <div className="lg:col-span-2">
+          <div className={ct === "trucking" ? "flex-1 min-w-0" : "lg:col-span-2"}>
             <div className={ct === "trucking" ? "" : "bg-white rounded-2xl border border-border shadow-sm overflow-hidden"}>
               {ct !== "trucking" && (
                 <div className="border-b border-border px-6 py-4 flex items-center gap-2">
@@ -503,7 +524,7 @@ export default function JasaDetail() {
                 </div>
               )}
 
-              <div className={ct === "trucking" ? "flex justify-center" : "p-6 space-y-4"}>
+              <div className={ct === "trucking" ? "" : "p-6 space-y-4"}>
                 {ct === "air_freight" && <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -645,8 +666,8 @@ export default function JasaDetail() {
                 </>}
 
                 {ct === "trucking" && (
-                  <div className="w-full max-w-[390px]">
-                    <div className="bg-[#16A34A] rounded-2xl overflow-hidden shadow-xl">
+                  <div className="w-full">
+                    <div className="bg-[#16A34A] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-green-800/20">
                       {/* ── Stepper ── */}
                       <div className="flex items-center px-4 pt-4 pb-3">
                         {([{n:1,l:"Route"},{n:2,l:"Services"},{n:3,l:"Summary"}]).map((s, i, arr) => (
@@ -1091,33 +1112,51 @@ export default function JasaDetail() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className={ct === "trucking" ? "w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 space-y-4" : "space-y-6"}>
             {/* Info card */}
-            <div className="bg-white rounded-2xl border border-border shadow-sm p-6 space-y-4">
-              <h3 className="font-bold text-foreground">Informasi Layanan</h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Kategori</span>
-                  <Badge className={`${colors.badge} border-0`}>{item.category}</Badge>
+            <div className={`bg-white rounded-2xl shadow-sm p-5 space-y-4 ${ct === "trucking" ? "border border-slate-200/80" : "border border-border"}`}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-foreground text-sm">Informasi Layanan</h3>
+                {ct === "trucking" && <span className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full font-medium border border-green-200">Aktif</span>}
+              </div>
+              <div className="space-y-2.5 text-sm">
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                  <span className="text-muted-foreground text-xs">Kategori</span>
+                  <Badge className={`${colors.badge} border-0 text-xs`}>{item.category}</Badge>
                 </div>
-                <Separator />
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Harga</span>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                  <span className="text-muted-foreground text-xs">Harga</span>
                   {ct === "trucking"
-                    ? <span className="font-semibold text-green-700">Sesuai Kalkulasi Jarak</span>
-                    : <span className="font-semibold text-amber-600">Negosiasi / Quotation</span>
+                    ? <span className="font-semibold text-green-700 text-xs">Sesuai Kalkulasi Jarak</span>
+                    : <span className="font-semibold text-amber-600 text-xs">Negosiasi / Quotation</span>
                   }
                 </div>
-                <Separator />
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Estimasi</span>
-                  <span className="font-semibold">{subtotal > 0 ? formatCurrency(subtotal) : "—"}</span>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                  <span className="text-muted-foreground text-xs">Estimasi</span>
+                  <span className={`font-bold text-sm ${subtotal > 0 ? "text-green-700" : "text-slate-400"}`}>
+                    {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                  </span>
                 </div>
+                {ct === "trucking" && state.vehicleType && (
+                  <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                    <span className="text-muted-foreground text-xs">Kendaraan</span>
+                    <span className="font-medium text-xs text-slate-700 text-right max-w-[140px] leading-tight">{state.vehicleSubtype || state.vehicleType}</span>
+                  </div>
+                )}
+                {ct === "trucking" && state.distance && (
+                  <div className="flex justify-between items-center py-1.5">
+                    <span className="text-muted-foreground text-xs">Jarak</span>
+                    <span className="font-medium text-xs text-slate-700">{state.distance} km</span>
+                  </div>
+                )}
               </div>
-              <Button variant="outline" className="w-full gap-2 mt-2" onClick={requireAuthThenBook}>
+              <button
+                onClick={requireAuthThenBook}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-slate-200 text-slate-700 text-sm font-semibold hover:border-green-400 hover:text-green-700 hover:bg-green-50 transition-all duration-200"
+              >
                 <ShoppingCart className="h-4 w-4" />
                 Lihat Keranjang Pesanan
-              </Button>
+              </button>
             </div>
 
             {/* Related services */}
@@ -1153,41 +1192,50 @@ export default function JasaDetail() {
 
       {/* Sticky Next / Add-to-Cart button for trucking */}
       {ct === "trucking" && !pendingOrder && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#166534] px-4 pt-3 pb-6 shadow-[0_-4px_20px_rgba(0,0,0,0.25)]">
-          <div className="max-w-[390px] mx-auto">
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40"
+          style={{
+            background: "rgba(255,255,255,0.95)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            borderTop: "1px solid #E2E8F0",
+            boxShadow: "0 -4px 24px rgba(15,23,42,0.08)",
+          }}
+        >
+          <div className="max-w-[1200px] mx-auto px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
             {!added ? (
               truckingStep < 3 ? (
                 <button
                   type="button"
                   onClick={handleNextStep}
-                  className="w-full bg-white text-[#166534] py-4 rounded-xl font-bold text-base shadow-md hover:bg-gray-50 transition-colors"
+                  className="sm:min-w-[200px] bg-gradient-to-r from-green-600 to-green-500 text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-green-700 hover:to-green-600 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
-                  Next →
+                  Lanjut <ArrowRight className="h-4 w-4" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleAddToCart}
                   disabled={subtotal <= 0}
-                  className="w-full bg-white text-[#166534] py-4 rounded-xl font-bold text-base shadow-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  className="sm:min-w-[220px] bg-gradient-to-r from-green-600 to-green-500 text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-green-700 hover:to-green-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
-                  <ShoppingCart className="h-5 w-5" />
+                  <ShoppingCart className="h-4 w-4" />
                   Tambahkan ke Pesanan
                 </button>
               )
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => { setAdded(false); setState({}); setTruckingStep(1); setVehicleOpen(false); setTruckingStops([]); }}
-                  className="py-3.5 rounded-xl border-2 border-white/50 text-white font-semibold text-sm hover:bg-white/10 transition-colors"
+                  className="flex-1 sm:flex-none sm:min-w-[130px] py-3.5 px-5 rounded-xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5"
                 >
-                  Hitung Ulang
+                  <Calculator className="h-4 w-4" /> Hitung Ulang
                 </button>
                 <button
                   type="button"
                   onClick={handleProceed}
-                  className="py-3.5 rounded-xl bg-white text-[#166534] font-bold text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+                  className="flex-1 sm:flex-none sm:min-w-[160px] py-3.5 px-5 rounded-xl bg-gradient-to-r from-green-600 to-green-500 text-white font-bold text-sm shadow-md hover:from-green-700 hover:to-green-600 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
                 >
                   Lanjut Pesan <ArrowRight className="h-4 w-4" />
                 </button>
