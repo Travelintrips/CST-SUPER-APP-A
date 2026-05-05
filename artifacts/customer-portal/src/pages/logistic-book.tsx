@@ -402,7 +402,8 @@ export default function BookPage() {
     grossWeight: "", volumeCbm: "", requiredDate: "", notes: "",
     quantity: "", unit: "",
   });
-  const [paymentType, setPaymentType] = useState<"cash" | "termin" | "dp" | "">("");
+  const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "">("");
+  const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [dpNext, setDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
 
@@ -508,9 +509,9 @@ export default function BookPage() {
   }
 
   function handleSubmit() {
-    const { companyName, customerName, email, phone, origin, destination } = customerForm;
-    if (!companyName || !customerName || !email || !phone || !origin || !destination) {
-      toast({ title: "Lengkapi data perusahaan dan pengiriman", variant: "destructive" });
+    const { companyName, customerName, email, phone } = customerForm;
+    if (!companyName || !customerName || !email || !phone) {
+      toast({ title: "Lengkapi data perusahaan", variant: "destructive" });
       return;
     }
     if (cartItems.length === 0) {
@@ -534,12 +535,16 @@ export default function BookPage() {
         customerForm.quantity ? `Qty: ${customerForm.quantity}${customerForm.unit ? ` ${customerForm.unit}` : ""}` : "",
         customerForm.notes,
       ].filter(Boolean).join(" | ") || null,
-      paymentType: paymentType
-        ? paymentType === "termin" && paymentTerm
-          ? `termin:${paymentTerm}`
-          : paymentType === "dp" && dpNext
-          ? `dp:${dpNext}`
-          : paymentType
+      paymentType: paymentType === "gateway"
+        ? "payment_gateway"
+        : paymentType === "transfer"
+        ? transferTerm === "full"
+          ? "transfer:full"
+          : transferTerm === "termin" && paymentTerm
+          ? `transfer:termin:${paymentTerm}`
+          : transferTerm === "dp" && dpNext
+          ? `transfer:dp:${dpNext}`
+          : "transfer"
         : null,
       subtotal,
       tax,
@@ -797,10 +802,11 @@ export default function BookPage() {
       return (
         <div className="space-y-5">
           <div>
-            <h2 className="text-xl font-bold text-foreground mb-1">Data Perusahaan & Pengiriman</h2>
+            <h2 className="text-xl font-bold text-foreground mb-1">Data Pemesan</h2>
             <p className="text-sm text-muted-foreground">Lengkapi data untuk konfirmasi pesanan</p>
           </div>
 
+          {/* ── Group 1: Data Perusahaan ─────────────────────────── */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <User className="w-4 h-4 text-accent" /> Data Perusahaan
@@ -811,155 +817,163 @@ export default function BookPage() {
               <div><Label className="text-xs">Email *</Label><Input type="email" placeholder="email@perusahaan.com" value={f.email} onChange={e => set("email", e.target.value)} /></div>
               <div><Label className="text-xs">Telepon / WhatsApp *</Label><Input placeholder="+62..." value={f.phone} onChange={e => set("phone", e.target.value)} /></div>
             </div>
+          </div>
 
-            <Separator />
+          <Separator />
+
+          {/* ── Group 2: Komoditi & Kargo ────────────────────────── */}
+          <div className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <Ship className="w-4 h-4 text-accent" /> Data Pengiriman
+              <Ship className="w-4 h-4 text-accent" /> Komoditi & Kargo
             </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">Origin *</Label><Input placeholder="Jakarta / IDJKT" value={f.origin} onChange={e => set("origin", e.target.value)} /></div>
-              <div><Label className="text-xs">Destination *</Label><Input placeholder="Singapore / SGSIN" value={f.destination} onChange={e => set("destination", e.target.value)} /></div>
-              <div>
-                <Label className="text-xs">Commodity</Label>
-                <Input
-                  placeholder="Elektronik, Tekstil..."
-                  value={f.commodity}
-                  onChange={e => set("commodity", e.target.value)}
-                  readOnly={!!fromProduct}
-                  className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
-                />
-                {fromProduct && (
-                  <p className="text-xs text-amber-600 mt-0.5">Diisi otomatis dari produk yang dipilih</p>
-                )}
-              </div>
-              <div><Label className="text-xs">Required Date</Label><Input type="date" value={f.requiredDate} onChange={e => set("requiredDate", e.target.value)} /></div>
-              <div>
-                <Label className="text-xs">Jumlah (Qty)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  placeholder="1"
-                  value={f.quantity}
-                  onChange={e => set("quantity", e.target.value)}
-                  readOnly={!!fromProduct}
-                  className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
-                />
-                {fromProduct && (
-                  <p className="text-xs text-amber-600 mt-0.5">Dari produk yang dipilih</p>
-                )}
-              </div>
-              <div>
-                <Label className="text-xs">Satuan</Label>
-                <Input
-                  placeholder="pcs, kg, cbm..."
-                  value={f.unit}
-                  onChange={e => set("unit", e.target.value)}
-                  readOnly={!!fromProduct}
-                  className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
-                />
-                {fromProduct && (
-                  <p className="text-xs text-amber-600 mt-0.5">Dari produk yang dipilih</p>
-                )}
-              </div>
-              <div><Label className="text-xs">Gross Weight (kg)</Label><Input type="number" placeholder="0" value={f.grossWeight} onChange={e => set("grossWeight", e.target.value)} /></div>
-              <div><Label className="text-xs">Volume / CBM</Label><Input type="number" placeholder="0" value={f.volumeCbm} onChange={e => set("volumeCbm", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs">Commodity</Label>
+              <Input
+                placeholder="Elektronik, Tekstil, Mesin, dll."
+                value={f.commodity}
+                onChange={e => set("commodity", e.target.value)}
+                readOnly={!!fromProduct}
+                className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
+              />
+              {fromProduct && (
+                <p className="text-xs text-amber-600 mt-0.5">Diisi otomatis dari produk yang dipilih</p>
+              )}
             </div>
             <div><Label className="text-xs">Cargo Description</Label><Textarea placeholder="Deskripsi kargo..." value={f.cargoDescription} onChange={e => set("cargoDescription", e.target.value)} rows={2} /></div>
             <div><Label className="text-xs">Notes</Label><Textarea placeholder="Catatan tambahan..." value={f.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
+          </div>
 
-            <div className="space-y-3">
-              <Label className="text-xs block">Jenis Pembayaran <span className="text-muted-foreground font-normal">(opsional)</span></Label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["cash", "termin", "dp"] as const).map((type) => {
-                  const labels: Record<string, { title: string; desc: string }> = {
-                    cash: { title: "Cash", desc: "Bayar lunas" },
-                    termin: { title: "Termin", desc: "Cicil berkala" },
-                    dp: { title: "DP / Advance", desc: "Uang muka" },
-                  };
-                  const selected = paymentType === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => {
-                        setPaymentType(selected ? "" : type);
-                        setPaymentTerm("");
-                        setDpNext("");
-                      }}
-                      className={`flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-3 text-center transition-all ${
-                        selected
-                          ? "border-accent bg-accent/10 text-accent"
-                          : "border-border bg-background text-foreground hover:border-accent/50"
-                      }`}
-                    >
-                      <span className="font-semibold text-xs leading-tight">{labels[type].title}</span>
-                      <span className="text-[10px] text-muted-foreground leading-tight">{labels[type].desc}</span>
-                    </button>
-                  );
-                })}
-              </div>
+          <Separator />
 
-              {/* Termin sub-options */}
-              {paymentType === "termin" && (
-                <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
-                  <p className="text-xs font-medium text-accent">Pilih Jangka Waktu Termin</p>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {(["net7", "net14", "net30", "net60"] as const).map((term) => {
-                      const termLabels: Record<string, string> = {
-                        net7: "Net 7 Hari", net14: "Net 14 Hari",
-                        net30: "Net 30 Hari", net60: "Net 60 Hari",
-                      };
-                      return (
-                        <button
-                          key={term}
-                          type="button"
-                          onClick={() => setPaymentTerm(paymentTerm === term ? "" : term)}
-                          className={`rounded-lg border-2 py-2 text-[11px] font-semibold transition-all text-center ${
-                            paymentTerm === term
-                              ? "border-accent bg-accent text-white"
-                              : "border-border bg-white text-foreground hover:border-accent/50"
-                          }`}
-                        >
-                          {termLabels[term]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* DP sub-options */}
-              {paymentType === "dp" && (
-                <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
-                  <p className="text-xs font-medium text-accent">Pembayaran Selanjutnya Setelah DP</p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {(["lunas-delivery", "lunas-net30", "lunas-net60", "cicil"] as const).map((opt) => {
-                      const dpLabels: Record<string, { title: string; desc: string }> = {
-                        "lunas-delivery": { title: "Pelunasan Setelah Pengiriman", desc: "Sisa dibayar saat barang tiba" },
-                        "lunas-net30":    { title: "Pelunasan Net 30 Hari", desc: "Sisa lunas maks. 30 hari" },
-                        "lunas-net60":    { title: "Pelunasan Net 60 Hari", desc: "Sisa lunas maks. 60 hari" },
-                        "cicil":          { title: "Cicilan Bertahap", desc: "Sisa dibayar secara cicil" },
-                      };
-                      return (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setDpNext(dpNext === opt ? "" : opt)}
-                          className={`flex flex-col gap-0.5 rounded-lg border-2 px-3 py-2.5 text-left transition-all ${
-                            dpNext === opt
-                              ? "border-accent bg-accent text-white"
-                              : "border-border bg-white text-foreground hover:border-accent/50"
-                          }`}
-                        >
-                          <span className="font-semibold text-[11px] leading-tight">{dpLabels[opt].title}</span>
-                          <span className={`text-[10px] leading-tight ${dpNext === opt ? "text-white/80" : "text-muted-foreground"}`}>{dpLabels[opt].desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+          {/* ── Group 3: Jenis Pembayaran ────────────────────────── */}
+          <div className="space-y-3">
+            <Label className="text-xs block font-semibold">Jenis Pembayaran <span className="text-muted-foreground font-normal">(opsional)</span></Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["transfer", "gateway"] as const).map((type) => {
+                const labels: Record<string, { title: string; desc: string }> = {
+                  transfer:  { title: "Transfer",         desc: "Bayar via bank transfer" },
+                  gateway:   { title: "Payment Gateway",  desc: "Bayar via gateway online" },
+                };
+                const selected = paymentType === type;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setPaymentType(selected ? "" : type);
+                      setTransferTerm("");
+                      setPaymentTerm("");
+                      setDpNext("");
+                    }}
+                    className={`flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-3 text-center transition-all ${
+                      selected
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-border bg-background text-foreground hover:border-accent/50"
+                    }`}
+                  >
+                    <span className="font-semibold text-xs leading-tight">{labels[type].title}</span>
+                    <span className="text-[10px] text-muted-foreground leading-tight">{labels[type].desc}</span>
+                  </button>
+                );
+              })}
             </div>
+
+            {/* Transfer sub-terms */}
+            {paymentType === "transfer" && (
+              <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
+                <p className="text-xs font-medium text-accent">Pilih Jenis Pembayaran Transfer</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["full", "termin", "dp"] as const).map((term) => {
+                    const termLabels: Record<string, { title: string; desc: string }> = {
+                      full:   { title: "Full Payment",    desc: "Bayar penuh" },
+                      termin: { title: "Termin",          desc: "Cicil berkala" },
+                      dp:     { title: "DP / Cash Advance", desc: "Uang muka" },
+                    };
+                    const sel = transferTerm === term;
+                    return (
+                      <button
+                        key={term}
+                        type="button"
+                        onClick={() => {
+                          setTransferTerm(sel ? "" : term);
+                          setPaymentTerm("");
+                          setDpNext("");
+                        }}
+                        className={`flex flex-col items-center gap-0.5 rounded-lg border-2 px-2 py-2.5 text-center transition-all ${
+                          sel
+                            ? "border-accent bg-accent text-white"
+                            : "border-border bg-white text-foreground hover:border-accent/50"
+                        }`}
+                      >
+                        <span className="font-semibold text-[11px] leading-tight">{termLabels[term].title}</span>
+                        <span className={`text-[10px] leading-tight ${sel ? "text-white/80" : "text-muted-foreground"}`}>{termLabels[term].desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Termin jangka waktu */}
+                {transferTerm === "termin" && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-[11px] font-medium text-accent/80">Jangka Waktu Termin</p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(["net7", "net14", "net30", "net60"] as const).map((t) => {
+                        const tLabels: Record<string, string> = {
+                          net7: "Net 7 Hari", net14: "Net 14 Hari",
+                          net30: "Net 30 Hari", net60: "Net 60 Hari",
+                        };
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setPaymentTerm(paymentTerm === t ? "" : t)}
+                            className={`rounded-lg border-2 py-2 text-[11px] font-semibold transition-all text-center ${
+                              paymentTerm === t
+                                ? "border-accent bg-accent text-white"
+                                : "border-border bg-white text-foreground hover:border-accent/50"
+                            }`}
+                          >
+                            {tLabels[t]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* DP pelunasan berikutnya */}
+                {transferTerm === "dp" && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-[11px] font-medium text-accent/80">Pelunasan Berikutnya</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(["lunas-delivery", "lunas-net30", "lunas-net60", "cicil"] as const).map((opt) => {
+                        const dpLabels: Record<string, { title: string; desc: string }> = {
+                          "lunas-delivery": { title: "Setelah Pengiriman",  desc: "Sisa dibayar saat barang tiba" },
+                          "lunas-net30":    { title: "Net 30 Hari",         desc: "Sisa lunas maks. 30 hari" },
+                          "lunas-net60":    { title: "Net 60 Hari",         desc: "Sisa lunas maks. 60 hari" },
+                          "cicil":          { title: "Cicilan Bertahap",    desc: "Sisa dibayar secara cicil" },
+                        };
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => setDpNext(dpNext === opt ? "" : opt)}
+                            className={`flex flex-col gap-0.5 rounded-lg border-2 px-3 py-2.5 text-left transition-all ${
+                              dpNext === opt
+                                ? "border-accent bg-accent text-white"
+                                : "border-border bg-white text-foreground hover:border-accent/50"
+                            }`}
+                          >
+                            <span className="font-semibold text-[11px] leading-tight">{dpLabels[opt].title}</span>
+                            <span className={`text-[10px] leading-tight ${dpNext === opt ? "text-white/80" : "text-muted-foreground"}`}>{dpLabels[opt].desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       );
@@ -972,7 +986,7 @@ export default function BookPage() {
     if (step === 0) return !!shipmentType;
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
-    if (step === 3) return !!(customerForm.companyName && customerForm.customerName && customerForm.email && customerForm.phone && customerForm.origin && customerForm.destination);
+    if (step === 3) return !!(customerForm.companyName && customerForm.customerName && customerForm.email && customerForm.phone);
     return false;
   };
 
