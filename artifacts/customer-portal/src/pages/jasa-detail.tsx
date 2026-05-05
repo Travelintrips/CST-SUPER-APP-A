@@ -377,8 +377,31 @@ export default function JasaDetail() {
 
   if (servicesLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Package className="h-12 w-12 text-muted-foreground animate-pulse" />
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: "linear-gradient(160deg, #F0F6FF 0%, #F8FAFC 50%, #FFFFFF 100%)" }}
+      >
+        <style>{`
+          @keyframes cst-logo-breathe {
+            0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 0px rgba(11,92,173,0)); }
+            50% { opacity: 0.80; transform: scale(0.93); filter: drop-shadow(0 0 16px rgba(11,92,173,0.28)); }
+          }
+          .cst-logo-loading { animation: cst-logo-breathe 2.4s ease-in-out infinite; }
+        `}</style>
+        <div className="flex flex-col items-center gap-5">
+          <img
+            src={`${import.meta.env.BASE_URL}images/logo.png`}
+            alt="CST Logistics"
+            className="cst-logo-loading"
+            style={{ width: "clamp(60px, 9vw, 88px)", height: "auto" }}
+          />
+          <p
+            className="font-semibold text-slate-400 uppercase tracking-widest"
+            style={{ fontSize: "10px", letterSpacing: "0.20em" }}
+          >
+            Loading...
+          </p>
+        </div>
       </div>
     );
   }
