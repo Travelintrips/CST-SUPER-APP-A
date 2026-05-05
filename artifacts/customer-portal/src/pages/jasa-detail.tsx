@@ -215,12 +215,13 @@ const SUBTYPE_SPECS: Record<string, SubtypeSpec> = {
 };
 
 const VEHICLE_CAPS_LIST = [
-  { key: "Pickup",    label: "Pickup",    maxVolumeM3: 3,  maxWeightKg: 800   },
-  { key: "Blind Van", label: "Blind Van", maxVolumeM3: 5,  maxWeightKg: 1000  },
-  { key: "CDE",       label: "CDE",       maxVolumeM3: 6,  maxWeightKg: 2000  },
-  { key: "CDD",       label: "CDD",       maxVolumeM3: 12, maxWeightKg: 4000  },
-  { key: "Fuso",      label: "Fuso",      maxVolumeM3: 25, maxWeightKg: 8000  },
-  { key: "Wingbox",   label: "Wingbox",   maxVolumeM3: 45, maxWeightKg: 15000 },
+  { key: "Van / Blind Van", label: "Van / Blind Van", maxWeightKg: 800,   maxVolumeM3: 3,  rateKey: "CDE",     desc: "Kiriman kecil & ringan, ideal untuk last-mile delivery." },
+  { key: "Pickup Bak",      label: "Pickup Bak",      maxWeightKg: 1000,  maxVolumeM3: 4,  rateKey: "CDE",     desc: "Bak terbuka, fleksibel untuk berbagai ukuran barang." },
+  { key: "Pickup Box",      label: "Pickup Box",      maxWeightKg: 1200,  maxVolumeM3: 5,  rateKey: "CDE",     desc: "Tertutup & aman dari cuaca, ideal untuk barang berharga." },
+  { key: "CDE Box",         label: "CDE Box",         maxWeightKg: 2500,  maxVolumeM3: 12, rateKey: "CDE",     desc: "Distribusi dalam kota, kapasitas menengah." },
+  { key: "CDD Box",         label: "CDD Box",         maxWeightKg: 5000,  maxVolumeM3: 20, rateKey: "CDD",     desc: "Kapasitas besar, cocok untuk pengiriman antar kota." },
+  { key: "Fuso",            label: "Fuso",            maxWeightKg: 8000,  maxVolumeM3: 30, rateKey: "Fuso",    desc: "Truk besar untuk muatan berat & volume tinggi." },
+  { key: "Tronton",         label: "Tronton",         maxWeightKg: 15000, maxVolumeM3: 45, rateKey: "Wingbox", desc: "Kapasitas maksimal untuk jarak jauh antar kota." },
 ] as const;
 
 function calcTotalVolumeM3(dims: DimRow[]): number {
@@ -500,25 +501,6 @@ export default function JasaDetail() {
 
   function handleNextStep() {
     if (truckingStep === 1) {
-      if (!state.vehicleType) {
-        toast({ title: "Pilih kendaraan terlebih dahulu", variant: "destructive" });
-        return;
-      }
-      if (!state.vehicleSubtype) {
-        toast({ title: "Pilih tipe kendaraan", variant: "destructive" });
-        return;
-      }
-      if (!state.pickupCity) {
-        toast({ title: "Isi kota asal", variant: "destructive" });
-        return;
-      }
-      if (!state.destCity) {
-        toast({ title: "Isi kota tujuan", variant: "destructive" });
-        return;
-      }
-      setVehicleOpen(false);
-      setTruckingStep(2);
-    } else if (truckingStep === 2) {
       if (!orderNow) {
         if (!state.pickupDate) {
           toast({ title: "Pilih tanggal pickup", variant: "destructive" });
@@ -534,6 +516,18 @@ export default function JasaDetail() {
           return;
         }
       }
+      setTruckingStep(2);
+    } else if (truckingStep === 2) {
+      if (!state.pickupCity) {
+        toast({ title: "Isi kota asal", variant: "destructive" });
+        return;
+      }
+      if (!state.destCity) {
+        toast({ title: "Isi kota tujuan", variant: "destructive" });
+        return;
+      }
+      setTruckingStep(3);
+    } else if (truckingStep === 3) {
       if (!cargoCategory) {
         toast({ title: "Pilih kategori barang", variant: "destructive" });
         return;
@@ -548,15 +542,16 @@ export default function JasaDetail() {
       }
       const hasCompleteDim = dimensions.some(d => d.panjang && d.lebar && d.tinggi && d.koliQty);
       if (!hasCompleteDim) {
-        toast({ title: "Isi minimal 1 baris dimensi lengkap", variant: "destructive" });
+        toast({ title: "Isi minimal 1 baris dimensi lengkap (P, L, T, Koli)", variant: "destructive" });
         return;
       }
-      const totalVol = calcTotalVolumeM3(dimensions);
-      if (totalVol <= 0) {
-        toast({ title: "Total volume harus > 0, periksa dimensi barang", variant: "destructive" });
+      setTruckingStep(4);
+    } else if (truckingStep === 4) {
+      if (!state.vehicleType) {
+        toast({ title: "Pilih armada kendaraan terlebih dahulu", variant: "destructive" });
         return;
       }
-      setTruckingStep(3);
+      setTruckingStep(5);
     }
   }
 
@@ -568,27 +563,8 @@ export default function JasaDetail() {
     }
     if (item.calculatorType === "trucking") {
       if (!state.vehicleType) {
-        toast({ title: "Pilih Vehicle Type terlebih dahulu", variant: "destructive" });
+        toast({ title: "Pilih armada kendaraan terlebih dahulu", variant: "destructive" });
         return;
-      }
-      if (!state.vehicleSubtype) {
-        toast({ title: "Pilih tipe kendaraan", variant: "destructive" });
-        return;
-      }
-      if ((state.serviceType || "Quick") !== "Quick") {
-        if (!state.pickupDate) {
-          toast({ title: "Tanggal penjemputan wajib diisi", variant: "destructive" });
-          return;
-        }
-        const today = new Date().toISOString().split("T")[0];
-        if (state.pickupDate < today) {
-          toast({ title: "Tanggal penjemputan tidak boleh sebelum hari ini", variant: "destructive" });
-          return;
-        }
-        if (!state.pickupTime) {
-          toast({ title: "Jam penjemputan wajib diisi", variant: "destructive" });
-          return;
-        }
       }
     }
     addItem({
@@ -849,187 +825,90 @@ export default function JasaDetail() {
                 {ct === "trucking" && (
                   <div className="w-full">
                     <div className="bg-gradient-to-b from-[#0D6EFD] via-[#0B5CAD] to-[#083B70] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-blue-900/40">
-                      {/* ── Stepper ── */}
-                      <div className="flex items-center px-4 pt-4 pb-3">
-                        {([{n:1,l:"Route"},{n:2,l:"Services"},{n:3,l:"Summary"}]).map((s, i, arr) => (
+                      {/* ── Stepper (5 langkah) ── */}
+                      <div className="flex items-center px-3 pt-4 pb-3">
+                        {([
+                          {n:1,l:"Jadwal"},
+                          {n:2,l:"Rute"},
+                          {n:3,l:"Barang"},
+                          {n:4,l:"Armada"},
+                          {n:5,l:"Summary"},
+                        ]).map((s, i, arr) => (
                           <div key={s.n} className="flex items-center flex-1 min-w-0">
-                            <div className={`flex items-center gap-1.5 ${truckingStep >= s.n ? "text-white" : "text-blue-200"}`}>
-                              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold flex-shrink-0 ${truckingStep >= s.n ? "bg-white text-[#0B5CAD]" : "border border-blue-300 text-blue-200"}`}>
+                            <div className={`flex items-center gap-1 ${truckingStep >= s.n ? "text-white" : "text-blue-300/70"}`}>
+                              <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold flex-shrink-0 ${truckingStep > s.n ? "bg-white text-[#0B5CAD]" : truckingStep === s.n ? "bg-white text-[#0B5CAD]" : "border border-blue-300/50 text-blue-300/70"}`}>
                                 {truckingStep > s.n ? "✓" : s.n}
                               </span>
-                              <span className="text-xs font-medium whitespace-nowrap">{s.l}</span>
+                              <span className="text-[9px] font-semibold whitespace-nowrap hidden sm:block">{s.l}</span>
                             </div>
-                            {i < arr.length - 1 && <div className={`flex-1 h-px mx-2 ${truckingStep > s.n ? "bg-white/60" : "bg-blue-300/30"}`} />}
+                            {i < arr.length - 1 && <div className={`flex-1 h-px mx-1 ${truckingStep > s.n ? "bg-white/60" : "bg-blue-300/25"}`} />}
                           </div>
                         ))}
                       </div>
 
-                      {/* ── Step 1: Route ── */}
+                      {/* ── Step 1: Jadwal ── */}
                       {truckingStep === 1 && (
-                        <div className="px-3 pb-5 space-y-2.5">
-                          {/* Vehicle Dropdown */}
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => setVehicleOpen(v => !v)}
-                              className="w-full bg-white rounded-xl px-4 py-3 flex items-center gap-3 text-left shadow-sm"
-                            >
-                              <svg viewBox="0 0 64 22" className="w-10 h-5 flex-shrink-0" fill="#0B5CAD">
-                                <rect x="0" y="6" width="13" height="11" rx="2"/>
-                                <rect x="13" y="2" width="49" height="15" rx="2" opacity="0.8"/>
-                                <circle cx="8" cy="20" r="2.5"/>
-                                <circle cx="38" cy="20" r="2.5"/>
-                                <circle cx="55" cy="20" r="2.5"/>
-                              </svg>
-                              <span className={`flex-1 text-sm font-medium ${state.vehicleType ? "text-gray-900" : "text-gray-400"}`}>
-                                {state.vehicleType || "Pilih Kendaraan"}
-                              </span>
-                              <svg className={`h-4 w-4 text-gray-400 transition-transform flex-shrink-0 ${vehicleOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                            </button>
-                            {vehicleOpen && (
-                              <div className="absolute top-[calc(100%+4px)] left-0 right-0 bg-white rounded-xl shadow-2xl z-30 overflow-hidden border border-gray-100">
-                                {VEHICLE_LIST.map(v => {
-                                  const isSel = state.vehicleType === v.key;
-                                  const r = truckingRates[v.rateKey];
-                                  return (
-                                    <button
-                                      key={v.key}
-                                      type="button"
-                                      onClick={() => {
-                                        setState(prev => ({...prev, vehicleType: v.key, vehicleSubtype: "", trailerSize: "", ...(r ? {truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee)} : {})}));
-                                        setVehicleOpen(false);
-                                      }}
-                                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-blue-50 text-left border-b border-gray-100 last:border-0 transition-colors"
-                                    >
-                                      <svg viewBox="0 0 44 22" className="w-8 h-4 flex-shrink-0" fill={isSel ? "#0B5CAD" : "#9CA3AF"}>
-                                        <rect x="0" y="6" width="13" height="11" rx="2"/>
-                                        <rect x="13" y="2" width="29" height="15" rx="2" opacity="0.8"/>
-                                        <circle cx="8" cy="20" r="2.5"/><circle cx="32" cy="20" r="2.5"/><circle cx="40" cy="20" r="2.5"/>
-                                      </svg>
-                                      <div className="flex-1 min-w-0">
-                                        <p className={`text-sm font-medium ${isSel ? "text-[#0B5CAD]" : "text-gray-800"}`}>{v.label}</p>
-                                        <p className={`text-[11px] ${isSel ? "text-blue-500" : "text-gray-400"}`}>{VEHICLE_CAPACITY[v.key]}</p>
-                                      </div>
-                                      {isSel && <CheckCircle2 className="h-4 w-4 text-[#0B5CAD] flex-shrink-0"/>}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Vehicle Subtype grid */}
-                          {state.vehicleType && VEHICLE_SUBTYPES[state.vehicleType] && (
-                            <div className="grid grid-cols-2 gap-2">
-                              {VEHICLE_SUBTYPES[state.vehicleType].map((sub, i) => {
-                                const subtypes = VEHICLE_SUBTYPES[state.vehicleType!];
-                                const isOdd = subtypes.length % 2 !== 0;
-                                const isLast = i === subtypes.length - 1;
-                                const isSelected = state.vehicleSubtype === sub;
-                                return (
-                                  <button
-                                    key={sub}
-                                    type="button"
-                                    onClick={() => {
-                                      const trailerMap: Record<string, string> = {
-                                        "Trailer 20 ft": "20 ft",
-                                        "Trailer 40 ft": "40 ft",
-                                        "Trailer Flatbed": "Flatbed",
-                                      };
-                                      setState(prev => ({
-                                        ...prev,
-                                        vehicleSubtype: sub,
-                                        trailerSize: trailerMap[sub] ?? "",
-                                      }));
-                                    }}
-                                    className={`${isOdd && isLast ? "col-span-2" : ""} py-2.5 px-3 rounded-xl text-xs font-semibold border-2 transition-all flex items-center justify-between gap-1 ${
-                                      isSelected
-                                        ? "bg-white text-[#0B5CAD] border-white"
-                                        : "bg-transparent text-white border-white/40 hover:border-white/70"
-                                    }`}
-                                  >
-                                    <span className="flex-1 text-center leading-snug">{sub}</span>
-                                    {isSelected && <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0"/>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {/* Subtype spec card */}
-                          {state.vehicleSubtype && SUBTYPE_SPECS[state.vehicleSubtype] && (() => {
-                            const sp = SUBTYPE_SPECS[state.vehicleSubtype!];
-                            const isTrailer = state.vehicleSubtype.startsWith("Trailer");
-                            return (
-                              <div className="bg-white rounded-xl px-4 py-3 shadow-sm space-y-1.5">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className="text-base">📦</span>
-                                  <p className="text-xs font-semibold text-gray-700">Spesifikasi Kendaraan</p>
-                                </div>
-                                {sp.warning && (
-                                  <p className="text-[11px] text-amber-600 font-medium bg-amber-50 rounded-lg px-2 py-1">{sp.warning}</p>
-                                )}
-                                {!isTrailer && sp.dims !== "—" && (
-                                  <div className="flex items-baseline justify-between text-[11px]">
-                                    <span className="text-gray-400">Dimensi (P×L×T)</span>
-                                    <span className="font-medium text-gray-700">{sp.dims}</span>
-                                  </div>
-                                )}
-                                {!isTrailer && sp.volume !== "—" && (
-                                  <div className="flex items-baseline justify-between text-[11px]">
-                                    <span className="text-gray-400">Volume</span>
-                                    <span className="font-medium text-gray-700">{sp.volume}</span>
-                                  </div>
-                                )}
-                                <div className="flex items-baseline justify-between text-[11px]">
-                                  <span className="text-gray-400">Kapasitas</span>
-                                  <span className="font-semibold text-[#0B5CAD]">{sp.weight}</span>
-                                </div>
-                                {sp.note && (
-                                  <p className="text-[10px] text-gray-400 italic pt-0.5">{sp.note}</p>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* Service type — Schedule with inline date/time */}
+                        <div className="px-3 pb-5 space-y-3">
                           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                            <div className="flex items-center gap-2 px-4 py-3">
-                              <svg className="w-5 h-5 text-[#0B5CAD] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                              <div className="flex-1">
-                                <p className="text-sm font-semibold text-gray-900">Schedule</p>
-                                {state.pickupDate && state.pickupTime
-                                  ? <p className="text-[11px] text-[#0B5CAD] font-medium">{state.pickupDate} · {state.pickupTime}</p>
-                                  : <p className="text-[11px] text-gray-400">Pilih tanggal &amp; jam penjemputan</p>
-                                }
-                              </div>
-                              {state.pickupDate && state.pickupTime && <CheckCircle2 className="h-4 w-4 text-[#0B5CAD] flex-shrink-0"/>}
+                            <div className="px-4 pt-3 pb-1">
+                              <p className="text-sm font-semibold text-gray-900">Permintaan Jadwal Pengiriman</p>
                             </div>
-                            <div className="border-t border-gray-100 px-4 pb-4 pt-3 grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-xs text-gray-500 font-medium block mb-1.5">Tanggal</label>
-                                <Input
-                                  type="date"
-                                  min={new Date().toISOString().split("T")[0]}
-                                  value={state.pickupDate || ""}
-                                  onChange={e => set("pickupDate", e.target.value)}
-                                />
+                            <div className="px-4 pb-4 space-y-3">
+                              <div className="flex items-center gap-3 py-2">
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={orderNow}
+                                  onClick={() => {
+                                    const next = !orderNow;
+                                    setOrderNow(next);
+                                    if (next) {
+                                      const now = new Date();
+                                      set("pickupDate", now.toISOString().split("T")[0]);
+                                      set("pickupTime", now.toTimeString().slice(0, 5));
+                                    } else {
+                                      set("pickupDate", "");
+                                      set("pickupTime", "");
+                                    }
+                                  }}
+                                  className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none ${orderNow ? "bg-[#0B5CAD]" : "bg-gray-200"}`}
+                                >
+                                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${orderNow ? "translate-x-5" : "translate-x-0"}`}/>
+                                </button>
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-800">Pesan Sekarang</p>
+                                  <p className="text-[11px] text-gray-400">Pickup dijadwalkan hari ini</p>
+                                </div>
+                                {orderNow && <span className="ml-auto text-[11px] font-medium text-[#0B5CAD] bg-blue-50 px-2 py-0.5 rounded-full">Aktif</span>}
                               </div>
-                              <div>
-                                <label className="text-xs text-gray-500 font-medium block mb-1.5">Jam</label>
-                                <Input
-                                  type="time"
-                                  value={state.pickupTime || ""}
-                                  onChange={e => set("pickupTime", e.target.value)}
-                                />
-                              </div>
+                              {!orderNow ? (
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-xs text-gray-500 font-medium block mb-1">Tanggal <span className="text-red-500">*</span></label>
+                                    <Input type="date" min={new Date().toISOString().split("T")[0]} value={state.pickupDate || ""} onChange={e => set("pickupDate", e.target.value)}/>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 font-medium block mb-1">Jam <span className="text-red-500">*</span></label>
+                                    <Input type="time" value={state.pickupTime || ""} onChange={e => set("pickupTime", e.target.value)}/>
+                                  </div>
+                                </div>
+                              ) : (
+                                state.pickupDate && (
+                                  <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-[#0B5CAD] font-medium">
+                                    Jadwal: {state.pickupDate} pukul {state.pickupTime}
+                                  </div>
+                                )
+                              )}
                             </div>
                           </div>
+                        </div>
+                      )}
 
-                          {/* Route Card */}
+                      {/* ── Step 2: Rute ── */}
+                      {truckingStep === 2 && (
+                        <div className="px-3 pb-5 space-y-2.5">
                           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                             <div className="flex items-stretch">
-                              {/* Connector line column */}
                               <div className="flex flex-col items-center pt-4 pb-4 pl-4 pr-2 flex-shrink-0">
                                 <div className="w-3 h-3 rounded-full bg-[#0B5CAD] ring-2 ring-[#0B5CAD]/20 flex-shrink-0"/>
                                 <div className="flex-1 w-0.5 bg-gray-200 my-1"/>
@@ -1041,7 +920,6 @@ export default function JasaDetail() {
                                 ))}
                                 <div className="w-3 h-3 rounded-full bg-amber-400 ring-2 ring-amber-200 flex-shrink-0"/>
                               </div>
-                              {/* Inputs column */}
                               <div className="flex-1 min-w-0 divide-y divide-gray-100">
                                 <div className="py-2 pr-3">
                                   <LocationCombobox value={state.pickupCity || ""} onChange={handlePickupChange} placeholder="Kota asal..." countryCode="id"/>
@@ -1092,8 +970,8 @@ export default function JasaDetail() {
                                 <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${optimizeRoute ? "translate-x-5" : "translate-x-0"}`}/>
                               </button>
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold text-gray-800">Optimize Route (Optimasi Rute)</p>
-                                <p className="text-[11px] text-gray-400 leading-snug mt-0.5">Mengurutkan pemberhentian secara otomatis agar perjalanan lebih efisien.</p>
+                                <p className="text-xs font-semibold text-gray-800">Optimize Route</p>
+                                <p className="text-[11px] text-gray-400 leading-snug mt-0.5">Mengurutkan stop agar perjalanan lebih efisien.</p>
                                 {optimizeRoute && (
                                   <p className="text-[11px] text-[#0B5CAD] font-semibold mt-1.5 flex items-center gap-1">
                                     <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -1103,83 +981,38 @@ export default function JasaDetail() {
                               </div>
                             </div>
                           </div>
+                          {(state.distance || calcDist) && (
+                            <div className="bg-white/10 rounded-xl px-4 py-2.5 flex items-center justify-between">
+                              <span className="text-white/80 text-xs font-medium">Estimasi Jarak</span>
+                              {calcDist
+                                ? <span className="text-white text-xs flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Menghitung...</span>
+                                : <span className="text-white font-bold text-sm">{state.distance} km</span>
+                              }
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      {/* ── Step 2: Services ── */}
-                      {truckingStep === 2 && (
+                      {/* ── Step 3: Informasi Barang ── */}
+                      {truckingStep === 3 && (
                         <div className="px-3 pb-5 space-y-3">
-
-                          {/* ── Section 1: Permintaan Jadwal ── */}
-                          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                            <div className="px-4 pt-3 pb-3 space-y-3">
-                              <p className="text-sm font-semibold text-gray-800">Permintaan Jadwal Pengiriman</p>
-                              <div className="flex items-center gap-3">
+                          <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+                            <p className="text-sm font-semibold text-gray-800">Kategori Barang</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {["Umum", "Mudah Pecah Belah", "Dangerous Goods (DG)", "Perlu Penanganan Khusus"].map(cat => (
                                 <button
+                                  key={cat}
                                   type="button"
-                                  role="switch"
-                                  aria-checked={orderNow}
-                                  onClick={() => {
-                                    const next = !orderNow;
-                                    setOrderNow(next);
-                                    if (next) {
-                                      const now = new Date();
-                                      set("pickupDate", now.toISOString().split("T")[0]);
-                                      set("pickupTime", now.toTimeString().slice(0, 5));
-                                    } else {
-                                      set("pickupDate", "");
-                                      set("pickupTime", "");
-                                    }
-                                  }}
-                                  className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none ${orderNow ? "bg-[#0B5CAD]" : "bg-gray-200"}`}
+                                  onClick={() => setCargoCategory(cat)}
+                                  className={`py-2 px-3 rounded-lg text-xs font-medium border-2 transition-all text-left leading-snug ${cargoCategory === cat ? "border-[#0B5CAD] bg-blue-50 text-[#0B5CAD]" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
                                 >
-                                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${orderNow ? "translate-x-5" : "translate-x-0"}`}/>
+                                  {cat}
                                 </button>
-                                <div>
-                                  <p className="text-sm font-semibold text-gray-800">Pesan Sekarang</p>
-                                  <p className="text-[11px] text-gray-400">Pickup dijadwalkan hari ini</p>
-                                </div>
-                                {orderNow && <span className="ml-auto text-[11px] font-medium text-[#0B5CAD] bg-blue-50 px-2 py-0.5 rounded-full">Aktif</span>}
-                              </div>
-                              {!orderNow ? (
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="text-xs text-gray-500 font-medium block mb-1">Pickup Date <span className="text-red-500">*</span></label>
-                                    <Input type="date" min={new Date().toISOString().split("T")[0]} value={state.pickupDate || ""} onChange={e => set("pickupDate", e.target.value)}/>
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 font-medium block mb-1">Pickup Time <span className="text-red-500">*</span></label>
-                                    <Input type="time" value={state.pickupTime || ""} onChange={e => set("pickupTime", e.target.value)}/>
-                                  </div>
-                                </div>
-                              ) : (
-                                state.pickupDate && (
-                                  <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-[#0B5CAD] font-medium">
-                                    Jadwal: {state.pickupDate} pukul {state.pickupTime}
-                                  </div>
-                                )
-                              )}
+                              ))}
                             </div>
                           </div>
-
-                          {/* ── Section 2: Informasi Barang ── */}
                           <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
-                            <p className="text-sm font-semibold text-gray-800">Informasi Barang</p>
-                            <div>
-                              <label className="text-xs text-gray-500 font-medium block mb-1.5">Kategori Barang <span className="text-red-500">*</span></label>
-                              <div className="grid grid-cols-2 gap-2">
-                                {["Umum", "Mudah Pecah Belah", "Dangerous Goods (DG)", "Perlu Penanganan Khusus"].map(cat => (
-                                  <button
-                                    key={cat}
-                                    type="button"
-                                    onClick={() => setCargoCategory(cat)}
-                                    className={`py-2 px-3 rounded-lg text-xs font-medium border-2 transition-all text-left leading-snug ${cargoCategory === cat ? "border-[#0B5CAD] bg-blue-50 text-[#0B5CAD]" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
-                                  >
-                                    {cat}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
+                            <p className="text-sm font-semibold text-gray-800">Jumlah &amp; Berat</p>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
                                 <label className="text-xs text-gray-500 font-medium block mb-1">Jumlah Koli <span className="text-red-500">*</span></label>
@@ -1191,8 +1024,6 @@ export default function JasaDetail() {
                               </div>
                             </div>
                           </div>
-
-                          {/* ── Section 3: Dimensi & Kubikasi ── */}
                           <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
                             <p className="text-sm font-semibold text-gray-800">Dimensi &amp; Kubikasi</p>
                             <div className="grid grid-cols-[1fr_1fr_1fr_1fr_1.5rem] gap-1.5 text-[10px] text-gray-400 font-medium">
@@ -1233,8 +1064,6 @@ export default function JasaDetail() {
                               </div>
                             )}
                           </div>
-
-                          {/* ── Section 4: Upload Foto Barang ── */}
                           <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
                             <div className="flex items-baseline justify-between">
                               <p className="text-sm font-semibold text-gray-800">Upload Foto Barang</p>
@@ -1265,67 +1094,142 @@ export default function JasaDetail() {
                               </div>
                             )}
                           </div>
-
-                          {/* ── Detail Biaya (tetap terlihat) ── */}
-                          <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
-                            <p className="text-sm font-semibold text-gray-700">Detail Biaya</p>
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-xs text-gray-500 font-medium">Jarak (km)</label>
-                                {calcDist && <span className="text-xs text-[#0B5CAD] flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Menghitung...</span>}
-                                {!calcDist && pickupGeo && destGeo && state.distance && <span className="text-xs text-[#0B5CAD]">✓ Otomatis</span>}
-                              </div>
-                              <Input type="number" placeholder="0" value={state.distance || ""} onChange={e => set("distance", e.target.value)} disabled={calcDist}/>
-                            </div>
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-xs text-gray-500 font-medium">Trucking Rate (IDR/km)</label>
-                                {state.vehicleType && truckingRates[state.vehicleType] && <span className="text-xs text-[#0B5CAD]">✓ dari admin</span>}
-                              </div>
-                              <Input type="number" placeholder="0" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)}/>
-                            </div>
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-xs text-gray-500 font-medium">Loading Fee (IDR)</label>
-                                {state.vehicleType && truckingRates[state.vehicleType] && <span className="text-xs text-[#0B5CAD]">✓ dari admin</span>}
-                              </div>
-                              <Input type="number" placeholder="0" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)}/>
-                            </div>
-                            {(parseFloat(state.distance) || 0) > 0 && (parseFloat(state.truckingRate) || 0) > 0 && (
-                              <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs space-y-0.5">
-                                <p className="font-semibold text-gray-700 mb-1">Estimasi Biaya:</p>
-                                <p className="text-gray-600">{parseFloat(state.distance) || 0} km × {formatCurrency(parseFloat(state.truckingRate) || 0)}/km = {formatCurrency((parseFloat(state.distance) || 0) * (parseFloat(state.truckingRate) || 0))}</p>
-                                {(parseFloat(state.loadingFee) || 0) > 0 && <p className="text-gray-600">Loading Fee: +{formatCurrency(parseFloat(state.loadingFee) || 0)}</p>}
-                              </div>
-                            )}
-                          </div>
-
                         </div>
                       )}
 
-                      {/* ── Step 3: Summary ── */}
-                      {truckingStep === 3 && (
+                      {/* ── Step 4: Pilih Armada ── */}
+                      {truckingStep === 4 && (() => {
+                        const totalVol = calcTotalVolumeM3(dimensions);
+                        const totalWgt = parseFloat(grossWeight) || 0;
+                        const recommendedKey = VEHICLE_CAPS_LIST.find(v => totalWgt <= v.maxWeightKg && totalVol <= v.maxVolumeM3)?.key;
+                        return (
+                          <div className="px-3 pb-5 space-y-3">
+                            {(totalWgt > 0 || totalVol > 0) && (
+                              <div className="bg-white/10 rounded-xl px-3 py-2.5 flex items-center gap-3 text-xs text-white/90">
+                                <svg className="w-4 h-4 flex-shrink-0 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/></svg>
+                                <span>Muatan: <span className="font-semibold text-white">{totalWgt > 0 ? `${totalWgt} kg` : "—"}</span> · <span className="font-semibold text-white">{totalVol > 0 ? `${totalVol.toFixed(2)} m³` : "—"}</span></span>
+                              </div>
+                            )}
+                            <div className="space-y-2">
+                              {VEHICLE_CAPS_LIST.map(v => {
+                                const disabled = totalWgt > v.maxWeightKg || totalVol > v.maxVolumeM3;
+                                const isSelected = state.vehicleType === v.key;
+                                const isRecommended = v.key === recommendedKey;
+                                const r = truckingRates[v.rateKey];
+                                return (
+                                  <button
+                                    key={v.key}
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => {
+                                      setState(prev => ({
+                                        ...prev,
+                                        vehicleType: v.key,
+                                        vehicleSubtype: "",
+                                        trailerSize: "",
+                                        ...(r ? { truckingRate: String(r.ratePerKm), loadingFee: String(r.loadingFee) } : {}),
+                                      }));
+                                    }}
+                                    className={`w-full bg-white rounded-xl p-3 text-left transition-all ${
+                                      disabled
+                                        ? "opacity-40 cursor-not-allowed"
+                                        : isSelected
+                                          ? "ring-2 ring-white shadow-lg"
+                                          : "hover:shadow-md shadow-sm"
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <div className={`flex-shrink-0 mt-0.5 rounded-lg p-2 ${isSelected ? "bg-[#0B5CAD]" : "bg-slate-100"}`}>
+                                        <svg viewBox="0 0 44 22" className="w-7 h-3.5" fill={isSelected ? "white" : "#9CA3AF"}>
+                                          <rect x="0" y="6" width="13" height="11" rx="2"/>
+                                          <rect x="13" y="2" width="29" height="15" rx="2" opacity="0.8"/>
+                                          <circle cx="8" cy="20" r="2.5"/><circle cx="32" cy="20" r="2.5"/><circle cx="40" cy="20" r="2.5"/>
+                                        </svg>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className={`text-sm font-bold ${isSelected ? "text-[#0B5CAD]" : "text-gray-800"}`}>{v.label}</span>
+                                          {isRecommended && !disabled && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold border border-green-200">Rekomendasi</span>
+                                          )}
+                                          {disabled && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-500 font-semibold border border-red-200">Tidak Cocok</span>
+                                          )}
+                                        </div>
+                                        <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{v.desc}</p>
+                                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">≤ {v.maxWeightKg >= 1000 ? `${v.maxWeightKg / 1000} Ton` : `${v.maxWeightKg} kg`}</span>
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">≤ {v.maxVolumeM3} m³</span>
+                                          {r && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#0B5CAD] font-medium">{formatCurrency(r.ratePerKm)}/km</span>}
+                                        </div>
+                                      </div>
+                                      {isSelected && <CheckCircle2 className="h-4 w-4 text-[#0B5CAD] flex-shrink-0 mt-0.5"/>}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {state.vehicleType && (
+                              <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+                                <p className="text-sm font-semibold text-gray-700">Detail Biaya</p>
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-xs text-gray-500 font-medium">Jarak (km)</label>
+                                    {calcDist && <span className="text-xs text-[#0B5CAD] flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Menghitung...</span>}
+                                    {!calcDist && pickupGeo && destGeo && state.distance && <span className="text-xs text-[#0B5CAD]">✓ Otomatis</span>}
+                                  </div>
+                                  <Input type="number" placeholder="0" value={state.distance || ""} onChange={e => set("distance", e.target.value)} disabled={calcDist}/>
+                                </div>
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-xs text-gray-500 font-medium">Trucking Rate (IDR/km)</label>
+                                    {state.vehicleType && truckingRates[VEHICLE_CAPS_LIST.find(vv => vv.key === state.vehicleType)?.rateKey ?? ""] && <span className="text-xs text-[#0B5CAD]">✓ dari admin</span>}
+                                  </div>
+                                  <Input type="number" placeholder="0" value={state.truckingRate || ""} onChange={e => set("truckingRate", e.target.value)}/>
+                                </div>
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-xs text-gray-500 font-medium">Loading Fee (IDR)</label>
+                                    {state.vehicleType && truckingRates[VEHICLE_CAPS_LIST.find(vv => vv.key === state.vehicleType)?.rateKey ?? ""] && <span className="text-xs text-[#0B5CAD]">✓ dari admin</span>}
+                                  </div>
+                                  <Input type="number" placeholder="0" value={state.loadingFee || ""} onChange={e => set("loadingFee", e.target.value)}/>
+                                </div>
+                                {(parseFloat(state.distance) || 0) > 0 && (parseFloat(state.truckingRate) || 0) > 0 && (
+                                  <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs space-y-0.5">
+                                    <p className="font-semibold text-gray-700 mb-1">Estimasi Biaya:</p>
+                                    <p className="text-gray-600">{parseFloat(state.distance) || 0} km × {formatCurrency(parseFloat(state.truckingRate) || 0)}/km = {formatCurrency((parseFloat(state.distance) || 0) * (parseFloat(state.truckingRate) || 0))}</p>
+                                    {(parseFloat(state.loadingFee) || 0) > 0 && <p className="text-gray-600">Loading Fee: +{formatCurrency(parseFloat(state.loadingFee) || 0)}</p>}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* ── Step 5: Summary ── */}
+                      {truckingStep === 5 && (
                         <div className="px-3 pb-5 space-y-2.5">
                           <div className="bg-white rounded-xl p-4 shadow-sm">
                             <p className="font-semibold text-gray-900 text-sm mb-2">Ringkasan Pesanan</p>
                             <div className="divide-y divide-gray-100 text-sm">
-                              <div className="flex justify-between py-2 gap-2">
-                                <span className="text-gray-500 flex-shrink-0">Armada (rute)</span>
-                                <span className="font-medium text-right text-xs leading-snug">{state.vehicleSubtype || state.vehicleType || "-"}</span>
-                              </div>
-                              <div className="flex items-start justify-between py-2 gap-2">
-                                <span className="text-gray-500 flex-shrink-0">Rute</span>
-                                <span className="font-medium text-right text-xs leading-snug">{(state.pickupCity||"").split(",")[0]} → {(state.destCity||"").split(",")[0]}</span>
-                              </div>
                               {state.pickupDate && (
                                 <div className="flex justify-between py-2">
                                   <span className="text-gray-500">Jadwal Pickup</span>
                                   <span className="font-medium text-xs">{orderNow ? "Sekarang · " : ""}{state.pickupDate} {state.pickupTime}</span>
                                 </div>
                               )}
+                              <div className="flex items-start justify-between py-2 gap-2">
+                                <span className="text-gray-500 flex-shrink-0">Rute</span>
+                                <span className="font-medium text-right text-xs leading-snug">
+                                  {(state.pickupCity || "").split(",")[0]}
+                                  {truckingStops.filter(s => s.city).map(s => ` → ${s.city.split(",")[0]}`).join("")}
+                                  {state.destCity ? ` → ${(state.destCity || "").split(",")[0]}` : ""}
+                                </span>
+                              </div>
                               <div className="flex justify-between py-2">
                                 <span className="text-gray-500">Jarak</span>
-                                <span className="font-medium">{state.distance || 0} km</span>
+                                <span className="font-medium">{state.distance || "—"} km</span>
                               </div>
                               {cargoCategory && (
                                 <div className="flex justify-between py-2 gap-2">
@@ -1351,6 +1255,10 @@ export default function JasaDetail() {
                                   <span className="font-medium text-xs">{cargoPhotoUrls.length} foto</span>
                                 </div>
                               )}
+                              <div className="flex justify-between py-2 gap-2">
+                                <span className="text-gray-500 flex-shrink-0">Armada</span>
+                                <span className="font-medium text-right text-xs leading-snug">{state.vehicleType || "—"}</span>
+                              </div>
                             </div>
                           </div>
                           {subtotal > 0 ? (
@@ -1374,7 +1282,7 @@ export default function JasaDetail() {
                           ) : (
                             <div className="bg-white/15 rounded-xl p-3 text-white text-sm text-center space-y-2">
                               <p>Isi jarak dan rate untuk melihat estimasi biaya.</p>
-                              <button type="button" onClick={() => setTruckingStep(2)} className="text-xs underline">← Kembali ke Services</button>
+                              <button type="button" onClick={() => setTruckingStep(4)} className="text-xs underline">← Kembali ke Pilih Armada</button>
                             </div>
                           )}
                           {added && (
@@ -1473,8 +1381,6 @@ export default function JasaDetail() {
                             setDimensions([newDimRow()]);
                             setCargoPhotoFiles([]);
                             setCargoPhotoUrls([]);
-                            setCargoVehicleType("");
-                            setCargoVehicleWarn(false);
                             setTruckingStep(1);
                           }} className="gap-1.5">
                             <Calculator className="h-4 w-4" /> Hitung Ulang
@@ -1520,7 +1426,7 @@ export default function JasaDetail() {
                 {ct === "trucking" && state.vehicleType && (
                   <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
                     <span className="text-muted-foreground text-xs">Kendaraan</span>
-                    <span className="font-medium text-xs text-slate-700 text-right max-w-[140px] leading-tight">{state.vehicleSubtype || state.vehicleType}</span>
+                    <span className="font-medium text-xs text-slate-700 text-right max-w-[140px] leading-tight">{state.vehicleType}</span>
                   </div>
                 )}
                 {ct === "trucking" && state.distance && (
@@ -1594,7 +1500,7 @@ export default function JasaDetail() {
                     ← Kembali
                   </button>
                 ) : <div />}
-                {truckingStep < 3 ? (
+                {truckingStep < 5 ? (
                   <button
                     type="button"
                     onClick={handleNextStep}
@@ -1618,7 +1524,7 @@ export default function JasaDetail() {
               <div className="flex gap-2 sm:gap-3">
                 <button
                   type="button"
-                  onClick={() => { setAdded(false); setState({}); setTruckingStep(1); setVehicleOpen(false); setTruckingStops([]); }}
+                  onClick={() => { setAdded(false); setState({}); setTruckingStep(1); setTruckingStops([]); setOrderNow(false); setCargoCategory(""); setKoliQty(""); setGrossWeight(""); setDimensions([newDimRow()]); setCargoPhotoFiles([]); setCargoPhotoUrls([]); }}
                   className="flex-1 sm:flex-none sm:min-w-[130px] py-3.5 px-5 rounded-xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5"
                 >
                   <Calculator className="h-4 w-4" /> Hitung Ulang
