@@ -261,7 +261,7 @@ export default function Home() {
             {[
               { icon: Ship,      titleKey: "homePromo.services.item1Title", descKey: "homePromo.services.item1Desc", color: "from-sky-500 to-blue-600",    href: "/freight-forwarding" },
               { icon: FileCheck, titleKey: "homePromo.services.item2Title", descKey: "homePromo.services.item2Desc", color: "from-emerald-500 to-teal-600", href: "/pabean" },
-              { icon: Truck,     titleKey: "homePromo.services.item3Title", descKey: "homePromo.services.item3Desc", color: "from-amber-500 to-orange-600", href: "/jasa/15" },
+              { icon: ShieldCheck, titleKey: "homePromo.services.item3Title", descKey: "homePromo.services.item3Desc", color: "from-amber-500 to-orange-600", href: "/jasa/15" },
               { icon: Truck,     titleKey: "homePromo.services.item4Title", descKey: "homePromo.services.item4Desc", color: "from-rose-500 to-red-600",    href: "/jasa" },
             ].map(({ icon: Icon, titleKey, descKey, color, href }) => (
               <Link key={titleKey} href={href}>
