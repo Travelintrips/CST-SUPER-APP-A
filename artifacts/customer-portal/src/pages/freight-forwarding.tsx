@@ -226,6 +226,16 @@ export default function FreightForwarding() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Read ?direction= param from jasa page shortcut ────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const dir = params.get("direction") as Direction | null;
+    if (dir && (["Impor", "Ekspor", "Domestic"] as string[]).includes(dir)) {
+      setDirection(dir);
+      setStep(2);
+    }
+  }, []);
+
   // ── Load profile → pre-fill read-only fields ──────────────────────
   const token = getAuthToken();
   const headers = getAuthHeaders();

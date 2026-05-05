@@ -199,6 +199,18 @@ export default function Pabean() {
     );
   }
 
+  // ── Read ?service= param from jasa page shortcut ─────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const svc = params.get("service") as ServiceType | null;
+    if (svc && (["pib_peb", "handling", "konsultasi", "undername"] as string[]).includes(svc)) {
+      setSelectedServices([svc]);
+      setTimeout(() => {
+        detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+    }
+  }, []);
+
   // --- customer info ---
   const [customerName, setCustomerName] = useState("");
   const [companyName, setCompanyName] = useState("");
