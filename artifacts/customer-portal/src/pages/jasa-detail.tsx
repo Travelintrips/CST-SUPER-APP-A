@@ -1293,27 +1293,38 @@ export default function JasaDetail() {
             boxShadow: "0 -4px 24px rgba(15,23,42,0.08)",
           }}
         >
-          <div className="max-w-[1200px] mx-auto px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
+          <div className="max-w-[1200px] mx-auto px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
             {!added ? (
-              truckingStep < 3 ? (
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  className="sm:min-w-[200px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                >
-                  Lanjut <ArrowRight className="h-4 w-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleAddToCart}
-                  disabled={subtotal <= 0}
-                  className="sm:min-w-[220px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                >
-                  <ShoppingCart className="h-4 w-4" />
-                  Tambahkan ke Pesanan
-                </button>
-              )
+              <>
+                {truckingStep > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setTruckingStep(truckingStep - 1)}
+                    className="sm:min-w-[130px] py-3.5 px-6 rounded-xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    ← Kembali
+                  </button>
+                ) : <div />}
+                {truckingStep < 3 ? (
+                  <button
+                    type="button"
+                    onClick={handleNextStep}
+                    className="sm:min-w-[200px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                  >
+                    Lanjut <ArrowRight className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    disabled={subtotal <= 0}
+                    className="sm:min-w-[220px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Tambahkan ke Pesanan
+                  </button>
+                )}
+              </>
             ) : (
               <div className="flex gap-2 sm:gap-3">
                 <button
