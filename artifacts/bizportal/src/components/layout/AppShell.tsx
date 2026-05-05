@@ -172,6 +172,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { title: "Pengiriman", href: "/logistics", icon: Truck },
         { title: "Freight Forwarding", href: "/logistics/freight", icon: Ship },
+        { title: "Vendor Logistik", href: "/logistics/vendors", icon: Truck },
       ],
     },
     { type: "flat", title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },

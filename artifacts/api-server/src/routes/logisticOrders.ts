@@ -4,6 +4,7 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   portalContentTable,
+  deliveryVendorsTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
@@ -277,6 +278,67 @@ logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) 
       .values({ key: TRUCKING_RATES_KEY, value: json });
   }
   return res.json({ message: "Tarif berhasil disimpan" });
+});
+
+// ─── Delivery Vendors CRUD (for BizPortal) ───────────────────────────────────
+
+// GET /api/logistic/orders/vendors
+logisticOrdersRouter.get("/vendors", async (_req: Request, res: Response) => {
+  const rows = await db.select().from(deliveryVendorsTable).orderBy(deliveryVendorsTable.sortOrder);
+  return res.json(rows);
+});
+
+// POST /api/logistic/orders/vendors
+logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
+  const { name, logo, eta, fee, note, phone, email, serviceType } = req.body as Record<string, unknown>;
+  if (!name || typeof name !== "string" || !name.trim())
+    return res.status(400).json({ message: "Nama vendor harus diisi" });
+  const maxSortResult = await db.select({ s: deliveryVendorsTable.sortOrder }).from(deliveryVendorsTable).orderBy(deliveryVendorsTable.sortOrder);
+  const nextSort = maxSortResult.length > 0 ? (maxSortResult[maxSortResult.length - 1]?.s ?? 0) + 1 : 0;
+  const [created] = await db.insert(deliveryVendorsTable).values({
+    name: String(name).trim(),
+    logo: typeof logo === "string" && logo.trim() ? logo.trim() : "📦",
+    eta: typeof eta === "string" && eta.trim() ? eta.trim() : "2-3 hari",
+    fee: typeof fee === "number" ? fee : 0,
+    note: typeof note === "string" && note.trim() ? note.trim() : null,
+    phone: typeof phone === "string" && phone.trim() ? phone.trim() : null,
+    email: typeof email === "string" && email.trim() ? email.trim() : null,
+    serviceType: typeof serviceType === "string" && serviceType.trim() ? serviceType.trim() : null,
+    isActive: true,
+    sortOrder: nextSort,
+  }).returning();
+  return res.status(201).json(created);
+});
+
+// PUT /api/logistic/orders/vendors/:id
+logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { name, logo, eta, fee, note, phone, email, serviceType, isActive, sortOrder } = req.body as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  if (typeof name === "string" && name.trim()) patch.name = name.trim();
+  if (typeof logo === "string") patch.logo = logo.trim() || "📦";
+  if (typeof eta === "string" && eta.trim()) patch.eta = eta.trim();
+  if (typeof fee === "number") patch.fee = fee;
+  if (note !== undefined) patch.note = typeof note === "string" && note.trim() ? note.trim() : null;
+  if (phone !== undefined) patch.phone = typeof phone === "string" && phone.trim() ? phone.trim() : null;
+  if (email !== undefined) patch.email = typeof email === "string" && email.trim() ? email.trim() : null;
+  if (serviceType !== undefined) patch.serviceType = typeof serviceType === "string" && serviceType.trim() ? serviceType.trim() : null;
+  if (typeof isActive === "boolean") patch.isActive = isActive;
+  if (typeof sortOrder === "number") patch.sortOrder = sortOrder;
+  if (Object.keys(patch).length === 0) return res.status(400).json({ message: "Tidak ada data yang diperbarui" });
+  const [updated] = await db.update(deliveryVendorsTable).set(patch).where(eq(deliveryVendorsTable.id, id)).returning();
+  if (!updated) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+  return res.json(updated);
+});
+
+// DELETE /api/logistic/orders/vendors/:id
+logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const [deleted] = await db.delete(deliveryVendorsTable).where(eq(deliveryVendorsTable.id, id)).returning();
+  if (!deleted) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+  return res.json({ success: true });
 });
 
 // GET /api/logistic/orders/:id — get order detail (admin)
