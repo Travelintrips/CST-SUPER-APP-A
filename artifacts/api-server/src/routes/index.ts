@@ -21,6 +21,7 @@ import portalRouter from "./portal";
 import { logisticOrdersRouter } from "./logisticOrders";
 import settingsRouter from "./settings";
 import { driverRouter, driversAdminRouter } from "./driver";
+import webhooksRouter from "./webhooks";
 
 const router: IRouter = Router();
 
@@ -47,5 +48,6 @@ router.use("/settings", settingsRouter);
 router.use("/driver", driverRouter);
 router.use("/drivers", driversAdminRouter);
 router.use(storageRouter);
+router.use(webhooksRouter);
 
 export default router;

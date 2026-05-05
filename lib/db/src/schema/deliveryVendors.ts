@@ -11,6 +11,9 @@ export const deliveryVendorsTable = pgTable("delivery_vendors", {
   note: text("note"),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: numeric("sort_order", { precision: 6, scale: 0 }).notNull().default("0"),
+  email: text("email"),
+  phone: text("phone"),
+  serviceType: text("service_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

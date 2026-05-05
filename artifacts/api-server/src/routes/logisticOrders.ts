@@ -6,8 +6,8 @@ import {
   portalContentTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
+import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
-import { getAdminWa } from "../lib/adminWa";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -117,42 +117,26 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       ? await db.insert(logisticOrderItemsTable).values(itemValues).returning()
       : [];
 
-  const grandTotalFmt = Number(body.grandTotal).toLocaleString("id-ID");
   const serviceList = body.items.map((i) => `• ${i.serviceName}`).join("\n");
 
-  // Notify customer via WhatsApp (fire-and-forget)
-  if (body.phone) {
-    const customerMsg =
-      `🎉 *Pesanan Diterima!*\n` +
-      `No. Pesanan: *${orderNumber}*\n\n` +
-      `Halo ${body.customerName},\n` +
-      `Pesanan logistik Anda telah kami terima dan sedang diproses.\n\n` +
-      `📦 *Detail Pesanan:*\n` +
-      `Jenis: ${body.shipmentType}\n` +
-      `Rute: ${body.origin} → ${body.destination}\n` +
-      (body.commodity ? `Komoditi: ${body.commodity}\n` : ``) +
-      `Layanan:\n${serviceList}\n` +
-      `Total: Rp ${grandTotalFmt}\n\n` +
-      `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n` +
-      `Terima kasih telah menggunakan layanan CST Logistics. 🚢`;
-    sendWhatsApp(body.phone, customerMsg).catch((err: unknown) => {
-      req.log.error({ err, phone: body.phone }, "sendWhatsApp to customer failed (logistic order)");
-    });
-  }
-
-  // Notify admin via WhatsApp (fire-and-forget)
-  getAdminWa().then((adminWa) => {
-    if (!adminWa) return;
-    const msg =
-      `🚢 *Order Logistik Baru*\n` +
-      `No: ${orderNumber}\n` +
-      `Customer: ${body.customerName} (${body.companyName})\n` +
-      `Rute: ${body.origin} → ${body.destination}\n` +
-      `Jenis: ${body.shipmentType}\n` +
-      `Total: Rp ${grandTotalFmt}\n` +
-      `HP: ${body.phone}`;
-    return sendWhatsApp(adminWa, msg);
-  }).catch(() => undefined);
+  // Fire-and-forget: notify admin + vendors + customer via WA & email
+  sendLogisticOrderNotification({
+    orderNumber,
+    customerName: body.customerName,
+    companyName: body.companyName,
+    email: body.email,
+    phone: body.phone,
+    shipmentType: body.shipmentType,
+    origin: body.origin,
+    destination: body.destination,
+    commodity: body.commodity ?? null,
+    grandTotal: Number(body.grandTotal),
+    serviceList,
+    requiredDate: body.requiredDate ?? null,
+    notes: body.notes ?? null,
+  }).catch((err: unknown) => {
+    req.log.error({ err }, "sendLogisticOrderNotification failed");
+  });
 
   return res.status(201).json({
     ...toOrder(order),
