@@ -13,6 +13,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -20,7 +24,7 @@ import {
   getListTaxesQueryKey, type AccountingTax,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Receipt } from "lucide-react";
+import { Check, ChevronsUpDown, Pencil, Plus, Receipt } from "lucide-react";
 
 export default function TaxesPage() {
   const qc = useQueryClient();
@@ -35,6 +39,7 @@ export default function TaxesPage() {
   const [form, setForm] = useState({
     name: "", rate: 0, kind: "sale" as AccountingTax["kind"], accountId: 0, isActive: true,
   });
+  const [accountPopoverOpen, setAccountPopoverOpen] = useState(false);
 
   const reset = () => { setEditing(null); setForm({ name: "", rate: 0, kind: "sale", accountId: 0, isActive: true }); };
 
@@ -96,14 +101,48 @@ export default function TaxesPage() {
                 </div>
                 <div>
                   <Label>Akun Pajak</Label>
-                  <Select value={String(form.accountId || "")} onValueChange={(v) => setForm({ ...form, accountId: parseInt(v) })}>
-                    <SelectTrigger data-testid="select-tax-account"><SelectValue placeholder="Pilih akun" /></SelectTrigger>
-                    <SelectContent>
-                      {(accounts ?? []).filter((a) => a.type === "liability" || a.type === "asset").map((a) => (
-                        <SelectItem key={a.id} value={String(a.id)}>{a.code} {a.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={accountPopoverOpen} onOpenChange={setAccountPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        data-testid="select-tax-account"
+                        className="w-full justify-between font-normal text-left"
+                      >
+                        <span className="truncate">
+                          {form.accountId
+                            ? (() => { const a = (accounts ?? []).find((x) => x.id === form.accountId); return a ? `${a.code} ${a.name}` : "Pilih akun"; })()
+                            : "Pilih akun"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[420px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Cari kode atau nama akun..." />
+                        <CommandList className="max-h-64">
+                          <CommandEmpty>Akun tidak ditemukan</CommandEmpty>
+                          <CommandGroup>
+                            {(accounts ?? []).map((a) => (
+                              <CommandItem
+                                key={a.id}
+                                value={`${a.code} ${a.name}`}
+                                onSelect={() => {
+                                  setForm({ ...form, accountId: a.id });
+                                  setAccountPopoverOpen(false);
+                                }}
+                              >
+                                <Check className={`mr-2 h-4 w-4 ${form.accountId === a.id ? "opacity-100" : "opacity-0"}`} />
+                                <span className="font-mono text-xs text-muted-foreground mr-2">{a.code}</span>
+                                {a.name}
+                                <span className="ml-auto text-xs text-muted-foreground capitalize">{a.type}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
