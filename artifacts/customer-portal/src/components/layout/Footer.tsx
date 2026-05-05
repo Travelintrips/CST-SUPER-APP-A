@@ -210,7 +210,7 @@ export function Footer() {
                   )}
 
                   {/* Alamat dua kantor */}
-                  <div className="mt-3 ml-8 space-y-4">
+                  <div className="mt-3 ml-8 space-y-5">
 
                     {/* Kantor Jakarta */}
                     <div>
