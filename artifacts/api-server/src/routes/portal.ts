@@ -1023,4 +1023,27 @@ router.post("/admin/fix-jasa-names", async (req, res) => {
   return res.json({ fixed: updated.length, items: updated });
 });
 
+// GET /api/portal/calculator-rates — public, returns current calculator rates
+router.get("/calculator-rates", async (_req, res) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "calculator_rates"));
+    const rates = row ? JSON.parse(row.value) : {
+      airFreight:  { baseCost: 500000,  ratePerKg: 90000,    handlingPct: 5, customsFee: 1200000 },
+      seaFreight:  { baseCost: 750000,  ratePerCbm: 2500000, handlingPct: 5, customsFee: 1500000 },
+      customs:     { baseCost: 1500000, ratePerKg: 5000,     handlingFee: 500000, customsPct: 0.5 },
+      domestic:    { baseCost: 500000,  ratePerKg: 8500,     handlingPct: 5 },
+      warehousing: { baseCost: 5000000, ratePerCbm: 2500000, handlingFee: 500000 },
+    };
+    return res.json(rates);
+  } catch {
+    return res.json({
+      airFreight:  { baseCost: 500000,  ratePerKg: 90000,    handlingPct: 5, customsFee: 1200000 },
+      seaFreight:  { baseCost: 750000,  ratePerCbm: 2500000, handlingPct: 5, customsFee: 1500000 },
+      customs:     { baseCost: 1500000, ratePerKg: 5000,     handlingFee: 500000, customsPct: 0.5 },
+      domestic:    { baseCost: 500000,  ratePerKg: 8500,     handlingPct: 5 },
+      warehousing: { baseCost: 5000000, ratePerCbm: 2500000, handlingFee: 500000 },
+    });
+  }
+});
+
 export default router;

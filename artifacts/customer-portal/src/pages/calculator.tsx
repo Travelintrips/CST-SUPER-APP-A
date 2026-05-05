@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Calculator, ArrowRight, Ship, Plane, Truck, Package,
-  Warehouse, Globe, Info, RefreshCw, MessageCircle, Phone,
+  Warehouse, Globe, Info, RefreshCw, MessageCircle, Phone, Lock,
 } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext";
 
@@ -16,6 +16,22 @@ const SERVICE_ICONS: Record<string, React.ReactNode> = {
   domestic: <Truck className="h-5 w-5" />,
   warehousing: <Warehouse className="h-5 w-5" />,
   projectCargo: <Globe className="h-5 w-5" />,
+};
+
+interface CalcRates {
+  airFreight:  { baseCost: number; ratePerKg: number;  handlingPct: number; customsFee: number };
+  seaFreight:  { baseCost: number; ratePerCbm: number; handlingPct: number; customsFee: number };
+  customs:     { baseCost: number; ratePerKg: number;  handlingFee: number; customsPct: number };
+  domestic:    { baseCost: number; ratePerKg: number;  handlingPct: number };
+  warehousing: { baseCost: number; ratePerCbm: number; handlingFee: number };
+}
+
+const DEFAULT_RATES: CalcRates = {
+  airFreight:  { baseCost: 500000,  ratePerKg: 90000,    handlingPct: 5, customsFee: 1200000 },
+  seaFreight:  { baseCost: 750000,  ratePerCbm: 2500000, handlingPct: 5, customsFee: 1500000 },
+  customs:     { baseCost: 1500000, ratePerKg: 5000,     handlingFee: 500000, customsPct: 0.5 },
+  domestic:    { baseCost: 500000,  ratePerKg: 8500,     handlingPct: 5 },
+  warehousing: { baseCost: 5000000, ratePerCbm: 2500000, handlingFee: 500000 },
 };
 
 interface CalcResult {
@@ -38,6 +54,15 @@ function formatIDR(n: number) {
 export default function CalculatorPage() {
   const { t } = useLanguage();
 
+  const [rates, setRates] = useState<CalcRates>(DEFAULT_RATES);
+
+  useEffect(() => {
+    fetch("/api/portal/calculator-rates")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setRates(data as CalcRates); })
+      .catch(() => undefined);
+  }, []);
+
   const [service, setService] = useState<ServiceType>("");
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
@@ -46,7 +71,6 @@ export default function CalculatorPage() {
   const [width, setWidth] = useState("");
   const [height, setHeight] = useState("");
   const [cargoType, setCargoType] = useState("");
-  const [cargoValue, setCargoValue] = useState("");
   const [incoterms, setIncoterms] = useState("");
   const [insurance, setInsurance] = useState(false);
   const [express, setExpress] = useState(false);
@@ -65,6 +89,52 @@ export default function CalculatorPage() {
     return null;
   }, [length, width, height, service]);
 
+  const cargoValueAuto = useMemo(() => {
+    if (!service || service === "projectCargo") return null;
+    const wKg = parseFloat(weight) || 0;
+    const lCm = parseFloat(length) || 0;
+    const wCm = parseFloat(width) || 0;
+    const hCm = parseFloat(height) || 0;
+
+    if (service === "airFreight") {
+      if (wKg <= 0) return null;
+      const volumetricWeight = (lCm * wCm * hCm) / 6000;
+      const chargeable = Math.max(wKg, volumetricWeight);
+      const r = rates.airFreight;
+      const weightCost = Math.ceil(chargeable) * r.ratePerKg;
+      const handlingFee = Math.round(weightCost * (r.handlingPct / 100));
+      return r.baseCost + weightCost + handlingFee + r.customsFee;
+    }
+    if (service === "seaFreight") {
+      if (lCm <= 0 || wCm <= 0 || hCm <= 0) return null;
+      const cbm = (lCm / 100) * (wCm / 100) * (hCm / 100);
+      const r = rates.seaFreight;
+      const effectiveCbm = Math.max(cbm, 0.01);
+      const weightCost = Math.ceil(effectiveCbm * 10) / 10 * r.ratePerCbm;
+      const handlingFee = Math.round(weightCost * (r.handlingPct / 100));
+      return r.baseCost + weightCost + handlingFee + r.customsFee;
+    }
+    if (service === "customs") {
+      if (wKg <= 0) return null;
+      const r = rates.customs;
+      return r.baseCost + wKg * r.ratePerKg + r.handlingFee;
+    }
+    if (service === "domestic") {
+      if (wKg <= 0) return null;
+      const r = rates.domestic;
+      const weightCost = wKg * r.ratePerKg;
+      const handlingFee = Math.round(weightCost * (r.handlingPct / 100));
+      return r.baseCost + weightCost + handlingFee;
+    }
+    if (service === "warehousing") {
+      const cbm = lCm > 0 && wCm > 0 && hCm > 0 ? (lCm / 100) * (wCm / 100) * (hCm / 100) : 1;
+      const r = rates.warehousing;
+      const weightCost = Math.ceil(cbm) * r.ratePerCbm;
+      return r.baseCost + weightCost + r.handlingFee;
+    }
+    return null;
+  }, [rates, service, weight, length, width, height]);
+
   function handleCalculate(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -78,7 +148,7 @@ export default function CalculatorPage() {
     const lCm = parseFloat(length) || 0;
     const wCm = parseFloat(width) || 0;
     const hCm = parseFloat(height) || 0;
-    const value = parseFloat(cargoValue) || 0;
+    const value = cargoValueAuto ?? 0;
 
     let res: CalcResult = { baseCost: 0, weightCost: 0, handlingFee: 0, customsFee: 0, insuranceFee: 0, expressFee: 0, total: 0 };
 
@@ -94,42 +164,44 @@ export default function CalculatorPage() {
       const volumetricWeight = (lCm * wCm * hCm) / 6000;
       const chargeable = Math.max(wKg, volumetricWeight);
       res.chargeableWeight = Math.round(chargeable * 100) / 100;
-      const ratePerKg = 90000;
-      res.baseCost = 500000;
-      res.weightCost = Math.ceil(chargeable) * ratePerKg;
-      res.handlingFee = Math.round(res.weightCost * 0.05);
-      res.customsFee = 1200000;
+      const r = rates.airFreight;
+      res.baseCost = r.baseCost;
+      res.weightCost = Math.ceil(chargeable) * r.ratePerKg;
+      res.handlingFee = Math.round(res.weightCost * (r.handlingPct / 100));
+      res.customsFee = r.customsFee;
     } else if (service === "seaFreight") {
       const cbm = (lCm / 100) * (wCm / 100) * (hCm / 100);
       res.cbm = Math.round(cbm * 1000) / 1000;
       const effectiveCbm = Math.max(cbm, 0.01);
-      const ratePerCbm = 2500000;
-      res.baseCost = 750000;
-      res.weightCost = Math.ceil(effectiveCbm * 10) / 10 * ratePerCbm;
-      res.handlingFee = Math.round(res.weightCost * 0.05);
-      res.customsFee = 1500000;
+      const r = rates.seaFreight;
+      res.baseCost = r.baseCost;
+      res.weightCost = Math.ceil(effectiveCbm * 10) / 10 * r.ratePerCbm;
+      res.handlingFee = Math.round(res.weightCost * (r.handlingPct / 100));
+      res.customsFee = r.customsFee;
     } else if (service === "customs") {
-      res.baseCost = 1500000;
-      res.weightCost = wKg * 5000;
-      res.handlingFee = 500000;
-      res.customsFee = Math.max(500000, value * 0.005);
+      const r = rates.customs;
+      res.baseCost = r.baseCost;
+      res.weightCost = wKg * r.ratePerKg;
+      res.handlingFee = r.handlingFee;
+      res.customsFee = Math.max(500000, value * (r.customsPct / 100));
     } else if (service === "domestic") {
+      const r = rates.domestic;
       res.chargeableWeight = wKg;
-      res.baseCost = 500000;
-      res.weightCost = wKg * 8500;
-      res.handlingFee = Math.round(res.weightCost * 0.05);
+      res.baseCost = r.baseCost;
+      res.weightCost = wKg * r.ratePerKg;
+      res.handlingFee = Math.round(res.weightCost * (r.handlingPct / 100));
       res.customsFee = 0;
     } else if (service === "warehousing") {
       const cbm = lCm > 0 && wCm > 0 && hCm > 0 ? (lCm / 100) * (wCm / 100) * (hCm / 100) : 1;
       res.cbm = Math.round(cbm * 1000) / 1000;
-      res.baseCost = 5000000;
-      res.weightCost = Math.ceil(cbm) * 2500000;
-      res.handlingFee = 500000;
+      const r = rates.warehousing;
+      res.baseCost = r.baseCost;
+      res.weightCost = Math.ceil(cbm) * r.ratePerCbm;
+      res.handlingFee = r.handlingFee;
       res.customsFee = 0;
     }
 
     const subtotal = res.baseCost + res.weightCost + res.handlingFee + res.customsFee;
-
     res.insuranceFee = insurance && value > 0 ? Math.round(value * 0.005) : 0;
     const afterInsurance = subtotal + res.insuranceFee;
     res.expressFee = express ? Math.round(afterInsurance * 0.20) : 0;
@@ -148,7 +220,6 @@ export default function CalculatorPage() {
     setWidth("");
     setHeight("");
     setCargoType("");
-    setCargoValue("");
     setIncoterms("");
     setInsurance(false);
     setExpress(false);
@@ -192,7 +263,7 @@ export default function CalculatorPage() {
                       <button
                         key={s}
                         type="button"
-                        onClick={() => setService(s)}
+                        onClick={() => { setService(s); setCalculated(false); setResult(null); }}
                         className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-all duration-200 ${
                           service === s
                             ? "border-sky-500 bg-sky-50 text-sky-700 shadow-sm"
@@ -280,15 +351,31 @@ export default function CalculatorPage() {
                     />
                   </div>
                   <div>
-                    <label className={labelClass}>{t("calculator.cargoValue")}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={cargoValue}
-                      onChange={(e) => setCargoValue(e.target.value)}
-                      placeholder={t("calculator.valuePlaceholder")}
-                      className={inputClass}
-                    />
+                    <label className={labelClass}>
+                      {t("calculator.cargoValue")}
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-sky-600 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">
+                        <Lock className="h-2.5 w-2.5" /> Auto
+                      </span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        readOnly
+                        value={cargoValueAuto !== null ? formatIDR(cargoValueAuto) : ""}
+                        placeholder={service && service !== "projectCargo"
+                          ? "Isi berat / dimensi untuk estimasi"
+                          : "Pilih jenis layanan dulu"}
+                        className={`${inputClass} bg-slate-50 text-slate-600 cursor-not-allowed`}
+                      />
+                      {cargoValueAuto !== null && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <span className="text-xs text-sky-600 font-semibold bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
+                            Estimasi
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">Dihitung otomatis berdasarkan tarif yang berlaku</p>
                   </div>
                 </div>
 
@@ -452,12 +539,13 @@ export default function CalculatorPage() {
             <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 text-white">
               <h4 className="font-bold mb-3 text-base">Formula Kalkulator</h4>
               <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                <p>🚢 <strong className="text-white">Sea Freight:</strong> CBM = P×L×T (meter), rate ~Rp 2.5jt/CBM</p>
-                <p>✈️ <strong className="text-white">Air Freight:</strong> Chargeable = max(berat, P×L×T/6000), rate ~Rp 90rb/kg</p>
-                <p>🏠 <strong className="text-white">Warehousing:</strong> Rp 5jt base + Rp 2.5jt/CBM/bulan</p>
-                <p>🚚 <strong className="text-white">Domestic:</strong> Rp 500rb base + Rp 8.5rb/kg</p>
-                <p>🛡️ <strong className="text-white">Asuransi:</strong> 0.5% nilai barang</p>
+                <p>🚢 <strong className="text-white">Sea Freight:</strong> CBM = P×L×T (meter), tarif per CBM</p>
+                <p>✈️ <strong className="text-white">Air Freight:</strong> Chargeable = max(berat, P×L×T/6000), tarif per kg</p>
+                <p>🏠 <strong className="text-white">Warehousing:</strong> Biaya dasar + tarif per CBM/bulan</p>
+                <p>🚚 <strong className="text-white">Domestic:</strong> Biaya dasar + tarif per kg</p>
+                <p>🛡️ <strong className="text-white">Asuransi:</strong> 0.5% dari estimasi biaya</p>
                 <p>⚡ <strong className="text-white">Express:</strong> +20% dari subtotal</p>
+                <p className="text-slate-400 pt-1 border-t border-slate-700">Tarif dikonfigurasi oleh admin</p>
               </div>
             </div>
           </div>

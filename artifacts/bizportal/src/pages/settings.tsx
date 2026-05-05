@@ -7,9 +7,213 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+
+interface CalcRates {
+  airFreight:  { baseCost: number; ratePerKg: number;  handlingPct: number; customsFee: number };
+  seaFreight:  { baseCost: number; ratePerCbm: number; handlingPct: number; customsFee: number };
+  customs:     { baseCost: number; ratePerKg: number;  handlingFee: number; customsPct: number };
+  domestic:    { baseCost: number; ratePerKg: number;  handlingPct: number };
+  warehousing: { baseCost: number; ratePerCbm: number; handlingFee: number };
+}
+
+const DEFAULT_RATES: CalcRates = {
+  airFreight:  { baseCost: 500000,  ratePerKg: 90000,    handlingPct: 5, customsFee: 1200000 },
+  seaFreight:  { baseCost: 750000,  ratePerCbm: 2500000, handlingPct: 5, customsFee: 1500000 },
+  customs:     { baseCost: 1500000, ratePerKg: 5000,     handlingFee: 500000, customsPct: 0.5 },
+  domestic:    { baseCost: 500000,  ratePerKg: 8500,     handlingPct: 5 },
+  warehousing: { baseCost: 5000000, ratePerCbm: 2500000, handlingFee: 500000 },
+};
+
+type ServiceKey = keyof CalcRates;
+
+const SERVICE_LABELS: Record<ServiceKey, string> = {
+  airFreight:  "Air Freight (Udara)",
+  seaFreight:  "Sea Freight (Laut)",
+  customs:     "Customs / Kepabeanan",
+  domestic:    "Domestic / Lokal",
+  warehousing: "Warehousing / Gudang",
+};
+
+type FieldDef = { key: string; label: string; unit: string };
+const SERVICE_FIELDS: Record<ServiceKey, FieldDef[]> = {
+  airFreight: [
+    { key: "baseCost",    label: "Biaya Dasar",           unit: "IDR" },
+    { key: "ratePerKg",   label: "Tarif per Kg",          unit: "IDR/kg" },
+    { key: "handlingPct", label: "Handling Fee",          unit: "%" },
+    { key: "customsFee",  label: "Biaya Bea Cukai",       unit: "IDR" },
+  ],
+  seaFreight: [
+    { key: "baseCost",    label: "Biaya Dasar",           unit: "IDR" },
+    { key: "ratePerCbm",  label: "Tarif per CBM",         unit: "IDR/CBM" },
+    { key: "handlingPct", label: "Handling Fee",          unit: "%" },
+    { key: "customsFee",  label: "Biaya Bea Cukai",       unit: "IDR" },
+  ],
+  customs: [
+    { key: "baseCost",    label: "Biaya Dasar",           unit: "IDR" },
+    { key: "ratePerKg",   label: "Tarif per Kg",          unit: "IDR/kg" },
+    { key: "handlingFee", label: "Biaya Handling",        unit: "IDR" },
+    { key: "customsPct",  label: "Bea Masuk (%)",         unit: "%" },
+  ],
+  domestic: [
+    { key: "baseCost",    label: "Biaya Dasar",           unit: "IDR" },
+    { key: "ratePerKg",   label: "Tarif per Kg",          unit: "IDR/kg" },
+    { key: "handlingPct", label: "Handling Fee",          unit: "%" },
+  ],
+  warehousing: [
+    { key: "baseCost",    label: "Biaya Dasar",           unit: "IDR" },
+    { key: "ratePerCbm",  label: "Tarif per CBM/bulan",  unit: "IDR/CBM" },
+    { key: "handlingFee", label: "Biaya Handling",        unit: "IDR" },
+  ],
+};
+
+function CalculatorRatesCard() {
+  const { getToken } = useAuth();
+  const { toast } = useToast();
+  const [rates, setRates] = useState<CalcRates>(DEFAULT_RATES);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [expanded, setExpanded] = useState<ServiceKey | null>("airFreight");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/settings/calculator-rates", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json() as CalcRates;
+          setRates(data);
+        }
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, [getToken]);
+
+  function updateField(service: ServiceKey, field: string, raw: string) {
+    const num = parseFloat(raw);
+    if (isNaN(num) && raw !== "") return;
+    setRates((prev) => ({
+      ...prev,
+      [service]: { ...(prev[service] as Record<string, number>), [field]: isNaN(num) ? 0 : num },
+    }));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/settings/calculator-rates", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(rates),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      toast({ title: "Tarif kalkulator berhasil disimpan" });
+    } catch (err) {
+      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <Calculator className="h-5 w-5 text-primary" />
+          Tarif Kalkulator Estimasi Biaya
+        </CardTitle>
+        <CardDescription>
+          Konfigurasi tarif dasar untuk setiap jenis layanan logistik. Tarif ini digunakan oleh kalkulator di Customer Portal
+          untuk menghitung estimasi biaya otomatis berdasarkan input pelanggan (berat, dimensi, rute).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="space-y-3">
+            {[1,2,3].map((i) => <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />)}
+          </div>
+        ) : (
+          <>
+            {(Object.keys(SERVICE_LABELS) as ServiceKey[]).map((svc) => {
+              const isOpen = expanded === svc;
+              const fields = SERVICE_FIELDS[svc];
+              const rateRow = rates[svc] as Record<string, number>;
+              return (
+                <div key={svc} className="rounded-xl border border-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(isOpen ? null : svc)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                  >
+                    <span className="font-semibold text-foreground text-sm">{SERVICE_LABELS[svc]}</span>
+                    {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  </button>
+                  {isOpen && (
+                    <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-background">
+                      {fields.map(({ key, label, unit }) => (
+                        <div key={key} className="space-y-1.5">
+                          <Label htmlFor={`${svc}-${key}`} className="text-xs text-muted-foreground font-medium">
+                            {label}
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id={`${svc}-${key}`}
+                              type="number"
+                              min="0"
+                              step={unit === "%" ? "0.1" : "1000"}
+                              value={rateRow[key] ?? ""}
+                              onChange={(e) => updateField(svc, key, e.target.value)}
+                              className="pr-16 text-right font-mono text-sm"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                              {unit}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="flex items-center justify-between pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground">
+                Formula: Biaya Dasar + (Berat/CBM × Tarif) + Handling + Bea Cukai
+              </p>
+              <Button
+                onClick={handleSave}
+                disabled={saving}
+                size="sm"
+                className="gap-2"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : saved ? (
+                  <CheckCircle className="h-4 w-4 text-green-400" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Tarif"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function WhatsAppNotificationCard() {
   const { getToken } = useAuth();
@@ -223,6 +427,7 @@ export default function SettingsPage() {
           </Card>
           
           {isAdmin && <WhatsAppNotificationCard />}
+          {isAdmin && <CalculatorRatesCard />}
 
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
             <CardHeader>
