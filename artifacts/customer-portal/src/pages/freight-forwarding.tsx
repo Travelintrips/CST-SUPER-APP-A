@@ -376,13 +376,14 @@ export default function FreightForwarding() {
         docsList ? `[DOKUMEN]\n${docsList}` : null,
       ].filter(Boolean).join("\n\n");
 
+      const itemPrice = estimasiTotal > 0 ? estimasiTotal : (parseFloat(freightPrice) || 0);
       const body = {
         notes: fullNotes,
         items: [
           {
             name: serviceLabel,
             quantity: 1,
-            unitPrice: estimasiTotal > 0 ? estimasiTotal : (parseFloat(freightPrice) || 0),
+            unitPrice: itemPrice,
           },
         ],
       };
@@ -397,6 +398,28 @@ export default function FreightForwarding() {
         const err = await res.json().catch(() => ({})) as { message?: string };
         throw new Error(err.message ?? "Terjadi kesalahan");
       }
+
+      const responseData = await res.json() as { docNumber: string };
+      localStorage.setItem("last_order", JSON.stringify({
+        orderNumber: responseData.docNumber,
+        companyName: companyName || "—",
+        customerName,
+        email: customerEmail,
+        shipmentType: serviceLabel,
+        origin: senderName || senderAddress || "—",
+        destination: receiverName || receiverAddress || "—",
+        commodity: commodity || null,
+        cargoDescription: null,
+        items: [{
+          id: 1,
+          category: "Freight Forwarding",
+          serviceName: serviceLabel,
+          subtotal: itemPrice,
+        }],
+        subtotal: itemPrice,
+        tax: 0,
+        grandTotal: itemPrice,
+      }));
 
       toast({ title: "Pesanan freight forwarding berhasil dikirim!" });
       setLocation("/logistic-order-success");

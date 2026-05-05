@@ -360,16 +360,19 @@ export default function Pabean() {
         };
       });
 
+      const finalItems = orderItems.length > 0 ? orderItems : [{
+        name: `Pengurusan Pabean PPJK — ${svcLabels}`,
+        quantity: 1,
+        unitPrice: estimatedTotal(),
+      }];
+      const tot = estimatedTotal();
+
       const res = await fetch("/api/portal/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           notes: fullNotes,
-          items: orderItems.length > 0 ? orderItems : [{
-            name: `Pengurusan Pabean PPJK — ${svcLabels}`,
-            quantity: 1,
-            unitPrice: estimatedTotal(),
-          }],
+          items: finalItems,
         }),
       });
 
@@ -377,6 +380,28 @@ export default function Pabean() {
         const err = await res.json().catch(() => ({})) as { message?: string };
         throw new Error(err.message ?? "Terjadi kesalahan");
       }
+
+      const responseData = await res.json() as { docNumber: string };
+      localStorage.setItem("last_order", JSON.stringify({
+        orderNumber: responseData.docNumber,
+        companyName: companyName || "—",
+        customerName,
+        email: customerEmail,
+        shipmentType: "Pengurusan Pabean / PPJK",
+        origin: direction || "—",
+        destination: "—",
+        commodity: null,
+        cargoDescription: null,
+        items: finalItems.map((it, i) => ({
+          id: i + 1,
+          category: "Pabean & PPJK",
+          serviceName: it.name,
+          subtotal: it.unitPrice * it.quantity,
+        })),
+        subtotal: tot,
+        tax: 0,
+        grandTotal: tot,
+      }));
 
       toast({ title: "Permohonan PPJK berhasil dikirim! Tim kami akan segera menghubungi Anda." });
       setLocation("/logistic-order-success");
