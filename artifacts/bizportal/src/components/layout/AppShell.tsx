@@ -125,6 +125,7 @@ export function AppShell({ children }: AppShellProps) {
         { title: "RFQ", href: "/purchase/rfq", icon: ClipboardList },
         { title: "Purchase Orders", href: "/purchase/orders", icon: ShoppingBag },
         { title: "Vendors", href: "/purchase/vendors", icon: UserCircle },
+        { title: "Vendor Layanan", href: "/logistics/vendors", icon: Truck },
         { title: "Bills", href: "/purchase/bills", icon: FileText },
       ],
     },
@@ -172,7 +173,6 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { title: "Pengiriman", href: "/logistics", icon: Truck },
         { title: "Freight Forwarding", href: "/logistics/freight", icon: Ship },
-        { title: "Vendor Logistik", href: "/logistics/vendors", icon: Truck },
       ],
     },
     { type: "flat", title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },

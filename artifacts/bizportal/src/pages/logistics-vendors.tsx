@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Plus, Loader2, Settings, Trash2, Save, ChevronDown, Truck,
+  Plus, Loader2, Settings, Trash2, Save, ChevronDown, Truck, Filter, X,
 } from "lucide-react";
 
 type DeliveryVendor = {
@@ -86,6 +86,11 @@ export default function LogisticsVendorsPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<DeliveryVendor>>({});
   const [saving, setSaving] = useState(false);
+  const [filterType, setFilterType] = useState<string>("");
+
+  const filtered = filterType
+    ? vendors.filter((v) => v.serviceType && v.serviceType.split(",").map((s) => s.trim()).includes(filterType))
+    : vendors;
 
   async function load() {
     try {
@@ -186,10 +191,10 @@ export default function LogisticsVendorsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Truck className="h-6 w-6 text-primary" /> Vendor Logistik
+              <Truck className="h-6 w-6 text-primary" /> Vendor Layanan
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Kelola vendor pengiriman beserta kontak WA, email, dan tipe layanan untuk notifikasi order otomatis.
+              Mitra/vendor untuk semua tipe layanan — Import, Export, Customs Clearance, Air/Sea Freight, Trucking, dll. Kontak WA &amp; email digunakan untuk notifikasi order otomatis.
             </p>
           </div>
           <Button onClick={() => setShowAdd(true)} className="gap-2">
@@ -198,19 +203,49 @@ export default function LogisticsVendorsPage() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Daftar Vendor ({vendors.length})</CardTitle>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <CardTitle className="text-base">
+                Daftar Vendor ({filtered.length}{filterType ? ` dari ${vendors.length}` : ""})
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <div className="flex flex-wrap gap-1.5">
+                  {SERVICE_TYPE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setFilterType(filterType === opt ? "" : opt)}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        filterType === opt
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background border-border hover:bg-accent"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                  {filterType && (
+                    <button type="button" onClick={() => setFilterType("")} className="text-xs px-2 py-1 text-muted-foreground hover:text-foreground flex items-center gap-1">
+                      <X className="h-3 w-3" /> Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
               </div>
+            ) : filtered.length === 0 && filterType ? (
+              <p className="text-center text-muted-foreground py-12">Tidak ada vendor untuk tipe layanan <strong>{filterType}</strong>.</p>
             ) : vendors.length === 0 ? (
               <p className="text-center text-muted-foreground py-12">Belum ada vendor. Klik "Tambah Vendor" untuk memulai.</p>
             ) : (
               <div className="space-y-2">
-                {vendors.map((v) => (
+                {filtered.map((v) => (
                   <div key={v.id} className={`rounded-xl border p-4 transition-all ${v.isActive ? "bg-white border-border" : "bg-gray-50 border-dashed border-gray-200 opacity-60"}`}>
                     {editId === v.id ? (
                       <div className="space-y-3">
