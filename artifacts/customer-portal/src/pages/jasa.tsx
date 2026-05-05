@@ -414,7 +414,7 @@ export default function Jasa() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-24 text-muted-foreground">
             <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-              <Package className="h-8 w-8 opacity-30" />
+              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-8 w-auto object-contain opacity-60" />
             </div>
             <p className="text-sm">{t("jasa.noMatches")}</p>
           </div>
@@ -471,7 +471,9 @@ export default function Jasa() {
                           justifyContent: "center",
                         }}
                       >
-                        <Icon className={`h-11 w-11 ${colors.text} opacity-55`} />
+                        {Icon === Package
+                          ? <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-11 w-auto max-w-[80px] object-contain opacity-70" />
+                          : <Icon className={`h-11 w-11 ${colors.text} opacity-55`} />}
                       </div>
                     )}
 

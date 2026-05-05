@@ -410,7 +410,7 @@ export default function JasaDetail() {
   if (!item) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <Package className="h-16 w-16 text-muted-foreground opacity-30" />
+        <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-16 w-auto object-contain opacity-40" />
         <h2 className="text-2xl font-bold">Layanan tidak ditemukan</h2>
         <Link href="/jasa">
           <Button variant="outline"><ArrowLeft className="h-4 w-4 mr-2" /> Kembali ke Katalog</Button>

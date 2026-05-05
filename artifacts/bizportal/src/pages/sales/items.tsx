@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, PackageSearch, Boxes, Package, Wrench, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Boxes, Package, Wrench, RefreshCw } from "lucide-react";
 
 const DEFAULT_SUBCATEGORIES = [
   "Udara", "Laut", "Darat", "Pabean", "Handling",
@@ -312,7 +312,7 @@ export default function SalesItemsPage() {
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-3">
-                <PackageSearch className="h-10 w-10 opacity-40" />
+                <img src="/images/logo.png" alt="CST Logistics" className="h-10 w-auto object-contain opacity-50" />
                 <p className="text-sm">
                   {products.length === 0 ? 'Belum ada item. Klik "Seed Item Awal" untuk mengisi contoh data.' : "Tidak ada item yang cocok dengan filter."}
                 </p>

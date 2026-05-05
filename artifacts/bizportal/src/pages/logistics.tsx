@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, Package, ArrowUpDown, X, Filter, CheckCircle2 } from "lucide-react";
+import { Plus, Navigation2, RefreshCw, Ship, ArrowRight, Clock, ArrowUpDown, X, Filter, CheckCircle2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -568,7 +568,7 @@ export default function LogisticsPage() {
               </div>
             ) : recentFreight.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-                <Package className="h-8 w-8 opacity-40" />
+                <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto object-contain opacity-50" />
                 <p className="text-sm">
                   {freightStatusFilter !== "all" && freightDateFilter !== "all"
                     ? `Tidak ada shipment dengan status "${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter}" pada rentang waktu yang dipilih.`

@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, PackageSearch, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock } from "lucide-react";
+import { Plus, ShoppingBag, Pencil, Trash2, Printer, Search, ChevronDown, X, RefreshCw, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -923,7 +923,7 @@ export default function EcommercePage() {
                       <TableRow>
                         <TableCell colSpan={9} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
-                            <PackageSearch className="h-8 w-8 mb-2 opacity-50" />
+                            <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto mb-2 object-contain opacity-50 mx-auto" />
                             <p>{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategories.length > 0) ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                           </div>
                         </TableCell>
@@ -987,7 +987,7 @@ export default function EcommercePage() {
                 ))
               ) : filteredProducts.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
-                  <PackageSearch className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
+                  <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto mb-2 object-contain opacity-50 mx-auto" />
                   <p className="text-sm text-muted-foreground">{(productSearch.trim() || filterSalesTaxId !== "all" || filterPurchaseTaxId !== "all" || filterCategories.length > 0) ? "Tidak ada produk yang cocok dengan pencarian atau filter ini." : "Belum ada produk. Tambahkan produk pertama Anda."}</p>
                 </CardContent></Card>
               ) : (

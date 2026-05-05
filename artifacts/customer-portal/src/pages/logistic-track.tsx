@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useGetLogisticOrderByNumber, getGetLogisticOrderByNumberQueryKey } from "@workspace/api-client-react";
-import { ArrowLeft, Search, Package, Ship } from "lucide-react";
+import { ArrowLeft, Search, Ship } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_COLORS, OrderStatus } from "@/lib/services-data";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -66,7 +66,7 @@ export default function TrackPage() {
 
         {isError && (
           <div className="text-center py-10 text-muted-foreground">
-            <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
+            <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-10 w-auto mx-auto mb-3 object-contain opacity-50" />
             <p className="font-medium text-foreground">{t("tracking.notFound")}</p>
             <p className="text-sm mt-1">{t("tracking.notFoundDesc")}</p>
           </div>

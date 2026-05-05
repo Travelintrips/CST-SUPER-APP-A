@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Building, PackageOpen, Pencil, Trash2 } from "lucide-react";
+import { Plus, Building, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -218,7 +218,7 @@ export default function TradingPage() {
                       <TableRow>
                         <TableCell colSpan={6} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
-                            <PackageOpen className="h-8 w-8 mb-2 opacity-50" />
+                            <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto mb-2 object-contain opacity-50 mx-auto" />
                             <p>Belum ada stock inventory.</p>
                           </div>
                         </TableCell>
@@ -258,7 +258,7 @@ export default function TradingPage() {
                 ))
               ) : !stocks || stocks.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
-                  <PackageOpen className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
+                  <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto mb-2 object-contain opacity-50 mx-auto" />
                   <p className="text-sm text-muted-foreground">Belum ada stock inventory.</p>
                 </CardContent></Card>
               ) : (

@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, ShoppingCart, Package, Truck, Calculator } from "lucide-react";
+import { Building2, ShoppingCart, Truck, Calculator } from "lucide-react";
 import { useClerk } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 
@@ -37,7 +37,7 @@ export default function WelcomePage() {
 
           <Card className="bg-card border-border shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
-              <Package className="h-8 w-8 text-primary mb-2" />
+              <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto object-contain mb-2" />
               <CardTitle>Trading</CardTitle>
               <CardDescription className="text-muted-foreground">B2B Inventory & Suppliers</CardDescription>
             </CardHeader>

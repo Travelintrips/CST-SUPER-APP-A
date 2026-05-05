@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { Package, Search, Calendar, FileText, ExternalLink, X } from "lucide-react";
+import { Search, Calendar, FileText, ExternalLink, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
@@ -200,7 +200,7 @@ export default function Orders() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="bg-primary/5 p-2 rounded-lg">
-                            <Package className="h-5 w-5 text-primary" />
+                            <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="" className="h-5 w-auto object-contain" />
                           </div>
                           <div>
                             <div className="font-semibold text-primary flex items-center gap-1.5">
