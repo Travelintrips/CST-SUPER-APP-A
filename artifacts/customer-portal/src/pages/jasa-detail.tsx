@@ -267,9 +267,6 @@ export default function JasaDetail() {
   const [dimensions, setDimensions] = useState<DimRow[]>([newDimRow()]);
   const [cargoPhotoFiles, setCargoPhotoFiles] = useState<File[]>([]);
   const [cargoPhotoUrls, setCargoPhotoUrls] = useState<string[]>([]);
-  const [cargoVehicleType, setCargoVehicleType] = useState("");
-  const [cargoVehicleWarn, setCargoVehicleWarn] = useState(false);
-
   const [pendingOrder, setPendingOrder] = useState<{ serviceId: number; productName: string } | null>(null);
   const [truckingRates, setTruckingRates] = useState<Record<string, { ratePerKm: number; loadingFee: number }>>({});
 
@@ -284,21 +281,6 @@ export default function JasaDetail() {
   useEffect(() => {
     setState(prev => ({ ...prev, serviceType: "Schedule" }));
   }, [params.id]);
-
-  // Auto-reset cargo vehicle if cargo data changes and selected vehicle no longer fits
-  useEffect(() => {
-    if (!cargoVehicleType) return;
-    const v = VEHICLE_CAPS_LIST.find(v => v.key === cargoVehicleType);
-    if (!v) return;
-    const totalVol = calcTotalVolumeM3(dimensions);
-    const gw = parseFloat(grossWeight) || 0;
-    if ((totalVol > 0 || gw > 0) && (totalVol > v.maxVolumeM3 || gw > v.maxWeightKg)) {
-      setCargoVehicleType("");
-      setCargoVehicleWarn(true);
-    } else {
-      setCargoVehicleWarn(false);
-    }
-  }, [dimensions, grossWeight, cargoVehicleType]);
 
   useEffect(() => {
     try {
@@ -551,15 +533,6 @@ export default function JasaDetail() {
         toast({ title: "Total volume harus > 0, periksa dimensi barang", variant: "destructive" });
         return;
       }
-      const noFit = VEHICLE_CAPS_LIST.every(v => totalVol > v.maxVolumeM3 || (parseFloat(grossWeight) || 0) > v.maxWeightKg);
-      if (noFit) {
-        toast({ title: "Tidak ada kendaraan yang sesuai. Hubungi admin untuk quotation.", variant: "destructive" });
-        return;
-      }
-      if (!cargoVehicleType) {
-        toast({ title: "Pilih jenis kendaraan", variant: "destructive" });
-        return;
-      }
       setTruckingStep(3);
     }
   }
@@ -611,9 +584,6 @@ export default function JasaDetail() {
           dimensions: JSON.stringify(dimensions),
           total_volume_m3: calcTotalVolumeM3(dimensions).toFixed(4),
           cargo_photos: String(cargoPhotoUrls.length),
-          selected_vehicle_type: cargoVehicleType,
-          vehicle_max_volume_m3: String(VEHICLE_CAPS_LIST.find(v => v.key === cargoVehicleType)?.maxVolumeM3 ?? ""),
-          vehicle_max_weight_kg: String(VEHICLE_CAPS_LIST.find(v => v.key === cargoVehicleType)?.maxWeightKg ?? ""),
         } : {}),
       },
       calculationResult: calcResult(item.calculatorType, state, airRows),
@@ -1273,65 +1243,6 @@ export default function JasaDetail() {
                             )}
                           </div>
 
-                          {/* ── Section 5: Pilih Jenis Kendaraan ── */}
-                          <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
-                            <p className="text-sm font-semibold text-gray-800">Pilih Jenis Kendaraan <span className="text-red-500">*</span></p>
-                            {cargoVehicleWarn && (
-                              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700 font-medium">
-                                Kendaraan yang dipilih tidak lagi memenuhi kapasitas barang. Silakan pilih kendaraan lain.
-                              </div>
-                            )}
-                            {(() => {
-                              const totalVol = calcTotalVolumeM3(dimensions);
-                              const gw = parseFloat(grossWeight) || 0;
-                              const noFit = (totalVol > 0 || gw > 0) && VEHICLE_CAPS_LIST.every(v => totalVol > v.maxVolumeM3 || gw > v.maxWeightKg);
-                              if (noFit) {
-                                return (
-                                  <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3 text-xs text-red-700 leading-relaxed">
-                                    Tidak ada kendaraan yang sesuai dengan volume/berat barang. Silakan hubungi admin untuk quotation manual.
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div className="space-y-2">
-                                  {VEHICLE_CAPS_LIST.map(v => {
-                                    const available = (totalVol === 0 && gw === 0) || (totalVol <= v.maxVolumeM3 && gw <= v.maxWeightKg);
-                                    const isSel = cargoVehicleType === v.key && available;
-                                    return (
-                                      <button
-                                        key={v.key}
-                                        type="button"
-                                        disabled={!available}
-                                        onClick={() => {
-                                          setCargoVehicleType(v.key);
-                                          setCargoVehicleWarn(false);
-                                        }}
-                                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border-2 text-left transition-all ${
-                                          !available
-                                            ? "border-gray-100 bg-gray-50 cursor-not-allowed"
-                                            : isSel
-                                            ? "border-[#0B5CAD] bg-blue-50"
-                                            : "border-gray-200 hover:border-blue-200"
-                                        }`}
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <p className={`text-sm font-semibold ${isSel ? "text-[#0B5CAD]" : !available ? "text-gray-300" : "text-gray-800"}`}>{v.label}</p>
-                                          <p className={`text-[11px] mt-0.5 ${!available ? "text-gray-300" : "text-gray-400"}`}>
-                                            Maks. {v.maxVolumeM3} M³ · {v.maxWeightKg >= 1000 ? `${v.maxWeightKg / 1000} Ton` : `${v.maxWeightKg} kg`}
-                                          </p>
-                                          {!available && (
-                                            <p className="text-[11px] text-red-400 font-medium mt-0.5">Tidak tersedia — melebihi kapasitas</p>
-                                          )}
-                                        </div>
-                                        {isSel && <CheckCircle2 className="h-4 w-4 text-[#0B5CAD] flex-shrink-0 ml-2"/>}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-                          </div>
-
                           {/* ── Detail Biaya (tetap terlihat) ── */}
                           <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
                             <p className="text-sm font-semibold text-gray-700">Detail Biaya</p>
@@ -1409,12 +1320,6 @@ export default function JasaDetail() {
                                 <div className="flex justify-between py-2">
                                   <span className="text-gray-500">Total Volume</span>
                                   <span className="font-medium text-xs text-[#0B5CAD]">{calcTotalVolumeM3(dimensions).toFixed(3)} M³</span>
-                                </div>
-                              )}
-                              {cargoVehicleType && (
-                                <div className="flex justify-between py-2 gap-2">
-                                  <span className="text-gray-500 flex-shrink-0">Kendaraan Dipilih</span>
-                                  <span className="font-medium text-xs text-[#0B5CAD]">{cargoVehicleType}</span>
                                 </div>
                               )}
                               {cargoPhotoUrls.length > 0 && (
