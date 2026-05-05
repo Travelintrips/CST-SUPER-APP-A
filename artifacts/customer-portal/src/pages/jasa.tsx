@@ -293,8 +293,12 @@ export default function Jasa() {
               <div>
                 <p className="font-bold text-foreground">Freight Forwarding</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {[t("jasa.importLabel"), t("jasa.exportLabel"), t("jasa.domesticLabel")].map((d) => (
-                    <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0" onClick={() => setLocation("/freight-forwarding")} style={{cursor:"pointer"}}>{d}</Badge>
+                  {([
+                    { label: t("jasa.importLabel"), dir: "Impor" },
+                    { label: t("jasa.exportLabel"), dir: "Ekspor" },
+                    { label: t("jasa.domesticLabel"), dir: "Domestic" },
+                  ] as Array<{ label: string; dir: string }>).map(({ label, dir }) => (
+                    <Badge key={label} variant="secondary" className="text-[10px] px-1.5 py-0" onClick={() => setLocation(`/freight-forwarding?direction=${dir}`)} style={{cursor:"pointer"}}>{label}</Badge>
                   ))}
                   <span className="text-[10px] text-muted-foreground">×</span>
                   {[translateCategory("Laut", locale), translateCategory("Udara", locale)].map((m) => (
@@ -326,8 +330,12 @@ export default function Jasa() {
               <div>
                 <p className="font-bold text-foreground">{t("jasa.customsTitle")}</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {["PIB/PEB", "Handling Clearance", "Undername"].map((s) => (
-                    <Badge key={s} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100" onClick={() => setLocation("/pabean")} style={{cursor:"pointer"}}>{s}</Badge>
+                  {([
+                    { label: "PIB/PEB", svc: "pib_peb" },
+                    { label: "Handling Clearance", svc: "handling" },
+                    { label: "Undername", svc: "undername" },
+                  ] as Array<{ label: string; svc: string }>).map(({ label, svc }) => (
+                    <Badge key={label} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100" onClick={() => setLocation(`/pabean?service=${svc}`)} style={{cursor:"pointer"}}>{label}</Badge>
                   ))}
                   <span className="text-[10px] text-muted-foreground">×</span>
                   {[t("jasa.importLabel"), t("jasa.exportLabel")].map((d) => (

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -187,6 +187,7 @@ export default function Pabean() {
   }
 
   // --- global state ---
+  const search = useSearch();
   const [selectedServices, setSelectedServices] = useState<ServiceType[]>([]);
   const [direction, setDirection] = useState<Direction | null>(null);
   const [submitting, setSubmitting] = useState(false);

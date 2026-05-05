@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -193,6 +193,7 @@ export default function FreightForwarding() {
   }
 
   // Navigation state
+  const search = useSearch();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [direction, setDirection] = useState<Direction | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
