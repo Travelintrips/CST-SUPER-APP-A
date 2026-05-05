@@ -1023,6 +1023,17 @@ router.post("/admin/fix-jasa-names", async (req, res) => {
   return res.json({ fixed: updated.length, items: updated });
 });
 
+// GET /api/portal/cargo-types — public, returns cargo type list
+router.get("/cargo-types", async (_req, res) => {
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, "cargo_types"));
+    const types = row ? JSON.parse(row.value) : ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
+    return res.json(types);
+  } catch {
+    return res.json(["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals"]);
+  }
+});
+
 // GET /api/portal/calculator-rates — public, returns current calculator rates
 router.get("/calculator-rates", async (_req, res) => {
   try {

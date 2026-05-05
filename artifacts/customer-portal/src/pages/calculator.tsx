@@ -55,11 +55,16 @@ export default function CalculatorPage() {
   const { t } = useLanguage();
 
   const [rates, setRates] = useState<CalcRates>(DEFAULT_RATES);
+  const [cargoTypes, setCargoTypes] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/portal/calculator-rates")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (data) setRates(data as CalcRates); })
+      .catch(() => undefined);
+    fetch("/api/portal/cargo-types")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (Array.isArray(data)) setCargoTypes(data as string[]); })
       .catch(() => undefined);
   }, []);
 
@@ -344,11 +349,18 @@ export default function CalculatorPage() {
                     <label className={labelClass}>{t("calculator.cargoType")}</label>
                     <input
                       type="text"
+                      list="cargo-type-list"
                       value={cargoType}
                       onChange={(e) => setCargoType(e.target.value)}
                       placeholder={t("calculator.cargoPlaceholder")}
                       className={inputClass}
+                      autoComplete="off"
                     />
+                    {cargoTypes.length > 0 && (
+                      <datalist id="cargo-type-list">
+                        {cargoTypes.map((ct) => <option key={ct} value={ct} />)}
+                      </datalist>
+                    )}
                   </div>
                   <div>
                     <label className={labelClass}>
@@ -375,7 +387,18 @@ export default function CalculatorPage() {
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">Dihitung otomatis berdasarkan tarif yang berlaku</p>
+                    {service && service !== "projectCargo" && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        {service === "airFreight" && `★ Tarif: ${formatIDR(rates.airFreight.ratePerKg)}/kg (chargeable weight)`}
+                        {service === "seaFreight" && `★ Tarif: ${formatIDR(rates.seaFreight.ratePerCbm)}/CBM`}
+                        {service === "customs" && `★ Tarif: ${formatIDR(rates.customs.ratePerKg)}/kg + bea masuk ${rates.customs.customsPct}%`}
+                        {service === "domestic" && `★ Tarif: ${formatIDR(rates.domestic.ratePerKg)}/kg`}
+                        {service === "warehousing" && `★ Tarif: ${formatIDR(rates.warehousing.ratePerCbm)}/CBM per bulan`}
+                      </p>
+                    )}
+                    {(!service || service === "projectCargo") && (
+                      <p className="text-xs text-slate-400 mt-1">Dihitung otomatis berdasarkan tarif yang berlaku</p>
+                    )}
                   </div>
                 </div>
 

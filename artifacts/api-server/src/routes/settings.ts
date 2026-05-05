@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 const router = Router();
 
 const CALC_RATES_KEY = "calculator_rates";
+const CARGO_TYPES_KEY = "cargo_types";
+const DEFAULT_CARGO_TYPES = ["Electronics", "Textiles", "Furniture", "Food & Beverage", "Chemicals", "Machinery", "Automotive Parts", "Medical Supplies", "Paper & Printing", "Raw Materials"];
 
 export const DEFAULT_CALC_RATES = {
   airFreight:  { baseCost: 500000,  ratePerKg: 90000,    handlingPct: 5, customsFee: 1200000 },
@@ -61,6 +63,36 @@ router.put("/calculator-rates", async (req: Request, res: Response) => {
       set: { value: JSON.stringify(rates), updatedAt: new Date() },
     });
   return res.json({ ok: true });
+});
+
+// GET /api/settings/cargo-types — get cargo types list (admin)
+router.get("/cargo-types", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, CARGO_TYPES_KEY));
+    const types = row ? JSON.parse(row.value) : DEFAULT_CARGO_TYPES;
+    return res.json(types);
+  } catch {
+    return res.json(DEFAULT_CARGO_TYPES);
+  }
+});
+
+// PUT /api/settings/cargo-types — update cargo types list (admin)
+router.put("/cargo-types", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const types = req.body;
+  if (!Array.isArray(types)) {
+    return res.status(400).json({ message: "Payload must be an array of strings" });
+  }
+  const cleaned = types.map((t: unknown) => String(t).trim()).filter(Boolean);
+  await db
+    .insert(portalContentTable)
+    .values({ key: CARGO_TYPES_KEY, value: JSON.stringify(cleaned), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: JSON.stringify(cleaned), updatedAt: new Date() },
+    });
+  return res.json({ ok: true, count: cleaned.length });
 });
 
 export default router;

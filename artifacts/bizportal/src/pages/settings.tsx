@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp } from "lucide-react";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
@@ -206,6 +206,111 @@ function CalculatorRatesCard() {
                   <Save className="h-4 w-4" />
                 )}
                 {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Tarif"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CargoTypesCard() {
+  const { getToken } = useAuth();
+  const { toast } = useToast();
+  const [types, setTypes] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [newType, setNewType] = useState("");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/settings/cargo-types", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) setTypes(await res.json() as string[]);
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, [getToken]);
+
+  function addType() {
+    const t = newType.trim();
+    if (!t || types.includes(t)) { setNewType(""); return; }
+    setTypes((prev) => [...prev, t]);
+    setNewType("");
+  }
+
+  function removeType(idx: number) {
+    setTypes((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/settings/cargo-types", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(types),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      toast({ title: "Daftar Cargo Type berhasil disimpan" });
+    } catch (err) {
+      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <Package className="h-5 w-5 text-primary" />
+          Daftar Cargo Type
+        </CardTitle>
+        <CardDescription>
+          Daftar jenis kargo yang tersedia sebagai pilihan autocomplete di kalkulator Customer Portal.
+          Pelanggan bisa mengetik untuk mencari atau pilih dari daftar ini.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="space-y-2">{[1,2,3].map((i) => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2 min-h-[40px]">
+              {types.length === 0 && <p className="text-sm text-muted-foreground italic">Belum ada item — tambahkan di bawah</p>}
+              {types.map((t, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-sm bg-muted border border-border rounded-full px-3 py-1">
+                  {t}
+                  <button type="button" onClick={() => removeType(i)} className="ml-1 text-muted-foreground hover:text-destructive transition-colors">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2 max-w-sm">
+              <Input
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addType(); } }}
+                placeholder="Contoh: Electronics"
+                className="flex-1"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={addType} className="gap-1 shrink-0">
+                <Plus className="h-4 w-4" /> Tambah
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Tekan Enter atau klik Tambah. Klik × untuk hapus item.</p>
+            <div className="flex justify-end pt-1 border-t border-border">
+              <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Save className="h-4 w-4" />}
+                {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Daftar"}
               </Button>
             </div>
           </>
@@ -427,6 +532,7 @@ export default function SettingsPage() {
           </Card>
           
           {isAdmin && <WhatsAppNotificationCard />}
+          {isAdmin && <CargoTypesCard />}
           {isAdmin && <CalculatorRatesCard />}
 
           <Card className="col-span-1 md:col-span-3 bg-card border-border">
