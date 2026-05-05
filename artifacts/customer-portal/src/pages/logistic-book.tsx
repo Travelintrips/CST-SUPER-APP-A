@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useCreateLogisticOrder, useGetPortalMe } from "@workspace/api-client-react";
@@ -509,7 +508,7 @@ export default function BookPage() {
   }
 
   function handleSubmit() {
-    const { companyName, customerName, email, phone } = customerForm;
+    const { companyName, customerName, email, phone, origin, destination } = customerForm;
     if (!companyName || !customerName || !email || !phone) {
       toast({ title: "Lengkapi data perusahaan", variant: "destructive" });
       return;
@@ -798,7 +797,6 @@ export default function BookPage() {
     // Step 3: Customer Form
     if (step === 3) {
       const f = customerForm;
-      const set = (k: string, v: string) => setCustomerForm((p) => ({ ...p, [k]: v }));
       return (
         <div className="space-y-5">
           <div>
@@ -807,15 +805,22 @@ export default function BookPage() {
           </div>
 
           {/* ── Group 1: Data Perusahaan ─────────────────────────── */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <User className="w-4 h-4 text-accent" /> Data Perusahaan
             </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">Nama Perusahaan *</Label><Input placeholder="PT. ..." value={f.companyName} onChange={e => set("companyName", e.target.value)} /></div>
-              <div><Label className="text-xs">Nama PIC *</Label><Input placeholder="Nama lengkap" value={f.customerName} onChange={e => set("customerName", e.target.value)} /></div>
-              <div><Label className="text-xs">Email *</Label><Input type="email" placeholder="email@perusahaan.com" value={f.email} onChange={e => set("email", e.target.value)} /></div>
-              <div><Label className="text-xs">Telepon / WhatsApp *</Label><Input placeholder="+62..." value={f.phone} onChange={e => set("phone", e.target.value)} /></div>
+            <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border">
+              {[
+                { label: "Nama Perusahaan", value: f.companyName },
+                { label: "Nama PIC",        value: f.customerName },
+                { label: "Email",           value: f.email },
+                { label: "Telepon / WhatsApp", value: f.phone },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="text-xs text-muted-foreground w-36 shrink-0">{label}</span>
+                  <span className="text-sm font-medium text-foreground">{value || <span className="text-muted-foreground italic">—</span>}</span>
+                </div>
+              ))}
             </div>
           </div>
 
