@@ -5,17 +5,21 @@ const FONNTE_URL = "https://api.fonnte.com/send";
 
 /**
  * Normalizes an Indonesian phone number to the international format (628...).
+ * Group IDs (containing @g.us) are returned unchanged.
  * Handles: 08..., +62..., 62..., +628..., spaces/dashes.
  */
 function normalizePhoneID(raw: string): string {
+  // WhatsApp group IDs look like "1234567890@g.us" — pass through unchanged
+  if (raw.includes("@")) return raw.trim();
+
   // Strip everything except digits and leading +
   let digits = raw.replace(/[^\d+]/g, "");
   // Remove leading +
   digits = digits.replace(/^\+/, "");
 
-  if (digits.startsWith("62")) return digits;          // already international
+  if (digits.startsWith("62")) return digits;           // already international
   if (digits.startsWith("0")) return "62" + digits.slice(1); // 08xxx → 628xxx
-  return "62" + digits;                                // bare number → 628xxx
+  return "62" + digits;                                 // bare number → 628xxx
 }
 
 export async function sendWhatsApp(
@@ -32,7 +36,8 @@ export async function sendWhatsApp(
   }
 
   const phone = normalizePhoneID(target);
-  if (phone.length < 10) {
+  // Group IDs are longer than phone numbers; skip the length check for them
+  if (!phone.includes("@") && phone.length < 10) {
     logger.warn({ raw: target, normalized: phone }, "sendWhatsApp: phone too short — skipping");
     return;
   }
