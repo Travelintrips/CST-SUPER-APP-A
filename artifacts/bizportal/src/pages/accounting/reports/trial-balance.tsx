@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useGetTrialBalance, getGetTrialBalanceQueryKey } from "@workspace/api-client-react";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, Printer, Download } from "lucide-react";
+import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
@@ -19,12 +20,26 @@ export default function TrialBalancePage() {
   }), [from, to]);
   const { data, isLoading } = useGetTrialBalance(params, { query: { queryKey: getGetTrialBalanceQueryKey(params) } });
 
+  const rows = data?.rows ?? [];
+  const headers = ["Kode", "Nama Akun", "Tipe", "Debit", "Kredit", "Saldo"];
+  const xlsxRows = () => rows.map((r) => [r.code, r.name, r.type, r.debit > 0 ? r.debit : "", r.credit > 0 ? r.credit : "", r.balance]);
+
   return (
     <AppShell>
       <div className="space-y-6 p-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><FileSpreadsheet className="h-6 w-6" />Neraca Saldo (Trial Balance)</h1>
-          <p className="text-sm text-muted-foreground">Saldo seluruh akun pada periode terpilih</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2"><FileSpreadsheet className="h-6 w-6" />Neraca Saldo (Trial Balance)</h1>
+            <p className="text-sm text-muted-foreground">Saldo seluruh akun pada periode terpilih</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printWindow("Neraca Saldo (Trial Balance)", headers, xlsxRows(), [3, 4, 5])} disabled={rows.length === 0}>
+              <Printer className="h-4 w-4 mr-1.5" />Print Preview
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportXlsx("Neraca_Saldo", headers, xlsxRows())} disabled={rows.length === 0}>
+              <Download className="h-4 w-4 mr-1.5" />Export XLSX
+            </Button>
+          </div>
         </div>
 
         <Card><CardContent className="p-4 flex gap-4">

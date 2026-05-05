@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useGetBalanceSheet, getGetBalanceSheetQueryKey } from "@workspace/api-client-react";
-import { Wallet } from "lucide-react";
+import { Wallet, Printer, Download } from "lucide-react";
+import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
@@ -15,12 +16,45 @@ export default function BalanceSheetPage() {
   const params = useMemo(() => ({ ...(asOf ? { to: new Date(asOf + "T23:59:59").toISOString() } : {}) }), [asOf]);
   const { data, isLoading } = useGetBalanceSheet(params, { query: { queryKey: getGetBalanceSheetQueryKey(params) } });
 
+  function buildExportRows() {
+    if (!data) return [];
+    return [
+      ["=== AKTIVA (ASSETS) ===", "", ""],
+      ...(data.assets.map((r) => [r.code, r.name, r.amount])),
+      ["", "Total Aktiva", data.totalAssets],
+      ["", "", ""],
+      ["=== LIABILITAS ===", "", ""],
+      ...(data.liabilities.map((r) => [r.code, r.name, r.amount])),
+      ["", "Total Liabilitas", data.totalLiabilities],
+      ["", "", ""],
+      ["=== EKUITAS ===", "", ""],
+      ...(data.equity.map((r) => [r.code, r.name, r.amount])),
+      ["", "Laba Berjalan (YTD)", data.netIncomeYTD],
+      ["", "Total Ekuitas", data.totalEquity],
+      ["", "", ""],
+      ["", "Total Liabilitas + Ekuitas", data.totalLiabilitiesAndEquity],
+    ] as (string | number | null | undefined)[][];
+  }
+
+  const headers = ["Kode", "Nama", "Jumlah"];
+  const hasData = !!data;
+
   return (
     <AppShell>
       <div className="space-y-6 p-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Wallet className="h-6 w-6" />Neraca (Balance Sheet)</h1>
-          <p className="text-sm text-muted-foreground">Posisi keuangan per tanggal</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2"><Wallet className="h-6 w-6" />Neraca (Balance Sheet)</h1>
+            <p className="text-sm text-muted-foreground">Posisi keuangan per tanggal</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printWindow("Neraca (Balance Sheet)", headers, buildExportRows(), [2])} disabled={!hasData}>
+              <Printer className="h-4 w-4 mr-1.5" />Print Preview
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportXlsx("Neraca", headers, buildExportRows())} disabled={!hasData}>
+              <Download className="h-4 w-4 mr-1.5" />Export XLSX
+            </Button>
+          </div>
         </div>
 
         <Card><CardContent className="p-4 flex gap-4 items-end">

@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useGetProfitLoss, getGetProfitLossQueryKey } from "@workspace/api-client-react";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Printer, Download } from "lucide-react";
+import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
@@ -19,12 +20,41 @@ export default function ProfitLossPage() {
   }), [from, to]);
   const { data, isLoading } = useGetProfitLoss(params, { query: { queryKey: getGetProfitLossQueryKey(params) } });
 
+  function buildExportRows() {
+    if (!data) return [];
+    const rows: (string | number | null | undefined)[][] = [
+      ["=== PENDAPATAN ===", "", ""],
+      ...(data.revenues.map((r) => [r.code, r.name, r.amount])),
+      ["", "Total Pendapatan", data.totalRevenue],
+      ["", "", ""],
+      ["=== BEBAN ===", "", ""],
+      ...(data.expenses.map((r) => [r.code, r.name, r.amount])),
+      ["", "Total Beban", data.totalExpense],
+      ["", "", ""],
+      ["", "LABA (RUGI) BERSIH", data.netIncome],
+    ];
+    return rows;
+  }
+
+  const headers = ["Kode", "Nama", "Jumlah"];
+  const hasData = !!data;
+
   return (
     <AppShell>
       <div className="space-y-6 p-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="h-6 w-6" />Laporan Laba Rugi</h1>
-          <p className="text-sm text-muted-foreground">Pendapatan dikurangi beban dalam periode terpilih</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="h-6 w-6" />Laporan Laba Rugi</h1>
+            <p className="text-sm text-muted-foreground">Pendapatan dikurangi beban dalam periode terpilih</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printWindow("Laporan Laba Rugi", headers, buildExportRows(), [2])} disabled={!hasData}>
+              <Printer className="h-4 w-4 mr-1.5" />Print Preview
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportXlsx("Laba_Rugi", headers, buildExportRows())} disabled={!hasData}>
+              <Download className="h-4 w-4 mr-1.5" />Export XLSX
+            </Button>
+          </div>
         </div>
 
         <Card><CardContent className="p-4 flex gap-4">

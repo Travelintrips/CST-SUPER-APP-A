@@ -48,6 +48,7 @@ import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance
 import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
 import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
 import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
+import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import CorrespondencesPage from "@/pages/correspondences";
 import EmailInboxPage from "@/pages/email-inbox";
 import ExpenseListPage from "@/pages/expense/index";
@@ -326,6 +327,9 @@ function Router() {
       </Route>
       <Route path="/accounting/reports/balance-sheet">
         <ProtectedRoute component={AccountingBalanceSheetPage} />
+      </Route>
+      <Route path="/accounting/reconciliation">
+        <ProtectedRoute component={AccountingReconciliationPage} />
       </Route>
 
       <Route path="/expense/categories">

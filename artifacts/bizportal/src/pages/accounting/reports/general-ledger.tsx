@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import {
@@ -9,7 +9,8 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useGetGeneralLedger, useListAccounts, getGetGeneralLedgerQueryKey } from "@workspace/api-client-react";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Printer, Download } from "lucide-react";
+import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
@@ -25,12 +26,42 @@ export default function GeneralLedgerPage() {
   const { data, isLoading } = useGetGeneralLedger(params, { query: { queryKey: getGetGeneralLedgerQueryKey(params) } });
   const { data: accounts } = useListAccounts();
 
+  function buildExportRows() {
+    if (!data) return [];
+    const rows: (string | number | null | undefined)[][] = [];
+    for (const acc of data.accounts) {
+      rows.push([`${acc.code} - ${acc.name}`, "", "", "", "", "", ""]);
+      for (const r of acc.rows) {
+        rows.push([
+          "", new Date(r.date).toLocaleDateString("id-ID"), r.entryNumber,
+          r.ref ?? "", r.description ?? "",
+          r.debit > 0 ? r.debit : "", r.credit > 0 ? r.credit : "", r.balance,
+        ]);
+      }
+      rows.push(["Total", "", "", "", "", acc.totalDebit, acc.totalCredit, acc.endingBalance]);
+    }
+    return rows;
+  }
+
+  const headers = ["Akun / Tanggal", "Tanggal", "Nomor", "Ref", "Deskripsi", "Debit", "Kredit", "Saldo"];
+  const hasData = (data?.accounts.length ?? 0) > 0;
+
   return (
     <AppShell>
       <div className="space-y-6 p-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6" />Buku Besar (General Ledger)</h1>
-          <p className="text-sm text-muted-foreground">Mutasi & saldo per akun</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6" />Buku Besar (General Ledger)</h1>
+            <p className="text-sm text-muted-foreground">Mutasi & saldo per akun</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printWindow("Buku Besar (General Ledger)", headers, buildExportRows(), [5, 6, 7])} disabled={!hasData}>
+              <Printer className="h-4 w-4 mr-1.5" />Print Preview
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportXlsx("Buku_Besar", headers, buildExportRows())} disabled={!hasData}>
+              <Download className="h-4 w-4 mr-1.5" />Export XLSX
+            </Button>
+          </div>
         </div>
 
         <Card><CardContent className="p-4 grid grid-cols-3 gap-3">

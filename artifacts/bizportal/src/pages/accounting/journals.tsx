@@ -20,7 +20,8 @@ import {
   getListJournalsQueryKey, type AccountingJournal,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, BookOpen } from "lucide-react";
+import { Pencil, Plus, BookOpen, Printer, Download } from "lucide-react";
+import { exportXlsx, printWindow } from "@/lib/export";
 
 const TYPE_LABELS: Record<string, string> = {
   sales: "Penjualan", purchase: "Pembelian", bank: "Bank", cash: "Kas", general: "Umum",
@@ -74,6 +75,14 @@ export default function JournalsPage() {
     return a ? `${a.code} ${a.name}` : `#${id}`;
   };
 
+  const rows = journals ?? [];
+  const headers = ["Kode", "Nama", "Tipe", "Akun Debit Default", "Akun Kredit Default", "Status"];
+  const xlsxRows = () => rows.map((j) => [
+    j.code, j.name, TYPE_LABELS[j.type] ?? j.type,
+    accLabel(j.defaultDebitAccountId), accLabel(j.defaultCreditAccountId),
+    j.isActive ? "Aktif" : "Non-aktif",
+  ]);
+
   return (
     <AppShell>
       <div className="space-y-6 p-6">
@@ -82,40 +91,48 @@ export default function JournalsPage() {
             <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6" />Jurnal</h1>
             <p className="text-sm text-muted-foreground">Buku jurnal — Penjualan, Pembelian, Bank, Kas, Umum</p>
           </div>
-          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
-            <DialogTrigger asChild><Button data-testid="button-add-journal"><Plus className="h-4 w-4 mr-2" />Tambah Jurnal</Button></DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{editing ? "Edit Jurnal" : "Jurnal Baru"}</DialogTitle></DialogHeader>
-              <div className="space-y-3">
-                <div><Label>Kode</Label><Input data-testid="input-journal-code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SAL" /></div>
-                <div><Label>Nama</Label><Input data-testid="input-journal-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Jurnal Penjualan" /></div>
-                <div>
-                  <Label>Tipe</Label>
-                  <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as AccountingJournal["type"] })}>
-                    <SelectTrigger data-testid="select-journal-type"><SelectValue /></SelectTrigger>
-                    <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => (<SelectItem key={k} value={k}>{v}</SelectItem>))}</SelectContent>
-                  </Select>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printWindow("Jurnal", headers, xlsxRows())} disabled={rows.length === 0}>
+              <Printer className="h-4 w-4 mr-1.5" />Print Preview
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportXlsx("Jurnal", headers, xlsxRows())} disabled={rows.length === 0}>
+              <Download className="h-4 w-4 mr-1.5" />Export XLSX
+            </Button>
+            <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+              <DialogTrigger asChild><Button data-testid="button-add-journal"><Plus className="h-4 w-4 mr-2" />Tambah Jurnal</Button></DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{editing ? "Edit Jurnal" : "Jurnal Baru"}</DialogTitle></DialogHeader>
+                <div className="space-y-3">
+                  <div><Label>Kode</Label><Input data-testid="input-journal-code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SAL" /></div>
+                  <div><Label>Nama</Label><Input data-testid="input-journal-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Jurnal Penjualan" /></div>
+                  <div>
+                    <Label>Tipe</Label>
+                    <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as AccountingJournal["type"] })}>
+                      <SelectTrigger data-testid="select-journal-type"><SelectValue /></SelectTrigger>
+                      <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => (<SelectItem key={k} value={k}>{v}</SelectItem>))}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
+                    <Label htmlFor="active">Aktif</Label>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
-                  <Label htmlFor="active">Aktif</Label>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
-                <Button onClick={submit} data-testid="button-save-journal">Simpan</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
+                  <Button onClick={submit} data-testid="button-save-journal">Simpan</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <Card><CardContent className="p-4">
           <Table>
             <TableHeader><TableRow><TableHead>Kode</TableHead><TableHead>Nama</TableHead><TableHead>Tipe</TableHead><TableHead>Akun Debit Default</TableHead><TableHead>Akun Kredit Default</TableHead><TableHead>Status</TableHead><TableHead className="w-20 text-right">Aksi</TableHead></TableRow></TableHeader>
             <TableBody>
-              {(journals ?? []).length === 0 ? (
+              {rows.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Tidak ada jurnal</TableCell></TableRow>
-              ) : journals!.map((j) => (
+              ) : rows.map((j) => (
                 <TableRow key={j.id} data-testid={`row-journal-${j.id}`}>
                   <TableCell className="font-mono">{j.code}</TableCell>
                   <TableCell>{j.name}</TableCell>

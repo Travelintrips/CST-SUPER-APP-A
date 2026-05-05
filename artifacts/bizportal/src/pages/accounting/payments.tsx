@@ -18,7 +18,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare, ShoppingCart } from "lucide-react";
+import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare, ShoppingCart, Printer, Download } from "lucide-react";
+import { exportXlsx, printWindow } from "@/lib/export";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
   useListAccountingPayments,
@@ -335,10 +336,48 @@ export default function PaymentsPage() {
               Catat penerimaan dari pelanggan dan pembayaran ke pemasok secara manual.
             </p>
           </div>
-          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-            <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="h-4 w-4" /> Catat Pembayaran</Button>
-            </DialogTrigger>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printWindow(
+              "Pembayaran",
+              ["Tanggal", "Tipe", "Status", "Mitra", "Referensi", "Jumlah", "Jurnal"],
+              payments.map((p) => {
+                const j = journals.find((x) => x.id === p.journalId);
+                return [
+                  p.date,
+                  p.paymentType === "inbound" ? "Masuk" : "Keluar",
+                  p.status === "voided" ? "Dibatalkan" : "Diposting",
+                  p.partnerName ?? "",
+                  p.ref ?? "",
+                  p.amount,
+                  j ? `[${j.code}] ${j.name}` : "",
+                ];
+              }),
+              [5]
+            )} disabled={payments.length === 0}>
+              <Printer className="h-4 w-4 mr-1.5" />Print Preview
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportXlsx(
+              "Pembayaran",
+              ["Tanggal", "Tipe", "Status", "Mitra", "Referensi", "Jumlah", "Jurnal"],
+              payments.map((p) => {
+                const j = journals.find((x) => x.id === p.journalId);
+                return [
+                  p.date,
+                  p.paymentType === "inbound" ? "Masuk" : "Keluar",
+                  p.status === "voided" ? "Dibatalkan" : "Diposting",
+                  p.partnerName ?? "",
+                  p.ref ?? "",
+                  p.amount,
+                  j ? `[${j.code}] ${j.name}` : "",
+                ];
+              })
+            )} disabled={payments.length === 0}>
+              <Download className="h-4 w-4 mr-1.5" />Export XLSX
+            </Button>
+            <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
+              <DialogTrigger asChild>
+                <Button className="gap-2"><Plus className="h-4 w-4" /> Catat Pembayaran</Button>
+              </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Catat Pembayaran Manual</DialogTitle>
@@ -461,6 +500,7 @@ export default function PaymentsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

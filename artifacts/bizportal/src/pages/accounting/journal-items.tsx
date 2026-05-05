@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -15,7 +16,8 @@ import {
   useListAccountingEntryLines, useListJournals, useListAccounts,
   getListAccountingEntryLinesQueryKey,
 } from "@workspace/api-client-react";
-import { List, TrendingUp, TrendingDown } from "lucide-react";
+import { List, TrendingUp, TrendingDown, Printer, Download } from "lucide-react";
+import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
@@ -65,25 +67,48 @@ export default function JournalItemsPage() {
   const totalDebit = (lines ?? []).reduce((s, l) => s + l.debit, 0);
   const totalCredit = (lines ?? []).reduce((s, l) => s + l.credit, 0);
 
+  const rows = lines ?? [];
+  const headers = ["No. Entry", "Tanggal", "Jurnal", "Sumber", "Referensi", "Akun", "Deskripsi Baris", "Debit", "Kredit"];
+  const xlsxRows = () => rows.map((line) => [
+    line.entryNumber,
+    new Date(line.entryDate).toLocaleDateString("id-ID"),
+    journalLabel(line.journalId),
+    SOURCE_LABELS[line.entrySource] ?? line.entrySource,
+    line.ref ?? "",
+    accLabel(line.accountId),
+    line.description ?? "",
+    line.debit || "",
+    line.credit || "",
+  ]);
+
   return (
     <AppShell>
       <div className="space-y-6 p-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <List className="h-6 w-6" />
-            Jurnal Items
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Daftar baris debit/kredit dari semua jurnal entry — terhubung ke entri induk
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <List className="h-6 w-6" />
+              Jurnal Items
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Daftar baris debit/kredit dari semua jurnal entry — terhubung ke entri induk
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => printWindow("Jurnal Items", headers, xlsxRows(), [7, 8])} disabled={rows.length === 0}>
+              <Printer className="h-4 w-4 mr-1.5" />Print Preview
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportXlsx("Jurnal_Items", headers, xlsxRows())} disabled={rows.length === 0}>
+              <Download className="h-4 w-4 mr-1.5" />Export XLSX
+            </Button>
+          </div>
         </div>
 
-        {/* Summary cards */}
         <div className="grid grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground mb-1">Total Baris</p>
-              <p className="text-2xl font-bold">{(lines ?? []).length}</p>
+              <p className="text-2xl font-bold">{rows.length}</p>
             </CardContent>
           </Card>
           <Card>
@@ -106,7 +131,6 @@ export default function JournalItemsPage() {
           </Card>
         </div>
 
-        {/* Filters */}
         <Card>
           <CardContent className="p-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -156,7 +180,6 @@ export default function JournalItemsPage() {
               </div>
             </div>
 
-            {/* Table */}
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -179,13 +202,13 @@ export default function JournalItemsPage() {
                         Memuat data...
                       </TableCell>
                     </TableRow>
-                  ) : (lines ?? []).length === 0 ? (
+                  ) : rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         Tidak ada item jurnal
                       </TableCell>
                     </TableRow>
-                  ) : (lines ?? []).map((line) => (
+                  ) : rows.map((line) => (
                     <TableRow key={line.id}>
                       <TableCell className="whitespace-nowrap">
                         <Link
@@ -227,7 +250,7 @@ export default function JournalItemsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {(lines ?? []).length > 0 && (
+                  {rows.length > 0 && (
                     <TableRow className="font-bold bg-muted/30 border-t-2">
                       <TableCell colSpan={7} className="text-right text-sm">Total</TableCell>
                       <TableCell className="text-right font-mono text-blue-700">{idr(totalDebit)}</TableCell>
@@ -237,7 +260,7 @@ export default function JournalItemsPage() {
                 </TableBody>
               </Table>
             </div>
-            {(lines ?? []).length >= 1000 && (
+            {rows.length >= 1000 && (
               <p className="text-xs text-muted-foreground mt-2 text-center">
                 Menampilkan 1.000 baris pertama — gunakan filter untuk mempersempit hasil
               </p>

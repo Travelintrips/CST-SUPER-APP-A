@@ -32,6 +32,7 @@ import {
   BarChart2,
   PackageOpen,
   List,
+  GitMerge,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -157,6 +158,7 @@ export function AppShell({ children }: AppShellProps) {
         { title: "Buku Besar", href: "/accounting/reports/general-ledger", icon: BookOpen },
         { title: "Laba Rugi", href: "/accounting/reports/profit-loss", icon: TrendingUp },
         { title: "Neraca", href: "/accounting/reports/balance-sheet", icon: Wallet },
+        { title: "Rekonsiliasi", href: "/accounting/reconciliation", icon: GitMerge },
         { title: "Pengaturan", href: "/accounting/settings", icon: Settings },
       ],
     },

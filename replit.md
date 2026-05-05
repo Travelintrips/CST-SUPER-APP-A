@@ -113,6 +113,7 @@ Document numbering follows the pattern `PREFIX/YYYY/NNNNNN` (e.g., `SHP/2026/123
 | `logistics-freight-bl.tsx` | `/logistics/freight/:id/bl` | Bill of Lading print view |
 | `expense/` | `/expense/*` | Expense list, new/edit form, detail view |
 | `accounting/` | `/accounting/*` | CoA, journals, taxes, entries, financial reports |
+| `accounting/reconciliation.tsx` | `/accounting/reconciliation` | Bank reconciliation — filter by account & period, mark/unmark lines, summary cards, Print + Export XLSX |
 | `reports/` | `/reports/*` | P&L, Balance Sheet, Trial Balance, General Ledger |
 | `correspondences.tsx` | `/correspondences` | Communication log |
 | `ecommerce.tsx` | `/ecommerce` | Ecommerce module |
