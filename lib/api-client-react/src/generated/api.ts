@@ -20,6 +20,7 @@ import type {
   Account,
   AccountingEntry,
   AccountingEntryDetail,
+  AccountingEntryLineWithEntry,
   AccountingJournal,
   AccountingPayment,
   AccountingPaymentDetail,
@@ -85,6 +86,7 @@ import type {
   HealthStatus,
   LinkCorrespondenceBody,
   ListAccountingEntriesParams,
+  ListAccountingEntryLinesParams,
   ListAccountingPaymentsParams,
   ListCorrespondencesParams,
   ListEmailCorrespondencesByTransactionParams,
@@ -8368,6 +8370,109 @@ export function useGetAccountingEntry<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAccountingEntryQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all journal entry line items with parent entry info
+ */
+export const getListAccountingEntryLinesUrl = (
+  params?: ListAccountingEntryLinesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/accounting/entry-lines?${stringifiedParams}`
+    : `/api/accounting/entry-lines`;
+};
+
+export const listAccountingEntryLines = async (
+  params?: ListAccountingEntryLinesParams,
+  options?: RequestInit,
+): Promise<AccountingEntryLineWithEntry[]> => {
+  return customFetch<AccountingEntryLineWithEntry[]>(
+    getListAccountingEntryLinesUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListAccountingEntryLinesQueryKey = (
+  params?: ListAccountingEntryLinesParams,
+) => {
+  return [`/api/accounting/entry-lines`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAccountingEntryLinesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAccountingEntryLines>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAccountingEntryLinesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAccountingEntryLines>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAccountingEntryLinesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAccountingEntryLines>>
+  > = ({ signal }) =>
+    listAccountingEntryLines(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAccountingEntryLines>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAccountingEntryLinesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAccountingEntryLines>>
+>;
+export type ListAccountingEntryLinesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all journal entry line items with parent entry info
+ */
+
+export function useListAccountingEntryLines<
+  TData = Awaited<ReturnType<typeof listAccountingEntryLines>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAccountingEntryLinesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAccountingEntryLines>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAccountingEntryLinesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

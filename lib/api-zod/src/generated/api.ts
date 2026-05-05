@@ -259,6 +259,7 @@ export const ListOrdersResponseItem = zod.object({
   id: zod.number(),
   customerName: zod.string(),
   customerEmail: zod.string(),
+  customerPhone: zod.string().nullish(),
   status: zod.enum([
     "pending",
     "processing",
@@ -289,6 +290,7 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
 export const CreateOrderBody = zod.object({
   customerName: zod.string(),
   customerEmail: zod.string(),
+  customerPhone: zod.string().nullish(),
   items: zod.string().nullish(),
   lineItems: zod
     .array(
@@ -313,6 +315,7 @@ export const UpdateOrderParams = zod.object({
 export const UpdateOrderBody = zod.object({
   customerName: zod.string(),
   customerEmail: zod.string(),
+  customerPhone: zod.string().nullish(),
   items: zod.string().nullish(),
   lineItems: zod
     .array(
@@ -338,6 +341,7 @@ export const UpdateOrderResponse = zod.object({
   id: zod.number(),
   customerName: zod.string(),
   customerEmail: zod.string(),
+  customerPhone: zod.string().nullish(),
   status: zod.enum([
     "pending",
     "processing",
@@ -2446,6 +2450,34 @@ export const GetAccountingEntryResponse = zod
       ),
     }),
   );
+
+/**
+ * @summary List all journal entry line items with parent entry info
+ */
+export const ListAccountingEntryLinesQueryParams = zod.object({
+  from: zod.date().optional(),
+  to: zod.date().optional(),
+  journalId: zod.coerce.number().optional(),
+  accountId: zod.coerce.number().optional(),
+  entryId: zod.coerce.number().optional(),
+});
+
+export const ListAccountingEntryLinesResponseItem = zod.object({
+  id: zod.number(),
+  entryId: zod.number(),
+  accountId: zod.number(),
+  description: zod.string().nullish(),
+  debit: zod.number(),
+  credit: zod.number(),
+  entryNumber: zod.string(),
+  entryDate: zod.string(),
+  entrySource: zod.string(),
+  journalId: zod.number(),
+  ref: zod.string().nullish(),
+});
+export const ListAccountingEntryLinesResponse = zod.array(
+  ListAccountingEntryLinesResponseItem,
+);
 
 /**
  * @summary List manual payment records

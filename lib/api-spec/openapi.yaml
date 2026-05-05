@@ -1787,6 +1787,36 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AccountingEntryDetail" }
 
+  /accounting/entry-lines:
+    get:
+      operationId: listAccountingEntryLines
+      tags: [accounting]
+      summary: List all journal entry line items with parent entry info
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: journalId
+          schema: { type: integer }
+        - in: query
+          name: accountId
+          schema: { type: integer }
+        - in: query
+          name: entryId
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of journal line items
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AccountingEntryLineWithEntry" }
+
   /accounting/payments:
     get:
       operationId: listAccountingPayments
@@ -4058,6 +4088,22 @@ components:
         debit: { type: number }
         credit: { type: number }
       required: [id, entryId, accountId, debit, credit]
+
+    AccountingEntryLineWithEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        entryId: { type: integer }
+        accountId: { type: integer }
+        description: { type: string, nullable: true }
+        debit: { type: number }
+        credit: { type: number }
+        entryNumber: { type: string }
+        entryDate: { type: string }
+        entrySource: { type: string }
+        journalId: { type: integer }
+        ref: { type: string, nullable: true }
+      required: [id, entryId, accountId, debit, credit, entryNumber, entryDate, entrySource, journalId]
 
     AccountingEntryDetail:
       allOf:

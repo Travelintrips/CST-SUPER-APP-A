@@ -31,6 +31,7 @@ import {
   Tags,
   BarChart2,
   PackageOpen,
+  List,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -149,6 +150,7 @@ export function AppShell({ children }: AppShellProps) {
         { title: "Bagan Akun", href: "/accounting/accounts", icon: Landmark },
         { title: "Jurnal", href: "/accounting/journals", icon: BookOpen },
         { title: "Jurnal Entry", href: "/accounting/entries", icon: FileText },
+        { title: "Jurnal Items", href: "/accounting/journal-items", icon: List },
         { title: "Pembayaran", href: "/accounting/payments", icon: Wallet },
         { title: "Pajak", href: "/accounting/taxes", icon: Receipt },
         { title: "Neraca Saldo", href: "/accounting/reports/trial-balance", icon: FileSpreadsheet },

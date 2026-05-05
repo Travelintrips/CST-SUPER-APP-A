@@ -264,6 +264,47 @@ router.post("/entries", async (req, res) => {
   }
 });
 
+// GET /accounting/entry-lines — list journal line items with joined entry info
+router.get("/entry-lines", async (req, res) => {
+  const range = parseDateRange(req);
+  if (range.error) return res.status(400).json({ message: range.error });
+  const conds: SQL<unknown>[] = [];
+  if (range.from) conds.push(gte(accountingEntriesTable.date, range.from.toISOString().split("T")[0]!));
+  if (range.to) conds.push(lte(accountingEntriesTable.date, range.to.toISOString().split("T")[0]!));
+  const journalId = req.query["journalId"] ? Number(req.query["journalId"]) : null;
+  if (journalId && !Number.isNaN(journalId)) conds.push(eq(accountingEntriesTable.journalId, journalId));
+  const accountId = req.query["accountId"] ? Number(req.query["accountId"]) : null;
+  if (accountId && !Number.isNaN(accountId)) conds.push(eq(accountingEntryLinesTable.accountId, accountId));
+  const entryId = req.query["entryId"] ? Number(req.query["entryId"]) : null;
+  if (entryId && !Number.isNaN(entryId)) conds.push(eq(accountingEntryLinesTable.entryId, entryId));
+
+  const rows = await db
+    .select({
+      id: accountingEntryLinesTable.id,
+      entryId: accountingEntryLinesTable.entryId,
+      accountId: accountingEntryLinesTable.accountId,
+      description: accountingEntryLinesTable.description,
+      debit: accountingEntryLinesTable.debit,
+      credit: accountingEntryLinesTable.credit,
+      entryNumber: accountingEntriesTable.entryNumber,
+      entryDate: accountingEntriesTable.date,
+      entrySource: accountingEntriesTable.source,
+      journalId: accountingEntriesTable.journalId,
+      ref: accountingEntriesTable.ref,
+    })
+    .from(accountingEntryLinesTable)
+    .innerJoin(accountingEntriesTable, eq(accountingEntryLinesTable.entryId, accountingEntriesTable.id))
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(accountingEntriesTable.date), desc(accountingEntriesTable.id), accountingEntryLinesTable.id)
+    .limit(1000);
+
+  return res.json(rows.map((r) => ({
+    ...r,
+    debit: Number(r.debit),
+    credit: Number(r.credit),
+  })));
+});
+
 // ============ Payments & Receipts ============
 function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
   return {

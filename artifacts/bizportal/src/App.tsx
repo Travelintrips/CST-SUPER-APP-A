@@ -41,6 +41,7 @@ import AccountingJournalsPage from "@/pages/accounting/journals";
 import AccountingTaxesPage from "@/pages/accounting/taxes";
 import AccountingEntriesPage from "@/pages/accounting/entries";
 import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
+import AccountingJournalItemsPage from "@/pages/accounting/journal-items";
 import AccountingPaymentsPage from "@/pages/accounting/payments";
 import AccountingSettingsPage from "@/pages/accounting/settings";
 import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance";
@@ -304,6 +305,9 @@ function Router() {
       </Route>
       <Route path="/accounting/entries/:id">
         <ProtectedRoute component={AccountingEntryDetailPage} />
+      </Route>
+      <Route path="/accounting/journal-items">
+        <ProtectedRoute component={AccountingJournalItemsPage} />
       </Route>
       <Route path="/accounting/payments">
         <ProtectedRoute component={AccountingPaymentsPage} />

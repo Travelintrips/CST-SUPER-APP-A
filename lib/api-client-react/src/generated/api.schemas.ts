@@ -1016,6 +1016,20 @@ export interface AccountingEntryLine {
   credit: number;
 }
 
+export interface AccountingEntryLineWithEntry {
+  id: number;
+  entryId: number;
+  accountId: number;
+  description?: string | null;
+  debit: number;
+  credit: number;
+  entryNumber: string;
+  entryDate: string;
+  entrySource: string;
+  journalId: number;
+  ref?: string | null;
+}
+
 export type AccountingEntryDetail = AccountingEntry & {
   lines: AccountingEntryLine[];
 };
@@ -2232,6 +2246,14 @@ export type ListAccountingEntriesParams = {
   from?: string;
   to?: string;
   journalId?: number;
+};
+
+export type ListAccountingEntryLinesParams = {
+  from?: string;
+  to?: string;
+  journalId?: number;
+  accountId?: number;
+  entryId?: number;
 };
 
 export type ListAccountingPaymentsParams = {
