@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
@@ -166,6 +166,34 @@ export default function DashboardPage() {
   const { data: portalOrders = [], isLoading: portalLoading, refetch: refetchPortal } = useListLogisticOrders(undefined, {
     query: { queryKey: ["dashboard-portal-orders"], refetchInterval },
   });
+
+  interface DashDriver { id: number; name: string; phone: string | null; vehiclePlate: string | null; vehicleType: string | null; isActive: boolean; }
+  interface DashActiveJob { id: number; jobNumber: string; driverId: number; customerName: string | null; status: string; }
+  const { data: dashDrivers = [], isLoading: driversLoading, refetch: refetchDrivers } = useQuery<DashDriver[]>({
+    queryKey: ["dashboard-drivers"],
+    queryFn: async () => {
+      const res = await fetch("/api/drivers");
+      return res.ok ? res.json() as Promise<DashDriver[]> : [];
+    },
+    refetchInterval,
+  });
+  const { data: dashJobs = [] } = useQuery<DashActiveJob[]>({
+    queryKey: ["dashboard-driver-jobs"],
+    queryFn: async () => {
+      const res = await fetch("/api/drivers/jobs/list");
+      return res.ok ? res.json() as Promise<DashActiveJob[]> : [];
+    },
+    refetchInterval,
+  });
+  const activeJobByDriver = dashJobs.reduce<Record<number, DashActiveJob>>((acc, job) => {
+    if (job.status !== "COMPLETED" && job.status !== "CANCELLED") {
+      if (!acc[job.driverId]) acc[job.driverId] = job;
+    }
+    return acc;
+  }, {});
+  const activeDrivers = dashDrivers.filter((d) => d.isActive);
+  const driversBusy = activeDrivers.filter((d) => activeJobByDriver[d.id]).length;
+  const driversAvail = activeDrivers.length - driversBusy;
   const portalNew = portalOrders.filter((o) => o.status === "New Order").length;
   const portalInProgress = portalOrders.filter((o) => o.status === "In Progress").length;
   const portalCompleted = portalOrders.filter((o) => o.status === "Completed").length;
@@ -465,6 +493,98 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Manajemen Driver ── */}
+        <Card className="border-border">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Manajemen Driver</CardTitle>
+                {driversBusy > 0 && (
+                  <Badge className="bg-orange-100 text-orange-800 border border-orange-200 text-xs">
+                    {driversBusy} aktif
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => void refetchDrivers()}>
+                  <RefreshCw className="h-3 w-3" /> Refresh
+                </Button>
+                <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
+                  <Link href="/logistics/drivers">
+                    Kelola Driver <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+            <CardDescription>Status driver aktif dan pekerjaan yang sedang berjalan</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Summary chips */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Total Driver", value: dashDrivers.length, icon: <Users className="h-4 w-4 text-slate-500" />, color: "text-slate-900", bg: "bg-slate-50" },
+                { label: "Tersedia", value: driversAvail, icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />, color: "text-emerald-700", bg: "bg-emerald-50" },
+                { label: "Sedang Bertugas", value: driversBusy, icon: <CircleDot className="h-4 w-4 text-orange-500" />, color: "text-orange-700", bg: "bg-orange-50" },
+              ].map((s) => (
+                <div key={s.label} className={`rounded-xl border border-border p-4 ${s.bg}`}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    {s.icon}
+                    <p className="text-xs text-muted-foreground font-medium">{s.label}</p>
+                  </div>
+                  {driversLoading
+                    ? <Skeleton className="h-7 w-10 bg-muted" />
+                    : <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                  }
+                </div>
+              ))}
+            </div>
+
+            {/* Driver list */}
+            {driversLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full bg-muted" />)}
+              </div>
+            ) : activeDrivers.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Belum ada driver aktif</p>
+            ) : (
+              <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
+                {activeDrivers.map((d) => {
+                  const job = activeJobByDriver[d.id];
+                  return (
+                    <div key={d.id} className="px-4 py-3 flex flex-wrap md:flex-nowrap items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm truncate">{d.name}</span>
+                          {job ? (
+                            <Badge className="text-[10px] px-1.5 py-0 border bg-orange-100 text-orange-800 border-orange-200 shrink-0">
+                              Bertugas
+                            </Badge>
+                          ) : (
+                            <Badge className="text-[10px] px-1.5 py-0 border bg-emerald-100 text-emerald-800 border-emerald-200 shrink-0">
+                              Tersedia
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[d.vehicleType, d.vehiclePlate].filter(Boolean).join(" · ") || "Kendaraan belum diisi"}
+                          {d.phone ? ` · ${d.phone}` : ""}
+                        </p>
+                      </div>
+                      {job && (
+                        <div className="text-xs text-muted-foreground shrink-0 text-right">
+                          <p className="font-mono">{job.jobNumber}</p>
+                          <p className="truncate max-w-[160px]">{job.customerName ?? "—"}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
