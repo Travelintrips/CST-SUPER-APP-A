@@ -209,27 +209,60 @@ export function Footer() {
                     </div>
                   )}
 
-                  {/* Alamat lengkap kantor */}
-                  <div className="mt-3 ml-8 space-y-3 text-white/60">
+                  {/* Alamat dua kantor */}
+                  <div className="mt-3 ml-8 space-y-4">
+
+                    {/* Kantor Jakarta */}
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45 mb-1">
-                        Alamat Kantor
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45 mb-1.5">
+                        Kantor Jakarta
                       </p>
-                      <p className="text-xs leading-relaxed">
-                        Jln. Ternate No. 10<br />
-                        Jakarta, Indonesia 10150
-                      </p>
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-3.5 w-3.5 text-sky-400/70 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs leading-relaxed text-white/60">
+                            Jln. Ternate No. 10B/C<br />
+                            Jakarta, Indonesia 10150
+                          </p>
+                          <a
+                            href="https://www.google.com/maps?q=Jln+Ternate+No+10B/C+Jakarta+Indonesia+10150"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-medium text-sky-400/80 hover:text-sky-300 transition-colors duration-200"
+                          >
+                            Lihat di Maps ↗
+                          </a>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Kantor Tangerang */}
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45 mb-1">
-                        Sport Center
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45 mb-1.5">
+                        Kantor Tangerang
                       </p>
-                      <p className="text-xs leading-relaxed">
-                        Soekarno Hatta Jl. C3 No. 831 RT 001 RW 010<br />
-                        Belakang Masjid Nurul Barkah Pajang<br />
-                        Benda, Tangerang Kota, Banten 15126
-                      </p>
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-3.5 w-3.5 text-sky-400/70 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs leading-relaxed text-white/60">
+                            Sport Center Soekarno Hatta<br />
+                            Jl. C3 No. 831 RT 001 RW 010<br />
+                            Belakang Masjid Nurul Barkah<br />
+                            Pajang Benda, Tangerang Kota<br />
+                            Banten 15126
+                          </p>
+                          <a
+                            href="https://www.google.com/maps?q=Sport+Center+Soekarno+Hatta+Jl+C3+No+831+Pajang+Benda+Tangerang+Banten"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-medium text-sky-400/80 hover:text-sky-300 transition-colors duration-200"
+                          >
+                            Lihat di Maps ↗
+                          </a>
+                        </div>
+                      </div>
                     </div>
+
                   </div>
                 </li>
               )}
