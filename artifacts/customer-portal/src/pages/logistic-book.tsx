@@ -821,159 +821,40 @@ export default function BookPage() {
 
           <Separator />
 
-          {/* ── Group 2: Komoditi & Kargo ────────────────────────── */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <Ship className="w-4 h-4 text-accent" /> Komoditi & Kargo
-            </h3>
-            <div>
-              <Label className="text-xs">Commodity</Label>
-              <Input
-                placeholder="Elektronik, Tekstil, Mesin, dll."
-                value={f.commodity}
-                onChange={e => set("commodity", e.target.value)}
-                readOnly={!!fromProduct}
-                className={fromProduct ? "bg-amber-50 border-amber-200 text-amber-900 font-medium" : ""}
-              />
-              {fromProduct && (
-                <p className="text-xs text-amber-600 mt-0.5">Diisi otomatis dari produk yang dipilih</p>
-              )}
-            </div>
-            <div><Label className="text-xs">Cargo Description</Label><Textarea placeholder="Deskripsi kargo..." value={f.cargoDescription} onChange={e => set("cargoDescription", e.target.value)} rows={2} /></div>
-            <div><Label className="text-xs">Notes</Label><Textarea placeholder="Catatan tambahan..." value={f.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
-          </div>
-
-          <Separator />
-
-          {/* ── Group 3: Jenis Pembayaran ────────────────────────── */}
+          {/* ── Detail Pemesanan ────────────────────────── */}
           <div className="space-y-3">
-            <Label className="text-xs block font-semibold">Jenis Pembayaran <span className="text-muted-foreground font-normal">(opsional)</span></Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["transfer", "gateway"] as const).map((type) => {
-                const labels: Record<string, { title: string; desc: string }> = {
-                  transfer:  { title: "Transfer",         desc: "Bayar via bank transfer" },
-                  gateway:   { title: "Payment Gateway",  desc: "Bayar via gateway online" },
-                };
-                const selected = paymentType === type;
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => {
-                      setPaymentType(selected ? "" : type);
-                      setTransferTerm("");
-                      setPaymentTerm("");
-                      setDpNext("");
-                    }}
-                    className={`flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-3 text-center transition-all ${
-                      selected
-                        ? "border-accent bg-accent/10 text-accent"
-                        : "border-border bg-background text-foreground hover:border-accent/50"
-                    }`}
-                  >
-                    <span className="font-semibold text-xs leading-tight">{labels[type].title}</span>
-                    <span className="text-[10px] text-muted-foreground leading-tight">{labels[type].desc}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Transfer sub-terms */}
-            {paymentType === "transfer" && (
-              <div className="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
-                <p className="text-xs font-medium text-accent">Pilih Jenis Pembayaran Transfer</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["full", "termin", "dp"] as const).map((term) => {
-                    const termLabels: Record<string, { title: string; desc: string }> = {
-                      full:   { title: "Full Payment",    desc: "Bayar penuh" },
-                      termin: { title: "Termin",          desc: "Cicil berkala" },
-                      dp:     { title: "DP / Cash Advance", desc: "Uang muka" },
-                    };
-                    const sel = transferTerm === term;
-                    return (
-                      <button
-                        key={term}
-                        type="button"
-                        onClick={() => {
-                          setTransferTerm(sel ? "" : term);
-                          setPaymentTerm("");
-                          setDpNext("");
-                        }}
-                        className={`flex flex-col items-center gap-0.5 rounded-lg border-2 px-2 py-2.5 text-center transition-all ${
-                          sel
-                            ? "border-accent bg-accent text-white"
-                            : "border-border bg-white text-foreground hover:border-accent/50"
-                        }`}
-                      >
-                        <span className="font-semibold text-[11px] leading-tight">{termLabels[term].title}</span>
-                        <span className={`text-[10px] leading-tight ${sel ? "text-white/80" : "text-muted-foreground"}`}>{termLabels[term].desc}</span>
-                      </button>
-                    );
-                  })}
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4 text-accent" /> Detail Pemesanan
+            </h3>
+            <div className="space-y-2">
+              {cartItems.map((item) => (
+                <div key={item.cartId} className="rounded-lg border border-border bg-muted/30 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <Badge variant="outline" className="text-[10px] mb-1">{item.category}</Badge>
+                      <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
+                      <dl className="mt-1.5 space-y-0.5">
+                        {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
+                          <div key={label} className="flex gap-2 text-xs">
+                            <dt className="text-muted-foreground shrink-0 w-24">{label}</dt>
+                            <dd className="font-medium text-foreground">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                    <div className="text-right shrink-0">
+                      {item.subtotal > 0
+                        ? <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                        : <span className="text-amber-600 text-xs font-medium">Harga nego</span>}
+                    </div>
+                  </div>
                 </div>
-
-                {/* Termin jangka waktu */}
-                {transferTerm === "termin" && (
-                  <div className="pt-1 space-y-1.5">
-                    <p className="text-[11px] font-medium text-accent/80">Jangka Waktu Termin</p>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {(["net7", "net14", "net30", "net60"] as const).map((t) => {
-                        const tLabels: Record<string, string> = {
-                          net7: "Net 7 Hari", net14: "Net 14 Hari",
-                          net30: "Net 30 Hari", net60: "Net 60 Hari",
-                        };
-                        return (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => setPaymentTerm(paymentTerm === t ? "" : t)}
-                            className={`rounded-lg border-2 py-2 text-[11px] font-semibold transition-all text-center ${
-                              paymentTerm === t
-                                ? "border-accent bg-accent text-white"
-                                : "border-border bg-white text-foreground hover:border-accent/50"
-                            }`}
-                          >
-                            {tLabels[t]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* DP pelunasan berikutnya */}
-                {transferTerm === "dp" && (
-                  <div className="pt-1 space-y-1.5">
-                    <p className="text-[11px] font-medium text-accent/80">Pelunasan Berikutnya</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(["lunas-delivery", "lunas-net30", "lunas-net60", "cicil"] as const).map((opt) => {
-                        const dpLabels: Record<string, { title: string; desc: string }> = {
-                          "lunas-delivery": { title: "Setelah Pengiriman",  desc: "Sisa dibayar saat barang tiba" },
-                          "lunas-net30":    { title: "Net 30 Hari",         desc: "Sisa lunas maks. 30 hari" },
-                          "lunas-net60":    { title: "Net 60 Hari",         desc: "Sisa lunas maks. 60 hari" },
-                          "cicil":          { title: "Cicilan Bertahap",    desc: "Sisa dibayar secara cicil" },
-                        };
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => setDpNext(dpNext === opt ? "" : opt)}
-                            className={`flex flex-col gap-0.5 rounded-lg border-2 px-3 py-2.5 text-left transition-all ${
-                              dpNext === opt
-                                ? "border-accent bg-accent text-white"
-                                : "border-border bg-white text-foreground hover:border-accent/50"
-                            }`}
-                          >
-                            <span className="font-semibold text-[11px] leading-tight">{dpLabels[opt].title}</span>
-                            <span className={`text-[10px] leading-tight ${dpNext === opt ? "text-white/80" : "text-muted-foreground"}`}>{dpLabels[opt].desc}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+              ))}
+            </div>
+            <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 flex justify-between items-center">
+              <span className="font-semibold text-sm text-foreground">Total Estimasi</span>
+              <span className="font-bold text-accent text-base">{formatCurrency(grandTotal)}</span>
+            </div>
           </div>
         </div>
       );
