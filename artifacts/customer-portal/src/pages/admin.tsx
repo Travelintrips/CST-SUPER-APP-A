@@ -41,6 +41,84 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronDown } from "lucide-react";
+
+const SERVICE_TYPE_OPTIONS = [
+  "Import",
+  "Export",
+  "Domestic",
+  "Door to Door",
+  "Air Freight",
+  "Sea Freight",
+  "Trucking",
+  "Customs Clearance",
+  "Storage",
+  "Handling",
+];
+
+function ServiceTypeSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+}) {
+  const selected = value ? value.split(",").map((s) => s.trim()).filter(Boolean) : [];
+
+  function toggle(opt: string) {
+    const next = selected.includes(opt)
+      ? selected.filter((s) => s !== opt)
+      : [...selected, opt];
+    onChange(next.join(", "));
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full min-h-9 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent/40 focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <span className="flex flex-wrap gap-1 flex-1 text-left">
+            {selected.length === 0 ? (
+              <span className="text-muted-foreground">Semua jenis order</span>
+            ) : (
+              selected.map((s) => (
+                <Badge key={s} variant="secondary" className="text-[10px] px-1.5 py-0">{s}</Badge>
+              ))
+            )}
+          </span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-2" align="start">
+        <p className="text-xs text-muted-foreground px-2 pb-2">Pilih tipe layanan vendor ini</p>
+        <div className="space-y-1">
+          {SERVICE_TYPE_OPTIONS.map((opt) => (
+            <label key={opt} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+              <Checkbox
+                checked={selected.includes(opt)}
+                onCheckedChange={() => toggle(opt)}
+              />
+              {opt}
+            </label>
+          ))}
+        </div>
+        {selected.length > 0 && (
+          <button
+            type="button"
+            className="mt-2 w-full text-xs text-muted-foreground hover:text-destructive text-center py-1"
+            onClick={() => onChange("")}
+          >
+            Hapus semua pilihan
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function useVideoThumbnail(src: string | null) {
   const [thumb, setThumb] = useState<string | null>(null);
@@ -1092,7 +1170,10 @@ function DeliveryVendorsTab() {
                   </div>
                   <div className="col-span-2 space-y-1">
                     <Label className="text-xs">Tipe Layanan (untuk notifikasi order)</Label>
-                    <Input value={editData.serviceType ?? v.serviceType ?? ""} onChange={(e) => setEditData((d) => ({ ...d, serviceType: e.target.value || null }))} placeholder="Sea Freight, Air Freight, Trucking, dll. (kosong = semua)" />
+                    <ServiceTypeSelect
+                      value={editData.serviceType ?? v.serviceType ?? ""}
+                      onChange={(val) => setEditData((d) => ({ ...d, serviceType: val || null }))}
+                    />
                   </div>
                   <div className="col-span-2 space-y-1">
                     <Label className="text-xs">Catatan (opsional)</Label>
@@ -1189,8 +1270,11 @@ function DeliveryVendorsTab() {
               </div>
               <div className="col-span-2 space-y-1">
                 <Label>Tipe Layanan</Label>
-                <Input value={newServiceType} onChange={(e) => setNewServiceType(e.target.value)} placeholder="Sea Freight, Air Freight, Trucking, dll. (kosong = semua)" />
-                <p className="text-[11px] text-muted-foreground">Isi sesuai jenis order yang ditangani vendor ini. Kosongkan jika vendor menerima semua jenis.</p>
+                <ServiceTypeSelect
+                  value={newServiceType}
+                  onChange={setNewServiceType}
+                />
+                <p className="text-[11px] text-muted-foreground">Kosongkan jika vendor menerima semua jenis order.</p>
               </div>
             </div>
           </div>
