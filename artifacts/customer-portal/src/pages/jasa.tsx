@@ -294,7 +294,7 @@ export default function Jasa() {
                 <p className="font-bold text-foreground">Freight Forwarding</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {[t("jasa.importLabel"), t("jasa.exportLabel"), t("jasa.domesticLabel")].map((d) => (
-                    <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0" onClick={() => setLocation("/freight-forwarding/mode")} style={{cursor:"pointer"}}>{d}</Badge>
+                    <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0" onClick={() => setLocation("/freight-forwarding")} style={{cursor:"pointer"}}>{d}</Badge>
                   ))}
                   <span className="text-[10px] text-muted-foreground">×</span>
                   {[translateCategory("Laut", locale), translateCategory("Udara", locale)].map((m) => (
@@ -327,7 +327,7 @@ export default function Jasa() {
                 <p className="font-bold text-foreground">{t("jasa.customsTitle")}</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {["PIB/PEB", "Handling Clearance", "Undername"].map((s) => (
-                    <Badge key={s} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100" onClick={() => setLocation("/ppjk/layanan")} style={{cursor:"pointer"}}>{s}</Badge>
+                    <Badge key={s} className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100" onClick={() => setLocation("/pabean")} style={{cursor:"pointer"}}>{s}</Badge>
                   ))}
                   <span className="text-[10px] text-muted-foreground">×</span>
                   {[t("jasa.importLabel"), t("jasa.exportLabel")].map((d) => (
