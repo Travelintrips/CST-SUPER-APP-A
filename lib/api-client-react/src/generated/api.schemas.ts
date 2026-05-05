@@ -924,6 +924,7 @@ export type AccountingTaxKind =
 export const AccountingTaxKind = {
   sale: "sale",
   purchase: "purchase",
+  withholding: "withholding",
 } as const;
 
 export interface AccountingTax {
@@ -942,6 +943,7 @@ export type CreateTaxBodyKind =
 export const CreateTaxBodyKind = {
   sale: "sale",
   purchase: "purchase",
+  withholding: "withholding",
 } as const;
 
 export interface CreateTaxBody {
@@ -958,6 +960,7 @@ export type UpdateTaxBodyKind =
 export const UpdateTaxBodyKind = {
   sale: "sale",
   purchase: "purchase",
+  withholding: "withholding",
 } as const;
 
 export interface UpdateTaxBody {

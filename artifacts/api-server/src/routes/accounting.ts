@@ -170,8 +170,8 @@ router.post("/taxes", async (req, res) => {
   const { name, rate, kind, accountId, isActive } = req.body ?? {};
   if (!name || rate === undefined || !kind || !accountId)
     return res.status(400).json({ message: "name, rate, kind, accountId required" });
-  if (kind !== "sale" && kind !== "purchase")
-    return res.status(400).json({ message: "kind must be 'sale' or 'purchase'" });
+  if (!["sale", "purchase", "withholding"].includes(kind))
+    return res.status(400).json({ message: "kind must be 'sale', 'purchase', or 'withholding'" });
   const [created] = await db
     .insert(accountingTaxesTable)
     .values({ name, rate: String(rate), kind, accountId: Number(accountId), isActive: isActive ?? true })

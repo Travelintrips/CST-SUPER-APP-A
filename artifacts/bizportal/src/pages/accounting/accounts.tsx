@@ -13,6 +13,12 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -20,7 +26,7 @@ import {
   getListAccountsQueryKey, type Account,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown } from "lucide-react";
+import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
   asset: "Aset",
@@ -91,6 +97,7 @@ export default function AccountsPage() {
   const deleteMut = useDeleteAccount();
 
   const [open, setOpen] = useState(false);
+  const [parentPopoverOpen, setParentPopoverOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -217,23 +224,53 @@ export default function AccountsPage() {
                 </div>
                 <div>
                   <Label>Akun Induk (opsional)</Label>
-                  <Select
-                    value={form.parentId?.toString() ?? "none"}
-                    onValueChange={(v) => setForm({ ...form, parentId: v === "none" ? null : Number(v) })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="— Tidak ada (akun akar) —" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">— Tidak ada (akun akar) —</SelectItem>
-                      {accounts
-                        .filter((a) => a.id !== editing?.id)
-                        .sort((a, b) => a.code.localeCompare(b.code))
-                        .map((a) => (
-                          <SelectItem key={a.id} value={a.id.toString()}>
-                            {a.code} — {a.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={parentPopoverOpen} onOpenChange={setParentPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className="w-full justify-between font-normal"
+                      >
+                        {form.parentId
+                          ? (() => {
+                              const a = accounts.find((x) => x.id === form.parentId);
+                              return a ? `${a.code} — ${a.name}` : "— Tidak ada (akun akar) —";
+                            })()
+                          : "— Tidak ada (akun akar) —"}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[400px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Cari kode atau nama akun..." />
+                        <CommandList>
+                          <CommandEmpty>Akun tidak ditemukan</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="none"
+                              onSelect={() => { setForm({ ...form, parentId: null }); setParentPopoverOpen(false); }}
+                            >
+                              <Check className={`mr-2 h-4 w-4 ${!form.parentId ? "opacity-100" : "opacity-0"}`} />
+                              — Tidak ada (akun akar) —
+                            </CommandItem>
+                            {accounts
+                              .filter((a) => a.id !== editing?.id)
+                              .sort((a, b) => a.code.localeCompare(b.code))
+                              .map((a) => (
+                                <CommandItem
+                                  key={a.id}
+                                  value={`${a.code} ${a.name}`}
+                                  onSelect={() => { setForm({ ...form, parentId: a.id }); setParentPopoverOpen(false); }}
+                                >
+                                  <Check className={`mr-2 h-4 w-4 ${form.parentId === a.id ? "opacity-100" : "opacity-0"}`} />
+                                  {a.code} — {a.name}
+                                </CommandItem>
+                              ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" id="active" checked={form.isActive}

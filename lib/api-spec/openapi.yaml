@@ -4027,7 +4027,7 @@ components:
         rate: { type: number }
         kind:
           type: string
-          enum: [sale, purchase]
+          enum: [sale, purchase, withholding]
         accountId: { type: integer }
         isActive: { type: boolean }
         createdAt: { type: string }
@@ -4040,7 +4040,7 @@ components:
         rate: { type: number }
         kind:
           type: string
-          enum: [sale, purchase]
+          enum: [sale, purchase, withholding]
         accountId: { type: integer }
         isActive: { type: boolean }
       required: [name, rate, kind, accountId]
@@ -4052,7 +4052,7 @@ components:
         rate: { type: number }
         kind:
           type: string
-          enum: [sale, purchase]
+          enum: [sale, purchase, withholding]
         accountId: { type: integer }
         isActive: { type: boolean }
 

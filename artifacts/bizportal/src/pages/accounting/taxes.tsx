@@ -33,10 +33,10 @@ export default function TaxesPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AccountingTax | null>(null);
   const [form, setForm] = useState({
-    name: "", rate: 11, kind: "sale" as AccountingTax["kind"], accountId: 0, isActive: true,
+    name: "", rate: 0, kind: "sale" as AccountingTax["kind"], accountId: 0, isActive: true,
   });
 
-  const reset = () => { setEditing(null); setForm({ name: "", rate: 11, kind: "sale", accountId: 0, isActive: true }); };
+  const reset = () => { setEditing(null); setForm({ name: "", rate: 0, kind: "sale", accountId: 0, isActive: true }); };
 
   const startEdit = (t: AccountingTax) => {
     setEditing(t);
@@ -74,7 +74,7 @@ export default function TaxesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2"><Receipt className="h-6 w-6" />Pajak</h1>
-            <p className="text-sm text-muted-foreground">PPN keluaran (penjualan) & PPN masukan (pembelian)</p>
+            <p className="text-sm text-muted-foreground">PPN keluaran/masukan & PPh (Pajak Penghasilan)</p>
           </div>
           <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
             <DialogTrigger asChild><Button data-testid="button-add-tax"><Plus className="h-4 w-4 mr-2" />Tambah Pajak</Button></DialogTrigger>
@@ -88,8 +88,9 @@ export default function TaxesPage() {
                   <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v as AccountingTax["kind"] })}>
                     <SelectTrigger data-testid="select-tax-kind"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="sale">Penjualan (Output/Keluaran)</SelectItem>
-                      <SelectItem value="purchase">Pembelian (Input/Masukan)</SelectItem>
+                      <SelectItem value="sale">PPN Penjualan (Output/Keluaran)</SelectItem>
+                      <SelectItem value="purchase">PPN Pembelian (Input/Masukan)</SelectItem>
+                      <SelectItem value="withholding">PPh (Pajak Penghasilan)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -127,7 +128,7 @@ export default function TaxesPage() {
                 <TableRow key={t.id} data-testid={`row-tax-${t.id}`}>
                   <TableCell>{t.name}</TableCell>
                   <TableCell>{t.rate}%</TableCell>
-                  <TableCell><Badge variant="outline">{t.kind === "sale" ? "Keluaran" : "Masukan"}</Badge></TableCell>
+                  <TableCell><Badge variant="outline">{t.kind === "sale" ? "PPN Keluaran" : t.kind === "purchase" ? "PPN Masukan" : "PPh"}</Badge></TableCell>
                   <TableCell className="text-xs">{accLabel(t.accountId)}</TableCell>
                   <TableCell>{t.isActive ? <Badge>Aktif</Badge> : <Badge variant="secondary">Non-aktif</Badge>}</TableCell>
                   <TableCell className="text-right"><Button size="icon" variant="ghost" onClick={() => startEdit(t)} data-testid={`button-edit-${t.id}`}><Pencil className="h-4 w-4" /></Button></TableCell>

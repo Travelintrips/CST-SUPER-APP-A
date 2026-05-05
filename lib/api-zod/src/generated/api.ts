@@ -2304,7 +2304,7 @@ export const ListTaxesResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
   rate: zod.number(),
-  kind: zod.enum(["sale", "purchase"]),
+  kind: zod.enum(["sale", "purchase", "withholding"]),
   accountId: zod.number(),
   isActive: zod.boolean(),
   createdAt: zod.string(),
@@ -2317,7 +2317,7 @@ export const ListTaxesResponse = zod.array(ListTaxesResponseItem);
 export const CreateTaxBody = zod.object({
   name: zod.string(),
   rate: zod.number(),
-  kind: zod.enum(["sale", "purchase"]),
+  kind: zod.enum(["sale", "purchase", "withholding"]),
   accountId: zod.number(),
   isActive: zod.boolean().optional(),
 });
@@ -2332,7 +2332,7 @@ export const UpdateTaxParams = zod.object({
 export const UpdateTaxBody = zod.object({
   name: zod.string().optional(),
   rate: zod.number().optional(),
-  kind: zod.enum(["sale", "purchase"]).optional(),
+  kind: zod.enum(["sale", "purchase", "withholding"]).optional(),
   accountId: zod.number().optional(),
   isActive: zod.boolean().optional(),
 });
@@ -2341,7 +2341,7 @@ export const UpdateTaxResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   rate: zod.number(),
-  kind: zod.enum(["sale", "purchase"]),
+  kind: zod.enum(["sale", "purchase", "withholding"]),
   accountId: zod.number(),
   isActive: zod.boolean(),
   createdAt: zod.string(),
