@@ -45,6 +45,21 @@ const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: strin
 
 const DEFAULT_COLOR = { bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-700" };
 
+const CARD_ACCENT: Record<string, { overlay: string; hoverShadow: string; hoverBorder: string; iconBg: string }> = {
+  "Udara":              { overlay: "rgba(59,130,246,0.22)",  hoverShadow: "0 10px 36px rgba(59,130,246,0.18)",  hoverBorder: "rgba(59,130,246,0.28)",  iconBg: "linear-gradient(135deg,#EFF6FF,#DBEAFE)" },
+  "Laut":               { overlay: "rgba(67,56,202,0.22)",   hoverShadow: "0 10px 36px rgba(67,56,202,0.16)",   hoverBorder: "rgba(67,56,202,0.26)",   iconBg: "linear-gradient(135deg,#EEF2FF,#C7D2FE)" },
+  "Trucking":           { overlay: "rgba(71,85,105,0.24)",   hoverShadow: "0 10px 36px rgba(71,85,105,0.16)",   hoverBorder: "rgba(71,85,105,0.26)",   iconBg: "linear-gradient(135deg,#F1F5F9,#E2E8F0)" },
+  "Container":          { overlay: "rgba(109,40,217,0.20)",  hoverShadow: "0 10px 36px rgba(109,40,217,0.16)",  hoverBorder: "rgba(109,40,217,0.26)",  iconBg: "linear-gradient(135deg,#F5F3FF,#DDD6FE)" },
+  "Pabean":             { overlay: "rgba(194,65,12,0.22)",   hoverShadow: "0 10px 36px rgba(194,65,12,0.16)",   hoverBorder: "rgba(194,65,12,0.26)",   iconBg: "linear-gradient(135deg,#FFF7ED,#FED7AA)" },
+  "Handling":           { overlay: "rgba(126,34,206,0.20)",  hoverShadow: "0 10px 36px rgba(126,34,206,0.16)",  hoverBorder: "rgba(126,34,206,0.24)",  iconBg: "linear-gradient(135deg,#FAF5FF,#E9D5FF)" },
+  "Storage":            { overlay: "rgba(15,118,110,0.20)",  hoverShadow: "0 10px 36px rgba(15,118,110,0.16)",  hoverBorder: "rgba(15,118,110,0.24)",  iconBg: "linear-gradient(135deg,#F0FDFA,#CCFBF1)" },
+  "Document":           { overlay: "rgba(71,85,105,0.18)",   hoverShadow: "0 10px 36px rgba(71,85,105,0.14)",   hoverBorder: "rgba(71,85,105,0.22)",   iconBg: "linear-gradient(135deg,#F8FAFC,#E2E8F0)" },
+  "Additional":         { overlay: "rgba(190,24,93,0.20)",   hoverShadow: "0 10px 36px rgba(190,24,93,0.16)",   hoverBorder: "rgba(190,24,93,0.24)",   iconBg: "linear-gradient(135deg,#FDF2F8,#FBCFE8)" },
+  "Freight Forwarding": { overlay: "rgba(8,145,178,0.22)",   hoverShadow: "0 10px 36px rgba(8,145,178,0.18)",   hoverBorder: "rgba(8,145,178,0.28)",   iconBg: "linear-gradient(135deg,#ECFEFF,#CFFAFE)" },
+  "Lainnya":            { overlay: "rgba(75,85,99,0.18)",    hoverShadow: "0 10px 36px rgba(75,85,99,0.14)",    hoverBorder: "rgba(75,85,99,0.22)",    iconBg: "linear-gradient(135deg,#F9FAFB,#E5E7EB)" },
+};
+const DEFAULT_ACCENT = { overlay: "rgba(59,130,246,0.20)", hoverShadow: "0 10px 36px rgba(59,130,246,0.16)", hoverBorder: "rgba(59,130,246,0.26)", iconBg: "linear-gradient(135deg,#EFF6FF,#DBEAFE)" };
+
 const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 
 export default function Jasa() {
@@ -409,6 +424,7 @@ export default function Jasa() {
               const primaryCat = (service.categories ?? [])[0] ?? "";
               const Icon = ICON_BY_CATEGORY[primaryCat] ?? Package;
               const colors = COLOR_BY_CATEGORY[primaryCat] ?? DEFAULT_COLOR;
+              const accent = CARD_ACCENT[primaryCat] ?? DEFAULT_ACCENT;
               const imgUrl = resolveImageUrl(service.imageUrl);
               return (
                 <Link key={service.id} href={`/jasa/${service.id}`} className="block group">
@@ -420,8 +436,8 @@ export default function Jasa() {
                       boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
                     }}
                     onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 32px rgba(11,92,173,0.14)";
-                      (e.currentTarget as HTMLElement).style.borderColor = "rgba(11,92,173,0.30)";
+                      (e.currentTarget as HTMLElement).style.boxShadow = accent.hoverShadow;
+                      (e.currentTarget as HTMLElement).style.borderColor = accent.hoverBorder;
                     }}
                     onMouseLeave={(e) => {
                       (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.06)";
@@ -429,19 +445,33 @@ export default function Jasa() {
                     }}
                   >
                     {imgUrl ? (
-                      <div className="h-36 overflow-hidden">
+                      <div className="h-36 overflow-hidden relative">
                         <img
                           src={imgUrl}
                           alt={stripJasa(service.name)}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-400"
                         />
+                        {/* Subtle category-tinted gradient overlay on image */}
+                        <div
+                          aria-hidden="true"
+                          style={{
+                            position: "absolute", inset: 0, pointerEvents: "none",
+                            background: `linear-gradient(to bottom, transparent 40%, ${accent.overlay} 100%)`,
+                          }}
+                        />
                       </div>
                     ) : (
                       <div
-                        className={`h-28 flex items-center justify-center ${colors.bg}`}
-                        style={{ borderBottom: "1px solid rgba(0,0,0,0.04)" }}
+                        style={{
+                          height: "112px",
+                          background: accent.iconBg,
+                          borderBottom: "1px solid rgba(0,0,0,0.05)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
                       >
-                        <Icon className={`h-11 w-11 ${colors.text} opacity-50`} />
+                        <Icon className={`h-11 w-11 ${colors.text} opacity-55`} />
                       </div>
                     )}
 
