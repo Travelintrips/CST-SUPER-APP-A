@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { getAuthHeaders, getAuthToken, isAuthenticated } from "@/lib/auth";
-import { useGetPortalMe } from "@workspace/api-client-react";
+import { useGetPortalMe, useCreateLogisticOrder } from "@workspace/api-client-react";
 import { useEditMode } from "@/contexts/EditModeContext";
 import { resolveImageUrl } from "@/lib/utils";
 import {
@@ -243,6 +243,7 @@ export default function FreightForwarding() {
     query: { queryKey: ["portalMe", token], enabled: !!token },
     request: { headers },
   });
+  const createOrder = useCreateLogisticOrder();
 
   useEffect(() => {
     if (!portalUser) return;
@@ -340,7 +341,7 @@ export default function FreightForwarding() {
       return;
     }
     setSubmitting(true);
-    try {
+    {
       const seaTypeLabel = mode === "Sea" && seaType ? ` (${seaType})` : "";
       const serviceLabel = `Freight Forwarding — ${direction} ${modeLabel(mode!)}${seaTypeLabel} ${VARIANT_LABELS[variant!]}`;
       const docsList = [
@@ -388,56 +389,39 @@ export default function FreightForwarding() {
       ].filter(Boolean).join("\n\n");
 
       const itemPrice = estimasiTotal > 0 ? estimasiTotal : (parseFloat(freightPrice) || 0);
-      const body = {
-        notes: fullNotes,
-        items: [
-          {
-            name: serviceLabel,
-            quantity: 1,
-            unitPrice: itemPrice,
-          },
-        ],
-      };
 
-      const res = await fetch("/api/portal/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { message?: string };
-        throw new Error(err.message ?? "Terjadi kesalahan");
-      }
-
-      const responseData = await res.json() as { docNumber: string };
-      localStorage.setItem("last_order", JSON.stringify({
-        orderNumber: responseData.docNumber,
+      createOrder.mutate({ data: {
         companyName: companyName || "—",
         customerName,
         email: customerEmail,
+        phone: customerPhone,
         shipmentType: serviceLabel,
         origin: senderName || senderAddress || "—",
         destination: receiverName || receiverAddress || "—",
         commodity: commodity || null,
-        cargoDescription: null,
-        items: [{
-          id: 1,
-          category: "Freight Forwarding",
-          serviceName: serviceLabel,
-          subtotal: itemPrice,
-        }],
+        notes: fullNotes || null,
         subtotal: itemPrice,
         tax: 0,
         grandTotal: itemPrice,
-      }));
-
-      toast({ title: "Pesanan freight forwarding berhasil dikirim!" });
-      setLocation("/logistic-order-success");
-    } catch (err) {
-      toast({ title: "Gagal mengirim pesanan", description: String(err), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
+        items: [{
+          category: "Freight Forwarding",
+          serviceName: serviceLabel,
+          calculatorType: "manual",
+          inputData: {},
+          calculationResult: { unitPrice: itemPrice },
+          subtotal: itemPrice,
+        }],
+      }}, {
+        onSuccess: (data) => {
+          localStorage.setItem("last_order", JSON.stringify(data));
+          toast({ title: "Pesanan freight forwarding berhasil dikirim!" });
+          setLocation("/logistic-order-success");
+        },
+        onError: (err) => {
+          toast({ title: "Gagal mengirim pesanan", description: String(err), variant: "destructive" });
+        },
+        onSettled: () => setSubmitting(false),
+      });
     }
   }
 

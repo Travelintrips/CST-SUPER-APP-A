@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { getAuthHeaders, isAuthenticated } from "@/lib/auth";
-import { useGetPortalMe } from "@workspace/api-client-react";
+import { useGetPortalMe, useCreateLogisticOrder } from "@workspace/api-client-react";
 import { useEditMode } from "@/contexts/EditModeContext";
 import { resolveImageUrl } from "@/lib/utils";
 import {
@@ -247,6 +247,7 @@ export default function Pabean() {
   const { data: portalUser } = useGetPortalMe({
     query: { queryKey: ["portalMe"], enabled: isAuthenticated() },
   });
+  const createOrder = useCreateLogisticOrder();
 
   useEffect(() => {
     if (portalUser) {
@@ -308,7 +309,7 @@ export default function Pabean() {
       return;
     }
     setSubmitting(true);
-    try {
+    {
       const svcLabels = selectedServices
         .map((s) => SERVICE_OPTIONS.find((o) => o.key === s)?.title ?? s)
         .join(" + ");
@@ -380,48 +381,37 @@ export default function Pabean() {
       }];
       const tot = estimatedTotal();
 
-      const res = await fetch("/api/portal/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({
-          notes: fullNotes,
-          items: finalItems,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { message?: string };
-        throw new Error(err.message ?? "Terjadi kesalahan");
-      }
-
-      const responseData = await res.json() as { docNumber: string };
-      localStorage.setItem("last_order", JSON.stringify({
-        orderNumber: responseData.docNumber,
+      createOrder.mutate({ data: {
         companyName: companyName || "—",
         customerName,
         email: customerEmail,
+        phone: customerPhone,
         shipmentType: "Pengurusan Pabean / PPJK",
         origin: direction || "—",
         destination: "—",
-        commodity: null,
-        cargoDescription: null,
-        items: finalItems.map((it, i) => ({
-          id: i + 1,
-          category: "Pabean & PPJK",
-          serviceName: it.name,
-          subtotal: it.unitPrice * it.quantity,
-        })),
+        notes: fullNotes || null,
         subtotal: tot,
         tax: 0,
         grandTotal: tot,
-      }));
-
-      toast({ title: "Permohonan PPJK berhasil dikirim! Tim kami akan segera menghubungi Anda." });
-      setLocation("/logistic-order-success");
-    } catch (err) {
-      toast({ title: "Gagal mengirim permohonan", description: String(err), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
+        items: finalItems.map((it) => ({
+          category: "Pabean & PPJK",
+          serviceName: it.name,
+          calculatorType: "manual",
+          inputData: {},
+          calculationResult: { unitPrice: it.unitPrice, quantity: it.quantity },
+          subtotal: it.unitPrice * it.quantity,
+        })),
+      }}, {
+        onSuccess: (data) => {
+          localStorage.setItem("last_order", JSON.stringify(data));
+          toast({ title: "Permohonan PPJK berhasil dikirim! Tim kami akan segera menghubungi Anda." });
+          setLocation("/logistic-order-success");
+        },
+        onError: (err) => {
+          toast({ title: "Gagal mengirim permohonan", description: String(err), variant: "destructive" });
+        },
+        onSettled: () => setSubmitting(false),
+      });
     }
   }
 
