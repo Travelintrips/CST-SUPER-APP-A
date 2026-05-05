@@ -936,6 +936,9 @@ type DeliveryVendor = {
   note: string | null;
   isActive: boolean;
   sortOrder: number;
+  phone: string | null;
+  email: string | null;
+  serviceType: string | null;
 };
 
 function DeliveryVendorsTab() {
@@ -949,6 +952,9 @@ function DeliveryVendorsTab() {
   const [newEta, setNewEta] = useState("2-3 hari");
   const [newFee, setNewFee] = useState("");
   const [newNote, setNewNote] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newServiceType, setNewServiceType] = useState("");
   const [editId, setEditId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<DeliveryVendor>>({});
   const [saving, setSaving] = useState(false);
@@ -979,10 +985,14 @@ function DeliveryVendorsTab() {
         eta: newEta.trim() || "2-3 hari",
         fee: parseFloat(newFee) || 0,
         note: newNote.trim() || null,
+        phone: newPhone.trim() || null,
+        email: newEmail.trim() || null,
+        serviceType: newServiceType.trim() || null,
       });
       setVendors((prev) => [...prev, created]);
       setShowAdd(false);
       setNewName(""); setNewLogo("📦"); setNewEta("2-3 hari"); setNewFee(""); setNewNote("");
+      setNewPhone(""); setNewEmail(""); setNewServiceType("");
       toast({ title: "Kurir berhasil ditambahkan" });
     } catch (err) {
       toast({ title: "Gagal menambahkan kurir", description: String(err), variant: "destructive" });
@@ -1072,6 +1082,18 @@ function DeliveryVendorsTab() {
                     <Label className="text-xs">Ongkir (0 = Nego)</Label>
                     <Input type="number" value={editData.fee ?? v.fee} onChange={(e) => setEditData((d) => ({ ...d, fee: parseFloat(e.target.value) || 0 }))} min="0" />
                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">No. WhatsApp Vendor</Label>
+                    <Input value={editData.phone ?? v.phone ?? ""} onChange={(e) => setEditData((d) => ({ ...d, phone: e.target.value || null }))} placeholder="628xxxxxxxxxx" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Email Vendor</Label>
+                    <Input type="email" value={editData.email ?? v.email ?? ""} onChange={(e) => setEditData((d) => ({ ...d, email: e.target.value || null }))} placeholder="vendor@email.com" />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label className="text-xs">Tipe Layanan (untuk notifikasi order)</Label>
+                    <Input value={editData.serviceType ?? v.serviceType ?? ""} onChange={(e) => setEditData((d) => ({ ...d, serviceType: e.target.value || null }))} placeholder="Sea Freight, Air Freight, Trucking, dll. (kosong = semua)" />
+                  </div>
                   <div className="col-span-2 space-y-1">
                     <Label className="text-xs">Catatan (opsional)</Label>
                     <Input value={editData.note ?? v.note ?? ""} onChange={(e) => setEditData((d) => ({ ...d, note: e.target.value || null }))} placeholder="Harga nego, dll." />
@@ -1092,11 +1114,14 @@ function DeliveryVendorsTab() {
                 <span className="text-2xl shrink-0">{v.logo}</span>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm">{v.name}</p>
-                  <div className="flex items-center gap-3 mt-0.5">
+                  <div className="flex flex-wrap items-center gap-3 mt-0.5">
                     <span className="text-xs text-muted-foreground">⏱ {v.eta}</span>
                     <span className="text-xs font-medium text-primary">
                       {v.fee > 0 ? new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v.fee) : v.note ?? "Nego"}
                     </span>
+                    {v.serviceType && <Badge variant="outline" className="text-[10px] px-1.5">{v.serviceType}</Badge>}
+                    {v.phone && <span className="text-xs text-muted-foreground">📱 {v.phone}</span>}
+                    {v.email && <span className="text-xs text-muted-foreground">✉ {v.email}</span>}
                     {!v.isActive && <Badge variant="secondary" className="text-[10px] px-1">Nonaktif</Badge>}
                   </div>
                 </div>
@@ -1136,7 +1161,7 @@ function DeliveryVendorsTab() {
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 space-y-1">
                 <Label>Nama Vendor *</Label>
-                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="JNE REG" />
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="PT. Vendor Logistics" />
               </div>
               <div className="space-y-1">
                 <Label>Logo/Emoji</Label>
@@ -1148,11 +1173,24 @@ function DeliveryVendorsTab() {
               </div>
               <div className="space-y-1">
                 <Label>Ongkir (Rp, 0 = Nego)</Label>
-                <Input type="number" value={newFee} onChange={(e) => setNewFee(e.target.value)} placeholder="15000" min="0" />
+                <Input type="number" value={newFee} onChange={(e) => setNewFee(e.target.value)} placeholder="0" min="0" />
               </div>
               <div className="space-y-1">
                 <Label>Catatan</Label>
                 <Input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="Harga nego, dll." />
+              </div>
+              <div className="space-y-1">
+                <Label>No. WhatsApp</Label>
+                <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="628xxxxxxxxxx" />
+              </div>
+              <div className="space-y-1">
+                <Label>Email</Label>
+                <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="vendor@email.com" />
+              </div>
+              <div className="col-span-2 space-y-1">
+                <Label>Tipe Layanan</Label>
+                <Input value={newServiceType} onChange={(e) => setNewServiceType(e.target.value)} placeholder="Sea Freight, Air Freight, Trucking, dll. (kosong = semua)" />
+                <p className="text-[11px] text-muted-foreground">Isi sesuai jenis order yang ditangani vendor ini. Kosongkan jika vendor menerima semua jenis.</p>
               </div>
             </div>
           </div>

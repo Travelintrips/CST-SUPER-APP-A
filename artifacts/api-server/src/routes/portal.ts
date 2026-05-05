@@ -864,6 +864,9 @@ router.get("/delivery-vendors", async (_req, res) => {
     note: v.note,
     isActive: v.isActive,
     sortOrder: Number(v.sortOrder),
+    phone: v.phone ?? null,
+    email: v.email ?? null,
+    serviceType: v.serviceType ?? null,
   })));
 });
 
@@ -883,12 +886,15 @@ router.get("/admin/delivery-vendors", requirePortalAdmin, async (_req, res) => {
     note: v.note,
     isActive: v.isActive,
     sortOrder: Number(v.sortOrder),
+    phone: v.phone ?? null,
+    email: v.email ?? null,
+    serviceType: v.serviceType ?? null,
   })));
 });
 
 // POST /api/portal/admin/delivery-vendors — create vendor
 router.post("/admin/delivery-vendors", requirePortalAdmin, async (req, res) => {
-  const { name, logo, eta, fee, note } = req.body ?? {};
+  const { name, logo, eta, fee, note, phone, email, serviceType } = req.body ?? {};
   if (!name || typeof name !== "string" || !name.trim())
     return res.status(400).json({ message: "Nama vendor harus diisi" });
   const [maxRow] = await db
@@ -903,15 +909,25 @@ router.post("/admin/delivery-vendors", requirePortalAdmin, async (req, res) => {
     note: note ? String(note).trim() : null,
     isActive: true,
     sortOrder: String(nextSort),
+    phone: phone ? String(phone).trim() : null,
+    email: email ? String(email).trim() : null,
+    serviceType: serviceType ? String(serviceType).trim() : null,
   }).returning();
-  return res.status(201).json({ ...created, fee: Number(created.fee), sortOrder: Number(created.sortOrder) });
+  return res.status(201).json({
+    ...created,
+    fee: Number(created.fee),
+    sortOrder: Number(created.sortOrder),
+    phone: created.phone ?? null,
+    email: created.email ?? null,
+    serviceType: created.serviceType ?? null,
+  });
 });
 
 // PUT /api/portal/admin/delivery-vendors/:id — update vendor
 router.put("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, logo, eta, fee, note, isActive, sortOrder } = req.body ?? {};
+  const { name, logo, eta, fee, note, isActive, sortOrder, phone, email, serviceType } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name).trim();
   if (logo !== undefined) updates.logo = String(logo).trim();
@@ -920,11 +936,21 @@ router.put("/admin/delivery-vendors/:id", requirePortalAdmin, async (req, res) =
   if (note !== undefined) updates.note = note ? String(note).trim() : null;
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
   if (sortOrder !== undefined) updates.sortOrder = String(parseInt(String(sortOrder)) || 0);
+  if (phone !== undefined) updates.phone = phone ? String(phone).trim() : null;
+  if (email !== undefined) updates.email = email ? String(email).trim() : null;
+  if (serviceType !== undefined) updates.serviceType = serviceType ? String(serviceType).trim() : null;
   if (Object.keys(updates).length === 0)
     return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(deliveryVendorsTable).set(updates).where(eq(deliveryVendorsTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Vendor tidak ditemukan" });
-  return res.json({ ...updated, fee: Number(updated.fee), sortOrder: Number(updated.sortOrder) });
+  return res.json({
+    ...updated,
+    fee: Number(updated.fee),
+    sortOrder: Number(updated.sortOrder),
+    phone: updated.phone ?? null,
+    email: updated.email ?? null,
+    serviceType: updated.serviceType ?? null,
+  });
 });
 
 // DELETE /api/portal/admin/delivery-vendors/:id — delete vendor
