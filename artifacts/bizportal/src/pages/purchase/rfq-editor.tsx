@@ -13,7 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -311,18 +313,18 @@ export default function PurchaseDocumentEditorPage() {
   };
 
   const handleSaveNewVendor = async () => {
-    if (!addVendorForm.name.trim() || !addVendorForm.contactEmail.trim()) {
-      toast({ title: "Nama dan email vendor wajib diisi", variant: "destructive" });
+    if (!addVendorForm.name.trim()) {
+      toast({ title: "Nama vendor wajib diisi", variant: "destructive" });
       return;
     }
     try {
       const created: Supplier = await createVendorMut.mutateAsync({
         data: {
           name: addVendorForm.name.trim(),
-          country: addVendorForm.country.trim() || "ID",
-          contactEmail: addVendorForm.contactEmail.trim(),
-          phone: addVendorForm.phone.trim() || undefined,
-          address: addVendorForm.address.trim() || undefined,
+          country: addVendorForm.country.trim() || null,
+          contactEmail: addVendorForm.contactEmail.trim() || null,
+          phone: addVendorForm.phone.trim() || null,
+          address: addVendorForm.address.trim() || null,
           defaultPurchaseTaxId: addVendorForm.defaultPurchaseTaxId ?? undefined,
         },
       });
@@ -574,9 +576,34 @@ export default function PurchaseDocumentEditorPage() {
                 <SelectTrigger data-testid="select-vendor"><SelectValue placeholder="Pilih vendor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Bebas (isi nama manual) —</SelectItem>
-                  {(vendors ?? []).map((v) => (
-                    <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>
-                  ))}
+                  {(() => {
+                    const all = vendors ?? [];
+                    const purchaseVendors = all.filter((v) => !v.eta && !v.serviceType);
+                    const courierVendors = all.filter((v) => v.eta || v.serviceType);
+                    return (
+                      <>
+                        {purchaseVendors.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-xs text-muted-foreground">Supplier Pembelian</SelectLabel>
+                            {purchaseVendors.map((v) => (
+                              <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                        {courierVendors.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-xs text-muted-foreground">Kurir / Vendor Layanan</SelectLabel>
+                            {courierVendors.map((v) => (
+                              <SelectItem key={v.id} value={String(v.id)}>
+                                {v.logo && <span className="mr-1">{v.logo}</span>}{v.name}
+                                {v.eta && <span className="ml-1 text-xs text-muted-foreground">({v.eta})</span>}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                      </>
+                    );
+                  })()}
                 </SelectContent>
               </Select>
             </div>
@@ -913,7 +940,7 @@ export default function PurchaseDocumentEditorPage() {
               <Input id="av-name" autoComplete="off" value={addVendorForm.name} onChange={(e) => setAddVendorForm((f) => ({ ...f, name: e.target.value }))} data-testid="input-new-vendor-name" />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="av-email">Email Kontak <span className="text-destructive">*</span></Label>
+              <Label htmlFor="av-email">Email Kontak</Label>
               <Input id="av-email" type="email" value={addVendorForm.contactEmail} onChange={(e) => setAddVendorForm((f) => ({ ...f, contactEmail: e.target.value }))} data-testid="input-new-vendor-email" />
             </div>
             <div className="grid gap-1.5">
