@@ -46,7 +46,7 @@ export function useCart() {
   }
 
   const hasFreightService = items.some((i) =>
-    ["air_freight", "sea_fcl", "sea_lcl"].includes(i.calculatorType)
+    ["air_freight", "sea_fcl", "sea_lcl", "trucking"].includes(i.calculatorType)
   );
   const taxRate = hasFreightService ? 0.011 : 0.11;
   const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
