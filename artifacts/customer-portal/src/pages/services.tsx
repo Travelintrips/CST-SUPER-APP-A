@@ -6,6 +6,7 @@ import { Package, Search, ShoppingCart } from "lucide-react";
 import { resolveImageUrl } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useCart } from "@/lib/cart";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
@@ -19,6 +20,11 @@ export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const { addItem, items } = useCart();
   const { t, locale } = useLanguage();
+  const [, navigate] = useLocation();
+
+  function isTrucking(service: { categories?: string[] }) {
+    return service.categories?.includes("Trucking");
+  }
 
   const { data: servicesData, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServices"] }
@@ -266,19 +272,29 @@ export default function Services() {
                       <span className="font-semibold text-amber-600 text-sm">{t("services.negotiable")}</span>
                     )}
                   </div>
-                  <Button
-                    className="w-full gap-2"
-                    variant={isInCart(service.id) ? "outline" : "default"}
-                    onClick={() => addItem({
-                      productId: service.id,
-                      name: stripJasa(service.name),
-                      unitPrice: service.price,
-                      itemType: "jasa",
-                    })}
-                  >
-                    <ShoppingCart className="h-4 w-4" />
-                    {isInCart(service.id) ? t("services.inCart") : t("services.addToCart")}
-                  </Button>
+                  {isTrucking(service) ? (
+                    <Button
+                      className="w-full gap-2"
+                      onClick={() => navigate(`/jasa/${service.id}`)}
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      {t("services.bookNow") ?? "Pesan Sekarang"}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full gap-2"
+                      variant={isInCart(service.id) ? "outline" : "default"}
+                      onClick={() => addItem({
+                        productId: service.id,
+                        name: stripJasa(service.name),
+                        unitPrice: service.price,
+                        itemType: "jasa",
+                      })}
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      {isInCart(service.id) ? t("services.inCart") : t("services.addToCart")}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
