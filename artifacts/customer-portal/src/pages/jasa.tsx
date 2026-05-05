@@ -263,25 +263,37 @@ export default function Jasa() {
 
           {/* Freight Forwarding */}
           <div
-            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5"
+            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5 jasa-ff-card"
             style={{
-              background: "linear-gradient(115deg, #EFF6FF 0%, #DBEAFE 55%, #E0F2FE 100%)",
+              background: [
+                "radial-gradient(ellipse at 7% 50%, rgba(59,130,246,0.13) 0%, transparent 52%)",
+                "repeating-linear-gradient(-52deg, transparent 0px, transparent 26px, rgba(96,165,250,0.065) 26px, rgba(96,165,250,0.065) 27px)",
+                "linear-gradient(130deg, #EBF5FF 0%, #DBEAFE 50%, #BAE6FD 82%, #DDFAFF 100%)",
+              ].join(", "),
               border: "1.5px solid rgba(59,130,246,0.22)",
-              boxShadow: "0 4px 24px rgba(59,130,246,0.08)",
+              boxShadow: "0 6px 28px rgba(59,130,246,0.11), 0 1px 4px rgba(59,130,246,0.06), inset 0 1px 0 rgba(255,255,255,0.88)",
             }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(59,130,246,0.18), 0 2px 8px rgba(59,130,246,0.08), inset 0 1px 0 rgba(255,255,255,0.88)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(59,130,246,0.11), 0 1px 4px rgba(59,130,246,0.06), inset 0 1px 0 rgba(255,255,255,0.88)"; }}
           >
             <div className="flex items-start gap-4 flex-1 min-w-0">
               {/* Icon cluster */}
               <div className="flex gap-2 shrink-0">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(37,99,235,0.12)" }}
+                  style={{
+                    background: "rgba(37,99,235,0.13)",
+                    boxShadow: "0 0 0 6px rgba(37,99,235,0.06), 0 2px 8px rgba(37,99,235,0.16)",
+                  }}
                 >
                   <Ship className="h-5 w-5 text-blue-700" />
                 </div>
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(14,165,233,0.12)" }}
+                  style={{
+                    background: "rgba(14,165,233,0.13)",
+                    boxShadow: "0 0 0 6px rgba(14,165,233,0.06), 0 2px 8px rgba(14,165,233,0.16)",
+                  }}
                 >
                   <Plane className="h-5 w-5 text-sky-600" />
                 </div>
@@ -319,22 +331,34 @@ export default function Jasa() {
           <div
             className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5"
             style={{
-              background: "linear-gradient(115deg, #FFF7ED 0%, #FFEDD5 55%, #FEF9C3 100%)",
-              border: "1.5px solid rgba(234,88,12,0.20)",
-              boxShadow: "0 4px 24px rgba(234,88,12,0.06)",
+              background: [
+                "radial-gradient(ellipse at 50% 44%, rgba(255,255,255,0.64) 0%, transparent 56%)",
+                `url("data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='2' cy='2' r='1.2' fill='%23D97706' fill-opacity='0.11'/%3E%3C/svg%3E")`,
+                "linear-gradient(130deg, #FFFBEB 0%, #FEF3C7 40%, #FFEDD5 78%, #FFF7EE 100%)",
+              ].join(", "),
+              border: "1.5px solid rgba(217,119,6,0.22)",
+              boxShadow: "0 6px 28px rgba(217,119,6,0.10), 0 1px 4px rgba(217,119,6,0.05), inset 0 1px 0 rgba(255,255,255,0.95)",
             }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(217,119,6,0.17), 0 2px 8px rgba(217,119,6,0.07), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(217,119,6,0.10), 0 1px 4px rgba(217,119,6,0.05), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
           >
             <div className="flex items-start gap-4 flex-1 min-w-0">
               <div className="flex gap-2 shrink-0">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(234,88,12,0.12)" }}
+                  style={{
+                    background: "rgba(234,88,12,0.13)",
+                    boxShadow: "0 0 0 6px rgba(234,88,12,0.06), 0 2px 8px rgba(234,88,12,0.16)",
+                  }}
                 >
                   <FileCheck className="h-5 w-5 text-orange-700" />
                 </div>
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(217,119,6,0.12)" }}
+                  style={{
+                    background: "rgba(217,119,6,0.13)",
+                    boxShadow: "0 0 0 6px rgba(217,119,6,0.06), 0 2px 8px rgba(217,119,6,0.16)",
+                  }}
                 >
                   <Scale className="h-5 w-5 text-amber-700" />
                 </div>
