@@ -2,7 +2,7 @@ import { useListPortalServices } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Package, Search, ShoppingCart } from "lucide-react";
+import { Search, ShoppingCart } from "lucide-react";
 import { resolveImageUrl } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
@@ -246,7 +246,7 @@ export default function Services() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                      <Package className="h-12 w-12 text-gray-300" />
+                      <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-12 w-auto object-contain opacity-25" />
                     </div>
                   )}
                   <div className="absolute top-3 left-3 flex flex-wrap gap-2">
@@ -301,7 +301,7 @@ export default function Services() {
           </div>
         ) : (
           <div className="text-center py-24 bg-white rounded-xl border border-dashed border-border">
-            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+            <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-12 w-auto mx-auto mb-4 object-contain opacity-35" />
             <h3 className="text-xl font-medium mb-2">{t("services.noServices")}</h3>
             <p className="text-muted-foreground">
               {searchQuery ? t("services.tryOther") : t("services.noResults")}

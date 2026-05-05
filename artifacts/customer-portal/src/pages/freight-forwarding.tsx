@@ -12,7 +12,7 @@ import { useEditMode } from "@/contexts/EditModeContext";
 import { resolveImageUrl } from "@/lib/utils";
 import {
   Ship, Plane, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft,
-  Upload, FileText, AlertTriangle, Check, Loader2, Package,
+  Upload, FileText, AlertTriangle, Check, Loader2,
   MapPin, User, Weight, LayoutGrid, ImagePlus,
 } from "lucide-react";
 
@@ -443,9 +443,9 @@ export default function FreightForwarding() {
 
   /* ── STEP 1: Direction ─────────────────────────────────────────── */
   const DIRECTIONS: { label: Direction; icon: string; desc: string; color: string }[] = [
-    { label: "Impor", icon: "📥", desc: "Barang masuk ke Indonesia dari luar negeri", color: "border-blue-300 bg-blue-50 text-blue-800" },
-    { label: "Ekspor", icon: "📤", desc: "Barang keluar dari Indonesia ke luar negeri", color: "border-emerald-300 bg-emerald-50 text-emerald-800" },
-    { label: "Domestic", icon: "🗺️", desc: "Pengiriman kargo antar kota dalam Indonesia", color: "border-amber-300 bg-amber-50 text-amber-800" },
+    { label: "Impor",    icon: "📥", desc: "Barang masuk ke Indonesia dari luar negeri",   color: "border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800" },
+    { label: "Ekspor",   icon: "📤", desc: "Barang keluar dari Indonesia ke luar negeri",   color: "border-emerald-400 bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-800" },
+    { label: "Domestic", icon: "🗺️", desc: "Pengiriman kargo antar kota dalam Indonesia", color: "border-amber-400 bg-gradient-to-br from-amber-50 to-amber-100 text-amber-800" },
   ];
 
   /* ── STEP 2: Mode ─────────────────────────────────────────────── */
@@ -465,43 +465,64 @@ export default function FreightForwarding() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen" style={{ background: "linear-gradient(160deg,#F0F4F9 0%,#F8FAFC 100%)" }}>
       {/* Navbar */}
-      <nav className="border-b border-border bg-card sticky top-0 z-50">
+      <nav className="border-b border-slate-200/80 sticky top-0 z-50" style={{ background: "rgba(255,255,255,0.97)", backdropFilter: "blur(10px)" }}>
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <button
             onClick={() => { if (step === 1) setLocation("/jasa"); else setStep((s) => (s - 1) as typeof step); }}
-            className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary transition-colors"
+            className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-[#0B5CAD] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             {step === 1 ? "Kembali ke Layanan" : "Kembali"}
           </button>
           <div className="flex-1" />
-          <Badge variant="outline" className="text-xs gap-1">
-            <Package className="h-3 w-3" /> Freight Forwarding
+          <Badge variant="outline" className="text-xs gap-1.5 border-slate-200 text-slate-600">
+            <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="" className="h-3 w-auto object-contain" /> Freight Forwarding
           </Badge>
         </div>
       </nav>
 
       {/* Stepper */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-3xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-1">
+      <div className="border-b border-slate-200/70" style={{ background: "rgba(255,255,255,0.97)", backdropFilter: "blur(8px)" }}>
+        <div className="max-w-3xl mx-auto px-4 py-4">
+          <div className="flex items-center">
             {STEP_LABELS.map((label, idx) => {
               const s = idx + 1;
               const done = step > s;
               const active = step === s;
               return (
-                <div key={idx} className="flex items-center">
-                  <div className={`flex items-center gap-1.5 ${active || done ? "opacity-100" : "opacity-35"}`}>
-                    <div className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${
-                      done ? "bg-emerald-500 text-white" : active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    }`}>
-                      {done ? <Check className="w-3 h-3" /> : s}
+                <div key={idx} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="flex items-center justify-center rounded-full font-bold shrink-0 transition-all duration-300"
+                      style={{
+                        width: "28px", height: "28px", fontSize: "12px",
+                        ...(done
+                          ? { background: "#10B981", color: "white", boxShadow: "0 2px 8px rgba(16,185,129,0.35)" }
+                          : active
+                          ? { background: "#0B5CAD", color: "white", boxShadow: "0 2px 10px rgba(11,92,173,0.40)" }
+                          : { background: "#F1F5F9", color: "#94A3B8", border: "1.5px solid #E2E8F0" }),
+                      }}
+                    >
+                      {done ? <Check className="w-3.5 h-3.5" /> : s}
                     </div>
-                    <span className={`text-xs hidden sm:block ${active ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{label}</span>
+                    <span
+                      className="text-xs hidden sm:block transition-colors duration-200"
+                      style={{
+                        color: active ? "#0F172A" : done ? "#059669" : "#94A3B8",
+                        fontWeight: active ? 700 : done ? 600 : 400,
+                      }}
+                    >
+                      {label}
+                    </span>
                   </div>
-                  {idx < STEP_LABELS.length - 1 && <ChevronRight className="w-3 h-3 text-border mx-1 shrink-0" />}
+                  {idx < STEP_LABELS.length - 1 && (
+                    <div
+                      className="flex-1 mx-2.5 h-[1.5px] rounded-full transition-colors duration-300"
+                      style={{ background: done ? "#10B981" : "#E2E8F0" }}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -515,8 +536,8 @@ export default function FreightForwarding() {
         {step === 1 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-xl font-bold text-foreground">Pilih Arah Pengiriman</h2>
-              <p className="text-sm text-muted-foreground mt-1">Tentukan jenis pengiriman yang Anda butuhkan</p>
+              <h2 className="text-[22px] font-bold text-slate-900 tracking-tight">Pilih Arah Pengiriman</h2>
+              <p className="text-sm text-slate-500 mt-1.5">Tentukan jenis pengiriman yang Anda butuhkan</p>
             </div>
             <div className="grid gap-4">
               {DIRECTIONS.map((d) => {
@@ -531,10 +552,10 @@ export default function FreightForwarding() {
                   <div key={d.label} className="relative">
                     <button
                       onClick={() => { setDirection(d.label); if (!editMode) setStep(2); }}
-                      className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
+                      className={`w-full rounded-2xl border-2 p-5 text-left transition-all duration-200 ${
                         direction === d.label
-                          ? `${d.color} border-opacity-100 shadow-md scale-[1.01]`
-                          : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
+                          ? `${d.color} shadow-lg scale-[1.015]`
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
                       }`}
                     >
                       <div className="flex items-center gap-4">
@@ -618,8 +639,8 @@ export default function FreightForwarding() {
               <div className="flex items-center gap-2 mb-1">
                 <Badge variant="secondary">{direction}</Badge>
               </div>
-              <h2 className="text-xl font-bold text-foreground">Pilih Moda Pengiriman</h2>
-              <p className="text-sm text-muted-foreground mt-1">Pilih moda transportasi yang sesuai</p>
+              <h2 className="text-[22px] font-bold text-slate-900 tracking-tight">Pilih Moda Pengiriman</h2>
+              <p className="text-sm text-slate-500 mt-1.5">Pilih moda transportasi yang sesuai</p>
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               {MODES.map((m) => {
@@ -633,10 +654,10 @@ export default function FreightForwarding() {
                   <div key={m.label} className="relative">
                     <button
                       onClick={() => { setMode(m.label); if (m.label !== "Sea") setSeaType(null); if (!editMode) setStep(3); }}
-                      className={`w-full rounded-2xl border-2 p-6 text-left transition-all ${
+                      className={`w-full rounded-2xl border-2 p-6 text-left transition-all duration-200 ${
                         mode === m.label
-                          ? "border-primary bg-primary/5 shadow-md"
-                          : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
+                          ? "border-[#0B5CAD] bg-gradient-to-br from-blue-50 to-sky-50 shadow-lg scale-[1.015]"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
                       }`}
                     >
                       <div className="flex flex-col items-center gap-3 text-center">
@@ -714,8 +735,8 @@ export default function FreightForwarding() {
                 <Badge variant="secondary">{direction}</Badge>
                 <Badge variant="outline">{modeLabel(mode!)}</Badge>
               </div>
-              <h2 className="text-xl font-bold text-foreground">Pilih Jenis Layanan</h2>
-              <p className="text-sm text-muted-foreground mt-1">Tentukan rute pengiriman dari titik asal ke tujuan</p>
+              <h2 className="text-[22px] font-bold text-slate-900 tracking-tight">Pilih Jenis Layanan</h2>
+              <p className="text-sm text-slate-500 mt-1.5">Tentukan rute pengiriman dari titik asal ke tujuan</p>
             </div>
 
             {/* ── LCL / FCL selector (Sea Freight only) ─────────── */}
@@ -764,10 +785,10 @@ export default function FreightForwarding() {
                         setVariant(v);
                         if (!editMode && (mode !== "Sea" || seaType)) setStep(4);
                       }}
-                      className={`w-full rounded-2xl border-2 p-5 text-left transition-all ${
+                      className={`w-full rounded-2xl border-2 p-5 text-left transition-all duration-200 ${
                         variant === v
-                          ? "border-primary bg-primary/5 shadow-md"
-                          : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
+                          ? "border-[#0B5CAD] bg-gradient-to-br from-blue-50 to-sky-50 shadow-lg scale-[1.015]"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -850,12 +871,12 @@ export default function FreightForwarding() {
                 )}
                 <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">{VARIANT_LABELS[variant!]}</Badge>
               </div>
-              <h2 className="text-xl font-bold text-foreground">Data Pengiriman & Dokumen</h2>
-              <p className="text-sm text-muted-foreground mt-1">Lengkapi detail pengiriman dan upload dokumen yang diperlukan</p>
+              <h2 className="text-[22px] font-bold text-slate-900 tracking-tight">Data Pengiriman & Dokumen</h2>
+              <p className="text-sm text-slate-500 mt-1.5">Lengkapi detail pengiriman dan upload dokumen yang diperlukan</p>
             </div>
 
             {/* ── Pengirim ──────────────────── */}
-            <div className="rounded-2xl border border-border p-5 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center">
                   <MapPin className="h-3.5 w-3.5" />
@@ -875,7 +896,7 @@ export default function FreightForwarding() {
             </div>
 
             {/* ── Penerima ──────────────────── */}
-            <div className="rounded-2xl border border-border p-5 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center">
                   <MapPin className="h-3.5 w-3.5" />
@@ -895,10 +916,10 @@ export default function FreightForwarding() {
             </div>
 
             {/* ── Barang ──────────────────────── */}
-            <div className="rounded-2xl border border-border p-5 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <Package className="h-3.5 w-3.5" />
+                  <LayoutGrid className="h-3.5 w-3.5" />
                 </div>
                 Data Barang
               </h3>
@@ -1048,7 +1069,7 @@ export default function FreightForwarding() {
             </div>
 
             {/* ── Dokumen ─────────────────────── */}
-            <div className="rounded-2xl border border-border p-5 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center">
                   <FileText className="h-3.5 w-3.5" />
@@ -1098,7 +1119,7 @@ export default function FreightForwarding() {
             </div>
 
             {/* ── Data Pemesan ─────────────────── */}
-            <div className="rounded-2xl border border-border p-5 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center">
                   <User className="h-3.5 w-3.5" />
@@ -1172,21 +1193,25 @@ export default function FreightForwarding() {
         )}
 
         {/* ── Navigation ───────────────────────────────────────── */}
-        <div className={`flex pt-4 border-t border-border ${step === 1 ? "justify-end" : "justify-between"}`}>
+        <div className={`flex pt-5 border-t border-slate-200 ${step === 1 ? "justify-end" : "justify-between"}`}>
           {step > 1 && (
-            <Button variant="outline" onClick={() => setStep((s) => (s - 1) as typeof step)}>
+            <Button variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300" onClick={() => setStep((s) => (s - 1) as typeof step)}>
               <ChevronLeft className="w-4 h-4 mr-1" /> Kembali
             </Button>
           )}
           {step < 4 ? (
-            <Button onClick={() => setStep((s) => (s + 1) as typeof step)} disabled={!canProceed()}>
+            <Button
+              onClick={() => setStep((s) => (s + 1) as typeof step)}
+              disabled={!canProceed()}
+              className="bg-[#0B5CAD] hover:bg-[#0a4f98] text-white font-semibold shadow-sm hover:shadow-md transition-all"
+            >
               Lanjutkan <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           ) : (
             <Button
               onClick={() => void handleSubmit()}
               disabled={submitting || !canProceed()}
-              className="bg-primary hover:bg-primary/90 font-semibold gap-2"
+              className="bg-[#0B5CAD] hover:bg-[#0a4f98] text-white font-semibold gap-2 shadow-sm hover:shadow-md transition-all"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Kirim Pesanan

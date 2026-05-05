@@ -499,7 +499,7 @@ export default function AdminPage() {
                       <p className="text-xs text-primary-foreground/60 mb-1">Total Pesanan</p>
                       <p className="text-4xl font-bold">{summary.totalOrders}</p>
                     </div>
-                    <Package className="w-10 h-10 opacity-20" />
+                    <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="" className="w-10 h-auto object-contain opacity-25" />
                   </div>
                   <div className="bg-accent text-accent-foreground rounded-xl p-5 flex items-center justify-between">
                     <div>
@@ -577,7 +577,7 @@ export default function AdminPage() {
                 <div className="text-center py-10 text-muted-foreground text-sm">Memuat data...</div>
               ) : orders.length === 0 ? (
                 <div className="text-center py-12">
-                  <Package className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-40" />
+                  <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="" className="w-10 h-auto mx-auto mb-3 object-contain opacity-35" />
                   <p className="font-medium text-foreground">Tidak ada pesanan</p>
                   <p className="text-sm text-muted-foreground mt-1">Belum ada pesanan masuk</p>
                 </div>
