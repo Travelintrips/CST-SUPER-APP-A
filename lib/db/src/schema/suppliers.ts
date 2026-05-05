@@ -1,16 +1,23 @@
-import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const suppliersTable = pgTable("suppliers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  country: text("country").notNull(),
-  contactEmail: text("contact_email").notNull(),
+  country: text("country"),
+  contactEmail: text("contact_email"),
   phone: text("phone"),
   address: text("address"),
   taxId: text("tax_id"),
   defaultPurchaseTaxId: integer("default_purchase_tax_id"),
+  serviceType: text("service_type"),
+  isActive: boolean("is_active").notNull().default(true),
+  logo: text("logo").notNull().default("📦"),
+  eta: text("eta"),
+  fee: numeric("fee", { precision: 12, scale: 2 }).default("0"),
+  note: text("note"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

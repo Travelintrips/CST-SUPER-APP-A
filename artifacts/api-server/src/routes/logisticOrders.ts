@@ -4,7 +4,7 @@ import {
   logisticOrdersTable,
   logisticOrderItemsTable,
   portalContentTable,
-  deliveryVendorsTable,
+  suppliersTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
@@ -284,8 +284,8 @@ logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) 
 
 // GET /api/logistic/orders/vendors
 logisticOrdersRouter.get("/vendors", async (_req: Request, res: Response) => {
-  const rows = await db.select().from(deliveryVendorsTable).orderBy(deliveryVendorsTable.sortOrder);
-  return res.json(rows);
+  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
+  return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
 });
 
 // POST /api/logistic/orders/vendors
@@ -293,21 +293,21 @@ logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
   const { name, logo, eta, fee, note, phone, email, serviceType } = req.body as Record<string, unknown>;
   if (!name || typeof name !== "string" || !name.trim())
     return res.status(400).json({ message: "Nama vendor harus diisi" });
-  const maxSortResult = await db.select({ s: deliveryVendorsTable.sortOrder }).from(deliveryVendorsTable).orderBy(deliveryVendorsTable.sortOrder);
-  const nextSort = maxSortResult.length > 0 ? (maxSortResult[maxSortResult.length - 1]?.s ?? 0) + 1 : 0;
-  const [created] = await db.insert(deliveryVendorsTable).values({
+  const [maxRow] = await db.select({ max: sql<number>`COALESCE(MAX(sort_order), 0)` }).from(suppliersTable);
+  const nextSort = Number(maxRow?.max ?? 0) + 1;
+  const [created] = await db.insert(suppliersTable).values({
     name: String(name).trim(),
     logo: typeof logo === "string" && logo.trim() ? logo.trim() : "📦",
     eta: typeof eta === "string" && eta.trim() ? eta.trim() : "2-3 hari",
-    fee: typeof fee === "number" ? fee : 0,
+    fee: typeof fee === "number" ? String(fee) : "0",
     note: typeof note === "string" && note.trim() ? note.trim() : null,
     phone: typeof phone === "string" && phone.trim() ? phone.trim() : null,
-    email: typeof email === "string" && email.trim() ? email.trim() : null,
+    contactEmail: typeof email === "string" && email.trim() ? email.trim() : null,
     serviceType: typeof serviceType === "string" && serviceType.trim() ? serviceType.trim() : null,
     isActive: true,
     sortOrder: nextSort,
   }).returning();
-  return res.status(201).json(created);
+  return res.status(201).json({ ...created, fee: Number(created.fee ?? 0), email: created.contactEmail });
 });
 
 // PUT /api/logistic/orders/vendors/:id
@@ -319,24 +319,24 @@ logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => 
   if (typeof name === "string" && name.trim()) patch.name = name.trim();
   if (typeof logo === "string") patch.logo = logo.trim() || "📦";
   if (typeof eta === "string" && eta.trim()) patch.eta = eta.trim();
-  if (typeof fee === "number") patch.fee = fee;
+  if (typeof fee === "number") patch.fee = String(fee);
   if (note !== undefined) patch.note = typeof note === "string" && note.trim() ? note.trim() : null;
   if (phone !== undefined) patch.phone = typeof phone === "string" && phone.trim() ? phone.trim() : null;
-  if (email !== undefined) patch.email = typeof email === "string" && email.trim() ? email.trim() : null;
+  if (email !== undefined) patch.contactEmail = typeof email === "string" && email.trim() ? email.trim() : null;
   if (serviceType !== undefined) patch.serviceType = typeof serviceType === "string" && serviceType.trim() ? serviceType.trim() : null;
   if (typeof isActive === "boolean") patch.isActive = isActive;
   if (typeof sortOrder === "number") patch.sortOrder = sortOrder;
   if (Object.keys(patch).length === 0) return res.status(400).json({ message: "Tidak ada data yang diperbarui" });
-  const [updated] = await db.update(deliveryVendorsTable).set(patch).where(eq(deliveryVendorsTable.id, id)).returning();
+  const [updated] = await db.update(suppliersTable).set(patch).where(eq(suppliersTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Vendor tidak ditemukan" });
-  return res.json(updated);
+  return res.json({ ...updated, fee: Number(updated.fee ?? 0), email: updated.contactEmail });
 });
 
 // DELETE /api/logistic/orders/vendors/:id
 logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const [deleted] = await db.delete(deliveryVendorsTable).where(eq(deliveryVendorsTable.id, id)).returning();
+  const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
   if (!deleted) return res.status(404).json({ message: "Vendor tidak ditemukan" });
   return res.json({ success: true });
 });

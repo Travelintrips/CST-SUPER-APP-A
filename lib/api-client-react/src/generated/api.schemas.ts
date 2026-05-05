@@ -212,23 +212,37 @@ export interface CreateStockItemBody {
 export interface Supplier {
   id: number;
   name: string;
-  country: string;
-  contactEmail: string;
-  phone?: string;
-  address?: string;
+  country?: string | null;
+  contactEmail?: string | null;
+  phone?: string | null;
+  address?: string | null;
   taxId?: string | null;
   defaultPurchaseTaxId?: number | null;
+  serviceType?: string | null;
+  isActive: boolean;
+  logo: string;
+  eta?: string | null;
+  fee?: number | null;
+  note?: string | null;
+  sortOrder: number;
   createdAt: string;
 }
 
 export interface CreateSupplierBody {
   name: string;
-  country: string;
-  contactEmail: string;
-  phone?: string;
-  address?: string;
+  country?: string | null;
+  contactEmail?: string | null;
+  phone?: string | null;
+  address?: string | null;
   taxId?: string | null;
   defaultPurchaseTaxId?: number | null;
+  serviceType?: string | null;
+  isActive?: boolean;
+  logo?: string;
+  eta?: string | null;
+  fee?: number | null;
+  note?: string | null;
+  sortOrder?: number;
 }
 
 export type ShipmentStatus =

@@ -1,4 +1,4 @@
-import { db, deliveryVendorsTable } from "@workspace/db";
+import { db, suppliersTable } from "@workspace/db";
 import { eq, and, or, isNull, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminWa } from "./adminWa";
@@ -166,18 +166,18 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 async function notifyVendors(order: LogisticOrderData): Promise<void> {
   const vendors = await db
     .select()
-    .from(deliveryVendorsTable)
+    .from(suppliersTable)
     .where(
       and(
-        eq(deliveryVendorsTable.isActive, true),
+        eq(suppliersTable.isActive, true),
         or(
-          isNull(deliveryVendorsTable.serviceType),
-          ilike(deliveryVendorsTable.serviceType, `%${order.shipmentType}%`)
+          isNull(suppliersTable.serviceType),
+          ilike(suppliersTable.serviceType, `%${order.shipmentType}%`)
         )
       )
     );
 
-  const eligible = vendors.filter((v) => v.email || v.phone);
+  const eligible = vendors.filter((v) => v.contactEmail || v.phone);
   if (eligible.length === 0) {
     logger.info({ shipmentType: order.shipmentType }, "No vendors with contact info found for order type");
     return;
@@ -200,9 +200,9 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
       );
     }
 
-    if (vendor.email && isSmtpConfigured()) {
+    if (vendor.contactEmail && isSmtpConfigured()) {
       sendMail({
-        to: vendor.email,
+        to: vendor.contactEmail,
         subject: `[PERMINTAAN ORDER] ${order.orderNumber} — ${order.shipmentType}`,
         html: buildEmailHtml(
           "Permintaan Order Baru dari CST Logistics",
@@ -216,7 +216,7 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
           `Rute: ${order.origin} → ${order.destination}\n` +
           `Balas email ini jika ada pertanyaan.`,
       }).catch((err: unknown) => logger.error({ err, vendorId: vendor.id }, "Email vendor notification failed"));
-    } else if (vendor.email) {
+    } else if (vendor.contactEmail) {
       logger.warn({ vendorId: vendor.id }, "SMTP not configured — skipping vendor email");
     }
   }

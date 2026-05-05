@@ -453,12 +453,19 @@ export const DeleteStockItemResponse = zod.object({
 export const ListSuppliersResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
-  country: zod.string(),
-  contactEmail: zod.string(),
-  phone: zod.string().optional(),
-  address: zod.string().optional(),
+  country: zod.string().nullish(),
+  contactEmail: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  address: zod.string().nullish(),
   taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  serviceType: zod.string().nullish(),
+  isActive: zod.boolean(),
+  logo: zod.string(),
+  eta: zod.string().nullish(),
+  fee: zod.number().nullish(),
+  note: zod.string().nullish(),
+  sortOrder: zod.number(),
   createdAt: zod.string(),
 });
 export const ListSuppliersResponse = zod.array(ListSuppliersResponseItem);
@@ -468,12 +475,19 @@ export const ListSuppliersResponse = zod.array(ListSuppliersResponseItem);
  */
 export const CreateSupplierBody = zod.object({
   name: zod.string(),
-  country: zod.string(),
-  contactEmail: zod.string(),
-  phone: zod.string().optional(),
-  address: zod.string().optional(),
+  country: zod.string().nullish(),
+  contactEmail: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  address: zod.string().nullish(),
   taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  serviceType: zod.string().nullish(),
+  isActive: zod.boolean().optional(),
+  logo: zod.string().optional(),
+  eta: zod.string().nullish(),
+  fee: zod.number().nullish(),
+  note: zod.string().nullish(),
+  sortOrder: zod.number().optional(),
 });
 
 /**
@@ -485,23 +499,37 @@ export const UpdateSupplierParams = zod.object({
 
 export const UpdateSupplierBody = zod.object({
   name: zod.string(),
-  country: zod.string(),
-  contactEmail: zod.string(),
-  phone: zod.string().optional(),
-  address: zod.string().optional(),
+  country: zod.string().nullish(),
+  contactEmail: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  address: zod.string().nullish(),
   taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  serviceType: zod.string().nullish(),
+  isActive: zod.boolean().optional(),
+  logo: zod.string().optional(),
+  eta: zod.string().nullish(),
+  fee: zod.number().nullish(),
+  note: zod.string().nullish(),
+  sortOrder: zod.number().optional(),
 });
 
 export const UpdateSupplierResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
-  country: zod.string(),
-  contactEmail: zod.string(),
-  phone: zod.string().optional(),
-  address: zod.string().optional(),
+  country: zod.string().nullish(),
+  contactEmail: zod.string().nullish(),
+  phone: zod.string().nullish(),
+  address: zod.string().nullish(),
   taxId: zod.string().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
+  serviceType: zod.string().nullish(),
+  isActive: zod.boolean(),
+  logo: zod.string(),
+  eta: zod.string().nullish(),
+  fee: zod.number().nullish(),
+  note: zod.string().nullish(),
+  sortOrder: zod.number(),
   createdAt: zod.string(),
 });
 

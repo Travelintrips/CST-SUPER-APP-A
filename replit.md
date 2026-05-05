@@ -52,6 +52,7 @@ Commands:
 - **Dynamic Customer Portal Content**: Website content is editable via an admin CMS and stored in the database, with hardcoded defaults as fallback.
 - **Multi-channel Notifications**: Automated WhatsApp and email notifications are sent to admins, vendors, and customers for new logistic orders, ensuring broad communication.
 - **Orval-generated API Client**: Frontend API interactions rely on automatically generated hooks, promoting type safety and reducing manual effort for API integration.
+- **Unified Vendor Table**: `delivery_vendors` merged into `suppliers` — all vendor types (purchase & logistics service) live in one table. New fields: `serviceType`, `isActive`, `logo`, `eta`, `fee`, `note`, `sortOrder`. Portal API maps `contactEmail` → `email` for backward compat. `logistics-vendors` page redirects to `purchase/vendors`.
 
 ## Product
 

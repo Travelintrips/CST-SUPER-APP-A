@@ -70,30 +70,48 @@ router.get("/suppliers", async (_req, res) => {
 
 // POST /api/trading/suppliers
 router.post("/suppliers", async (req, res) => {
-  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId } = req.body;
+  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId,
+    serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
   const [supplier] = await db.insert(suppliersTable).values({
-    name, country, contactEmail, phone, address, taxId: taxId ?? null, defaultPurchaseTaxId: defaultPurchaseTaxId ?? null
+    name, country: country ?? null, contactEmail: contactEmail ?? null,
+    phone: phone ?? null, address: address ?? null,
+    taxId: taxId ?? null, defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
+    serviceType: serviceType ?? null,
+    isActive: isActive !== undefined ? Boolean(isActive) : true,
+    logo: logo ?? "📦",
+    eta: eta ?? null,
+    fee: fee !== undefined ? String(parseFloat(String(fee)) || 0) : "0",
+    note: note ?? null,
+    sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
   }).returning();
-  return res.status(201).json({ ...supplier, createdAt: supplier.createdAt.toISOString() });
+  return res.status(201).json({ ...supplier, fee: Number(supplier.fee ?? 0), createdAt: supplier.createdAt.toISOString() });
 });
 
 // PUT /api/trading/suppliers/:id
 router.put("/suppliers/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId } = req.body;
+  const { name, country, contactEmail, phone, address, taxId, defaultPurchaseTaxId,
+    serviceType, isActive, logo, eta, fee, note, sortOrder } = req.body;
   const patch: Record<string, unknown> = {};
   if (typeof name === "string") patch["name"] = name;
-  if (typeof country === "string") patch["country"] = country;
-  if (typeof contactEmail === "string") patch["contactEmail"] = contactEmail;
-  if (phone !== undefined) patch["phone"] = phone;
-  if (address !== undefined) patch["address"] = address;
+  if (country !== undefined) patch["country"] = country || null;
+  if (contactEmail !== undefined) patch["contactEmail"] = contactEmail || null;
+  if (phone !== undefined) patch["phone"] = phone || null;
+  if (address !== undefined) patch["address"] = address || null;
   if (taxId !== undefined) patch["taxId"] = taxId || null;
   if (defaultPurchaseTaxId !== undefined) patch["defaultPurchaseTaxId"] = defaultPurchaseTaxId;
+  if (serviceType !== undefined) patch["serviceType"] = serviceType || null;
+  if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
+  if (logo !== undefined) patch["logo"] = logo || "📦";
+  if (eta !== undefined) patch["eta"] = eta || null;
+  if (fee !== undefined) patch["fee"] = String(parseFloat(String(fee)) || 0);
+  if (note !== undefined) patch["note"] = note || null;
+  if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
 
   const [updated] = await db.update(suppliersTable).set(patch).where(eq(suppliersTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Supplier not found" });
-  return res.json({ ...updated, createdAt: updated.createdAt.toISOString() });
+  return res.json({ ...updated, fee: Number(updated.fee ?? 0), createdAt: updated.createdAt.toISOString() });
 });
 
 // DELETE /api/trading/suppliers/:id

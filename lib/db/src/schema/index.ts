@@ -20,6 +20,5 @@ export * from "./emailCorrespondences";
 export * from "./freightCustomsDocs";
 export * from "./portalCustomers";
 export * from "./logisticOrders";
-export * from "./deliveryVendors";
 export * from "./drivers";
 export * from "./driverJobs";

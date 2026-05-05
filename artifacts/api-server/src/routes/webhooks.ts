@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, deliveryVendorsTable } from "@workspace/db";
+import { db, suppliersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa";
@@ -34,7 +34,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
 
     const normalizedSender = normalizePhone(sender);
 
-    const vendors = await db.select().from(deliveryVendorsTable).where(eq(deliveryVendorsTable.isActive, true));
+    const vendors = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
     const matchedVendor = vendors.find((v) => v.phone && normalizePhone(v.phone) === normalizedSender);
 
     const adminWa = await getAdminWa();

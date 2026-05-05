@@ -3209,21 +3209,43 @@ components:
           type: string
         country:
           type: string
+          nullable: true
         contactEmail:
           type: string
+          nullable: true
         phone:
           type: string
+          nullable: true
         address:
           type: string
+          nullable: true
         taxId:
           type: string
           nullable: true
         defaultPurchaseTaxId:
           type: integer
           nullable: true
+        serviceType:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        logo:
+          type: string
+        eta:
+          type: string
+          nullable: true
+        fee:
+          type: number
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
         createdAt:
           type: string
-      required: [id, name, country, contactEmail, createdAt]
+      required: [id, name, isActive, logo, sortOrder, createdAt]
 
     CreateSupplierBody:
       type: object
@@ -3232,19 +3254,41 @@ components:
           type: string
         country:
           type: string
+          nullable: true
         contactEmail:
           type: string
+          nullable: true
         phone:
           type: string
+          nullable: true
         address:
           type: string
+          nullable: true
         taxId:
           type: string
           nullable: true
         defaultPurchaseTaxId:
           type: integer
           nullable: true
-      required: [name, country, contactEmail]
+        serviceType:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        logo:
+          type: string
+        eta:
+          type: string
+          nullable: true
+        fee:
+          type: number
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+      required: [name]
 
     Shipment:
       type: object
