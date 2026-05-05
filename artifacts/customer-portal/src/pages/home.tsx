@@ -671,17 +671,48 @@ export default function Home() {
               </p>
 
               <ul className="space-y-6">
-                {company?.address && (
-                  <li className="flex gap-4 items-start">
-                    <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
-                      <MapPin className="h-5 w-5 text-accent" />
-                    </div>
+                <li className="flex gap-4 items-start">
+                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
+                    <MapPin className="h-5 w-5 text-accent" />
+                  </div>
+                  <div className="space-y-4">
+                    {/* Kantor Jakarta */}
                     <div>
-                      <p className="font-semibold mb-0.5">{t("contact.addressLabel")}</p>
-                      <p className="text-muted-foreground">{company.address}</p>
+                      <p className="font-semibold mb-0.5">Kantor Jakarta</p>
+                      <p className="text-muted-foreground text-sm leading-relaxed">
+                        Jln. Ternate No. 10B/C<br />
+                        Jakarta, Indonesia 10150
+                      </p>
+                      <a
+                        href="https://www.google.com/maps?q=Jln+Ternate+No+10B/C+Jakarta+Indonesia+10150"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 mt-1 text-xs font-medium text-accent hover:underline"
+                      >
+                        Lihat di Maps ↗
+                      </a>
                     </div>
-                  </li>
-                )}
+                    {/* Kantor Tangerang */}
+                    <div>
+                      <p className="font-semibold mb-0.5">Kantor Tangerang</p>
+                      <p className="text-muted-foreground text-sm leading-relaxed">
+                        Sport Center Soekarno Hatta<br />
+                        Jl. C3 No. 831 RT 001 RW 010<br />
+                        Belakang Masjid Nurul Barkah<br />
+                        Pajang Benda, Tangerang Kota<br />
+                        Banten 15126
+                      </p>
+                      <a
+                        href="https://www.google.com/maps?q=Sport+Center+Soekarno+Hatta+Jl+C3+No+831+Pajang+Benda+Tangerang+Banten"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 mt-1 text-xs font-medium text-accent hover:underline"
+                      >
+                        Lihat di Maps ↗
+                      </a>
+                    </div>
+                  </div>
+                </li>
                 {company?.email && (
                   <li className="flex gap-4 items-center">
                     <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
@@ -730,17 +761,6 @@ export default function Home() {
                       </div>
                     </li>
                   </>
-                )}
-                {content["contact_address"] && (
-                  <li className="flex gap-4 items-start">
-                    <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
-                      <MapPin className="h-5 w-5 text-accent" />
-                    </div>
-                    <div>
-                      <p className="font-semibold mb-0.5">{t("contact.addressLabel")}</p>
-                      <p className="text-muted-foreground whitespace-pre-line">{content["contact_address"]}</p>
-                    </div>
-                  </li>
                 )}
               </ul>
             </div>
