@@ -1377,7 +1377,7 @@ function PricingTab() {
               <p>💡 Tarif ini digunakan untuk kalkulator harga pada halaman pemesanan logistik.</p>
               <p>Estimasi biaya = (jarak km × rate/km) + biaya muat</p>
               <a
-                href="/jasa/8"
+                href="/jasa/15"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium mt-1"
