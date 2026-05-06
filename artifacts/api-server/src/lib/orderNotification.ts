@@ -1,5 +1,5 @@
 import { db, suppliersTable } from "@workspace/db";
-import { eq, and, or, isNull, ilike } from "drizzle-orm";
+import { eq, and, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminWa } from "./adminWa";
 import { sendMail, isSmtpConfigured } from "./mailer";
@@ -219,18 +219,22 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 }
 
 async function notifyVendors(order: LogisticOrderData): Promise<void> {
+  // Only notify vendors who explicitly have a matching serviceType.
+  // Vendors with serviceType = null are purchase-only suppliers and must NOT receive logistics notifications.
   const vendors = await db
     .select()
     .from(suppliersTable)
     .where(
       and(
         eq(suppliersTable.isActive, true),
-        or(
-          isNull(suppliersTable.serviceType),
-          ilike(suppliersTable.serviceType, `%${order.shipmentType}%`)
-        )
+        ilike(suppliersTable.serviceType, `%${order.shipmentType}%`)
       )
     );
+
+  logger.info(
+    { shipmentType: order.shipmentType, candidateCount: vendors.length, vendors: vendors.map((v) => ({ id: v.id, name: v.name, serviceType: v.serviceType, hasPhone: !!v.phone })) },
+    "Vendor candidates for order notification"
+  );
 
   const eligible = vendors.filter((v) => v.contactEmail || v.phone);
   if (eligible.length === 0) {
