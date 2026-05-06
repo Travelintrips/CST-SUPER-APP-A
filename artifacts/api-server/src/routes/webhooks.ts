@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrdersTable } from "@workspace/db";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
@@ -40,22 +40,61 @@ function getOrderUrl(orderId: number): string {
 }
 
 /**
+ * Normalize Indonesian/international price string to a plain number.
+ * Handles: "300.000", "300,000", "5.000.000", "5000000", "5.5" (decimal)
+ */
+function parsePrice(raw: string): number {
+  // Remove brackets and whitespace
+  const s = raw.replace(/[\[\]]/g, "").trim();
+  // If there is more than one separator and they are consistent (thousands), strip them
+  // Detect thousands separator: if pattern like 1.234.567 or 1,234,567
+  const dotParts = s.split(".");
+  const commaParts = s.split(",");
+  let normalized = s;
+  if (dotParts.length > 2) {
+    // Multiple dots → dots are thousands separators (e.g. 5.000.000)
+    normalized = s.replace(/\./g, "");
+  } else if (commaParts.length > 2) {
+    // Multiple commas → commas are thousands separators
+    normalized = s.replace(/,/g, "");
+  } else if (dotParts.length === 2 && dotParts[1].length === 3) {
+    // Single dot with exactly 3 digits after → thousands separator (e.g. 300.000)
+    normalized = s.replace(".", "");
+  } else if (commaParts.length === 2 && commaParts[1].length === 3) {
+    // Single comma with exactly 3 digits after → thousands separator (e.g. 300,000)
+    normalized = s.replace(",", "");
+  } else {
+    // Treat remaining comma/dot as decimal
+    normalized = s.replace(",", ".");
+  }
+  return parseFloat(normalized);
+}
+
+/**
  * Parse vendor reply for RFQ format.
- * Expected: RFQ-YYMMDD-XXXXX [price] [optional: eta pickup] [optional: eta delivery] [optional: notes...]
+ * Expected: RFQ-YYMMDD-XXXXX <price> [eta pickup] [eta delivery] [notes...]
+ * Tolerates: brackets around values, Indonesian thousand separators (300.000)
+ * Returns rfqNumber=null when RFQ number is missing (caller must supply it via fallback)
  */
 function parseVendorReply(message: string): {
-  rfqNumber: string; vendorPrice: number;
+  rfqNumber: string | null; vendorPrice: number;
   estimatedPickup: string | null; estimatedDelivery: string | null; vendorNotes: string | null;
 } | null {
-  const cleaned = message.trim();
-  const rfqMatch = cleaned.match(/(?:#)?(RFQ-\d{6}-\d{5})/i);
-  if (!rfqMatch) return null;
-  const rfqNumber = rfqMatch[1].toUpperCase();
+  // Strip bracket-delimiters the vendor may have literally copied from the format instructions
+  const cleaned = message.trim().replace(/\[|\]/g, " ").replace(/\s+/g, " ").trim();
 
-  const afterRfq = cleaned.slice(cleaned.indexOf(rfqMatch[1]) + rfqMatch[1].length).trim();
+  const rfqMatch = cleaned.match(/(?:#)?(RFQ-\d{6}-\d{5})/i);
+  const rfqNumber = rfqMatch ? rfqMatch[1].toUpperCase() : null;
+
+  const afterRfq = rfqNumber
+    ? cleaned.slice(cleaned.toUpperCase().indexOf(rfqNumber) + rfqNumber.length).trim()
+    : cleaned;
+
+  // Match first number-like token (may include dots/commas as thousand separators)
   const priceMatch = afterRfq.match(/^[\s,]*(\d[\d.,]*)/);
   if (!priceMatch) return null;
-  const vendorPrice = parseFloat(priceMatch[1].replace(/[.,](?=\d{3}(?:[.,]|$))/g, "").replace(",", "."));
+
+  const vendorPrice = parsePrice(priceMatch[1]);
   if (isNaN(vendorPrice) || vendorPrice <= 0) return null;
 
   const rest = afterRfq.slice(priceMatch[0].length).trim();
@@ -268,8 +307,24 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
       const parsed = parseVendorReply(message);
 
       if (parsed) {
-        const [rfq] = await db.select().from(logisticOrderRfqsTable)
-          .where(eq(logisticOrderRfqsTable.rfqNumber, parsed.rfqNumber));
+        // Resolve which RFQ to use:
+        // 1. If vendor included RFQ number → find it directly
+        // 2. If no RFQ number → smart fallback: find their most recent open RFQ
+        let rfq: typeof logisticOrderRfqsTable.$inferSelect | undefined;
+        let usedFallback = false;
+
+        if (parsed.rfqNumber) {
+          const [found] = await db.select().from(logisticOrderRfqsTable)
+            .where(eq(logisticOrderRfqsTable.rfqNumber, parsed.rfqNumber));
+          rfq = found;
+        } else {
+          // Find most recent open RFQ that includes this vendor
+          const openRfqs = await db.select().from(logisticOrderRfqsTable)
+            .where(eq(logisticOrderRfqsTable.status, "open"))
+            .orderBy(desc(logisticOrderRfqsTable.createdAt));
+          rfq = openRfqs.find((r) => (r.vendorIds as number[]).includes(matchedVendor.id));
+          if (rfq) usedFallback = true;
+        }
 
         if (rfq) {
           const isInRfq = (rfq.vendorIds as number[]).includes(matchedVendor.id);
@@ -280,6 +335,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             const markupPct = Number(matchedVendor.markup ?? 0);
             const sellingPrice = calcSellingPrice(parsed.vendorPrice, "percentage", markupPct, null);
             const now = new Date();
+            const resolvedRfqNumber = rfq.rfqNumber;
 
             if (existingQuote) {
               await db.update(logisticOrderQuotesTable).set({
@@ -292,7 +348,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
                 replySource: "whatsapp",
                 replyTimestamp: now,
               }).where(eq(logisticOrderQuotesTable.id, existingQuote.id));
-              logger.info({ rfqNumber: parsed.rfqNumber, vendorId: matchedVendor.id }, "Updated WA quote from vendor");
+              logger.info({ rfqNumber: resolvedRfqNumber, vendorId: matchedVendor.id, usedFallback }, "Updated WA quote from vendor");
             } else {
               await db.insert(logisticOrderQuotesTable).values({
                 rfqId: rfq.id,
@@ -309,13 +365,12 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
                 replySource: "whatsapp",
                 replyTimestamp: now,
               });
-              logger.info({ rfqNumber: parsed.rfqNumber, vendorId: matchedVendor.id }, "New WA quote from vendor saved");
+              logger.info({ rfqNumber: resolvedRfqNumber, vendorId: matchedVendor.id, usedFallback }, "New WA quote from vendor saved");
             }
 
             const [order] = await db.select().from(logisticOrdersTable)
               .where(eq(logisticOrdersTable.id, rfq.orderId));
 
-            // Count how many vendors have quoted so far
             const allQuotes = await db.select().from(logisticOrderQuotesTable)
               .where(eq(logisticOrderQuotesTable.orderId, rfq.orderId));
             const quotedCount = allQuotes.length;
@@ -326,7 +381,8 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             const adminMsg =
               `💰 *PENAWARAN VENDOR DITERIMA (via WA)*\n` +
               `━━━━━━━━━━━━━━━━━━\n` +
-              `No. RFQ     : \`${parsed.rfqNumber}\`\n` +
+              (usedFallback ? `⚠️ _No. RFQ tidak disertakan, sistem otomatis menggunakan RFQ terbaru_\n` : "") +
+              `No. RFQ     : \`${resolvedRfqNumber}\`\n` +
               `No. Order   : \`${orderNum}\`\n` +
               `Vendor      : *${matchedVendor.name}*\n` +
               `Harga Vendor: *${fmt(parsed.vendorPrice)}*\n` +
@@ -339,20 +395,36 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
 
             if (adminWa) {
               await sendWhatsApp(adminWa, adminMsg);
-              logger.info({ vendorId: matchedVendor.id }, "Forwarded vendor RFQ reply to admin group");
+              logger.info({ vendorId: matchedVendor.id, usedFallback }, "Forwarded vendor RFQ reply to admin group");
             }
 
             const confirmMsg =
-              `✅ Penawaran Anda untuk \`${parsed.rfqNumber}\` telah kami terima.\n` +
+              `✅ Penawaran Anda untuk *${resolvedRfqNumber}* telah kami terima.\n` +
               `Harga: ${fmt(parsed.vendorPrice)}\n\n` +
               `Tim kami akan menghubungi Anda jika penawaran Anda dipilih. Terima kasih 🙏`;
             sendWhatsApp(sender, confirmMsg).catch(() => undefined);
             return;
           }
         }
+
+        // Has price but no matching RFQ — notify admin with raw message and price detected
+        if (adminWa) {
+          const forwardMsg =
+            `📩 *Balasan Vendor (Harga Terdeteksi, RFQ Tidak Cocok)*\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `Vendor      : *${matchedVendor.name}*\n` +
+            `No. HP      : ${sender}\n` +
+            `Harga Det.  : ${fmt(parsed.vendorPrice)}\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `Pesan asli:\n${message}\n\n` +
+            `_Input harga manual di BizPortal._`;
+          await sendWhatsApp(adminWa, forwardMsg);
+          logger.info({ vendorId: matchedVendor.id, sender }, "Vendor reply with price but no matching open RFQ — forwarded to admin");
+        }
+        return;
       }
 
-      // Generic vendor message — forward to admin
+      // Generic vendor message (no price detected) — forward to admin as-is
       if (adminWa) {
         const forwardMsg =
           `📩 *Balasan dari Vendor*\n` +

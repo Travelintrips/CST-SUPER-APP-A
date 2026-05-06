@@ -57,8 +57,8 @@ function buildRfqWaMessage(order: {
     `━━━━━━━━━━━━━━━━━━\n` +
     `Kepada Yth. *${vendorName}*,\n\n` +
     `Kami memohon penawaran harga untuk order berikut:\n\n` +
-    `No. RFQ     : \`${rfqNumber}\`\n` +
-    `No. Order   : \`${order.orderNumber}\`\n` +
+    `No. RFQ     : *${rfqNumber}*\n` +
+    `No. Order   : ${order.orderNumber}\n` +
     `Jenis       : ${order.shipmentType}\n` +
     `Rute        : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
@@ -68,10 +68,15 @@ function buildRfqWaMessage(order: {
     (order.requiredDate ? `Tgl Butuh   : ${order.requiredDate}\n` : "") +
     (order.notes ? `Catatan     : ${order.notes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Mohon balas pesan ini dengan format:\n` +
-    `\`${rfqNumber}\` [harga] [ETA pickup] [ETA delivery] [catatan]\n\n` +
+    `📝 *CARA MEMBALAS:*\n` +
+    `Ketik nomor RFQ diikuti harga, lalu keterangan tambahan.\n\n` +
+    `Format:\n` +
+    `\`\`\`${rfqNumber} HARGA ETA_PICKUP ETA_DELIVERY CATATAN\`\`\`\n\n` +
     `Contoh:\n` +
-    `\`\`\`${rfqNumber} 5000000 besok lusa barang aman\`\`\`\n\n` +
+    `\`\`\`${rfqNumber} 5000000 besok lusa barang aman\`\`\`\n` +
+    `\`\`\`${rfqNumber} 3500000\`\`\`\n\n` +
+    `⚠️ Nomor RFQ *${rfqNumber}* wajib ada di awal pesan.\n` +
+    `   Isi harga tanpa titik/koma pemisah ribuan.\n\n` +
     `Terima kasih 🙏`
   );
 }
