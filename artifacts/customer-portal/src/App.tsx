@@ -23,6 +23,7 @@ import JasaDetail from "@/pages/jasa-detail";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
+import VendorDashboard from "@/pages/vendor-dashboard";
 import Orders from "@/pages/orders";
 import Admin from "@/pages/admin";
 
@@ -59,6 +60,7 @@ function AppShell() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/vendor-dashboard" component={VendorDashboard} />
       <Route path="/orders" component={Orders} />
       <Route path="/admin" component={Admin} />
       {/* Logistic ordering routes */}

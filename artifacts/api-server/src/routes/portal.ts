@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable } from "@workspace/db";
-import { eq, inArray, and, sql } from "drizzle-orm";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable } from "@workspace/db";
+import { eq, inArray, and, sql, desc } from "drizzle-orm";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -264,7 +264,7 @@ router.post("/auth/login", async (req, res) => {
 
 // POST /api/portal/auth/register
 router.post("/auth/register", async (req, res) => {
-  const { name, email, password, phone, company, serviceIds } = req.body ?? {};
+  const { name, email, password, phone, company, serviceIds, role: requestedRole } = req.body ?? {};
   if (!name || !email || !password) {
     return res.status(400).json({ message: "Nama, email, dan password wajib diisi" });
   }
@@ -272,8 +272,13 @@ router.post("/auth/register", async (req, res) => {
   if (existing.length > 0) {
     return res.status(409).json({ message: "Email sudah terdaftar" });
   }
-  // Tentukan role awal — admin jika email ada di daftar
-  const initialRole = PORTAL_ADMIN_EMAILS.includes(String(email).toLowerCase()) ? "admin" : "customer";
+  // Role priority: admin email list > requested role (customer/vendor) > default customer
+  let initialRole = "customer";
+  if (PORTAL_ADMIN_EMAILS.includes(String(email).toLowerCase())) {
+    initialRole = "admin";
+  } else if (requestedRole === "vendor") {
+    initialRole = "vendor";
+  }
 
   const [customer] = await db.insert(portalCustomersTable).values({
     name: String(name),
@@ -395,6 +400,116 @@ router.get("/auth/me", requirePortalAuth, async (req, res) => {
     role: customer.role,
     serviceIds,
     createdAt: customer.createdAt.toISOString(),
+  });
+});
+
+// ── VENDOR PORTAL ─────────────────────────────────────────────────────────
+// GET /api/portal/vendor/profile — returns linked supplier + RFQs + quotes for a vendor user
+router.get("/vendor/profile", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+  if (!customer) return res.status(401).json({ message: "Tidak ditemukan" });
+
+  // Try to find linked supplier by email or phone match
+  const allSuppliers = await db.select().from(suppliersTable);
+  const normalizePhone = (p: string | null) => p ? p.replace(/[^\d]/g, "").replace(/^0/, "62") : null;
+  const customerPhone = normalizePhone(customer.phone);
+  const linkedSupplier = allSuppliers.find(
+    (s) =>
+      (s.contactEmail && s.contactEmail.toLowerCase() === customer.email.toLowerCase()) ||
+      (s.email && s.email.toLowerCase() === customer.email.toLowerCase()) ||
+      (customerPhone && normalizePhone(s.phone) === customerPhone)
+  ) ?? null;
+
+  let rfqs: {
+    id: number; rfqNumber: string; orderId: number; status: string;
+    orderNumber: string; origin: string; destination: string; shipmentType: string;
+    commodity: string | null; createdAt: string;
+  }[] = [];
+  let quotes: {
+    id: number; rfqId: number; orderId: number; orderNumber: string;
+    rfqNumber: string; vendorPrice: number; sellingPrice: number | null;
+    estimatedPickup: string | null; estimatedDelivery: string | null;
+    vendorNotes: string | null; quoteStatus: string; replySource: string | null;
+    createdAt: string;
+  }[] = [];
+
+  if (linkedSupplier) {
+    // All open/recent RFQs where this supplier is included
+    const allRfqs = await db.select().from(logisticOrderRfqsTable)
+      .orderBy(desc(logisticOrderRfqsTable.createdAt));
+    const relevantRfqs = allRfqs.filter((r) =>
+      (r.vendorIds as number[]).includes(linkedSupplier.id)
+    ).slice(0, 20);
+
+    if (relevantRfqs.length > 0) {
+      const orderIds = [...new Set(relevantRfqs.map((r) => r.orderId))];
+      const orders = await db.select().from(logisticOrdersTable).where(inArray(logisticOrdersTable.id, orderIds));
+      const orderMap = Object.fromEntries(orders.map((o) => [o.id, o]));
+
+      rfqs = relevantRfqs.map((r) => {
+        const o = orderMap[r.orderId];
+        return {
+          id: r.id,
+          rfqNumber: r.rfqNumber,
+          orderId: r.orderId,
+          status: r.status,
+          orderNumber: o?.orderNumber ?? String(r.orderId),
+          origin: o?.origin ?? "",
+          destination: o?.destination ?? "",
+          shipmentType: o?.shipmentType ?? "",
+          commodity: o?.commodity ?? null,
+          createdAt: r.createdAt.toISOString(),
+        };
+      });
+
+      // Quotes submitted by this supplier
+      const allQuotes = await db.select().from(logisticOrderQuotesTable)
+        .where(eq(logisticOrderQuotesTable.vendorId, linkedSupplier.id))
+        .orderBy(desc(logisticOrderQuotesTable.createdAt));
+
+      const rfqMap = Object.fromEntries(relevantRfqs.map((r) => [r.id, r]));
+      quotes = allQuotes.map((q) => {
+        const rfq = rfqMap[q.rfqId];
+        const order = orderMap[q.orderId];
+        return {
+          id: q.id,
+          rfqId: q.rfqId,
+          orderId: q.orderId,
+          orderNumber: order?.orderNumber ?? String(q.orderId),
+          rfqNumber: rfq?.rfqNumber ?? String(q.rfqId),
+          vendorPrice: Number(q.vendorPrice),
+          sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
+          estimatedPickup: q.estimatedPickup,
+          estimatedDelivery: q.estimatedDelivery,
+          vendorNotes: q.vendorNotes,
+          quoteStatus: q.quoteStatus,
+          replySource: q.replySource,
+          createdAt: q.createdAt.toISOString(),
+        };
+      });
+    }
+  }
+
+  return res.json({
+    portalCustomer: {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      company: customer.company,
+      role: customer.role,
+    },
+    supplier: linkedSupplier ? {
+      id: linkedSupplier.id,
+      name: linkedSupplier.name,
+      phone: linkedSupplier.phone,
+      contactEmail: linkedSupplier.contactEmail,
+      serviceType: linkedSupplier.serviceType,
+      isActive: linkedSupplier.isActive,
+    } : null,
+    rfqs,
+    quotes,
   });
 });
 

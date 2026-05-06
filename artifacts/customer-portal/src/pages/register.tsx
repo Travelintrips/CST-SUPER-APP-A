@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, ArrowLeft, Check } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Truck, User } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLanguage } from "@/i18n/LanguageContext";
+
+type UserRole = "customer" | "vendor";
 
 const registerSchema = z.object({
   name: z.string().min(2),
@@ -30,21 +32,12 @@ interface SimpleItem {
   itemType: "jasa" | "barang";
 }
 
-function deriveRedirect(selectedIds: number[], allItems: SimpleItem[]): string {
-  if (selectedIds.length === 0) return "/dashboard";
-  const selected = allItems.filter((i) => selectedIds.includes(i.id));
-  const hasJasa = selected.some((i) => i.itemType === "jasa");
-  const hasBarang = selected.some((i) => i.itemType === "barang");
-  if (hasJasa && !hasBarang) return "/jasa";
-  if (hasBarang && !hasJasa) return "/products";
-  return "/dashboard";
-}
-
 export default function Register() {
   const [, setLocation] = useLocation();
   const [errorMsg, setErrorMsg] = useState("");
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
   const [step, setStep] = useState<1 | 2>(1);
+  const [role, setRole] = useState<UserRole>("customer");
   const [products, setProducts] = useState<SimpleItem[]>([]);
   const { t } = useLanguage();
 
@@ -91,12 +84,20 @@ export default function Register() {
 
   const onSubmit = (data: RegisterFormValues) => {
     setErrorMsg("");
-    registerMutation.mutate({ data }, {
-      onSuccess: (res) => {
-        if (res.token) {
-          setAuthToken(res.token);
+    registerMutation.mutate({ data: { ...data, role } as any }, {
+      onSuccess: (res: any) => {
+        const token = res?.token;
+        const resRole = res?.customer?.role ?? role;
+        if (token) {
+          setAuthToken(token);
           const rt = new URLSearchParams(window.location.search).get("returnTo");
-          setLocation(rt || deriveRedirect(data.serviceIds, allItems));
+          if (rt) {
+            setLocation(rt);
+          } else if (resRole === "vendor") {
+            setLocation("/vendor-dashboard");
+          } else {
+            setLocation("/dashboard");
+          }
         }
       },
       onError: (err: any) => {
@@ -142,7 +143,70 @@ export default function Register() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
+              {/* ── STEP 1 ── */}
               <div className={step === 1 ? "block space-y-6" : "hidden"}>
+
+                {/* Role selector */}
+                <div>
+                  <p className="text-sm font-medium mb-3">Daftar sebagai</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRole("customer")}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-150 ${
+                        role === "customer"
+                          ? "border-primary bg-primary/5 shadow-sm"
+                          : "border-border bg-white hover:border-primary/40 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        role === "customer" ? "bg-primary text-white" : "bg-gray-100 text-gray-500"
+                      }`}>
+                        <User className="h-5 w-5" />
+                      </div>
+                      <div className="text-center">
+                        <p className={`font-semibold text-sm ${role === "customer" ? "text-primary" : "text-foreground"}`}>
+                          Customer
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Butuh layanan logistik</p>
+                      </div>
+                      {role === "customer" && (
+                        <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center mt-1">
+                          <Check className="h-2.5 w-2.5 text-white" />
+                        </div>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRole("vendor")}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-150 ${
+                        role === "vendor"
+                          ? "border-primary bg-primary/5 shadow-sm"
+                          : "border-border bg-white hover:border-primary/40 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        role === "vendor" ? "bg-primary text-white" : "bg-gray-100 text-gray-500"
+                      }`}>
+                        <Truck className="h-5 w-5" />
+                      </div>
+                      <div className="text-center">
+                        <p className={`font-semibold text-sm ${role === "vendor" ? "text-primary" : "text-foreground"}`}>
+                          Vendor / Mitra
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Penyedia layanan pengiriman</p>
+                      </div>
+                      {role === "vendor" && (
+                        <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center mt-1">
+                          <Check className="h-2.5 w-2.5 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Form fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={form.control}
@@ -171,8 +235,15 @@ export default function Register() {
                     name="company"
                     render={({ field }) => (
                       <FormItem>
-                        <label className="text-sm font-medium">{t("register.company")}</label>
-                        <FormControl><Input placeholder="Acme Logistics Inc." {...field} /></FormControl>
+                        <label className="text-sm font-medium">
+                          {role === "vendor" ? "Nama Perusahaan / Armada" : t("register.company")}
+                        </label>
+                        <FormControl>
+                          <Input
+                            placeholder={role === "vendor" ? "PT Mitra Logistik" : "Acme Logistics Inc."}
+                            {...field}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -207,11 +278,16 @@ export default function Register() {
                 </Button>
               </div>
 
+              {/* ── STEP 2 ── */}
               <div className={step === 2 ? "block space-y-6" : "hidden"}>
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">{t("register.servicesTitle")}</h3>
+                  <h3 className="text-lg font-semibold mb-1">
+                    {role === "vendor" ? "Layanan yang Anda Sediakan" : t("register.servicesTitle")}
+                  </h3>
                   <p className="text-sm text-muted-foreground mb-6">
-                    {t("register.servicesDesc")}
+                    {role === "vendor"
+                      ? "Pilih jenis layanan atau produk yang Anda tawarkan sebagai mitra logistik."
+                      : t("register.servicesDesc")}
                     {selectedIds.length > 0 && (
                       <span className="ml-2 font-medium text-accent">{selectedIds.length} {t("register.selected")}</span>
                     )}

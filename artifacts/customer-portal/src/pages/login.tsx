@@ -39,11 +39,19 @@ export default function Login() {
   const onSubmit = (data: LoginFormValues) => {
     setErrorMsg("");
     loginMutation.mutate({ data }, {
-      onSuccess: (res) => {
-        if (res.token) {
-          setAuthToken(res.token);
+      onSuccess: (res: any) => {
+        const token = res?.token;
+        const role = res?.customer?.role ?? "customer";
+        if (token) {
+          setAuthToken(token);
           const rt = new URLSearchParams(window.location.search).get("returnTo");
-          setLocation(rt || "/dashboard");
+          if (rt) {
+            setLocation(rt);
+          } else if (role === "vendor") {
+            setLocation("/vendor-dashboard");
+          } else {
+            setLocation("/dashboard");
+          }
         }
       },
       onError: (err: any) => {
