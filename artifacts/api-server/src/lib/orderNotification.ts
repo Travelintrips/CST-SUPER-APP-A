@@ -55,7 +55,7 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     `No. Order  : *${order.orderNumber}*\n` +
     `Jenis      : ${order.shipmentType}\n` +
     `Rute       : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Komoditi   : ${order.commodity}\n` : ``) +
+    (order.commodity ? `Kategori Barang   : ${order.commodity}\n` : ``) +
     `Layanan    :\n${order.serviceList}\n` +
     (order.requiredDate ? `Tgl Butuh  : ${order.requiredDate}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
@@ -73,7 +73,7 @@ function buildCustomerWaMessage(order: LogisticOrderData): string {
     `Status     : Menunggu Konfirmasi\n` +
     `Jenis      : ${order.shipmentType}\n` +
     `Rute       : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Komoditi   : ${order.commodity}\n` : ``) +
+    (order.commodity ? `Kategori Barang   : ${order.commodity}\n` : ``) +
     `Layanan    :\n${order.serviceList}\n` +
     `Total Est. : Rp ${formatRupiah(order.grandTotal)}\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
