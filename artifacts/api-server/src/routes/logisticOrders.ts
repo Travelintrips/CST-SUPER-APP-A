@@ -130,6 +130,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
 
   // Fire-and-forget: notify admin + vendors + customer via WA & email
   sendLogisticOrderNotification({
+    id: order.id,
     orderNumber,
     customerName: body.customerName,
     companyName: body.companyName,

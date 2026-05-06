@@ -8,6 +8,7 @@ import { logger } from "./logger";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admcst001@gmail.com";
 
 export interface LogisticOrderData {
+  id: number;
   orderNumber: string;
   customerName: string;
   companyName: string;
@@ -23,26 +24,36 @@ export interface LogisticOrderData {
   notes?: string | null;
 }
 
+function getOrderUrl(orderId: number): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
+}
+
 function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
 }
 
 function buildAdminWaMessage(order: LogisticOrderData): string {
+  const orderUrl = getOrderUrl(order.id);
   return (
     `🚢 *ORDER LOGISTIK BARU*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `No. Order  : *${order.orderNumber}*\n` +
+    `No. Order  : \`${order.orderNumber}\`\n` +
     `Customer   : ${order.customerName}${order.companyName ? ` (${order.companyName})` : ""}\n` +
     `Email      : ${order.email}\n` +
     `HP         : ${order.phone}\n` +
     `Jenis      : ${order.shipmentType}\n` +
     `Rute       : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Kategori Barang   : ${order.commodity}\n` : ``) +
+    (order.commodity ? `Komoditi   : ${order.commodity}\n` : ``) +
     `Layanan    :\n${order.serviceList}\n` +
     `Total Est. : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.requiredDate ? `Tgl Kirim  : ${order.requiredDate}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Silakan login ke sistem untuk memproses order ini.`
+    (orderUrl ? `🔗 *Buka & Approve di BizPortal:*\n${orderUrl}\n\n` : ``) +
+    `💬 *Atau approve via WA* (setelah vendor balas):\n` +
+    `\`\`\`APPROVE ${order.orderNumber} [harga_jual]\`\`\`\n` +
+    `_Contoh: APPROVE ${order.orderNumber} 5500000_`
   );
 }
 
