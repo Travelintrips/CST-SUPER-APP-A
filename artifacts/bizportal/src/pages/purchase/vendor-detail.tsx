@@ -42,6 +42,7 @@ import {
   getListVendorCatalogQueryKey,
   getListSuppliersQueryKey,
   useListTaxes,
+  useListProducts,
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -52,6 +53,8 @@ const SERVICE_TYPES = [
   "Air Freight", "Sea Freight", "Domestic Freight",
   "Import Customs", "Export Customs", "Trucking", "Handling",
 ];
+
+const UNITS = ["pcs", "kg", "ton", "cbm", "container", "shipment", "dokumen", "trip", "hari", "unit", "lembar"];
 
 const ETA_OPTIONS = [
   "1-2 hari", "2-3 hari", "3-5 hari", "5-7 hari",
@@ -125,6 +128,7 @@ export default function VendorDetailPage() {
 
   const { data: allVendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
+  const { data: products = [] } = useListProducts();
   const vendor = (allVendors ?? []).find((v) => v.id === vendorId) as Supplier | undefined;
 
   const { data: catalog, isLoading: catalogLoading } = useListVendorCatalog(vendorId, {
@@ -462,6 +466,30 @@ export default function VendorDetailPage() {
             <DialogTitle>{editingItem ? "Edit Item" : "Tambah Item Etalase"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label>Nama Item *</Label>
+              <Input
+                list="catalog-product-names"
+                value={itemForm.name}
+                onChange={(e) => {
+                  setI("name", e.target.value);
+                  const match = products.find((p) => p.name === e.target.value);
+                  if (match) {
+                    setI("unit", match.unit);
+                    if (match.price > 0) setI("priceBase", String(match.price));
+                  }
+                }}
+                placeholder="Ketik atau pilih dari daftar item..."
+              />
+              <datalist id="catalog-product-names">
+                {products.map((p) => (
+                  <option key={p.id} value={p.name} />
+                ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">
+                Pilih dari item yang sudah ada untuk auto-isi satuan & harga, atau ketik nama baru.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label>Tipe</Label>
@@ -475,20 +503,33 @@ export default function VendorDetailPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label>Satuan</Label>
-                <Input
-                  value={itemForm.unit}
-                  onChange={(e) => setI("unit", e.target.value)}
-                  placeholder="cth. kg, km, unit"
-                />
+                <Select
+                  value={UNITS.includes(itemForm.unit) ? itemForm.unit : (itemForm.unit ? "__custom__" : "__none__")}
+                  onValueChange={(v) => {
+                    if (v === "__none__") setI("unit", "");
+                    else if (v !== "__custom__") setI("unit", v);
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih satuan..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Pilih satuan —</SelectItem>
+                    {UNITS.map((u) => (
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
+                    ))}
+                    {itemForm.unit && !UNITS.includes(itemForm.unit) && (
+                      <SelectItem value="__custom__">{itemForm.unit} (kustom)</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {(!UNITS.includes(itemForm.unit) && itemForm.unit) && (
+                  <Input
+                    value={itemForm.unit}
+                    onChange={(e) => setI("unit", e.target.value)}
+                    placeholder="Satuan kustom..."
+                    className="mt-1"
+                  />
+                )}
               </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Nama Item *</Label>
-              <Input
-                value={itemForm.name}
-                onChange={(e) => setI("name", e.target.value)}
-                placeholder="cth. Angkut CDD 7 Ton"
-              />
             </div>
             <div className="grid gap-1.5">
               <Label>Deskripsi</Label>
