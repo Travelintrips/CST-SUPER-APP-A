@@ -53,6 +53,7 @@ Commands:
 - **Multi-channel Notifications**: Automated WhatsApp and email notifications are sent to admins, vendors, and customers for new logistic orders, ensuring broad communication.
 - **Orval-generated API Client**: Frontend API interactions rely on automatically generated hooks, promoting type safety and reducing manual effort for API integration.
 - **Unified Vendor Table**: `delivery_vendors` merged into `suppliers` — all vendor types (purchase & logistics service) live in one table. New fields: `serviceType`, `isActive`, `logo`, `eta`, `fee`, `note`, `sortOrder`. Portal API maps `contactEmail` → `email` for backward compat. `logistics-vendors` page redirects to `purchase/vendors`.
+- **Vendor Etalase (Catalog)**: Each vendor has its own product/service catalog (`vendor_catalog_items` table). Catalog items have type (product/service), name, description, unit, price_base, markup_pct, is_active, sort_order. Managed via `/purchase/vendors/:id` detail page in BizPortal. API: `GET/POST /api/trading/suppliers/:id/catalog`, `PUT/DELETE /api/trading/suppliers/catalog/:itemId`.
 
 ## Product
 
@@ -60,6 +61,7 @@ Commands:
 - **Logistics Module**: Features freight shipment lifecycle management, RFQ/quote flows, stage tracking, and profitability analysis with operational expense comparison.
 - **Customer Portal**: Public-facing portal with a homepage, freight cost calculator, mega menu for services, and i18n support.
 - **Customer Portal Admin CMS**: Allows administrators to manage website content, services, and products dynamically.
+- **Vendor Detail & Etalase**: Clicking the Store icon on any vendor row opens a dedicated detail page showing vendor info cards + an Etalase table. Per-item pricing with Harga Dasar, Markup (%), and Harga Jual computed live.
 - **Integrated Object Storage**: Handles product images and document attachments with support for public and private access.
 - **Document Generation**: Supports generating sales quotes/orders and Bills of Lading, with email integration for PDF attachments.
 - **AI-Powered Document Scanning**: Utilizes OpenAI GPT-4 Vision for structured data extraction from scanned documents.

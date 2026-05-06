@@ -32,6 +32,7 @@ import PurchaseDashboardPage from "@/pages/purchase/dashboard";
 import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
 import VendorsPage from "@/pages/purchase/vendors";
+import VendorDetailPage from "@/pages/purchase/vendor-detail";
 import PurchaseBillsPage from "@/pages/purchase/bills";
 import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
@@ -278,6 +279,9 @@ function Router() {
       </Route>
       <Route path="/purchase/vendors">
         <ProtectedRoute component={VendorsPage} />
+      </Route>
+      <Route path="/purchase/vendors/:id">
+        <ProtectedRoute component={VendorDetailPage} />
       </Route>
       <Route path="/purchase/bills">
         <ProtectedRoute component={PurchaseBillsPage} />

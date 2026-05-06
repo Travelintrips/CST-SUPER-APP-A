@@ -493,6 +493,91 @@ export const CreateSupplierBody = zod.object({
 });
 
 /**
+ * @summary List catalog items for a vendor
+ */
+export const ListVendorCatalogParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListVendorCatalogResponseItem = zod.object({
+  id: zod.number(),
+  vendorId: zod.number(),
+  type: zod.string(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  unit: zod.string().nullish(),
+  priceBase: zod.number(),
+  markupPct: zod.number(),
+  isActive: zod.boolean(),
+  sortOrder: zod.number(),
+  createdAt: zod.string(),
+});
+export const ListVendorCatalogResponse = zod.array(
+  ListVendorCatalogResponseItem,
+);
+
+/**
+ * @summary Add a catalog item to a vendor
+ */
+export const CreateVendorCatalogItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateVendorCatalogItemBody = zod.object({
+  type: zod.string().optional(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  unit: zod.string().nullish(),
+  priceBase: zod.number().optional(),
+  markupPct: zod.number().optional(),
+  isActive: zod.boolean().optional(),
+  sortOrder: zod.number().optional(),
+});
+
+/**
+ * @summary Update a vendor catalog item
+ */
+export const UpdateVendorCatalogItemParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const UpdateVendorCatalogItemBody = zod.object({
+  type: zod.string().optional(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  unit: zod.string().nullish(),
+  priceBase: zod.number().optional(),
+  markupPct: zod.number().optional(),
+  isActive: zod.boolean().optional(),
+  sortOrder: zod.number().optional(),
+});
+
+export const UpdateVendorCatalogItemResponse = zod.object({
+  id: zod.number(),
+  vendorId: zod.number(),
+  type: zod.string(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  unit: zod.string().nullish(),
+  priceBase: zod.number(),
+  markupPct: zod.number(),
+  isActive: zod.boolean(),
+  sortOrder: zod.number(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a vendor catalog item
+ */
+export const DeleteVendorCatalogItemParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const DeleteVendorCatalogItemResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
  * @summary Update a supplier
  */
 export const UpdateSupplierParams = zod.object({

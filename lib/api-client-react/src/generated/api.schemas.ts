@@ -247,6 +247,31 @@ export interface CreateSupplierBody {
   sortOrder?: number;
 }
 
+export interface VendorCatalogItem {
+  id: number;
+  vendorId: number;
+  type: string;
+  name: string;
+  description?: string | null;
+  unit?: string | null;
+  priceBase: number;
+  markupPct: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface CreateVendorCatalogItemBody {
+  type?: string;
+  name: string;
+  description?: string | null;
+  unit?: string | null;
+  priceBase?: number;
+  markupPct?: number;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
 export type ShipmentStatus =
   (typeof ShipmentStatus)[keyof typeof ShipmentStatus];
 

@@ -57,6 +57,7 @@ import type {
   CreateSupplierBody,
   CreateTaxBody,
   CreateTransactionBody,
+  CreateVendorCatalogItemBody,
   Customer,
   DashboardSummary,
   EmailCorrespondence,
@@ -156,6 +157,7 @@ import type {
   UserProfile,
   ValidateEmailCorrespondenceStatusBody,
   ValidateEmailLinkBody,
+  VendorCatalogItem,
   VoidAccountingPaymentBody,
 } from "./api.schemas";
 
@@ -2140,6 +2142,353 @@ export const useCreateSupplier = <
   TContext
 > => {
   return useMutation(getCreateSupplierMutationOptions(options));
+};
+
+/**
+ * @summary List catalog items for a vendor
+ */
+export const getListVendorCatalogUrl = (id: number) => {
+  return `/api/trading/suppliers/${id}/catalog`;
+};
+
+export const listVendorCatalog = async (
+  id: number,
+  options?: RequestInit,
+): Promise<VendorCatalogItem[]> => {
+  return customFetch<VendorCatalogItem[]>(getListVendorCatalogUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListVendorCatalogQueryKey = (id: number) => {
+  return [`/api/trading/suppliers/${id}/catalog`] as const;
+};
+
+export const getListVendorCatalogQueryOptions = <
+  TData = Awaited<ReturnType<typeof listVendorCatalog>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listVendorCatalog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListVendorCatalogQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listVendorCatalog>>
+  > = ({ signal }) => listVendorCatalog(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listVendorCatalog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListVendorCatalogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listVendorCatalog>>
+>;
+export type ListVendorCatalogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List catalog items for a vendor
+ */
+
+export function useListVendorCatalog<
+  TData = Awaited<ReturnType<typeof listVendorCatalog>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listVendorCatalog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListVendorCatalogQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a catalog item to a vendor
+ */
+export const getCreateVendorCatalogItemUrl = (id: number) => {
+  return `/api/trading/suppliers/${id}/catalog`;
+};
+
+export const createVendorCatalogItem = async (
+  id: number,
+  createVendorCatalogItemBody: CreateVendorCatalogItemBody,
+  options?: RequestInit,
+): Promise<VendorCatalogItem> => {
+  return customFetch<VendorCatalogItem>(getCreateVendorCatalogItemUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createVendorCatalogItemBody),
+  });
+};
+
+export const getCreateVendorCatalogItemMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createVendorCatalogItem>>,
+    TError,
+    { id: number; data: BodyType<CreateVendorCatalogItemBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createVendorCatalogItem>>,
+  TError,
+  { id: number; data: BodyType<CreateVendorCatalogItemBody> },
+  TContext
+> => {
+  const mutationKey = ["createVendorCatalogItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createVendorCatalogItem>>,
+    { id: number; data: BodyType<CreateVendorCatalogItemBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createVendorCatalogItem(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateVendorCatalogItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createVendorCatalogItem>>
+>;
+export type CreateVendorCatalogItemMutationBody =
+  BodyType<CreateVendorCatalogItemBody>;
+export type CreateVendorCatalogItemMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add a catalog item to a vendor
+ */
+export const useCreateVendorCatalogItem = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createVendorCatalogItem>>,
+    TError,
+    { id: number; data: BodyType<CreateVendorCatalogItemBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createVendorCatalogItem>>,
+  TError,
+  { id: number; data: BodyType<CreateVendorCatalogItemBody> },
+  TContext
+> => {
+  return useMutation(getCreateVendorCatalogItemMutationOptions(options));
+};
+
+/**
+ * @summary Update a vendor catalog item
+ */
+export const getUpdateVendorCatalogItemUrl = (itemId: number) => {
+  return `/api/trading/suppliers/catalog/${itemId}`;
+};
+
+export const updateVendorCatalogItem = async (
+  itemId: number,
+  createVendorCatalogItemBody: CreateVendorCatalogItemBody,
+  options?: RequestInit,
+): Promise<VendorCatalogItem> => {
+  return customFetch<VendorCatalogItem>(getUpdateVendorCatalogItemUrl(itemId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createVendorCatalogItemBody),
+  });
+};
+
+export const getUpdateVendorCatalogItemMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateVendorCatalogItem>>,
+    TError,
+    { itemId: number; data: BodyType<CreateVendorCatalogItemBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateVendorCatalogItem>>,
+  TError,
+  { itemId: number; data: BodyType<CreateVendorCatalogItemBody> },
+  TContext
+> => {
+  const mutationKey = ["updateVendorCatalogItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateVendorCatalogItem>>,
+    { itemId: number; data: BodyType<CreateVendorCatalogItemBody> }
+  > = (props) => {
+    const { itemId, data } = props ?? {};
+
+    return updateVendorCatalogItem(itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateVendorCatalogItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateVendorCatalogItem>>
+>;
+export type UpdateVendorCatalogItemMutationBody =
+  BodyType<CreateVendorCatalogItemBody>;
+export type UpdateVendorCatalogItemMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Update a vendor catalog item
+ */
+export const useUpdateVendorCatalogItem = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateVendorCatalogItem>>,
+    TError,
+    { itemId: number; data: BodyType<CreateVendorCatalogItemBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateVendorCatalogItem>>,
+  TError,
+  { itemId: number; data: BodyType<CreateVendorCatalogItemBody> },
+  TContext
+> => {
+  return useMutation(getUpdateVendorCatalogItemMutationOptions(options));
+};
+
+/**
+ * @summary Delete a vendor catalog item
+ */
+export const getDeleteVendorCatalogItemUrl = (itemId: number) => {
+  return `/api/trading/suppliers/catalog/${itemId}`;
+};
+
+export const deleteVendorCatalogItem = async (
+  itemId: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeleteVendorCatalogItemUrl(itemId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteVendorCatalogItemMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteVendorCatalogItem>>,
+    TError,
+    { itemId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteVendorCatalogItem>>,
+  TError,
+  { itemId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteVendorCatalogItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteVendorCatalogItem>>,
+    { itemId: number }
+  > = (props) => {
+    const { itemId } = props ?? {};
+
+    return deleteVendorCatalogItem(itemId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteVendorCatalogItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteVendorCatalogItem>>
+>;
+
+export type DeleteVendorCatalogItemMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Delete a vendor catalog item
+ */
+export const useDeleteVendorCatalogItem = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteVendorCatalogItem>>,
+    TError,
+    { itemId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteVendorCatalogItem>>,
+  TError,
+  { itemId: number },
+  TContext
+> => {
+  return useMutation(getDeleteVendorCatalogItemMutationOptions(options));
 };
 
 /**

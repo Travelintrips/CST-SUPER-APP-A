@@ -42,7 +42,8 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useLocation } from "wouter";
+import { Pencil, Plus, Store, Trash2 } from "lucide-react";
 
 type FormState = {
   name: string;
@@ -91,6 +92,7 @@ export default function VendorsPage() {
 
   const purchaseTaxes = (taxes ?? []).filter((t) => t.kind === "purchase" && t.isActive);
 
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -374,6 +376,9 @@ export default function VendorsPage() {
                         : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
                     </TableCell>
                     <TableCell className="text-right">
+                      <Button size="icon" variant="ghost" title="Etalase" onClick={() => navigate(`/purchase/vendors/${v.id}`)}>
+                        <Store className="h-4 w-4 text-primary" />
+                      </Button>
                       <Button size="icon" variant="ghost" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>

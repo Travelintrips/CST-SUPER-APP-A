@@ -3394,6 +3394,58 @@ components:
           type: integer
       required: [name]
 
+    VendorCatalogItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        vendorId:
+          type: integer
+        type:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        priceBase:
+          type: number
+        markupPct:
+          type: number
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, vendorId, type, name, priceBase, markupPct, isActive, sortOrder, createdAt]
+
+    CreateVendorCatalogItemBody:
+      type: object
+      properties:
+        type:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+        priceBase:
+          type: number
+        markupPct:
+          type: number
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+      required: [name]
+
     Shipment:
       type: object
       properties:
