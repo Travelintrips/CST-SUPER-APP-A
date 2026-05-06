@@ -16,6 +16,7 @@ export const suppliersTable = pgTable("suppliers", {
   logo: text("logo").notNull().default("📦"),
   eta: text("eta"),
   fee: numeric("fee", { precision: 12, scale: 2 }).default("0"),
+  markup: numeric("markup", { precision: 5, scale: 2 }).default("0"),
   note: text("note"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),

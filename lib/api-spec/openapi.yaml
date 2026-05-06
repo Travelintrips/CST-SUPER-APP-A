@@ -3238,6 +3238,9 @@ components:
         fee:
           type: number
           nullable: true
+        markup:
+          type: number
+          nullable: true
         note:
           type: string
           nullable: true
@@ -3281,6 +3284,9 @@ components:
           type: string
           nullable: true
         fee:
+          type: number
+          nullable: true
+        markup:
           type: number
           nullable: true
         note:

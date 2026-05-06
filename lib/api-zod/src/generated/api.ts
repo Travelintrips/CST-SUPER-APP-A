@@ -464,6 +464,7 @@ export const ListSuppliersResponseItem = zod.object({
   logo: zod.string(),
   eta: zod.string().nullish(),
   fee: zod.number().nullish(),
+  markup: zod.number().nullish(),
   note: zod.string().nullish(),
   sortOrder: zod.number(),
   createdAt: zod.string(),
@@ -486,6 +487,7 @@ export const CreateSupplierBody = zod.object({
   logo: zod.string().optional(),
   eta: zod.string().nullish(),
   fee: zod.number().nullish(),
+  markup: zod.number().nullish(),
   note: zod.string().nullish(),
   sortOrder: zod.number().optional(),
 });
@@ -510,6 +512,7 @@ export const UpdateSupplierBody = zod.object({
   logo: zod.string().optional(),
   eta: zod.string().nullish(),
   fee: zod.number().nullish(),
+  markup: zod.number().nullish(),
   note: zod.string().nullish(),
   sortOrder: zod.number().optional(),
 });
@@ -528,6 +531,7 @@ export const UpdateSupplierResponse = zod.object({
   logo: zod.string(),
   eta: zod.string().nullish(),
   fee: zod.number().nullish(),
+  markup: zod.number().nullish(),
   note: zod.string().nullish(),
   sortOrder: zod.number(),
   createdAt: zod.string(),

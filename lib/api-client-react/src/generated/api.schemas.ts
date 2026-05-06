@@ -223,6 +223,7 @@ export interface Supplier {
   logo: string;
   eta?: string | null;
   fee?: number | null;
+  markup?: number | null;
   note?: string | null;
   sortOrder: number;
   createdAt: string;
@@ -241,6 +242,7 @@ export interface CreateSupplierBody {
   logo?: string;
   eta?: string | null;
   fee?: number | null;
+  markup?: number | null;
   note?: string | null;
   sortOrder?: number;
 }
