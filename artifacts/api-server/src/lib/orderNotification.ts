@@ -37,7 +37,7 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     `HP         : ${order.phone}\n` +
     `Jenis      : ${order.shipmentType}\n` +
     `Rute       : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Komoditi   : ${order.commodity}\n` : ``) +
+    (order.commodity ? `Kategori Barang   : ${order.commodity}\n` : ``) +
     `Layanan    :\n${order.serviceList}\n` +
     `Total Est. : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.requiredDate ? `Tgl Kirim  : ${order.requiredDate}\n` : ``) +
