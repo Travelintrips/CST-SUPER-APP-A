@@ -77,20 +77,31 @@ export default function TrackPage() {
                 </Badge>
               </div>
               <Separator className="mb-4" />
-              <div className="grid grid-cols-2 gap-y-2 text-sm">
-                <span className="text-muted-foreground">Perusahaan</span>
-                <span className="font-medium text-foreground text-right">{order.companyName}</span>
-                <span className="text-muted-foreground">PIC</span>
-                <span className="font-medium text-foreground text-right">{order.customerName}</span>
-                <span className="text-muted-foreground">Tipe Pengiriman</span>
-                <span className="font-medium text-foreground text-right">{order.shipmentType}</span>
-                <span className="text-muted-foreground">Origin</span>
-                <span className="font-medium text-foreground text-right">{order.origin}</span>
-                <span className="text-muted-foreground">Destination</span>
-                <span className="font-medium text-foreground text-right">{order.destination}</span>
-                <span className="text-muted-foreground">Tanggal Dibuat</span>
-                <span className="font-medium text-foreground text-right">{formatDate(order.createdAt)}</span>
-              </div>
+              {(() => {
+                const firstItem = order.items?.[0];
+                const inputData = (firstItem?.inputData ?? {}) as Record<string, unknown>;
+                const str = (v: unknown) => (v ? String(v) : "");
+                const origin = str(order.origin) ||
+                  str(inputData.pickupCity) || str(inputData.originAirport) || str(inputData.originPort);
+                const destination = str(order.destination) ||
+                  str(inputData.destCity) || str(inputData.destinationAirport) || str(inputData.destinationPort);
+                return (
+                  <div className="grid grid-cols-2 gap-y-2 text-sm">
+                    <span className="text-muted-foreground">Perusahaan</span>
+                    <span className="font-medium text-foreground text-right">{order.companyName}</span>
+                    <span className="text-muted-foreground">PIC</span>
+                    <span className="font-medium text-foreground text-right">{order.customerName}</span>
+                    <span className="text-muted-foreground">Tipe Pengiriman</span>
+                    <span className="font-medium text-foreground text-right">{order.shipmentType}</span>
+                    {origin && (<><span className="text-muted-foreground">Origin</span>
+                    <span className="font-medium text-foreground text-right">{origin}</span></>)}
+                    {destination && (<><span className="text-muted-foreground">Destination</span>
+                    <span className="font-medium text-foreground text-right">{destination}</span></>)}
+                    <span className="text-muted-foreground">Tanggal Dibuat</span>
+                    <span className="font-medium text-foreground text-right">{formatDate(order.createdAt)}</span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Items */}
