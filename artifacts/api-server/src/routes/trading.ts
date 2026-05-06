@@ -1,9 +1,16 @@
 import { Router } from "express";
-import { db, stocksTable, suppliersTable } from "@workspace/db";
+import { db, stocksTable, suppliersTable, vendorCatalogItemsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { postStockReceived } from "../lib/accounting.js";
 
 const router = Router();
+
+const toItem = (i: typeof vendorCatalogItemsTable.$inferSelect) => ({
+  ...i,
+  priceBase: Number(i.priceBase ?? 0),
+  markupPct: Number(i.markupPct ?? 0),
+  createdAt: i.createdAt.toISOString(),
+});
 
 // GET /api/trading/stocks
 router.get("/stocks", async (_req, res) => {
@@ -123,6 +130,76 @@ router.delete("/suppliers/:id", async (req, res) => {
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
   if (!deleted) return res.status(404).json({ message: "Supplier not found" });
   return res.json({ message: "Deleted", id });
+});
+
+// ─── Vendor Catalog (Etalase) ────────────────────────────────────────────────
+
+// GET /api/trading/suppliers/:id/catalog
+router.get("/suppliers/:id/catalog", async (req, res) => {
+  const vendorId = Number(req.params.id);
+  if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
+  const items = await db
+    .select()
+    .from(vendorCatalogItemsTable)
+    .where(eq(vendorCatalogItemsTable.vendorId, vendorId))
+    .orderBy(vendorCatalogItemsTable.sortOrder, vendorCatalogItemsTable.createdAt);
+  return res.json(items.map(toItem));
+});
+
+// POST /api/trading/suppliers/:id/catalog
+router.post("/suppliers/:id/catalog", async (req, res) => {
+  const vendorId = Number(req.params.id);
+  if (Number.isNaN(vendorId)) return res.status(400).json({ message: "Invalid id" });
+  const { type, name, description, unit, priceBase, markupPct, isActive, sortOrder } = req.body;
+  if (!name || typeof name !== "string")
+    return res.status(400).json({ message: "name required" });
+  const [item] = await db.insert(vendorCatalogItemsTable).values({
+    vendorId,
+    type: type ?? "service",
+    name,
+    description: description ?? null,
+    unit: unit ?? null,
+    priceBase: String(parseFloat(String(priceBase ?? 0)) || 0),
+    markupPct: String(parseFloat(String(markupPct ?? 0)) || 0),
+    isActive: isActive !== undefined ? Boolean(isActive) : true,
+    sortOrder: sortOrder !== undefined ? Number(sortOrder) : 0,
+  }).returning();
+  return res.status(201).json(toItem(item));
+});
+
+// PUT /api/trading/suppliers/catalog/:itemId
+router.put("/suppliers/catalog/:itemId", async (req, res) => {
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+  const { type, name, description, unit, priceBase, markupPct, isActive, sortOrder } = req.body;
+  const patch: Record<string, unknown> = {};
+  if (type !== undefined) patch["type"] = type;
+  if (typeof name === "string") patch["name"] = name;
+  if (description !== undefined) patch["description"] = description || null;
+  if (unit !== undefined) patch["unit"] = unit || null;
+  if (priceBase !== undefined) patch["priceBase"] = String(parseFloat(String(priceBase)) || 0);
+  if (markupPct !== undefined) patch["markupPct"] = String(parseFloat(String(markupPct)) || 0);
+  if (isActive !== undefined) patch["isActive"] = Boolean(isActive);
+  if (sortOrder !== undefined) patch["sortOrder"] = Number(sortOrder);
+  const [updated] = await db
+    .update(vendorCatalogItemsTable)
+    .set(patch)
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+  if (!updated) return res.status(404).json({ message: "Item not found" });
+  return res.json(toItem(updated));
+});
+
+// DELETE /api/trading/suppliers/catalog/:itemId
+router.delete("/suppliers/catalog/:itemId", async (req, res) => {
+  const itemId = Number(req.params.itemId);
+  if (Number.isNaN(itemId)) return res.status(400).json({ message: "Invalid id" });
+  const [deleted] = await db
+    .delete(vendorCatalogItemsTable)
+    .where(eq(vendorCatalogItemsTable.id, itemId))
+    .returning();
+  if (!deleted) return res.status(404).json({ message: "Item not found" });
+  return res.json({ message: "Deleted", id: itemId });
 });
 
 export default router;

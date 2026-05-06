@@ -505,6 +505,104 @@ paths:
               schema:
                 $ref: "#/components/schemas/Supplier"
 
+  /trading/suppliers/{id}/catalog:
+    get:
+      operationId: listVendorCatalog
+      tags: [trading]
+      summary: List catalog items for a vendor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Catalog items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VendorCatalogItem"
+    post:
+      operationId: createVendorCatalogItem
+      tags: [trading]
+      summary: Add a catalog item to a vendor
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorCatalogItemBody"
+      responses:
+        "201":
+          description: Created item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorCatalogItem"
+
+  /trading/suppliers/catalog/{itemId}:
+    put:
+      operationId: updateVendorCatalogItem
+      tags: [trading]
+      summary: Update a vendor catalog item
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorCatalogItemBody"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorCatalogItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    delete:
+      operationId: deleteVendorCatalogItem
+      tags: [trading]
+      summary: Delete a vendor catalog item
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
   /trading/suppliers/{id}:
     put:
       operationId: updateSupplier
