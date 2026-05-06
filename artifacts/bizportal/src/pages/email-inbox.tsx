@@ -701,14 +701,14 @@ export default function EmailInboxPage() {
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Tautan Transaksi ({(detail.links as EmailLink[]).length})
                   </p>
-                  <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={openLinkDialog}>
-                    <Link2 className="h-3 w-3" /> Tautkan
-                  </Button>
                 </div>
                 {(detail.links as EmailLink[]).length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-3 border border-dashed rounded-md">
-                    Belum ada tautan transaksi.
-                  </p>
+                  <div className="flex flex-col items-center gap-2 py-4 border border-dashed rounded-md">
+                    <p className="text-sm text-muted-foreground">Belum ada tautan transaksi.</p>
+                    <Button size="sm" variant="outline" className="gap-1.5" onClick={openLinkDialog}>
+                      <Link2 className="h-3.5 w-3.5" /> Tautkan ke Transaksi
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {(detail.links as EmailLink[]).map((link) => (
@@ -772,14 +772,17 @@ export default function EmailInboxPage() {
                 <Button
                   size="sm"
                   variant="outline"
+                  className="gap-1.5"
+                  onClick={openLinkDialog}
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Tautkan
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
                   onClick={() => handleStatusUpdate("validated")}
-                  disabled={
-                    validateStatus.isPending ||
-                    detail.status === "validated" ||
-                    (detail.links as EmailLink[]).length === 0
-                  }
-                  title={(detail.links as EmailLink[]).length === 0 ? "Tautkan ke transaksi terlebih dahulu sebelum memvalidasi" : undefined}
+                  disabled={validateStatus.isPending || detail.status === "validated"}
                   data-testid="button-validate-email"
                 >
                   <ShieldCheck className="h-3.5 w-3.5" /> Validasi
