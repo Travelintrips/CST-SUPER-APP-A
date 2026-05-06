@@ -437,6 +437,22 @@ export default function BookPage() {
     }));
   }, [portalUser]);
 
+  // Auto-populate origin/destination from cart items' inputData (e.g. trucking pickupCity/destCity)
+  useEffect(() => {
+    if (cartItems.length === 0) return;
+    const deriveOrigin = cartItems
+      .map((c) => String(c.inputData?.pickupCity || c.inputData?.originAirport || c.inputData?.originPort || ""))
+      .find(Boolean) ?? "";
+    const deriveDestination = cartItems
+      .map((c) => String(c.inputData?.destCity || c.inputData?.destinationAirport || c.inputData?.destinationPort || ""))
+      .find(Boolean) ?? "";
+    setCustomerForm((prev) => ({
+      ...prev,
+      origin:      prev.origin      || deriveOrigin,
+      destination: prev.destination || deriveDestination,
+    }));
+  }, [cartItems]);
+
   const itemsByCategory = useMemo(() =>
     (cat: ServiceCategory) => SERVICE_ITEMS.filter((i) => i.category === cat),
     []
@@ -815,6 +831,8 @@ export default function BookPage() {
                 { label: "Nama PIC",        value: f.customerName },
                 { label: "Email",           value: f.email },
                 { label: "Telepon / WhatsApp", value: f.phone },
+                ...(f.origin      ? [{ label: "Asal",    value: f.origin }]      : []),
+                ...(f.destination ? [{ label: "Tujuan",  value: f.destination }] : []),
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center gap-3 px-4 py-2.5">
                   <span className="text-xs text-muted-foreground w-36 shrink-0">{label}</span>
