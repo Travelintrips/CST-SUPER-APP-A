@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useParams, Link } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,7 +45,37 @@ import {
 } from "@workspace/api-client-react";
 import type { Supplier, VendorCatalogItem } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { useUpload } from "@workspace/object-storage-web";
+
+const SERVICE_TYPES = [
+  "Air Freight", "Sea Freight", "Domestic Freight",
+  "Import Customs", "Export Customs", "Trucking", "Handling",
+];
+
+const ETA_OPTIONS = [
+  "1-2 hari", "2-3 hari", "3-5 hari", "5-7 hari",
+  "1-2 minggu", "2-4 minggu", "1 bulan+",
+];
+
+function getLogoServeUrl(path: string) {
+  if (path.startsWith("/objects/")) return `/api/storage${path}`;
+  return path;
+}
+
+function isImageUrl(val: string) {
+  return val.startsWith("http") || val.startsWith("/api/") || val.startsWith("/objects/");
+}
+
+function LogoDisplay({ logo, size = "sm" }: { logo: string | null | undefined; size?: "sm" | "lg" }) {
+  const cls = size === "lg" ? "h-8 w-8 object-contain rounded" : "h-6 w-6 object-contain rounded";
+  const textCls = size === "lg" ? "text-2xl" : "text-base";
+  if (!logo) return <span className="text-muted-foreground text-xs">—</span>;
+  if (isImageUrl(logo)) {
+    return <img src={getLogoServeUrl(logo)} alt="logo" className={cls} />;
+  }
+  return <span className={textCls}>{logo}</span>;
+}
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
@@ -114,6 +144,39 @@ export default function VendorDetailPage() {
 
   const [vendorEditOpen, setVendorEditOpen] = useState(false);
   const [vendorForm, setVendorForm] = useState<VendorForm | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const { uploadFile } = useUpload({
+    onError: (err) => {
+      toast({ title: `Upload logo gagal: ${err.message}`, variant: "destructive" });
+      setLogoUploading(false);
+    },
+  });
+
+  const handleLogoUpload = async (file: File) => {
+    setLogoUploading(true);
+    try {
+      const result = await uploadFile(file);
+      if (result?.objectPath) {
+        setV("logo", result.objectPath);
+        toast({ title: "Logo berhasil diunggah" });
+      }
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const toggleServiceType = (type: string) => {
+    if (!vendorForm) return;
+    const current = vendorForm.serviceType
+      ? vendorForm.serviceType.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const idx = current.findIndex((s) => s.toLowerCase() === type.toLowerCase());
+    if (idx >= 0) current.splice(idx, 1);
+    else current.push(type);
+    setV("serviceType", current.join(", "));
+  };
 
   const setI = (k: keyof CatalogForm, v: CatalogForm[keyof CatalogForm]) =>
     setItemForm((f) => ({ ...f, [k]: v }));
@@ -269,7 +332,7 @@ export default function VendorDetailPage() {
           </Link>
           <div className="flex-1">
             <h1 className="text-2xl font-bold flex items-center gap-2">
-              <span>{vendor.logo}</span>
+              <LogoDisplay logo={vendor.logo} size="lg" />
               <span>{vendor.name}</span>
               {vendor.isActive
                 ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs ml-1">Aktif</Badge>
@@ -554,17 +617,94 @@ export default function VendorDetailPage() {
               <TabsContent value="layanan" className="mt-3 grid gap-3">
                 <div className="grid gap-1.5">
                   <Label>Tipe Layanan</Label>
-                  <Input value={vendorForm.serviceType} onChange={(e) => setV("serviceType", e.target.value)} placeholder="cth. sea, air, darat" />
-                  <p className="text-xs text-muted-foreground">Pisahkan dengan koma bila lebih dari satu.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SERVICE_TYPES.map((type) => {
+                      const selectedTypes = vendorForm.serviceType
+                        ? vendorForm.serviceType.split(",").map((s) => s.trim()).filter(Boolean)
+                        : [];
+                      const active = selectedTypes.some(
+                        (s) => s.toLowerCase() === type.toLowerCase()
+                      );
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => toggleServiceType(type)}
+                          className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                            active
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-transparent text-muted-foreground border-border hover:border-primary hover:text-foreground"
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(!vendorForm.serviceType || vendorForm.serviceType.trim() === "") && (
+                    <p className="text-xs text-muted-foreground">Kosong = semua jenis layanan.</p>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
                     <Label>Ikon / Logo</Label>
-                    <Input value={vendorForm.logo} onChange={(e) => setV("logo", e.target.value)} placeholder="📦" />
+                    <div className="flex items-center gap-2">
+                      {vendorForm.logo && (
+                        <div className="h-9 w-9 rounded border flex items-center justify-center bg-muted shrink-0">
+                          <LogoDisplay logo={vendorForm.logo} />
+                        </div>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        disabled={logoUploading}
+                        onClick={() => logoInputRef.current?.click()}
+                      >
+                        <Upload className="h-3.5 w-3.5 mr-1.5" />
+                        {logoUploading ? "Mengunggah..." : "Upload Gambar"}
+                      </Button>
+                      {vendorForm.logo && vendorForm.logo !== "📦" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0"
+                          onClick={() => setV("logo", "📦")}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoUpload(file);
+                        e.target.value = "";
+                      }}
+                    />
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Estimasi (ETA)</Label>
-                    <Input value={vendorForm.eta} onChange={(e) => setV("eta", e.target.value)} placeholder="cth. 2-3 hari" />
+                    <Select
+                      value={vendorForm.eta || "__none__"}
+                      onValueChange={(v) => setV("eta", v === "__none__" ? "" : v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih estimasi..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Tidak ditentukan —</SelectItem>
+                        {ETA_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

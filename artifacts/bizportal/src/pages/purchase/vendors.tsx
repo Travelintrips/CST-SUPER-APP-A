@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,35 @@ import {
 import type { Supplier } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Pencil, Plus, Store, Trash2 } from "lucide-react";
+import { Pencil, Plus, Store, Trash2, Upload, X } from "lucide-react";
+import { useUpload } from "@workspace/object-storage-web";
+
+const SERVICE_TYPES = [
+  "Air Freight", "Sea Freight", "Domestic Freight",
+  "Import Customs", "Export Customs", "Trucking", "Handling",
+];
+
+const ETA_OPTIONS = [
+  "1-2 hari", "2-3 hari", "3-5 hari", "5-7 hari",
+  "1-2 minggu", "2-4 minggu", "1 bulan+",
+];
+
+function getLogoServeUrl(path: string) {
+  if (path.startsWith("/objects/")) return `/api/storage${path}`;
+  return path;
+}
+
+function isImageUrl(val: string) {
+  return val.startsWith("http") || val.startsWith("/api/") || val.startsWith("/objects/");
+}
+
+function LogoDisplay({ logo }: { logo: string | null | undefined }) {
+  if (!logo) return <span className="text-muted-foreground text-xs">—</span>;
+  if (isImageUrl(logo)) {
+    return <img src={getLogoServeUrl(logo)} alt="logo" className="h-6 w-6 object-contain rounded" />;
+  }
+  return <span className="text-base">{logo}</span>;
+}
 
 type FormState = {
   name: string;
@@ -96,6 +124,42 @@ export default function VendorsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const { uploadFile } = useUpload({
+    onError: (err) => {
+      toast({ title: `Upload logo gagal: ${err.message}`, variant: "destructive" });
+      setLogoUploading(false);
+    },
+  });
+
+  const handleLogoUpload = async (file: File) => {
+    setLogoUploading(true);
+    try {
+      const result = await uploadFile(file);
+      if (result?.objectPath) {
+        set("logo", result.objectPath);
+        toast({ title: "Logo berhasil diunggah" });
+      }
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const toggleServiceType = (type: string) => {
+    const current = form.serviceType
+      ? form.serviceType.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const idx = current.findIndex((s) => s.toLowerCase() === type.toLowerCase());
+    if (idx >= 0) current.splice(idx, 1);
+    else current.push(type);
+    set("serviceType", current.join(", "));
+  };
+
+  const selectedServiceTypes = form.serviceType
+    ? form.serviceType.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
 
   const set = (k: keyof FormState, v: FormState[keyof FormState]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -261,18 +325,89 @@ export default function VendorsPage() {
 
                 <TabsContent value="layanan" className="mt-3 grid gap-3">
                   <div className="grid gap-1.5">
-                    <Label htmlFor="serviceType">Tipe Layanan</Label>
-                    <Input id="serviceType" value={form.serviceType} onChange={(e) => set("serviceType", e.target.value)} placeholder="cth. sea, air, darat" />
-                    <p className="text-xs text-muted-foreground">Pisahkan dengan koma bila lebih dari satu (cth. sea, air). Kosongkan untuk semua jenis.</p>
+                    <Label>Tipe Layanan</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {SERVICE_TYPES.map((type) => {
+                        const active = selectedServiceTypes.some(
+                          (s) => s.toLowerCase() === type.toLowerCase()
+                        );
+                        return (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => toggleServiceType(type)}
+                            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                              active
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-transparent text-muted-foreground border-border hover:border-primary hover:text-foreground"
+                            }`}
+                          >
+                            {type}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {selectedServiceTypes.length === 0 && (
+                      <p className="text-xs text-muted-foreground">Kosong = semua jenis layanan.</p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
-                      <Label htmlFor="logo">Ikon / Logo</Label>
-                      <Input id="logo" value={form.logo} onChange={(e) => set("logo", e.target.value)} placeholder="📦" />
+                      <Label>Ikon / Logo</Label>
+                      <div className="flex items-center gap-2">
+                        {form.logo && (
+                          <div className="h-9 w-9 rounded border flex items-center justify-center bg-muted shrink-0">
+                            <LogoDisplay logo={form.logo} />
+                          </div>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          disabled={logoUploading}
+                          onClick={() => logoInputRef.current?.click()}
+                        >
+                          <Upload className="h-3.5 w-3.5 mr-1.5" />
+                          {logoUploading ? "Mengunggah..." : "Upload Gambar"}
+                        </Button>
+                        {form.logo && form.logo !== "📦" && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0"
+                            onClick={() => set("logo", "📦")}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleLogoUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="eta">Estimasi (ETA)</Label>
-                      <Input id="eta" value={form.eta} onChange={(e) => set("eta", e.target.value)} placeholder="cth. 2-3 hari" />
+                      <Label>Estimasi (ETA)</Label>
+                      <Select value={form.eta || "__none__"} onValueChange={(v) => set("eta", v === "__none__" ? "" : v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih estimasi..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">— Tidak ditentukan —</SelectItem>
+                          {ETA_OPTIONS.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -350,7 +485,7 @@ export default function VendorsPage() {
                   return (
                   <TableRow key={v.id} data-testid={`row-vendor-${v.id}`}>
                     <TableCell>
-                      <span className="mr-1.5">{v.logo}</span>
+                      <span className="mr-1.5 inline-flex items-center"><LogoDisplay logo={v.logo} /></span>
                       <span className="font-medium">{v.name}</span>
                     </TableCell>
                     <TableCell>
