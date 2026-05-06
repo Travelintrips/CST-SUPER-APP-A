@@ -134,7 +134,7 @@ async function doApproveOrder(
     `━━━━━━━━━━━━━━━━━━\n` +
     `Halo *${order.customerName}*,\n\n` +
     `Kami telah memproses permintaan Anda dan menyiapkan penawaran terbaik.\n\n` +
-    `No. Order   : *${order.orderNumber}*\n` +
+    `No. Order   : \`${order.orderNumber}\`\n` +
     `Jenis       : ${order.shipmentType}\n` +
     `Rute        : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
@@ -214,19 +214,19 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
         const confirmMsg =
           `✅ *APPROVE BERHASIL*\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
-          `No. Order   : *${result.orderNumber}*\n` +
+          `No. Order   : \`${result.orderNumber}\`\n` +
           `Vendor      : ${result.vendorName}\n` +
           `Harga Jual  : *${fmt(result.sellingPrice)}*\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
           (result.customerPhone
-            ? `📤 Penawaran sudah dikirim ke customer (${result.customerPhone})`
+            ? `📤 Penawaran sudah dikirim ke customer`
             : `⚠️ No. HP customer tidak tersedia, WA tidak dikirim`);
         sendWhatsApp(sender, confirmMsg).catch(() => undefined);
 
         // Also notify admin group if different from sender
         if (adminWa && adminWa !== sender) {
           sendWhatsApp(adminWa,
-            `✅ Order *${result.orderNumber}* di-approve via WA oleh ${senderName ?? sender}.\n` +
+            `✅ Order \`${result.orderNumber}\` di-approve via WA oleh ${senderName ?? sender}.\n` +
             `Harga: ${fmt(result.sellingPrice)} (vendor: ${result.vendorName})`
           ).catch(() => undefined);
         }
@@ -239,7 +239,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
           `ℹ️ *Format perintah approve:*\n` +
           `APPROVE [No. Order] [Harga Jual]\n\n` +
           `Contoh:\n` +
-          `APPROVE LOG-260506-12345 5500000\n\n` +
+          `\`\`\`APPROVE LOG-260506-12345 5500000\`\`\`\n\n` +
           `Jika harga tidak dicantumkan, sistem akan pakai harga rekomendasi.`
         ).catch(() => undefined);
         return;
@@ -308,11 +308,12 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             const quotedCount = allQuotes.length;
             const rfqVendorCount = (rfq.vendorIds as number[]).length;
 
+            const orderNum = order?.orderNumber ?? String(rfq.orderId);
             const adminMsg =
               `💰 *PENAWARAN VENDOR DITERIMA (via WA)*\n` +
               `━━━━━━━━━━━━━━━━━━\n` +
-              `No. RFQ     : *${parsed.rfqNumber}*\n` +
-              `No. Order   : *${order?.orderNumber ?? rfq.orderId}*\n` +
+              `No. RFQ     : \`${parsed.rfqNumber}\`\n` +
+              `No. Order   : \`${orderNum}\`\n` +
               `Vendor      : *${matchedVendor.name}*\n` +
               `Harga Vendor: *${fmt(parsed.vendorPrice)}*\n` +
               (parsed.estimatedPickup ? `ETA Pickup  : ${parsed.estimatedPickup}\n` : "") +
@@ -321,10 +322,9 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
               `Progress    : ${quotedCount}/${rfqVendorCount} vendor sudah quote\n` +
               `━━━━━━━━━━━━━━━━━━\n` +
               (adminPhones.length > 0
-                ? `💡 *Untuk approve via WA, balas:*\n` +
-                  `APPROVE ${order?.orderNumber ?? ""} [harga_jual]\n\n` +
-                  `Contoh: APPROVE ${order?.orderNumber ?? "LOG-XXXXXX"} ${Math.round(sellingPrice)}\n`
-                : `Login ke sistem untuk melihat perbandingan dan memberi approval.\n`);
+                ? `💡 *Untuk approve via WA, balas pesan ini:*\n` +
+                  `\`\`\`APPROVE ${orderNum} ${Math.round(sellingPrice)}\`\`\``
+                : `Login ke sistem untuk melihat perbandingan dan memberi approval.`);
 
             if (adminWa) {
               await sendWhatsApp(adminWa, adminMsg);
@@ -332,7 +332,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             }
 
             const confirmMsg =
-              `✅ Penawaran Anda untuk *${parsed.rfqNumber}* telah kami terima.\n` +
+              `✅ Penawaran Anda untuk \`${parsed.rfqNumber}\` telah kami terima.\n` +
               `Harga: ${fmt(parsed.vendorPrice)}\n\n` +
               `Tim kami akan menghubungi Anda jika penawaran Anda dipilih. Terima kasih 🙏`;
             sendWhatsApp(sender, confirmMsg).catch(() => undefined);

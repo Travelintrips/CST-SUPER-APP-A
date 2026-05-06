@@ -57,8 +57,8 @@ function buildRfqWaMessage(order: {
     `━━━━━━━━━━━━━━━━━━\n` +
     `Kepada Yth. *${vendorName}*,\n\n` +
     `Kami memohon penawaran harga untuk order berikut:\n\n` +
-    `No. RFQ     : *${rfqNumber}*\n` +
-    `No. Order   : *${order.orderNumber}*\n` +
+    `No. RFQ     : \`${rfqNumber}\`\n` +
+    `No. Order   : \`${order.orderNumber}\`\n` +
     `Jenis       : ${order.shipmentType}\n` +
     `Rute        : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
@@ -69,9 +69,9 @@ function buildRfqWaMessage(order: {
     (order.notes ? `Catatan     : ${order.notes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
     `Mohon balas pesan ini dengan format:\n` +
-    `*${rfqNumber}* [harga] [ETA pickup] [ETA delivery] [catatan]\n\n` +
+    `\`${rfqNumber}\` [harga] [ETA pickup] [ETA delivery] [catatan]\n\n` +
     `Contoh:\n` +
-    `${rfqNumber} 5000000 besok lusa barang aman\n\n` +
+    `\`\`\`${rfqNumber} 5000000 besok lusa barang aman\`\`\`\n\n` +
     `Terima kasih 🙏`
   );
 }
@@ -84,8 +84,8 @@ function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName
   return (
     `💰 *PENAWARAN VENDOR DITERIMA*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `No. RFQ     : *${rfqNumber}*\n` +
-    `No. Order   : *${orderNumber}*\n` +
+    `No. RFQ     : \`${rfqNumber}\`\n` +
+    `No. Order   : \`${orderNumber}\`\n` +
     `Vendor      : *${vendorName}*\n` +
     `Harga       : *${fmt(quote.vendorPrice)}*\n` +
     (quote.estimatedPickup ? `ETA Pickup  : ${quote.estimatedPickup}\n` : "") +
@@ -365,7 +365,7 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
     `━━━━━━━━━━━━━━━━━━\n` +
     `Halo *${updatedOrder.customerName}*,\n\n` +
     `Kami telah memproses permintaan Anda dan menyiapkan penawaran terbaik.\n\n` +
-    `No. Order   : *${updatedOrder.orderNumber}*\n` +
+    `No. Order   : \`${updatedOrder.orderNumber}\`\n` +
     `Jenis       : ${updatedOrder.shipmentType}\n` +
     `Rute        : ${updatedOrder.origin} → ${updatedOrder.destination}\n` +
     (updatedOrder.commodity ? `Komoditi    : ${updatedOrder.commodity}\n` : "") +
