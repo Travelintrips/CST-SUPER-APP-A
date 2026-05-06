@@ -133,13 +133,16 @@ export default function TrackPage() {
                     <span className="font-medium text-foreground text-right">
                       {order.shipmentType}
                     </span>
-                    <span className="text-muted-foreground">Komoditas</span>
-                    <span className="font-medium text-foreground text-right">
-                      {order.commodity ||
-                        (order.items?.[0]?.inputData as Record<string, unknown>)
-                          ?.commodity ||
-                        "-"}
-                    </span>
+                    {(() => {
+                      const commodity = str(order.commodity) ||
+                        str(inputData.cargo_category);
+                      return commodity ? (
+                        <>
+                          <span className="text-muted-foreground">Kategori Barang</span>
+                          <span className="font-medium text-foreground text-right">{commodity}</span>
+                        </>
+                      ) : null;
+                    })()}
                     {origin && (
                       <>
                         <span className="text-muted-foreground">Origin</span>
