@@ -71,43 +71,27 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
 }
 
 function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): string {
-  const isFreight = isFreightWithDimensions(order.shipmentType);
-
-  const priceHint = isFreight
-    ? (
-        `📐 *Format harga untuk jenis ini:*\n` +
-        `Berikan harga total pengiriman.\n` +
-        (order.grossWeight ? `Berat barang: *${order.grossWeight} kg*\n` : ``) +
-        (order.volumeCbm ? `Volume: *${order.volumeCbm} CBM*\n` : ``) +
-        `\n`
-      )
-    : ``;
-
   return (
     `📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
     `Kepada Yth. *${vendorName}*,\n\n` +
-    `Anda mendapat permintaan pengiriman baru.\n\n` +
-    `No. Order       : *${order.orderNumber}*\n` +
-    `Jenis           : ${order.shipmentType}\n` +
-    `Rute            : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Kategori Barang : ${order.commodity}\n` : ``) +
-    (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
-    (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
-    (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
-    (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
-    `Layanan         :\n${order.serviceList}\n` +
-    (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `💰 *Cara mengirim harga penawaran:*\n\n` +
-    priceHint +
-    `Balas pesan ini dengan format:\n` +
-    `\`\`\`${order.orderNumber} HARGA ETA_PICKUP ETA_DELIVERY CATATAN\`\`\`\n\n` +
-    `Contoh:\n` +
-    `\`\`\`${order.orderNumber} 5000000 besok 3hari barang-aman\`\`\`\n` +
-    `\`\`\`${order.orderNumber} 3500000\`\`\`\n\n` +
-    `⚠️ Pastikan No. Order *${order.orderNumber}* ada di awal pesan.\n` +
-    `   Isi harga *tanpa titik/koma* pemisah ribuan.\n\n` +
+    `No. Order        : *${order.orderNumber}*\n` +
+    `Rute             : ${order.origin} → ${order.destination}\n` +
+    (order.commodity ? `Kategori Barang  : ${order.commodity}\n` : ``) +
+    (order.cargoDescription ? `Deskripsi        : ${order.cargoDescription}\n` : ``) +
+    (order.grossWeight ? `Berat            : ${order.grossWeight} kg\n` : ``) +
+    (order.volumeCbm ? `Volume           : ${order.volumeCbm} CBM\n` : ``) +
+    (order.requiredDate ? `Tgl Butuh        : ${order.requiredDate}\n` : ``) +
+    `Layanan          :\n${order.serviceList}\n` +
+    (order.notes ? `Catatan          : ${order.notes}\n` : ``) +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `💬 *Cara merespon:*\n` +
+    `Balas dengan memilih:\n\n` +
+    `1️⃣ *TERIMA* (Untuk menerima pesanan)\n` +
+    `2️⃣ *TOLAK* (Untuk menolak pesanan)\n\n` +
+    `_Sertakan No. Order saat membalas, contoh:_\n` +
+    `\`TERIMA ${order.orderNumber}\`\n` +
+    `\`TOLAK ${order.orderNumber}\`\n\n` +
     `Terima kasih 🙏`
   );
 }

@@ -134,6 +134,27 @@ function parseQuotesList(message: string): string | null {
   return match ? match[1].toUpperCase() : null;
 }
 
+/**
+ * Parse vendor TERIMA / TOLAK response.
+ * Accepts: "TERIMA", "TERIMA LOG-xxx", "1", "1 LOG-xxx"
+ *          "TOLAK",  "TOLAK LOG-xxx",  "2", "2 LOG-xxx"
+ */
+function parseVendorTerimaTolaк(message: string): {
+  action: "terima" | "tolak";
+  orderNumber: string | null;
+} | null {
+  const cleaned = message.trim().toUpperCase();
+  const terimaMatch = cleaned.match(/^(TERIMA|1)\s*(LOG-\d{6}-\d+)?$/);
+  if (terimaMatch) {
+    return { action: "terima", orderNumber: terimaMatch[2] ?? null };
+  }
+  const tolakMatch = cleaned.match(/^(TOLAK|2)\s*(LOG-\d{6}-\d+)?$/);
+  if (tolakMatch) {
+    return { action: "tolak", orderNumber: tolakMatch[2] ?? null };
+  }
+  return null;
+}
+
 /** Build a numbered vendor quote list string for admin messages */
 function buildVendorQuoteList(
   quotes: { vendorName: string; vendorPrice: number; estimatedPickup?: string | null; estimatedDelivery?: string | null; quoteStatus: string }[],
@@ -397,6 +418,75 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
       vendors.find((v) => v.phone && normalizePhone(v.phone).slice(-9) === last9);
 
     if (matchedVendor) {
+      // ─── TERIMA / TOLAK response ─────────────────────────────────────────────
+      const vendorTT = parseVendorTerimaTolaк(message);
+      if (vendorTT) {
+        let ttOrder: typeof logisticOrdersTable.$inferSelect | undefined;
+        let ttFallback = false;
+
+        if (vendorTT.orderNumber) {
+          const [found] = await db.select().from(logisticOrdersTable)
+            .where(sql`${logisticOrdersTable.orderNumber} = ${vendorTT.orderNumber}`);
+          ttOrder = found;
+        } else {
+          // Fallback: most recent "Pending" order matching vendor's service type
+          const recentOrders = await db.select().from(logisticOrdersTable)
+            .where(eq(logisticOrdersTable.status, "Pending"))
+            .orderBy(desc(logisticOrdersTable.createdAt))
+            .limit(5);
+          const vsType = (matchedVendor.serviceType ?? "").toLowerCase();
+          ttOrder = recentOrders.find((o) =>
+            vsType && (o.shipmentType ?? "").toLowerCase().includes(vsType)
+          ) ?? recentOrders[0];
+          if (ttOrder) ttFallback = true;
+        }
+
+        const ttOrderNum = ttOrder?.orderNumber ?? vendorTT.orderNumber ?? "tidak diketahui";
+        const ttOrderUrl = ttOrder ? getOrderUrl(ttOrder.id) : "";
+
+        if (vendorTT.action === "terima") {
+          sendWhatsApp(sender,
+            `✅ *Terima kasih, ${matchedVendor.name}!*\n\n` +
+            `Pesanan *${ttOrderNum}* telah Anda terima.\n\n` +
+            `Tim kami akan segera menghubungi Anda terkait detail pengiriman. 🙏`
+          ).catch(() => undefined);
+
+          if (adminWa) {
+            await sendWhatsApp(adminWa,
+              `✅ *VENDOR MENERIMA ORDER*\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              (ttFallback ? `⚠️ _No. Order tidak disertakan — pakai fallback otomatis_\n` : ``) +
+              `No. Order : \`${ttOrderNum}\`\n` +
+              `Vendor    : *${matchedVendor.name}*\n` +
+              `No. HP    : ${sender}\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              (ttOrderUrl ? `🔗 *Buka di BizPortal:*\n${ttOrderUrl}\n\n` : ``) +
+              `💡 Buat RFQ untuk vendor ini agar mereka dapat mengirim penawaran harga.`
+            );
+          }
+          logger.info({ vendorId: matchedVendor.id, orderNum: ttOrderNum, ttFallback }, "Vendor accepted order (TERIMA)");
+        } else {
+          sendWhatsApp(sender,
+            `Baik, terima kasih atas informasinya, *${matchedVendor.name}*.\n\n` +
+            `Semoga dapat bekerja sama di lain kesempatan. 🙏`
+          ).catch(() => undefined);
+
+          if (adminWa) {
+            await sendWhatsApp(adminWa,
+              `❌ *VENDOR MENOLAK ORDER*\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              (ttFallback ? `⚠️ _No. Order tidak disertakan — pakai fallback otomatis_\n` : ``) +
+              `No. Order : \`${ttOrderNum}\`\n` +
+              `Vendor    : *${matchedVendor.name}*\n` +
+              `No. HP    : ${sender}\n` +
+              (ttOrderUrl ? `━━━━━━━━━━━━━━━━━━\n🔗 *Buka di BizPortal:*\n${ttOrderUrl}` : ``)
+            );
+          }
+          logger.info({ vendorId: matchedVendor.id, orderNum: ttOrderNum, ttFallback }, "Vendor rejected order (TOLAK)");
+        }
+        return;
+      }
+
       const parsed = parseVendorReply(message);
 
       if (parsed) {
