@@ -76,11 +76,18 @@ function buildRfqWaMessage(order: {
   );
 }
 
-function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName: string, quote: {
+function getOrderUrl(orderId: number): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
+}
+
+function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName: string, orderId: number, quote: {
   vendorPrice: number; estimatedPickup?: string | null; estimatedDelivery?: string | null;
   estimatedDays?: number | null; vendorNotes?: string | null;
 }): string {
   const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const url = getOrderUrl(orderId);
   return (
     `💰 *PENAWARAN VENDOR DITERIMA*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
@@ -93,7 +100,7 @@ function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName
     (quote.estimatedDays ? `Est. Hari   : ${quote.estimatedDays} hari\n` : "") +
     (quote.vendorNotes ? `Catatan     : ${quote.vendorNotes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Login ke sistem untuk membandingkan penawaran dan memberi approval.`
+    (url ? `🔗 *Approve sekarang:*\n${url}` : `Login ke sistem untuk approve.`)
   );
 }
 
@@ -266,7 +273,7 @@ logisticRfqRouter.post("/:id/quotes", async (req: Request, res: Response) => {
     const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
     const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, Number(rfqId)));
     if (order && rfq) {
-      sendWhatsApp(adminWa, buildAdminQuoteNotif(rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, {
+      sendWhatsApp(adminWa, buildAdminQuoteNotif(rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, orderId, {
         vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
         estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes,
       })).catch((e: unknown) => logger.error({ e }, "WA admin quote notif failed"));

@@ -33,6 +33,12 @@ function getAdminPhones(): string[] {
   return raw.split(",").map((s) => s.trim()).filter(Boolean).map(normalizePhone);
 }
 
+function getOrderUrl(orderId: number): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
+}
+
 /**
  * Parse vendor reply for RFQ format.
  * Expected: RFQ-YYMMDD-XXXXX [price] [optional: eta pickup] [optional: eta delivery] [optional: notes...]
@@ -309,6 +315,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             const rfqVendorCount = (rfq.vendorIds as number[]).length;
 
             const orderNum = order?.orderNumber ?? String(rfq.orderId);
+            const orderUrl = getOrderUrl(rfq.orderId);
             const adminMsg =
               `💰 *PENAWARAN VENDOR DITERIMA (via WA)*\n` +
               `━━━━━━━━━━━━━━━━━━\n` +
@@ -321,10 +328,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
               (parsed.vendorNotes ? `Catatan     : ${parsed.vendorNotes}\n` : "") +
               `Progress    : ${quotedCount}/${rfqVendorCount} vendor sudah quote\n` +
               `━━━━━━━━━━━━━━━━━━\n` +
-              (adminPhones.length > 0
-                ? `💡 *Untuk approve via WA, balas pesan ini:*\n` +
-                  `\`\`\`APPROVE ${orderNum} ${Math.round(sellingPrice)}\`\`\``
-                : `Login ke sistem untuk melihat perbandingan dan memberi approval.`);
+              (orderUrl ? `🔗 *Buka & Approve:*\n${orderUrl}` : `Login ke sistem untuk approve.`);
 
             if (adminWa) {
               await sendWhatsApp(adminWa, adminMsg);
