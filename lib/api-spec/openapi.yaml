@@ -2957,6 +2957,104 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /logistic/orders/{id}/rfq:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: createLogisticOrderRfq
+      tags: [logistic-orders]
+      summary: Create RFQ and send WhatsApp to selected vendors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLogisticRfqBody" }
+      responses:
+        "201":
+          description: Created RFQ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticRfq" }
+    get:
+      operationId: listLogisticOrderRfqs
+      tags: [logistic-orders]
+      summary: List RFQs for an order
+      responses:
+        "200":
+          description: RFQ list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LogisticRfq" }
+
+  /logistic/orders/{id}/quotes:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: listLogisticOrderQuotes
+      tags: [logistic-orders]
+      summary: List all vendor quotes for an order (admin only — contains vendor_price)
+      responses:
+        "200":
+          description: Quote list with comparison
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticQuoteComparison" }
+    post:
+      operationId: createLogisticOrderQuote
+      tags: [logistic-orders]
+      summary: Manually add a vendor quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLogisticQuoteBody" }
+      responses:
+        "201":
+          description: Created quote
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticQuote" }
+
+  /logistic/orders/quotes/{quoteId}:
+    parameters:
+      - { name: quoteId, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: updateLogisticOrderQuote
+      tags: [logistic-orders]
+      summary: Update a vendor quote (price, markup, notes)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateLogisticQuoteBody" }
+      responses:
+        "200":
+          description: Updated quote
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticQuote" }
+
+  /logistic/orders/{id}/approve:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      operationId: approveLogisticOrderQuote
+      tags: [logistic-orders]
+      summary: Admin approves a quote and sends quotation to customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveLogisticQuoteBody" }
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticOrder" }
+
   /logistic/orders/{id}/status:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
@@ -5225,10 +5323,18 @@ components:
         volumeCbm: { type: number, nullable: true }
         requiredDate: { type: string, nullable: true }
         notes: { type: string, nullable: true }
+        paymentType: { type: string, nullable: true }
         subtotal: { type: number }
         tax: { type: number }
         grandTotal: { type: number }
         status: { type: string }
+        approvedQuoteId: { type: integer, nullable: true }
+        adminApprovalStatus: { type: string, nullable: true }
+        approvedAt: { type: string, nullable: true }
+        approvedVendorId: { type: integer, nullable: true }
+        approvedVendorName: { type: string, nullable: true }
+        finalSellingPrice: { type: number, nullable: true }
+        quotationSentAt: { type: string, nullable: true }
         createdAt: { type: string }
       required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, subtotal, tax, grandTotal, status, createdAt]
 
@@ -5320,3 +5426,94 @@ components:
         search: { type: string }
         dateFrom: { type: string }
         dateTo: { type: string }
+
+    LogisticRfq:
+      type: object
+      properties:
+        id: { type: integer }
+        orderId: { type: integer }
+        rfqNumber: { type: string }
+        vendorIds:
+          type: array
+          items: { type: integer }
+        notes: { type: string, nullable: true }
+        status: { type: string }
+        createdAt: { type: string }
+      required: [id, orderId, rfqNumber, vendorIds, status, createdAt]
+
+    CreateLogisticRfqBody:
+      type: object
+      properties:
+        vendorIds:
+          type: array
+          items: { type: integer }
+        notes: { type: string, nullable: true }
+      required: [vendorIds]
+
+    LogisticQuote:
+      type: object
+      properties:
+        id: { type: integer }
+        rfqId: { type: integer }
+        orderId: { type: integer }
+        vendorId: { type: integer }
+        vendorName: { type: string }
+        vendorPrice: { type: number }
+        estimatedPickup: { type: string, nullable: true }
+        estimatedDelivery: { type: string, nullable: true }
+        estimatedDays: { type: integer, nullable: true }
+        vendorNotes: { type: string, nullable: true }
+        markupType: { type: string }
+        markupPercentage: { type: number }
+        fixedSellingPrice: { type: number, nullable: true }
+        sellingPrice: { type: number, nullable: true }
+        quoteStatus: { type: string }
+        replySource: { type: string }
+        replyTimestamp: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, rfqId, orderId, vendorId, vendorName, vendorPrice, markupType, markupPercentage, quoteStatus, replySource, createdAt]
+
+    LogisticQuoteComparison:
+      type: object
+      properties:
+        quotes:
+          type: array
+          items: { $ref: "#/components/schemas/LogisticQuote" }
+        cheapest: { $ref: "#/components/schemas/LogisticQuote", nullable: true }
+        fastest: { $ref: "#/components/schemas/LogisticQuote", nullable: true }
+        recommended: { $ref: "#/components/schemas/LogisticQuote", nullable: true }
+      required: [quotes]
+
+    CreateLogisticQuoteBody:
+      type: object
+      properties:
+        rfqId: { type: integer }
+        vendorId: { type: integer }
+        vendorPrice: { type: number }
+        estimatedPickup: { type: string, nullable: true }
+        estimatedDelivery: { type: string, nullable: true }
+        estimatedDays: { type: integer, nullable: true }
+        vendorNotes: { type: string, nullable: true }
+        markupType: { type: string }
+        markupPercentage: { type: number }
+        fixedSellingPrice: { type: number, nullable: true }
+      required: [rfqId, vendorId, vendorPrice]
+
+    UpdateLogisticQuoteBody:
+      type: object
+      properties:
+        vendorPrice: { type: number }
+        estimatedPickup: { type: string, nullable: true }
+        estimatedDelivery: { type: string, nullable: true }
+        estimatedDays: { type: integer, nullable: true }
+        vendorNotes: { type: string, nullable: true }
+        markupType: { type: string }
+        markupPercentage: { type: number }
+        fixedSellingPrice: { type: number, nullable: true }
+        quoteStatus: { type: string }
+
+    ApproveLogisticQuoteBody:
+      type: object
+      properties:
+        quoteId: { type: integer }
+      required: [quoteId]

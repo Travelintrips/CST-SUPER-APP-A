@@ -2116,10 +2116,18 @@ export interface LogisticOrder {
   volumeCbm?: number | null;
   requiredDate?: string | null;
   notes?: string | null;
+  paymentType?: string | null;
   subtotal: number;
   tax: number;
   grandTotal: number;
   status: string;
+  approvedQuoteId?: number | null;
+  adminApprovalStatus?: string | null;
+  approvedAt?: string | null;
+  approvedVendorId?: number | null;
+  approvedVendorName?: string | null;
+  finalSellingPrice?: number | null;
+  quotationSentAt?: string | null;
   createdAt: string;
 }
 
@@ -2191,6 +2199,78 @@ export interface ListLogisticOrdersQueryParams {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+}
+
+export interface LogisticRfq {
+  id: number;
+  orderId: number;
+  rfqNumber: string;
+  vendorIds: number[];
+  notes?: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface CreateLogisticRfqBody {
+  vendorIds: number[];
+  notes?: string | null;
+}
+
+export interface LogisticQuote {
+  id: number;
+  rfqId: number;
+  orderId: number;
+  vendorId: number;
+  vendorName: string;
+  vendorPrice: number;
+  estimatedPickup?: string | null;
+  estimatedDelivery?: string | null;
+  estimatedDays?: number | null;
+  vendorNotes?: string | null;
+  markupType: string;
+  markupPercentage: number;
+  fixedSellingPrice?: number | null;
+  sellingPrice?: number | null;
+  quoteStatus: string;
+  replySource: string;
+  replyTimestamp?: string | null;
+  createdAt: string;
+}
+
+export interface LogisticQuoteComparison {
+  quotes: LogisticQuote[];
+  cheapest?: LogisticQuote | null;
+  fastest?: LogisticQuote | null;
+  recommended?: LogisticQuote | null;
+}
+
+export interface CreateLogisticQuoteBody {
+  rfqId: number;
+  vendorId: number;
+  vendorPrice: number;
+  estimatedPickup?: string | null;
+  estimatedDelivery?: string | null;
+  estimatedDays?: number | null;
+  vendorNotes?: string | null;
+  markupType?: string;
+  markupPercentage?: number;
+  fixedSellingPrice?: number | null;
+}
+
+export interface UpdateLogisticQuoteBody {
+  vendorPrice?: number;
+  estimatedPickup?: string | null;
+  estimatedDelivery?: string | null;
+  estimatedDays?: number | null;
+  vendorNotes?: string | null;
+  markupType?: string;
+  markupPercentage?: number;
+  fixedSellingPrice?: number | null;
+  quoteStatus?: string;
+}
+
+export interface ApproveLogisticQuoteBody {
+  quoteId: number;
 }
 
 export type ListProductsParams = {

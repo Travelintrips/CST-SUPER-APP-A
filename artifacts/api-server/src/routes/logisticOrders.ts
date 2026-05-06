@@ -29,7 +29,7 @@ function generateOrderNumber(): string {
   return `LOG-${y}${m}${d}-${rand}`;
 }
 
-function toOrder(row: typeof logisticOrdersTable.$inferSelect) {
+function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorName?: string | null) {
   return {
     id: row.id,
     orderNumber: row.orderNumber,
@@ -46,10 +46,18 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect) {
     volumeCbm: row.volumeCbm ? parseFloat(row.volumeCbm) : null,
     requiredDate: row.requiredDate ?? null,
     notes: row.notes ?? null,
+    paymentType: row.paymentType ?? null,
     subtotal: parseFloat(row.subtotal),
     tax: parseFloat(row.tax),
     grandTotal: parseFloat(row.grandTotal),
     status: row.status,
+    approvedQuoteId: row.approvedQuoteId ?? null,
+    adminApprovalStatus: row.adminApprovalStatus ?? null,
+    approvedAt: row.approvedAt?.toISOString() ?? null,
+    approvedVendorId: row.approvedVendorId ?? null,
+    approvedVendorName: approvedVendorName ?? null,
+    finalSellingPrice: row.finalSellingPrice ? parseFloat(row.finalSellingPrice) : null,
+    quotationSentAt: row.quotationSentAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -362,7 +370,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
     .from(logisticOrderItemsTable)
     .where(eq(logisticOrderItemsTable.orderId, id));
 
-  return res.json({ ...toOrder(order), items: items.map(toItem) });
+  let approvedVendorName: string | null = null;
+  if (order.approvedVendorId) {
+    const [v] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, order.approvedVendorId));
+    approvedVendorName = v?.name ?? null;
+  }
+
+  return res.json({ ...toOrder(order, approvedVendorName), items: items.map(toItem) });
 });
 
 // PUT /api/logistic/orders/:id/status — update status (admin)

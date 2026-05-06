@@ -27,6 +27,7 @@ import type {
   AccountingSettings,
   AccountingTax,
   AgingReport,
+  ApproveLogisticQuoteBody,
   BalanceSheetReport,
   Correspondence,
   CorrespondenceAttachment,
@@ -47,6 +48,8 @@ import type {
   CreateFreightShipmentBody,
   CreateJournalBody,
   CreateLogisticOrderBody,
+  CreateLogisticQuoteBody,
+  CreateLogisticRfqBody,
   CreateOrderBody,
   CreateProductBody,
   CreateProductCategoryBody,
@@ -103,6 +106,9 @@ import type {
   LogisticOrder,
   LogisticOrderDetail,
   LogisticOrderSummary,
+  LogisticQuote,
+  LogisticQuoteComparison,
+  LogisticRfq,
   MessageResponse,
   Order,
   PartnerBalances,
@@ -148,6 +154,7 @@ import type {
   UpdateFreightShipmentBody,
   UpdateJournalBody,
   UpdateLogisticOrderStatusBody,
+  UpdateLogisticQuoteBody,
   UpdateOrderBody,
   UpdateShipmentStatusBody,
   UpdateTaxBody,
@@ -14116,6 +14123,538 @@ export function useGetLogisticOrder<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Create RFQ and send WhatsApp to selected vendors
+ */
+export const getCreateLogisticOrderRfqUrl = (id: number) => {
+  return `/api/logistic/orders/${id}/rfq`;
+};
+
+export const createLogisticOrderRfq = async (
+  id: number,
+  createLogisticRfqBody: CreateLogisticRfqBody,
+  options?: RequestInit,
+): Promise<LogisticRfq> => {
+  return customFetch<LogisticRfq>(getCreateLogisticOrderRfqUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createLogisticRfqBody),
+  });
+};
+
+export const getCreateLogisticOrderRfqMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLogisticOrderRfq>>,
+    TError,
+    { id: number; data: BodyType<CreateLogisticRfqBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createLogisticOrderRfq>>,
+  TError,
+  { id: number; data: BodyType<CreateLogisticRfqBody> },
+  TContext
+> => {
+  const mutationKey = ["createLogisticOrderRfq"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createLogisticOrderRfq>>,
+    { id: number; data: BodyType<CreateLogisticRfqBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createLogisticOrderRfq(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateLogisticOrderRfqMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createLogisticOrderRfq>>
+>;
+export type CreateLogisticOrderRfqMutationBody =
+  BodyType<CreateLogisticRfqBody>;
+export type CreateLogisticOrderRfqMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create RFQ and send WhatsApp to selected vendors
+ */
+export const useCreateLogisticOrderRfq = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLogisticOrderRfq>>,
+    TError,
+    { id: number; data: BodyType<CreateLogisticRfqBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createLogisticOrderRfq>>,
+  TError,
+  { id: number; data: BodyType<CreateLogisticRfqBody> },
+  TContext
+> => {
+  return useMutation(getCreateLogisticOrderRfqMutationOptions(options));
+};
+
+/**
+ * @summary List RFQs for an order
+ */
+export const getListLogisticOrderRfqsUrl = (id: number) => {
+  return `/api/logistic/orders/${id}/rfq`;
+};
+
+export const listLogisticOrderRfqs = async (
+  id: number,
+  options?: RequestInit,
+): Promise<LogisticRfq[]> => {
+  return customFetch<LogisticRfq[]>(getListLogisticOrderRfqsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListLogisticOrderRfqsQueryKey = (id: number) => {
+  return [`/api/logistic/orders/${id}/rfq`] as const;
+};
+
+export const getListLogisticOrderRfqsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listLogisticOrderRfqs>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLogisticOrderRfqs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListLogisticOrderRfqsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listLogisticOrderRfqs>>
+  > = ({ signal }) => listLogisticOrderRfqs(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listLogisticOrderRfqs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListLogisticOrderRfqsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listLogisticOrderRfqs>>
+>;
+export type ListLogisticOrderRfqsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List RFQs for an order
+ */
+
+export function useListLogisticOrderRfqs<
+  TData = Awaited<ReturnType<typeof listLogisticOrderRfqs>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLogisticOrderRfqs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListLogisticOrderRfqsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all vendor quotes for an order (admin only — contains vendor_price)
+ */
+export const getListLogisticOrderQuotesUrl = (id: number) => {
+  return `/api/logistic/orders/${id}/quotes`;
+};
+
+export const listLogisticOrderQuotes = async (
+  id: number,
+  options?: RequestInit,
+): Promise<LogisticQuoteComparison> => {
+  return customFetch<LogisticQuoteComparison>(
+    getListLogisticOrderQuotesUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListLogisticOrderQuotesQueryKey = (id: number) => {
+  return [`/api/logistic/orders/${id}/quotes`] as const;
+};
+
+export const getListLogisticOrderQuotesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listLogisticOrderQuotes>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLogisticOrderQuotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListLogisticOrderQuotesQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listLogisticOrderQuotes>>
+  > = ({ signal }) =>
+    listLogisticOrderQuotes(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listLogisticOrderQuotes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListLogisticOrderQuotesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listLogisticOrderQuotes>>
+>;
+export type ListLogisticOrderQuotesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all vendor quotes for an order (admin only — contains vendor_price)
+ */
+
+export function useListLogisticOrderQuotes<
+  TData = Awaited<ReturnType<typeof listLogisticOrderQuotes>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listLogisticOrderQuotes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListLogisticOrderQuotesQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Manually add a vendor quote
+ */
+export const getCreateLogisticOrderQuoteUrl = (id: number) => {
+  return `/api/logistic/orders/${id}/quotes`;
+};
+
+export const createLogisticOrderQuote = async (
+  id: number,
+  createLogisticQuoteBody: CreateLogisticQuoteBody,
+  options?: RequestInit,
+): Promise<LogisticQuote> => {
+  return customFetch<LogisticQuote>(getCreateLogisticOrderQuoteUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createLogisticQuoteBody),
+  });
+};
+
+export const getCreateLogisticOrderQuoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLogisticOrderQuote>>,
+    TError,
+    { id: number; data: BodyType<CreateLogisticQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createLogisticOrderQuote>>,
+  TError,
+  { id: number; data: BodyType<CreateLogisticQuoteBody> },
+  TContext
+> => {
+  const mutationKey = ["createLogisticOrderQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createLogisticOrderQuote>>,
+    { id: number; data: BodyType<CreateLogisticQuoteBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createLogisticOrderQuote(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateLogisticOrderQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createLogisticOrderQuote>>
+>;
+export type CreateLogisticOrderQuoteMutationBody =
+  BodyType<CreateLogisticQuoteBody>;
+export type CreateLogisticOrderQuoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Manually add a vendor quote
+ */
+export const useCreateLogisticOrderQuote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLogisticOrderQuote>>,
+    TError,
+    { id: number; data: BodyType<CreateLogisticQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createLogisticOrderQuote>>,
+  TError,
+  { id: number; data: BodyType<CreateLogisticQuoteBody> },
+  TContext
+> => {
+  return useMutation(getCreateLogisticOrderQuoteMutationOptions(options));
+};
+
+/**
+ * @summary Update a vendor quote (price, markup, notes)
+ */
+export const getUpdateLogisticOrderQuoteUrl = (quoteId: number) => {
+  return `/api/logistic/orders/quotes/${quoteId}`;
+};
+
+export const updateLogisticOrderQuote = async (
+  quoteId: number,
+  updateLogisticQuoteBody: UpdateLogisticQuoteBody,
+  options?: RequestInit,
+): Promise<LogisticQuote> => {
+  return customFetch<LogisticQuote>(getUpdateLogisticOrderQuoteUrl(quoteId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateLogisticQuoteBody),
+  });
+};
+
+export const getUpdateLogisticOrderQuoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateLogisticOrderQuote>>,
+    TError,
+    { quoteId: number; data: BodyType<UpdateLogisticQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateLogisticOrderQuote>>,
+  TError,
+  { quoteId: number; data: BodyType<UpdateLogisticQuoteBody> },
+  TContext
+> => {
+  const mutationKey = ["updateLogisticOrderQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateLogisticOrderQuote>>,
+    { quoteId: number; data: BodyType<UpdateLogisticQuoteBody> }
+  > = (props) => {
+    const { quoteId, data } = props ?? {};
+
+    return updateLogisticOrderQuote(quoteId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateLogisticOrderQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateLogisticOrderQuote>>
+>;
+export type UpdateLogisticOrderQuoteMutationBody =
+  BodyType<UpdateLogisticQuoteBody>;
+export type UpdateLogisticOrderQuoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a vendor quote (price, markup, notes)
+ */
+export const useUpdateLogisticOrderQuote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateLogisticOrderQuote>>,
+    TError,
+    { quoteId: number; data: BodyType<UpdateLogisticQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateLogisticOrderQuote>>,
+  TError,
+  { quoteId: number; data: BodyType<UpdateLogisticQuoteBody> },
+  TContext
+> => {
+  return useMutation(getUpdateLogisticOrderQuoteMutationOptions(options));
+};
+
+/**
+ * @summary Admin approves a quote and sends quotation to customer
+ */
+export const getApproveLogisticOrderQuoteUrl = (id: number) => {
+  return `/api/logistic/orders/${id}/approve`;
+};
+
+export const approveLogisticOrderQuote = async (
+  id: number,
+  approveLogisticQuoteBody: ApproveLogisticQuoteBody,
+  options?: RequestInit,
+): Promise<LogisticOrder> => {
+  return customFetch<LogisticOrder>(getApproveLogisticOrderQuoteUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(approveLogisticQuoteBody),
+  });
+};
+
+export const getApproveLogisticOrderQuoteMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveLogisticOrderQuote>>,
+    TError,
+    { id: number; data: BodyType<ApproveLogisticQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveLogisticOrderQuote>>,
+  TError,
+  { id: number; data: BodyType<ApproveLogisticQuoteBody> },
+  TContext
+> => {
+  const mutationKey = ["approveLogisticOrderQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveLogisticOrderQuote>>,
+    { id: number; data: BodyType<ApproveLogisticQuoteBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return approveLogisticOrderQuote(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveLogisticOrderQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveLogisticOrderQuote>>
+>;
+export type ApproveLogisticOrderQuoteMutationBody =
+  BodyType<ApproveLogisticQuoteBody>;
+export type ApproveLogisticOrderQuoteMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Admin approves a quote and sends quotation to customer
+ */
+export const useApproveLogisticOrderQuote = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveLogisticOrderQuote>>,
+    TError,
+    { id: number; data: BodyType<ApproveLogisticQuoteBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveLogisticOrderQuote>>,
+  TError,
+  { id: number; data: BodyType<ApproveLogisticQuoteBody> },
+  TContext
+> => {
+  return useMutation(getApproveLogisticOrderQuoteMutationOptions(options));
+};
 
 /**
  * @summary Update order status (admin)

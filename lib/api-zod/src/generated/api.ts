@@ -4295,10 +4295,18 @@ export const ListLogisticOrdersResponseItem = zod.object({
   volumeCbm: zod.number().nullish(),
   requiredDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  paymentType: zod.string().nullish(),
   subtotal: zod.number(),
   tax: zod.number(),
   grandTotal: zod.number(),
   status: zod.string(),
+  approvedQuoteId: zod.number().nullish(),
+  adminApprovalStatus: zod.string().nullish(),
+  approvedAt: zod.string().nullish(),
+  approvedVendorId: zod.number().nullish(),
+  approvedVendorName: zod.string().nullish(),
+  finalSellingPrice: zod.number().nullish(),
+  quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
 });
 export const ListLogisticOrdersResponse = zod.array(
@@ -4344,10 +4352,18 @@ export const GetLogisticOrderByNumberResponse = zod
     volumeCbm: zod.number().nullish(),
     requiredDate: zod.string().nullish(),
     notes: zod.string().nullish(),
+    paymentType: zod.string().nullish(),
     subtotal: zod.number(),
     tax: zod.number(),
     grandTotal: zod.number(),
     status: zod.string(),
+    approvedQuoteId: zod.number().nullish(),
+    adminApprovalStatus: zod.string().nullish(),
+    approvedAt: zod.string().nullish(),
+    approvedVendorId: zod.number().nullish(),
+    approvedVendorName: zod.string().nullish(),
+    finalSellingPrice: zod.number().nullish(),
+    quotationSentAt: zod.string().nullish(),
     createdAt: zod.string(),
   })
   .and(
@@ -4392,10 +4408,18 @@ export const GetLogisticOrderResponse = zod
     volumeCbm: zod.number().nullish(),
     requiredDate: zod.string().nullish(),
     notes: zod.string().nullish(),
+    paymentType: zod.string().nullish(),
     subtotal: zod.number(),
     tax: zod.number(),
     grandTotal: zod.number(),
     status: zod.string(),
+    approvedQuoteId: zod.number().nullish(),
+    adminApprovalStatus: zod.string().nullish(),
+    approvedAt: zod.string().nullish(),
+    approvedVendorId: zod.number().nullish(),
+    approvedVendorName: zod.string().nullish(),
+    finalSellingPrice: zod.number().nullish(),
+    quotationSentAt: zod.string().nullish(),
     createdAt: zod.string(),
   })
   .and(
@@ -4415,6 +4439,238 @@ export const GetLogisticOrderResponse = zod
       ),
     }),
   );
+
+/**
+ * @summary Create RFQ and send WhatsApp to selected vendors
+ */
+export const CreateLogisticOrderRfqParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateLogisticOrderRfqBody = zod.object({
+  vendorIds: zod.array(zod.number()),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary List RFQs for an order
+ */
+export const ListLogisticOrderRfqsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListLogisticOrderRfqsResponseItem = zod.object({
+  id: zod.number(),
+  orderId: zod.number(),
+  rfqNumber: zod.string(),
+  vendorIds: zod.array(zod.number()),
+  notes: zod.string().nullish(),
+  status: zod.string(),
+  createdAt: zod.string(),
+});
+export const ListLogisticOrderRfqsResponse = zod.array(
+  ListLogisticOrderRfqsResponseItem,
+);
+
+/**
+ * @summary List all vendor quotes for an order (admin only — contains vendor_price)
+ */
+export const ListLogisticOrderQuotesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListLogisticOrderQuotesResponse = zod.object({
+  quotes: zod.array(
+    zod.object({
+      id: zod.number(),
+      rfqId: zod.number(),
+      orderId: zod.number(),
+      vendorId: zod.number(),
+      vendorName: zod.string(),
+      vendorPrice: zod.number(),
+      estimatedPickup: zod.string().nullish(),
+      estimatedDelivery: zod.string().nullish(),
+      estimatedDays: zod.number().nullish(),
+      vendorNotes: zod.string().nullish(),
+      markupType: zod.string(),
+      markupPercentage: zod.number(),
+      fixedSellingPrice: zod.number().nullish(),
+      sellingPrice: zod.number().nullish(),
+      quoteStatus: zod.string(),
+      replySource: zod.string(),
+      replyTimestamp: zod.string().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+  cheapest: zod
+    .object({
+      id: zod.number(),
+      rfqId: zod.number(),
+      orderId: zod.number(),
+      vendorId: zod.number(),
+      vendorName: zod.string(),
+      vendorPrice: zod.number(),
+      estimatedPickup: zod.string().nullish(),
+      estimatedDelivery: zod.string().nullish(),
+      estimatedDays: zod.number().nullish(),
+      vendorNotes: zod.string().nullish(),
+      markupType: zod.string(),
+      markupPercentage: zod.number(),
+      fixedSellingPrice: zod.number().nullish(),
+      sellingPrice: zod.number().nullish(),
+      quoteStatus: zod.string(),
+      replySource: zod.string(),
+      replyTimestamp: zod.string().nullish(),
+      createdAt: zod.string(),
+    })
+    .nullish(),
+  fastest: zod
+    .object({
+      id: zod.number(),
+      rfqId: zod.number(),
+      orderId: zod.number(),
+      vendorId: zod.number(),
+      vendorName: zod.string(),
+      vendorPrice: zod.number(),
+      estimatedPickup: zod.string().nullish(),
+      estimatedDelivery: zod.string().nullish(),
+      estimatedDays: zod.number().nullish(),
+      vendorNotes: zod.string().nullish(),
+      markupType: zod.string(),
+      markupPercentage: zod.number(),
+      fixedSellingPrice: zod.number().nullish(),
+      sellingPrice: zod.number().nullish(),
+      quoteStatus: zod.string(),
+      replySource: zod.string(),
+      replyTimestamp: zod.string().nullish(),
+      createdAt: zod.string(),
+    })
+    .nullish(),
+  recommended: zod
+    .object({
+      id: zod.number(),
+      rfqId: zod.number(),
+      orderId: zod.number(),
+      vendorId: zod.number(),
+      vendorName: zod.string(),
+      vendorPrice: zod.number(),
+      estimatedPickup: zod.string().nullish(),
+      estimatedDelivery: zod.string().nullish(),
+      estimatedDays: zod.number().nullish(),
+      vendorNotes: zod.string().nullish(),
+      markupType: zod.string(),
+      markupPercentage: zod.number(),
+      fixedSellingPrice: zod.number().nullish(),
+      sellingPrice: zod.number().nullish(),
+      quoteStatus: zod.string(),
+      replySource: zod.string(),
+      replyTimestamp: zod.string().nullish(),
+      createdAt: zod.string(),
+    })
+    .nullish(),
+});
+
+/**
+ * @summary Manually add a vendor quote
+ */
+export const CreateLogisticOrderQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateLogisticOrderQuoteBody = zod.object({
+  rfqId: zod.number(),
+  vendorId: zod.number(),
+  vendorPrice: zod.number(),
+  estimatedPickup: zod.string().nullish(),
+  estimatedDelivery: zod.string().nullish(),
+  estimatedDays: zod.number().nullish(),
+  vendorNotes: zod.string().nullish(),
+  markupType: zod.string().optional(),
+  markupPercentage: zod.number().optional(),
+  fixedSellingPrice: zod.number().nullish(),
+});
+
+/**
+ * @summary Update a vendor quote (price, markup, notes)
+ */
+export const UpdateLogisticOrderQuoteParams = zod.object({
+  quoteId: zod.coerce.number(),
+});
+
+export const UpdateLogisticOrderQuoteBody = zod.object({
+  vendorPrice: zod.number().optional(),
+  estimatedPickup: zod.string().nullish(),
+  estimatedDelivery: zod.string().nullish(),
+  estimatedDays: zod.number().nullish(),
+  vendorNotes: zod.string().nullish(),
+  markupType: zod.string().optional(),
+  markupPercentage: zod.number().optional(),
+  fixedSellingPrice: zod.number().nullish(),
+  quoteStatus: zod.string().optional(),
+});
+
+export const UpdateLogisticOrderQuoteResponse = zod.object({
+  id: zod.number(),
+  rfqId: zod.number(),
+  orderId: zod.number(),
+  vendorId: zod.number(),
+  vendorName: zod.string(),
+  vendorPrice: zod.number(),
+  estimatedPickup: zod.string().nullish(),
+  estimatedDelivery: zod.string().nullish(),
+  estimatedDays: zod.number().nullish(),
+  vendorNotes: zod.string().nullish(),
+  markupType: zod.string(),
+  markupPercentage: zod.number(),
+  fixedSellingPrice: zod.number().nullish(),
+  sellingPrice: zod.number().nullish(),
+  quoteStatus: zod.string(),
+  replySource: zod.string(),
+  replyTimestamp: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Admin approves a quote and sends quotation to customer
+ */
+export const ApproveLogisticOrderQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ApproveLogisticOrderQuoteBody = zod.object({
+  quoteId: zod.number(),
+});
+
+export const ApproveLogisticOrderQuoteResponse = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  companyName: zod.string(),
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
+  commodity: zod.string().nullish(),
+  cargoDescription: zod.string().nullish(),
+  grossWeight: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  requiredDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  paymentType: zod.string().nullish(),
+  subtotal: zod.number(),
+  tax: zod.number(),
+  grandTotal: zod.number(),
+  status: zod.string(),
+  approvedQuoteId: zod.number().nullish(),
+  adminApprovalStatus: zod.string().nullish(),
+  approvedAt: zod.string().nullish(),
+  approvedVendorId: zod.number().nullish(),
+  approvedVendorName: zod.string().nullish(),
+  finalSellingPrice: zod.number().nullish(),
+  quotationSentAt: zod.string().nullish(),
+  createdAt: zod.string(),
+});
 
 /**
  * @summary Update order status (admin)
@@ -4443,9 +4699,17 @@ export const UpdateLogisticOrderStatusResponse = zod.object({
   volumeCbm: zod.number().nullish(),
   requiredDate: zod.string().nullish(),
   notes: zod.string().nullish(),
+  paymentType: zod.string().nullish(),
   subtotal: zod.number(),
   tax: zod.number(),
   grandTotal: zod.number(),
   status: zod.string(),
+  approvedQuoteId: zod.number().nullish(),
+  adminApprovalStatus: zod.string().nullish(),
+  approvedAt: zod.string().nullish(),
+  approvedVendorId: zod.number().nullish(),
+  approvedVendorName: zod.string().nullish(),
+  finalSellingPrice: zod.number().nullish(),
+  quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
 });
