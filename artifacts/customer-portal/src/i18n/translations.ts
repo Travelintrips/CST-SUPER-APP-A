@@ -315,7 +315,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       notFound: "Pesanan tidak ditemukan",
       notFoundDesc: "Periksa kembali nomor pesanan Anda",
       orderNumber: "Nomor Pesanan",
-      company: "Perusahaan",
+      company: "Perusahaan12",
       pic: "PIC",
       shipmentType: "Tipe Pengiriman",
       origin: "Asal",
@@ -1460,7 +1460,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     products: {
       catalogLabel: "产品目录",
       title: "我们的产擁",
-      description: "发现各类优质产品，满足您的业务需求。",
+      description: "���现各类优质产品，满足您的业务需求。",
       search: "搜索产品或分类...",
       all: "全部",
       negotiable: "价格面议",
@@ -1682,7 +1682,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "所需服務",
       message: "留言",
       submit: "發送訊息",
-      successAlert: "您的訊息已發送，我們的團隊將盡快與您聯繫。",
+      successAlert: "您的訊息已發送，我們的團隊將盡快與储聯繫。",
       addressLabel: "辦公地址",
       emailLabel: "電子郵件",
       phoneLabel: "電話",
@@ -1919,7 +1919,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     stats: {
       countries: "仕向地国",
       security: "貨物安全率",
-      shipments: "月間出荷数",
+      shipments: "月間���荷数",
       support: "カスタマーサポート",
     },
     about: {
@@ -2093,7 +2093,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       catalogLabel: "サービスカタログ",
       title: "当社のサービス",
       description:
-        "お客様のビジネスニーズに合わせた物流・通関・国際輸送サービスをご覧ください。",
+        "お客様のビジネスニーズに合わせた物流・通関・国際  �送サービスをご覧ください。",
       search: "サービスまたはカテゴリを検索...",
       price: "価格",
       negotiable: "価格応相談",
@@ -4942,7 +4942,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       shipmentType: "शिपमेंट प्रकार",
       origin: "उत्पत्ति",
       destination: "गंतव्य",
-      createdAt: "बनाई गई तारीख",
+      createdAt: "बनाई गई तारإ�ख",
       subtotal: "उप-कुल",
       total: "अनुमानित कुल",
       services: "सेवाएं",
@@ -5095,7 +5095,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       signIn: "تسجيل الدخول",
       signingIn: "جارٍ تسجيل الدخول...",
       noAccount: "ليس لديك حساب؟",
-      createAccount: "إنشاء حساب",
+      createAccount: "إنشاء حس��ب",
       loginRequired: "يرجى تسجيل الدخول لمتابعة الدفع.",
     },
     register: {

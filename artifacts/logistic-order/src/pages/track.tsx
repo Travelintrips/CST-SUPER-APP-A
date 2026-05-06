@@ -133,9 +133,13 @@ export default function TrackPage() {
                     <span className="font-medium text-foreground text-right">
                       {order.shipmentType}
                     </span>
-                    <span className="text-muted-foreground">Kategori Barang</span>
+                    <span className="text-muted-foreground">
+                      Kategori Barang
+                    </span>
                     <span className="font-medium text-foreground text-right">
-                      {str(order.commodity) || str(inputData.cargo_category) || "-"}
+                      {str(order.commodity) ||
+                        str(inputData.cargo_category) ||
+                        "-"}
                     </span>
                     {origin && (
                       <>
