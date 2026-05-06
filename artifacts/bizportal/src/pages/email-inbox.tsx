@@ -23,8 +23,9 @@ import {
   type EmailLink,
   type EmailAttachment,
 } from "@workspace/api-client-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearch, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -290,6 +291,8 @@ function TransactionList({
 export default function EmailInboxPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const search = useSearch();
+  const [, setLocation] = useLocation();
 
   const [searchQ, setSearchQ] = useState("");
   const [filterStatus, setFilterStatus] = useState("__all__");
@@ -302,6 +305,21 @@ export default function EmailInboxPage() {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // Auto-open email from URL param: /email-inbox?emailId=123
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const emailId = params.get("emailId");
+    if (emailId) {
+      const id = parseInt(emailId, 10);
+      if (!isNaN(id)) {
+        setSelectedId(id);
+        setDetailOpen(true);
+        // Clean up URL param without reload
+        setLocation("/email-inbox", { replace: true });
+      }
+    }
+  }, [search, setLocation]);
 
   // Link dialog state
   const [linkOpen, setLinkOpen] = useState(false);

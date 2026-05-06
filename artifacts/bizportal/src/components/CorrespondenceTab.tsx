@@ -11,9 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Mail, Paperclip, ShieldCheck, CheckCircle2, Download, FileImage, Loader2,
+  Mail, Paperclip, ShieldCheck, CheckCircle2, Download, FileImage, Loader2, ExternalLink,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+
+function useNavigate() {
+  const [, setLocation] = useLocation();
+  return setLocation;
+}
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -61,6 +66,7 @@ interface CorrespondenceTabProps {
 export function CorrespondenceTab({ linkedType, linkedId }: CorrespondenceTabProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const params = useMemo(() => ({ linkedType, linkedId }), [linkedType, linkedId]);
 
@@ -148,7 +154,18 @@ export function CorrespondenceTab({ linkedType, linkedId }: CorrespondenceTabPro
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                {item.email && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1.5 h-7 text-xs text-muted-foreground"
+                    onClick={() => navigate(`/email-inbox?emailId=${item.email!.id}`)}
+                    title="Buka email lengkap di inbox"
+                  >
+                    <ExternalLink className="h-3 w-3" /> Buka Email
+                  </Button>
+                )}
                 {!item.link.isValidated && item.email && (
                   <Button
                     size="sm"
