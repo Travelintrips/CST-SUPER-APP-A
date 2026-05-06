@@ -46,37 +46,53 @@ function scoreQuote(q: { vendorPrice: number; estimatedDays: number | null }, al
   return (priceScore * 0.40) + (availScore * 0.25) + (speedScore * 0.20) + (ratingScore * 0.15);
 }
 
+function isFreightWithDimensions(shipmentType: string): boolean {
+  const t = shipmentType.toLowerCase();
+  return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
+}
+
 function buildRfqWaMessage(order: {
   orderNumber: string; origin: string; destination: string;
   shipmentType: string; commodity?: string | null; cargoDescription?: string | null;
   grossWeight?: number | null; volumeCbm?: number | null; requiredDate?: string | null;
   notes?: string | null;
 }, rfqNumber: string, vendorName: string): string {
+  const isFreight = isFreightWithDimensions(order.shipmentType);
+
+  const freightHint = isFreight
+    ? (
+        `📐 *Informasi kargo:*\n` +
+        (order.grossWeight ? `   Berat       : *${order.grossWeight} kg*\n` : ``) +
+        (order.volumeCbm ? `   Volume      : *${order.volumeCbm} CBM*\n` : ``) +
+        `   Berikan harga total pengiriman (bukan per-kg/per-CBM).\n\n`
+      )
+    : ``;
+
   return (
     `📋 *REQUEST FOR QUOTATION — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
     `Kepada Yth. *${vendorName}*,\n\n` +
     `Kami memohon penawaran harga untuk order berikut:\n\n` +
-    `No. RFQ     : *${rfqNumber}*\n` +
-    `No. Order   : ${order.orderNumber}\n` +
-    `Jenis       : ${order.shipmentType}\n` +
-    `Rute        : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Komoditi    : ${order.commodity}\n` : "") +
-    (order.cargoDescription ? `Deskripsi   : ${order.cargoDescription}\n` : "") +
-    (order.grossWeight ? `Berat       : ${order.grossWeight} kg\n` : "") +
-    (order.volumeCbm ? `Volume      : ${order.volumeCbm} CBM\n` : "") +
-    (order.requiredDate ? `Tgl Butuh   : ${order.requiredDate}\n` : "") +
-    (order.notes ? `Catatan     : ${order.notes}\n` : "") +
+    `No. RFQ       : *${rfqNumber}*\n` +
+    `No. Order     : ${order.orderNumber}\n` +
+    `Jenis         : ${order.shipmentType}\n` +
+    `Rute          : ${order.origin} → ${order.destination}\n` +
+    (order.commodity ? `Komoditi      : ${order.commodity}\n` : "") +
+    (order.cargoDescription ? `Deskripsi     : ${order.cargoDescription}\n` : "") +
+    (order.grossWeight ? `Berat         : ${order.grossWeight} kg\n` : "") +
+    (order.volumeCbm ? `Volume        : ${order.volumeCbm} CBM\n` : "") +
+    (order.requiredDate ? `Tgl Butuh     : ${order.requiredDate}\n` : "") +
+    (order.notes ? `Catatan       : ${order.notes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `📝 *CARA MEMBALAS:*\n` +
-    `Ketik nomor RFQ diikuti harga, lalu keterangan tambahan.\n\n` +
-    `Format:\n` +
+    freightHint +
+    `📝 *CARA MEMBALAS:*\n\n` +
+    `Balas pesan ini dengan format:\n` +
     `\`\`\`${rfqNumber} HARGA ETA_PICKUP ETA_DELIVERY CATATAN\`\`\`\n\n` +
     `Contoh:\n` +
-    `\`\`\`${rfqNumber} 5000000 besok lusa barang aman\`\`\`\n` +
+    `\`\`\`${rfqNumber} 5000000 besok 3hari muatan-aman\`\`\`\n` +
     `\`\`\`${rfqNumber} 3500000\`\`\`\n\n` +
     `⚠️ Nomor RFQ *${rfqNumber}* wajib ada di awal pesan.\n` +
-    `   Isi harga tanpa titik/koma pemisah ribuan.\n\n` +
+    `   Isi harga *tanpa titik/koma* pemisah ribuan.\n\n` +
     `Terima kasih 🙏`
   );
 }
@@ -90,22 +106,27 @@ function getOrderUrl(orderId: number): string {
 function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName: string, orderId: number, quote: {
   vendorPrice: number; estimatedPickup?: string | null; estimatedDelivery?: string | null;
   estimatedDays?: number | null; vendorNotes?: string | null;
-}): string {
+}, quotePosition?: number): string {
   const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
   const url = getOrderUrl(orderId);
+  const posLabel = quotePosition != null ? ` (vendor ke-${quotePosition})` : "";
   return (
-    `💰 *PENAWARAN VENDOR DITERIMA*\n` +
+    `💰 *PENAWARAN VENDOR DITERIMA (Portal)*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
     `No. RFQ     : \`${rfqNumber}\`\n` +
     `No. Order   : \`${orderNumber}\`\n` +
-    `Vendor      : *${vendorName}*\n` +
+    `Vendor      : *${vendorName}*${posLabel}\n` +
     `Harga       : *${fmt(quote.vendorPrice)}*\n` +
     (quote.estimatedPickup ? `ETA Pickup  : ${quote.estimatedPickup}\n` : "") +
     (quote.estimatedDelivery ? `ETA Delivery: ${quote.estimatedDelivery}\n` : "") +
     (quote.estimatedDays ? `Est. Hari   : ${quote.estimatedDays} hari\n` : "") +
     (quote.vendorNotes ? `Catatan     : ${quote.vendorNotes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
-    (url ? `🔗 *Approve sekarang:*\n${url}` : `Login ke sistem untuk approve.`)
+    (quotePosition != null
+      ? `✅ Approve vendor ini:\n\`APPROVE ${orderNumber} ${quotePosition}\`\n\n`
+      : ``) +
+    `📋 Lihat semua penawaran:\n\`QUOTES ${orderNumber}\`\n\n` +
+    (url ? `🔗 *Buka di BizPortal:*\n${url}` : `Login ke sistem untuk approve.`)
   );
 }
 
@@ -278,10 +299,15 @@ logisticRfqRouter.post("/:id/quotes", async (req: Request, res: Response) => {
     const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
     const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, Number(rfqId)));
     if (order && rfq) {
+      // Determine position of this quote in the order's pending quote list (1-based)
+      const orderQuotes = await db.select().from(logisticOrderQuotesTable)
+        .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
+        .orderBy(logisticOrderQuotesTable.createdAt);
+      const quotePosition = orderQuotes.findIndex((q) => q.id === quote.id) + 1 || undefined;
       sendWhatsApp(adminWa, buildAdminQuoteNotif(rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, orderId, {
         vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
         estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes,
-      })).catch((e: unknown) => logger.error({ e }, "WA admin quote notif failed"));
+      }, quotePosition)).catch((e: unknown) => logger.error({ e }, "WA admin quote notif failed"));
     }
   }
 

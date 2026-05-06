@@ -23,11 +23,6 @@ function fmt(n: number): string {
   return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 }
 
-/**
- * Returns list of authorized admin WA phone numbers (normalized).
- * Source: ADMIN_WA_PHONES env var, comma-separated.
- * Example: ADMIN_WA_PHONES=08123456789,628987654321
- */
 function getAdminPhones(): string[] {
   const raw = process.env.ADMIN_WA_PHONES ?? "";
   return raw.split(",").map((s) => s.trim()).filter(Boolean).map(normalizePhone);
@@ -39,102 +34,132 @@ function getOrderUrl(orderId: number): string {
   return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
 }
 
-/**
- * Normalize Indonesian/international price string to a plain number.
- * Handles: "300.000", "300,000", "5.000.000", "5000000", "5.5" (decimal)
- */
 function parsePrice(raw: string): number {
-  // Remove brackets and whitespace
   const s = raw.replace(/[\[\]]/g, "").trim();
-  // If there is more than one separator and they are consistent (thousands), strip them
-  // Detect thousands separator: if pattern like 1.234.567 or 1,234,567
   const dotParts = s.split(".");
   const commaParts = s.split(",");
   let normalized = s;
   if (dotParts.length > 2) {
-    // Multiple dots → dots are thousands separators (e.g. 5.000.000)
     normalized = s.replace(/\./g, "");
   } else if (commaParts.length > 2) {
-    // Multiple commas → commas are thousands separators
     normalized = s.replace(/,/g, "");
   } else if (dotParts.length === 2 && dotParts[1].length === 3) {
-    // Single dot with exactly 3 digits after → thousands separator (e.g. 300.000)
     normalized = s.replace(".", "");
   } else if (commaParts.length === 2 && commaParts[1].length === 3) {
-    // Single comma with exactly 3 digits after → thousands separator (e.g. 300,000)
     normalized = s.replace(",", "");
   } else {
-    // Treat remaining comma/dot as decimal
     normalized = s.replace(",", ".");
   }
   return parseFloat(normalized);
 }
 
-/**
- * Parse vendor reply for RFQ format.
- * Expected: RFQ-YYMMDD-XXXXX <price> [eta pickup] [eta delivery] [notes...]
- * Tolerates: brackets around values, Indonesian thousand separators (300.000)
- * Returns rfqNumber=null when RFQ number is missing (caller must supply it via fallback)
- */
 function parseVendorReply(message: string): {
-  rfqNumber: string | null; vendorPrice: number;
+  rfqNumber: string | null; orderNumber: string | null; vendorPrice: number;
   estimatedPickup: string | null; estimatedDelivery: string | null; vendorNotes: string | null;
 } | null {
-  // Strip bracket-delimiters the vendor may have literally copied from the format instructions
   const cleaned = message.trim().replace(/\[|\]/g, " ").replace(/\s+/g, " ").trim();
 
+  // Try to match RFQ number first (RFQ-YYMMDD-XXXXX)
   const rfqMatch = cleaned.match(/(?:#)?(RFQ-\d{6}-\d{5})/i);
   const rfqNumber = rfqMatch ? rfqMatch[1].toUpperCase() : null;
 
-  const afterRfq = rfqNumber
-    ? cleaned.slice(cleaned.toUpperCase().indexOf(rfqNumber) + rfqNumber.length).trim()
+  // Try to match order number (LOG-YYMMDD-XXXXX) if no RFQ number
+  const orderMatch = !rfqNumber ? cleaned.match(/(?:#)?(LOG-\d{6}-\d+)/i) : null;
+  const orderNumber = orderMatch ? orderMatch[1].toUpperCase() : null;
+
+  const prefix = rfqNumber ?? orderNumber;
+  const afterPrefix = prefix
+    ? cleaned.slice(cleaned.toUpperCase().indexOf(prefix) + prefix.length).trim()
     : cleaned;
 
-  // Match first number-like token (may include dots/commas as thousand separators)
-  const priceMatch = afterRfq.match(/^[\s,]*(\d[\d.,]*)/);
+  const priceMatch = afterPrefix.match(/^[\s,]*(\d[\d.,]*)/);
   if (!priceMatch) return null;
 
   const vendorPrice = parsePrice(priceMatch[1]);
   if (isNaN(vendorPrice) || vendorPrice <= 0) return null;
 
-  const rest = afterRfq.slice(priceMatch[0].length).trim();
+  const rest = afterPrefix.slice(priceMatch[0].length).trim();
   const parts = rest ? rest.split(/\s+/) : [];
 
   const estimatedPickup = parts.length > 0 ? parts[0] : null;
   const estimatedDelivery = parts.length > 1 ? parts[1] : null;
   const vendorNotes = parts.length > 2 ? parts.slice(2).join(" ") : null;
 
-  return { rfqNumber, vendorPrice, estimatedPickup, estimatedDelivery, vendorNotes };
+  return { rfqNumber, orderNumber, vendorPrice, estimatedPickup, estimatedDelivery, vendorNotes };
 }
 
 /**
  * Parse admin approve command.
- * Format: APPROVE LOG-XXXXXX-XXXXX [sellingPrice]
- * Examples:
- *   APPROVE LOG-260506-12345 5500000
- *   APPROVE LOG-260506-12345          ← uses recommended quote's calculated price
+ * Formats:
+ *   APPROVE LOG-xxx                    ← list vendors who quoted (no action)
+ *   APPROVE LOG-xxx 5500000            ← auto-pick best vendor, price override
+ *   APPROVE LOG-xxx 2                  ← pick vendor #2, auto-calculate price
+ *   APPROVE LOG-xxx 2 5500000          ← pick vendor #2, price override
  */
 function parseAdminApprove(message: string): {
-  orderNumber: string; sellingPrice: number | null;
+  orderNumber: string; quotePosition: number | null; sellingPrice: number | null;
 } | null {
   const cleaned = message.trim();
-  const match = cleaned.match(/^APPROVE\s+(LOG-\d{6}-\d+)(?:\s+([\d.,]+))?/i);
+  const match = cleaned.match(/^APPROVE\s+(LOG-\d{6}-\d+)(?:\s+([\d.,]+))?(?:\s+([\d.,]+))?/i);
   if (!match) return null;
   const orderNumber = match[1].toUpperCase();
+
+  const arg1 = match[2] ? parsePrice(match[2]) : null;
+  const arg2 = match[3] ? parsePrice(match[3]) : null;
+
+  let quotePosition: number | null = null;
   let sellingPrice: number | null = null;
-  if (match[2]) {
-    sellingPrice = parseFloat(match[2].replace(/[.,](?=\d{3}(?:[.,]|$))/g, "").replace(",", "."));
-    if (isNaN(sellingPrice) || sellingPrice <= 0) sellingPrice = null;
+
+  if (arg1 !== null && !isNaN(arg1)) {
+    if (Number.isInteger(arg1) && arg1 >= 1 && arg1 <= 50 && arg2 !== null) {
+      // arg1 is a vendor position (1–50), arg2 is the price
+      quotePosition = arg1;
+      sellingPrice = !isNaN(arg2) && arg2 > 0 ? arg2 : null;
+    } else if (Number.isInteger(arg1) && arg1 >= 1 && arg1 <= 50 && arg2 === null) {
+      // arg1 is a vendor position, no price override
+      quotePosition = arg1;
+      sellingPrice = null;
+    } else {
+      // arg1 is the price directly
+      sellingPrice = arg1 > 0 ? arg1 : null;
+    }
   }
-  return { orderNumber, sellingPrice };
+
+  return { orderNumber, quotePosition, sellingPrice };
+}
+
+/** Parse QUOTES command: QUOTES LOG-xxx */
+function parseQuotesList(message: string): string | null {
+  const match = message.trim().match(/^QUOTES\s+(LOG-\d{6}-\d+)/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+/** Build a numbered vendor quote list string for admin messages */
+function buildVendorQuoteList(
+  quotes: { vendorName: string; vendorPrice: number; estimatedPickup?: string | null; estimatedDelivery?: string | null; quoteStatus: string }[],
+  orderNumber: string,
+): string {
+  if (quotes.length === 0) return `_Belum ada vendor yang membalas._`;
+  return quotes
+    .map((q, i) => {
+      const n = i + 1;
+      const eta = [q.estimatedPickup, q.estimatedDelivery].filter(Boolean).join(" / ");
+      return (
+        `*${n}.* ${q.vendorName}\n` +
+        `    Harga: ${fmt(q.vendorPrice)}${eta ? `  ETA: ${eta}` : ""}\n` +
+        `    → \`APPROVE ${orderNumber} ${n} [harga_jual]\``
+      );
+    })
+    .join("\n\n");
 }
 
 /**
- * Shared approve logic: find best pending quote for an order, approve it, send WA to customer.
+ * Shared approve logic: find quote (by position or best), approve it, send WA to customer.
  */
 async function doApproveOrder(
   orderId: number,
   overrideSellingPrice: number | null,
+  quotePosition?: number | null,
 ): Promise<{
   orderNumber: string; vendorName: string; sellingPrice: number; customerPhone: string | null;
 } | { error: string }> {
@@ -142,12 +167,19 @@ async function doApproveOrder(
   if (!order) return { error: "Order tidak ditemukan" };
   if (order.adminApprovalStatus === "approved") return { error: "Order sudah pernah di-approve" };
 
+  // Only use pending quotes from vendors who have actually replied
   const quotes = await db.select().from(logisticOrderQuotesTable)
-    .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")));
-  if (quotes.length === 0) return { error: "Tidak ada quote pending untuk order ini" };
+    .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
+    .orderBy(logisticOrderQuotesTable.createdAt);
+  if (quotes.length === 0) return { error: "Tidak ada quote dari vendor untuk order ini" };
 
-  // Pick best quote: lowest vendor price
-  const best = quotes.reduce((a, b) => Number(a.vendorPrice) <= Number(b.vendorPrice) ? a : b);
+  let best = quotes[0];
+  if (quotePosition != null && quotePosition >= 1 && quotePosition <= quotes.length) {
+    best = quotes[quotePosition - 1];
+  } else if (!quotePosition) {
+    // Auto-pick: lowest vendor price
+    best = quotes.reduce((a, b) => Number(a.vendorPrice) <= Number(b.vendorPrice) ? a : b);
+  }
 
   const sellingPrice = overrideSellingPrice != null
     ? overrideSellingPrice
@@ -197,7 +229,7 @@ async function doApproveOrder(
     );
   }
 
-  logger.info({ orderId, quoteId: best.id, sellingPrice, vendorId: best.vendorId }, "Quote approved via WA command");
+  logger.info({ orderId, quoteId: best.id, sellingPrice, vendorId: best.vendorId, quotePosition }, "Quote approved via WA command");
 
   return {
     orderNumber: order.orderNumber,
@@ -219,7 +251,6 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     const sender = typeof body.sender === "string" ? body.sender : null;
     const message = typeof body.message === "string" ? body.message : null;
     const senderName = typeof body.sender_name === "string" ? body.sender_name : null;
-    // Fonnte sends `member` when the message comes from a group (the actual typer's number)
     const member = typeof body.member === "string" ? body.member : null;
 
     if (!sender || !message) {
@@ -227,42 +258,100 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
       return;
     }
 
-    // isGroup: sender is the group JID (ends with @g.us or @lid)
     const isGroup = sender.includes("@g.us") || sender.includes("@lid");
-    // The person who actually typed — for group messages this is `member`, for DM it's `sender`
     const actualSender = (isGroup && member) ? member : sender;
-
     const normalizedSender = normalizePhone(actualSender);
     const adminWa = await getAdminWa();
 
-    // ─── 1. Check if sender is an authorized admin ───────────────────────────
+    // ─── 1. Admin commands ───────────────────────────────────────────────────
     const adminPhones = getAdminPhones();
     const isAdmin = adminPhones.length > 0 && adminPhones.includes(normalizedSender);
 
     if (isAdmin) {
+      // QUOTES command: list all pending quotes for an order
+      const quotesCmd = parseQuotesList(message);
+      if (quotesCmd) {
+        const [order] = await db.select().from(logisticOrdersTable)
+          .where(sql`${logisticOrdersTable.orderNumber} = ${quotesCmd}`);
+        if (!order) {
+          sendWhatsApp(sender, `❌ Order *${quotesCmd}* tidak ditemukan.`).catch(() => undefined);
+          return;
+        }
+        const quotes = await db.select().from(logisticOrderQuotesTable)
+          .where(and(eq(logisticOrderQuotesTable.orderId, order.id), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
+          .orderBy(logisticOrderQuotesTable.createdAt);
+        const vendors = await db.select().from(suppliersTable);
+        const vendorMap = Object.fromEntries(vendors.map((v) => [v.id, v.name]));
+        const quotesWithNames = quotes.map((q) => ({
+          vendorName: vendorMap[q.vendorId] ?? `Vendor #${q.vendorId}`,
+          vendorPrice: Number(q.vendorPrice),
+          estimatedPickup: q.estimatedPickup,
+          estimatedDelivery: q.estimatedDelivery,
+          quoteStatus: q.quoteStatus,
+        }));
+
+        const listMsg =
+          `📋 *DAFTAR PENAWARAN — ${order.orderNumber}*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Jenis  : ${order.shipmentType}\n` +
+          `Rute   : ${order.origin} → ${order.destination}\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          buildVendorQuoteList(quotesWithNames, order.orderNumber) + `\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Pilih vendor terbaik atau auto-pick:\n` +
+          `\`APPROVE ${order.orderNumber}\` ← auto (harga terendah)\n` +
+          `\`APPROVE ${order.orderNumber} [N]\` ← pilih vendor ke-N\n` +
+          `\`APPROVE ${order.orderNumber} [N] [harga]\` ← pilih vendor + atur harga jual`;
+        sendWhatsApp(sender, listMsg).catch(() => undefined);
+        return;
+      }
+
+      // APPROVE command
       const adminCmd = parseAdminApprove(message);
       if (adminCmd) {
-        // Find order by order number
         const [order] = await db.select().from(logisticOrdersTable)
           .where(sql`${logisticOrdersTable.orderNumber} = ${adminCmd.orderNumber}`);
 
         if (!order) {
-          sendWhatsApp(sender,
-            `❌ Order *${adminCmd.orderNumber}* tidak ditemukan.`
-          ).catch(() => undefined);
+          sendWhatsApp(sender, `❌ Order *${adminCmd.orderNumber}* tidak ditemukan.`).catch(() => undefined);
           return;
         }
 
-        const result = await doApproveOrder(order.id, adminCmd.sellingPrice);
+        // APPROVE without position or price → show vendor list first
+        if (adminCmd.quotePosition === null && adminCmd.sellingPrice === null) {
+          const quotes = await db.select().from(logisticOrderQuotesTable)
+            .where(and(eq(logisticOrderQuotesTable.orderId, order.id), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
+            .orderBy(logisticOrderQuotesTable.createdAt);
+          if (quotes.length === 0) {
+            sendWhatsApp(sender, `⚠️ Belum ada vendor yang membalas untuk order *${adminCmd.orderNumber}*.`).catch(() => undefined);
+            return;
+          }
+          const vendors = await db.select().from(suppliersTable);
+          const vendorMap = Object.fromEntries(vendors.map((v) => [v.id, v.name]));
+          const quotesWithNames = quotes.map((q) => ({
+            vendorName: vendorMap[q.vendorId] ?? `Vendor #${q.vendorId}`,
+            vendorPrice: Number(q.vendorPrice),
+            estimatedPickup: q.estimatedPickup,
+            estimatedDelivery: q.estimatedDelivery,
+            quoteStatus: q.quoteStatus,
+          }));
+          const listMsg =
+            `📋 *Pilih vendor untuk ${adminCmd.orderNumber}:*\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            buildVendorQuoteList(quotesWithNames, adminCmd.orderNumber) + `\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `\`APPROVE ${adminCmd.orderNumber}\` ← auto-pick harga terendah`;
+          sendWhatsApp(sender, listMsg).catch(() => undefined);
+          return;
+        }
+
+        const result = await doApproveOrder(order.id, adminCmd.sellingPrice, adminCmd.quotePosition);
 
         if ("error" in result) {
-          sendWhatsApp(sender,
-            `❌ Gagal approve *${adminCmd.orderNumber}*:\n${result.error}`
-          ).catch(() => undefined);
+          sendWhatsApp(sender, `❌ Gagal approve *${adminCmd.orderNumber}*:\n${result.error}`).catch(() => undefined);
           return;
         }
 
-        // Confirm to admin
         const confirmMsg =
           `✅ *APPROVE BERHASIL*\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
@@ -275,31 +364,31 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             : `⚠️ No. HP customer tidak tersedia, WA tidak dikirim`);
         sendWhatsApp(sender, confirmMsg).catch(() => undefined);
 
-        // Also notify admin group if different from sender
         if (adminWa && adminWa !== sender) {
           sendWhatsApp(adminWa,
             `✅ Order \`${result.orderNumber}\` di-approve via WA oleh ${senderName ?? sender}.\n` +
-            `Harga: ${fmt(result.sellingPrice)} (vendor: ${result.vendorName})`
+            `Vendor: ${result.vendorName}  Harga: ${fmt(result.sellingPrice)}`
           ).catch(() => undefined);
         }
         return;
       }
 
-      // Admin sent something that isn't a recognized command — show help
+      // Partial 'approve' keyword → show help
       if (/approve/i.test(message)) {
         sendWhatsApp(sender,
-          `ℹ️ *Format perintah approve:*\n` +
-          `APPROVE [No. Order] [Harga Jual]\n\n` +
-          `Contoh:\n` +
-          `\`\`\`APPROVE LOG-260506-12345 5500000\`\`\`\n\n` +
-          `Jika harga tidak dicantumkan, sistem akan pakai harga rekomendasi.`
+          `ℹ️ *Perintah APPROVE:*\n\n` +
+          `\`APPROVE LOG-xxx\`\n_→ tampilkan daftar vendor yang sudah quote_\n\n` +
+          `\`APPROVE LOG-xxx 5500000\`\n_→ auto-pick vendor terbaik, harga jual 5.5jt_\n\n` +
+          `\`APPROVE LOG-xxx 2\`\n_→ pilih vendor ke-2, harga otomatis_\n\n` +
+          `\`APPROVE LOG-xxx 2 5500000\`\n_→ pilih vendor ke-2, harga jual 5.5jt_\n\n` +
+          `\`QUOTES LOG-xxx\`\n_→ tampilkan semua penawaran untuk order_`
         ).catch(() => undefined);
         return;
       }
       // Fall through for other admin messages
     }
 
-    // ─── 2. Check if sender is a known vendor ────────────────────────────────
+    // ─── 2. Vendor reply ──────────────────────────────────────────────────────
     const vendors = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
     const matchedVendor = vendors.find((v) => v.phone && normalizePhone(v.phone) === normalizedSender);
 
@@ -309,7 +398,8 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
       if (parsed) {
         // Resolve which RFQ to use:
         // 1. If vendor included RFQ number → find it directly
-        // 2. If no RFQ number → smart fallback: find their most recent open RFQ
+        // 2. If vendor included order number → find the open RFQ for that order
+        // 3. If neither → smart fallback: most recent open RFQ for this vendor
         let rfq: typeof logisticOrderRfqsTable.$inferSelect | undefined;
         let usedFallback = false;
 
@@ -317,8 +407,17 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
           const [found] = await db.select().from(logisticOrderRfqsTable)
             .where(eq(logisticOrderRfqsTable.rfqNumber, parsed.rfqNumber));
           rfq = found;
+        } else if (parsed.orderNumber) {
+          const [order] = await db.select().from(logisticOrdersTable)
+            .where(sql`${logisticOrdersTable.orderNumber} = ${parsed.orderNumber}`);
+          if (order) {
+            const openRfqs = await db.select().from(logisticOrderRfqsTable)
+              .where(and(eq(logisticOrderRfqsTable.orderId, order.id), eq(logisticOrderRfqsTable.status, "open")))
+              .orderBy(desc(logisticOrderRfqsTable.createdAt));
+            rfq = openRfqs.find((r) => (r.vendorIds as number[]).includes(matchedVendor.id));
+          }
         } else {
-          // Find most recent open RFQ that includes this vendor
+          // Smart fallback: most recent open RFQ including this vendor
           const openRfqs = await db.select().from(logisticOrderRfqsTable)
             .where(eq(logisticOrderRfqsTable.status, "open"))
             .orderBy(desc(logisticOrderRfqsTable.createdAt));
@@ -371,17 +470,28 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             const [order] = await db.select().from(logisticOrdersTable)
               .where(eq(logisticOrdersTable.id, rfq.orderId));
 
+            // Fetch ALL current quotes to build the vendor list for admin
             const allQuotes = await db.select().from(logisticOrderQuotesTable)
-              .where(eq(logisticOrderQuotesTable.orderId, rfq.orderId));
-            const quotedCount = allQuotes.length;
-            const rfqVendorCount = (rfq.vendorIds as number[]).length;
+              .where(and(eq(logisticOrderQuotesTable.orderId, rfq.orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
+              .orderBy(logisticOrderQuotesTable.createdAt);
+            const allVendors = await db.select().from(suppliersTable);
+            const vendorMap = Object.fromEntries(allVendors.map((v) => [v.id, v.name]));
+            const quotesWithNames = allQuotes.map((q) => ({
+              vendorName: vendorMap[q.vendorId] ?? `Vendor #${q.vendorId}`,
+              vendorPrice: Number(q.vendorPrice),
+              estimatedPickup: q.estimatedPickup,
+              estimatedDelivery: q.estimatedDelivery,
+              quoteStatus: q.quoteStatus,
+            }));
 
+            const rfqVendorCount = (rfq.vendorIds as number[]).length;
             const orderNum = order?.orderNumber ?? String(rfq.orderId);
             const orderUrl = getOrderUrl(rfq.orderId);
+
             const adminMsg =
-              `💰 *PENAWARAN VENDOR DITERIMA (via WA)*\n` +
+              `💰 *PENAWARAN VENDOR DITERIMA*\n` +
               `━━━━━━━━━━━━━━━━━━\n` +
-              (usedFallback ? `⚠️ _No. RFQ tidak disertakan, sistem otomatis menggunakan RFQ terbaru_\n` : "") +
+              (usedFallback ? `⚠️ _No. RFQ/Order tidak disertakan — pakai fallback otomatis_\n` : "") +
               `No. RFQ     : \`${resolvedRfqNumber}\`\n` +
               `No. Order   : \`${orderNum}\`\n` +
               `Vendor      : *${matchedVendor.name}*\n` +
@@ -389,9 +499,12 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
               (parsed.estimatedPickup ? `ETA Pickup  : ${parsed.estimatedPickup}\n` : "") +
               (parsed.estimatedDelivery ? `ETA Delivery: ${parsed.estimatedDelivery}\n` : "") +
               (parsed.vendorNotes ? `Catatan     : ${parsed.vendorNotes}\n` : "") +
-              `Progress    : ${quotedCount}/${rfqVendorCount} vendor sudah quote\n` +
+              `Progress    : ${allQuotes.length}/${rfqVendorCount} vendor sudah quote\n` +
               `━━━━━━━━━━━━━━━━━━\n` +
-              (orderUrl ? `🔗 *Buka & Approve:*\n${orderUrl}` : `Login ke sistem untuk approve.`);
+              `📋 *Semua penawaran masuk:*\n` +
+              buildVendorQuoteList(quotesWithNames, orderNum) + `\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              (orderUrl ? `🔗 *Buka di BizPortal:*\n${orderUrl}` : `Login ke sistem untuk approve.`);
 
             if (adminWa) {
               await sendWhatsApp(adminWa, adminMsg);
@@ -407,7 +520,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
           }
         }
 
-        // Has price but no matching RFQ — notify admin with raw message and price detected
+        // Has price but no matching RFQ
         if (adminWa) {
           const forwardMsg =
             `📩 *Balasan Vendor (Harga Terdeteksi, RFQ Tidak Cocok)*\n` +
@@ -424,7 +537,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
         return;
       }
 
-      // Generic vendor message (no price detected) — forward to admin as-is
+      // Generic vendor message (no price detected) — forward to admin
       if (adminWa) {
         const forwardMsg =
           `📩 *Balasan dari Vendor*\n` +

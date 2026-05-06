@@ -18,6 +18,9 @@ export interface LogisticOrderData {
   origin: string;
   destination: string;
   commodity?: string | null;
+  cargoDescription?: string | null;
+  grossWeight?: number | null;
+  volumeCbm?: number | null;
   grandTotal: number;
   serviceList: string;
   requiredDate?: string | null;
@@ -34,6 +37,12 @@ function formatRupiah(amount: number): string {
   return amount.toLocaleString("id-ID");
 }
 
+/** Returns true for air/sea freight types that need per-unit pricing hints */
+function isFreightWithDimensions(shipmentType: string): boolean {
+  const t = shipmentType.toLowerCase();
+  return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
+}
+
 function buildAdminWaMessage(order: LogisticOrderData): string {
   const orderUrl = getOrderUrl(order.id);
   return (
@@ -46,9 +55,13 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     `Jenis      : ${order.shipmentType}\n` +
     `Rute       : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `Komoditi   : ${order.commodity}\n` : ``) +
+    (order.cargoDescription ? `Deskripsi  : ${order.cargoDescription}\n` : ``) +
+    (order.grossWeight ? `Berat      : ${order.grossWeight} kg\n` : ``) +
+    (order.volumeCbm ? `Volume     : ${order.volumeCbm} CBM\n` : ``) +
     `Layanan    :\n${order.serviceList}\n` +
     `Total Est. : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.requiredDate ? `Tgl Kirim  : ${order.requiredDate}\n` : ``) +
+    (order.notes ? `Catatan    : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
     (orderUrl ? `🔗 *Buka & Approve di BizPortal:*\n${orderUrl}\n\n` : ``) +
     `💬 *Atau approve via WA* (setelah vendor balas):\n` +
@@ -58,19 +71,44 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
 }
 
 function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): string {
+  const isFreight = isFreightWithDimensions(order.shipmentType);
+
+  const priceHint = isFreight
+    ? (
+        `📐 *Format harga untuk jenis ini:*\n` +
+        `Berikan harga total pengiriman.\n` +
+        (order.grossWeight ? `Berat barang: *${order.grossWeight} kg*\n` : ``) +
+        (order.volumeCbm ? `Volume: *${order.volumeCbm} CBM*\n` : ``) +
+        `\n`
+      )
+    : ``;
+
   return (
     `📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Kepada Yth. ${vendorName},\n\n` +
+    `Kepada Yth. *${vendorName}*,\n\n` +
     `Anda mendapat permintaan pengiriman baru.\n\n` +
-    `No. Order  : *${order.orderNumber}*\n` +
-    `Jenis      : ${order.shipmentType}\n` +
-    `Rute       : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Kategori Barang   : ${order.commodity}\n` : ``) +
-    `Layanan    :\n${order.serviceList}\n` +
-    (order.requiredDate ? `Tgl Butuh  : ${order.requiredDate}\n` : ``) +
+    `No. Order       : *${order.orderNumber}*\n` +
+    `Jenis           : ${order.shipmentType}\n` +
+    `Rute            : ${order.origin} → ${order.destination}\n` +
+    (order.commodity ? `Kategori Barang : ${order.commodity}\n` : ``) +
+    (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
+    (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
+    (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
+    `Layanan         :\n${order.serviceList}\n` +
+    (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Balas pesan ini jika ada pertanyaan. Tim CST akan menerima balasan Anda.`
+    `💰 *Cara mengirim harga penawaran:*\n\n` +
+    priceHint +
+    `Balas pesan ini dengan format:\n` +
+    `\`\`\`${order.orderNumber} HARGA ETA_PICKUP ETA_DELIVERY CATATAN\`\`\`\n\n` +
+    `Contoh:\n` +
+    `\`\`\`${order.orderNumber} 5000000 besok 3hari barang-aman\`\`\`\n` +
+    `\`\`\`${order.orderNumber} 3500000\`\`\`\n\n` +
+    `⚠️ Pastikan No. Order *${order.orderNumber}* ada di awal pesan.\n` +
+    `   Isi harga *tanpa titik/koma* pemisah ribuan.\n\n` +
+    `Terima kasih 🙏`
   );
 }
 
@@ -80,13 +118,16 @@ function buildCustomerWaMessage(order: LogisticOrderData): string {
     `━━━━━━━━━━━━━━━━━━\n` +
     `Halo ${order.customerName},\n\n` +
     `Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.\n\n` +
-    `No. Order  : *${order.orderNumber}*\n` +
-    `Status     : Menunggu Konfirmasi\n` +
-    `Jenis      : ${order.shipmentType}\n` +
-    `Rute       : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Kategori Barang   : ${order.commodity}\n` : ``) +
-    `Layanan    :\n${order.serviceList}\n` +
-    `Total Est. : Rp ${formatRupiah(order.grandTotal)}\n` +
+    `No. Order       : *${order.orderNumber}*\n` +
+    `Status          : Menunggu Konfirmasi\n` +
+    `Jenis           : ${order.shipmentType}\n` +
+    `Rute            : ${order.origin} → ${order.destination}\n` +
+    (order.commodity ? `Kategori Barang : ${order.commodity}\n` : ``) +
+    (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
+    (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    `Layanan         :\n${order.serviceList}\n` +
+    `Total Est.      : Rp ${formatRupiah(order.grandTotal)}\n` +
+    (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
     `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n` +
     `📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234`
@@ -139,6 +180,9 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
     ["Jenis", order.shipmentType],
     ["Rute", `${order.origin} → ${order.destination}`],
     ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
+    ...(order.cargoDescription ? [["Deskripsi", order.cargoDescription] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
     ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
     ["Total Est.", `Rp ${formatRupiah(order.grandTotal)}`],
     ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
@@ -199,6 +243,9 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
     ["Jenis", order.shipmentType],
     ["Rute", `${order.origin} → ${order.destination}`],
     ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
+    ...(order.cargoDescription ? [["Deskripsi", order.cargoDescription] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
     ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
     ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
     ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
@@ -246,6 +293,8 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
     ["Jenis", order.shipmentType],
     ["Rute", `${order.origin} → ${order.destination}`],
     ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
+    ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
+    ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
     ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
     ["Total Est.", `Rp ${formatRupiah(order.grandTotal)}`],
     ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
