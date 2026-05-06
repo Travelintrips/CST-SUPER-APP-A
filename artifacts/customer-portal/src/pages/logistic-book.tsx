@@ -541,7 +541,7 @@ export default function BookPage() {
       customerName,
       email,
       phone,
-      shipmentType: shipmentType || customerForm.destination,
+      shipmentType: shipmentType ?? "",
       origin,
       destination,
       commodity: customerForm.commodity || str(truckingInputData.cargo_category) || null,
