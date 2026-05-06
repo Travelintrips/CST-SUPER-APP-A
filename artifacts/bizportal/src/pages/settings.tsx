@@ -386,18 +386,23 @@ function WhatsAppNotificationCard() {
         {loading ? (
           <Skeleton className="h-10 w-full max-w-sm bg-muted" />
         ) : (
-          <div className="flex flex-col gap-3 max-w-sm">
+          <div className="flex flex-col gap-3 max-w-lg">
             <div className="space-y-1.5">
-              <Label htmlFor="admin-wa">Nomor WhatsApp Admin</Label>
+              <Label htmlFor="admin-wa">Nomor / Group ID WhatsApp Admin</Label>
               <Input
                 id="admin-wa"
                 value={adminWa}
                 onChange={(e) => setAdminWa(e.target.value)}
-                placeholder="628xxxxxxxxxx"
+                placeholder="628xxxxxxxxxx atau 12036xxxxxxxx@g.us"
               />
-              <p className="text-xs text-muted-foreground">
-                Format: kode negara + nomor tanpa tanda +, spasi, atau strip. Contoh: <code>6281234567890</code>
-              </p>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>Bisa diisi dengan:</p>
+                <ul className="list-disc list-inside space-y-0.5 pl-1">
+                  <li>Nomor HP personal: <code>6281234567890</code></li>
+                  <li>Group ID WhatsApp: <code>120363xxxxxxxxxx@g.us</code> — agar notifikasi masuk ke <strong>grup admin</strong></li>
+                </ul>
+                <p className="text-amber-600 dark:text-amber-400">⚠️ Untuk kirim ke grup, isi dengan Group ID (format <code>@g.us</code>), bukan nomor HP.</p>
+              </div>
             </div>
             <Button
               onClick={handleSave}
