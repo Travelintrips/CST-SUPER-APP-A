@@ -257,7 +257,7 @@ export default function JasaDetail() {
   const [calcDist, setCalcDist] = useState(false);
   const [truckingStep, setTruckingStep] = useState(1);
   const [vehicleOpen, setVehicleOpen] = useState(false);
-  const [truckingStops, setTruckingStops] = useState<Array<{ id: string; city: string; geo?: GeoLocation }>>([]);
+  const [truckingStops, setTruckingStops] = useState<Array<{ id: string; city: string; geo?: GeoLocation; receiverName: string; receiverPhone: string }>>([]);
   const [optimizeRoute, setOptimizeRoute] = useState(false);
 
   // Step 2 cargo state
@@ -275,6 +275,10 @@ export default function JasaDetail() {
   const [truckingTransferTerm, setTruckingTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [truckingPayTerm, setTruckingPayTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
   const [truckingDpNext, setTruckingDpNext] = useState<"lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil" | "">("");
+  const [senderName, setSenderName] = useState("");
+  const [senderPhone, setSenderPhone] = useState("");
+  const [receiverName, setReceiverName] = useState("");
+  const [receiverPhone, setReceiverPhone] = useState("");
 
   useEffect(() => {
     fetch("/api/portal/trucking-rates")
@@ -434,13 +438,16 @@ export default function JasaDetail() {
   function removeAirRow(id: string) { setAirRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== id) : prev); }
 
   function addTruckingStop() {
-    setTruckingStops(prev => [...prev, { id: crypto.randomUUID(), city: "" }]);
+    setTruckingStops(prev => [...prev, { id: crypto.randomUUID(), city: "", receiverName: "", receiverPhone: "" }]);
   }
   function removeTruckingStop(id: string) {
     setTruckingStops(prev => prev.filter(s => s.id !== id));
   }
   function updateTruckingStop(id: string, city: string, geo?: GeoLocation) {
     setTruckingStops(prev => prev.map(s => s.id === id ? { ...s, city, geo } : s));
+  }
+  function updateTruckingStopContact(id: string, field: "receiverName" | "receiverPhone", value: string) {
+    setTruckingStops(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
   }
 
   function handlePickupChange(label: string, geo?: GeoLocation) {
@@ -522,6 +529,15 @@ export default function JasaDetail() {
           return;
         }
       }
+      // Pengirim
+      if (!senderName.trim()) {
+        toast({ title: "Isi nama pengirim", variant: "destructive" });
+        return;
+      }
+      if (!senderPhone.trim()) {
+        toast({ title: "Isi no. telepon pengirim", variant: "destructive" });
+        return;
+      }
       // Rute
       if (!state.pickupCity) {
         toast({ title: "Isi kota asal", variant: "destructive" });
@@ -530,6 +546,25 @@ export default function JasaDetail() {
       if (!state.destCity) {
         toast({ title: "Isi kota tujuan", variant: "destructive" });
         return;
+      }
+      if (!receiverName.trim()) {
+        toast({ title: "Isi nama penerima", variant: "destructive" });
+        return;
+      }
+      if (!receiverPhone.trim()) {
+        toast({ title: "Isi no. telepon penerima", variant: "destructive" });
+        return;
+      }
+      for (let si = 0; si < truckingStops.length; si++) {
+        const s = truckingStops[si];
+        if (!s.receiverName.trim()) {
+          toast({ title: `Isi nama penerima stop ${si + 1}`, variant: "destructive" });
+          return;
+        }
+        if (!s.receiverPhone.trim()) {
+          toast({ title: `Isi no. telepon penerima stop ${si + 1}`, variant: "destructive" });
+          return;
+        }
       }
       // Barang
       if (!cargoCategory) {
@@ -578,7 +613,14 @@ export default function JasaDetail() {
         ...state,
         ...(item.calculatorType === "air_freight" ? { airRows: JSON.stringify(airRows) } : {}),
         ...(item.calculatorType === "trucking" ? {
-          ...(truckingStops.length > 0 ? { stops: truckingStops.map(s => s.city).join(" → ") } : {}),
+          sender_name: senderName,
+          sender_phone: senderPhone,
+          receiver_name: receiverName,
+          receiver_phone: receiverPhone,
+          ...(truckingStops.length > 0 ? {
+            stops: truckingStops.map(s => s.city).join(" → "),
+            stops_contacts: JSON.stringify(truckingStops.map((s, i) => ({ stop: i + 1, city: s.city, receiverName: s.receiverName, receiverPhone: s.receiverPhone }))),
+          } : {}),
           order_now: String(orderNow),
           cargo_category: cargoCategory,
           notes: truckingNotes,
@@ -902,6 +944,36 @@ export default function JasaDetail() {
                             </div>
                           </div>
 
+                          {/* ─ Pengirim ─ */}
+                          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <div className="px-4 pt-3 pb-1">
+                              <p className="text-xs font-bold text-[#0B5CAD] uppercase tracking-wide">Data Pengirim</p>
+                            </div>
+                            <div className="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Nama Pengirim <span className="text-red-500">*</span></label>
+                                <Input
+                                  placeholder="Nama lengkap pengirim"
+                                  value={senderName}
+                                  onChange={e => setSenderName(e.target.value)}
+                                  className="h-9"
+                                  required
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">No. Telepon Pengirim <span className="text-red-500">*</span></label>
+                                <Input
+                                  type="tel"
+                                  placeholder="+62..."
+                                  value={senderPhone}
+                                  onChange={e => setSenderPhone(e.target.value)}
+                                  className="h-9"
+                                  required
+                                />
+                              </div>
+                            </div>
+                          </div>
+
                           {/* ─ Rute ─ */}
                           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                             <div className="px-4 pt-3 pb-1">
@@ -924,17 +996,65 @@ export default function JasaDetail() {
                                   <LocationCombobox value={state.pickupCity || ""} onChange={handlePickupChange} placeholder="Kota asal..." countryCode="id"/>
                                 </div>
                                 {truckingStops.map((stop, i) => (
-                                  <div key={stop.id} className="py-2 pr-3 flex items-center gap-1">
-                                    <div className="flex-1 min-w-0">
-                                      <LocationCombobox value={stop.city} onChange={(city, geo) => updateTruckingStop(stop.id, city, geo)} placeholder={`Kota stop ${i + 1}...`} countryCode="id"/>
+                                  <div key={stop.id} className="py-2 pr-3 space-y-2">
+                                    <div className="flex items-center gap-1">
+                                      <div className="flex-1 min-w-0">
+                                        <LocationCombobox value={stop.city} onChange={(city, geo) => updateTruckingStop(stop.id, city, geo)} placeholder={`Kota stop ${i + 1}...`} countryCode="id"/>
+                                      </div>
+                                      <button type="button" onClick={() => removeTruckingStop(stop.id)} className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 hover:bg-red-100 hover:text-red-500 text-gray-400 flex items-center justify-center transition-colors" aria-label="Hapus stop">
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                      </button>
                                     </div>
-                                    <button type="button" onClick={() => removeTruckingStop(stop.id)} className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 hover:bg-red-100 hover:text-red-500 text-gray-400 flex items-center justify-center transition-colors" aria-label="Hapus stop">
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                                    </button>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      <div>
+                                        <label className="text-xs text-gray-500 font-medium block mb-1">Nama Penerima Stop {i + 1} <span className="text-red-500">*</span></label>
+                                        <Input
+                                          placeholder="Nama penerima"
+                                          value={stop.receiverName}
+                                          onChange={e => updateTruckingStopContact(stop.id, "receiverName", e.target.value)}
+                                          className="h-8 text-sm"
+                                          required
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-xs text-gray-500 font-medium block mb-1">No. Telepon Penerima Stop {i + 1} <span className="text-red-500">*</span></label>
+                                        <Input
+                                          type="tel"
+                                          placeholder="+62..."
+                                          value={stop.receiverPhone}
+                                          onChange={e => updateTruckingStopContact(stop.id, "receiverPhone", e.target.value)}
+                                          className="h-8 text-sm"
+                                          required
+                                        />
+                                      </div>
+                                    </div>
                                   </div>
                                 ))}
-                                <div className="py-2 pr-3">
+                                <div className="py-2 pr-3 space-y-2">
                                   <LocationCombobox value={state.destCity || ""} onChange={handleDestChange} placeholder="Kota tujuan..." countryCode="id"/>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                    <div>
+                                      <label className="text-xs text-gray-500 font-medium block mb-1">Nama Penerima <span className="text-red-500">*</span></label>
+                                      <Input
+                                        placeholder="Nama penerima"
+                                        value={receiverName}
+                                        onChange={e => setReceiverName(e.target.value)}
+                                        className="h-8 text-sm"
+                                        required
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-gray-500 font-medium block mb-1">No. Telepon Penerima <span className="text-red-500">*</span></label>
+                                      <Input
+                                        type="tel"
+                                        placeholder="+62..."
+                                        value={receiverPhone}
+                                        onChange={e => setReceiverPhone(e.target.value)}
+                                        className="h-8 text-sm"
+                                        required
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
