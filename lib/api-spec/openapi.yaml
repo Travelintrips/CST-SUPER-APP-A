@@ -2632,6 +2632,15 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/EmailCorrespondenceDetail" }
+    delete:
+      operationId: deleteEmailCorrespondence
+      summary: Delete an email correspondence and all its links/attachments
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
 
   /email-correspondences/{id}/validate-status:
     parameters:

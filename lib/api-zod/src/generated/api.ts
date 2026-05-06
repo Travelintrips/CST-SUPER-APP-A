@@ -3787,6 +3787,17 @@ export const GetEmailCorrespondenceResponse = zod
   );
 
 /**
+ * @summary Delete an email correspondence and all its links/attachments
+ */
+export const DeleteEmailCorrespondenceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteEmailCorrespondenceResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
  * @summary Update status of an email correspondence
  */
 export const ValidateEmailCorrespondenceStatusParams = zod.object({

@@ -293,4 +293,24 @@ router.delete("/:id/links/:linkId", async (req, res) => {
   return res.json({ message: "Link berhasil dihapus" });
 });
 
+// DELETE /api/email-correspondences/:id
+router.delete("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [row] = await db
+    .select({ id: emailCorrespondencesTable.id })
+    .from(emailCorrespondencesTable)
+    .where(eq(emailCorrespondencesTable.id, id))
+    .limit(1);
+  if (!row) return res.status(404).json({ message: "Email tidak ditemukan" });
+
+  // Cascade: delete links and attachments first
+  await db.delete(emailLinksTable).where(eq(emailLinksTable.emailCorrespondenceId, id));
+  await db.delete(emailAttachmentsTable).where(eq(emailAttachmentsTable.emailCorrespondenceId, id));
+  await db.delete(emailCorrespondencesTable).where(eq(emailCorrespondencesTable.id, id));
+
+  return res.json({ message: "Email berhasil dihapus" });
+});
+
 export default router;

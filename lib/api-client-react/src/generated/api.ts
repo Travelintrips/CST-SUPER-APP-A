@@ -12446,6 +12446,90 @@ export function useGetEmailCorrespondence<
 }
 
 /**
+ * @summary Delete an email correspondence and all its links/attachments
+ */
+export const getDeleteEmailCorrespondenceUrl = (id: number) => {
+  return `/api/email-correspondences/${id}`;
+};
+
+export const deleteEmailCorrespondence = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeleteEmailCorrespondenceUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteEmailCorrespondenceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEmailCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteEmailCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteEmailCorrespondence"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteEmailCorrespondence>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteEmailCorrespondence(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteEmailCorrespondenceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteEmailCorrespondence>>
+>;
+
+export type DeleteEmailCorrespondenceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete an email correspondence and all its links/attachments
+ */
+export const useDeleteEmailCorrespondence = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEmailCorrespondence>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteEmailCorrespondence>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteEmailCorrespondenceMutationOptions(options));
+};
+
+/**
  * @summary Update status of an email correspondence
  */
 export const getValidateEmailCorrespondenceStatusUrl = (id: number) => {

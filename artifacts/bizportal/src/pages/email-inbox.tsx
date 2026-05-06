@@ -12,6 +12,7 @@ import {
   useListPayments,
   useListFreightShipments,
   useSyncCorrespondencesImap,
+  useDeleteEmailCorrespondence,
   getListEmailCorrespondencesQueryKey,
   getGetEmailCorrespondenceQueryKey,
   getListSalesDocumentsQueryKey,
@@ -359,7 +360,10 @@ export default function EmailInboxPage() {
   const createLink = useCreateEmailLink();
   const validateLink = useValidateEmailLink();
   const deleteLink = useDeleteEmailLink();
+  const deleteEmail = useDeleteEmailCorrespondence();
   const syncImap = useSyncCorrespondencesImap();
+
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   function openDetail(email: EmailCorrespondence) {
     setSelectedId(email.id);
@@ -371,6 +375,19 @@ export default function EmailInboxPage() {
     if (selectedId) {
       queryClient.invalidateQueries({ queryKey: getGetEmailCorrespondenceQueryKey(selectedId) });
     }
+  }
+
+  function handleDeleteEmail(id: number) {
+    deleteEmail.mutate({ id }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListEmailCorrespondencesQueryKey() });
+        setDeleteConfirmId(null);
+        setDetailOpen(false);
+        setSelectedId(null);
+        toast({ title: "Email berhasil dihapus" });
+      },
+      onError: () => toast({ title: "Gagal menghapus email", variant: "destructive" }),
+    });
   }
 
   function handleStatusUpdate(status: string) {
@@ -628,9 +645,20 @@ export default function EmailInboxPage() {
                         </p>
                       )}
                     </div>
-                    <span className="text-xs text-muted-foreground shrink-0 mt-0.5">
-                      {formatDate(email.receivedAt)}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(email.receivedAt)}
+                      </span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        title="Hapus email"
+                        onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(email.id); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -823,6 +851,14 @@ export default function EmailInboxPage() {
                 >
                   <Archive className="h-3.5 w-3.5" /> Arsipkan
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5 ml-auto"
+                  onClick={() => setDeleteConfirmId(detail.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Hapus Email
+                </Button>
               </div>
 
               <DialogFooter className="mt-2">
@@ -924,6 +960,31 @@ export default function EmailInboxPage() {
             >
               {createLink.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
               Tautkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE CONFIRM DIALOG */}
+      <Dialog open={deleteConfirmId !== null} onOpenChange={(o) => { if (!o) setDeleteConfirmId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-4 w-4" /> Hapus Email
+            </DialogTitle>
+            <DialogDescription>
+              Email ini akan dihapus permanen beserta semua tautan transaksinya. Tindakan ini tidak dapat dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Batal</Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteConfirmId && handleDeleteEmail(deleteConfirmId)}
+              disabled={deleteEmail.isPending}
+            >
+              {deleteEmail.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Ya, Hapus
             </Button>
           </DialogFooter>
         </DialogContent>
