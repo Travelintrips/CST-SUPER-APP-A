@@ -390,7 +390,11 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
 
     // ─── 2. Vendor reply ──────────────────────────────────────────────────────
     const vendors = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
-    const matchedVendor = vendors.find((v) => v.phone && normalizePhone(v.phone) === normalizedSender);
+    // Primary match: exact normalized phone; fallback: last 9 digits (handles different country-code prefixes)
+    const last9 = normalizedSender.slice(-9);
+    const matchedVendor =
+      vendors.find((v) => v.phone && normalizePhone(v.phone) === normalizedSender) ??
+      vendors.find((v) => v.phone && normalizePhone(v.phone).slice(-9) === last9);
 
     if (matchedVendor) {
       const parsed = parseVendorReply(message);
@@ -550,18 +554,39 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
         logger.info({ vendorId: matchedVendor.id, sender }, "Forwarded generic vendor reply to admin group");
       }
     } else {
-      // Unknown sender — forward to admin group
+      // Unknown sender — check if message looks like a vendor price reply
+      const parsedUnknown = parseVendorReply(message);
       if (adminWa) {
         const displayName = senderName ?? sender;
-        const forwardMsg =
-          `💬 *Pesan Masuk (WA)*\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `Dari    : ${displayName}\n` +
-          `No. HP  : ${sender}\n` +
-          `━━━━━━━━━━━━━━━━━━\n` +
-          `${message}`;
-        await sendWhatsApp(adminWa, forwardMsg);
-        logger.info({ sender }, "Forwarded unknown sender message to admin group");
+        if (parsedUnknown && (parsedUnknown.rfqNumber || parsedUnknown.orderNumber)) {
+          // Looks like a vendor quote reply — highlight it for admin
+          const refNum = parsedUnknown.rfqNumber ?? parsedUnknown.orderNumber ?? "";
+          const forwardMsg =
+            `⚠️ *BALASAN HARGA DARI NOMOR TIDAK DIKENAL*\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `Dari    : ${displayName}\n` +
+            `No. HP  : ${sender}\n` +
+            `Ref.    : \`${refNum}\`\n` +
+            `Harga   : *${fmt(parsedUnknown.vendorPrice)}*\n` +
+            (parsedUnknown.estimatedPickup ? `ETA     : ${parsedUnknown.estimatedPickup}` +
+              (parsedUnknown.estimatedDelivery ? ` / ${parsedUnknown.estimatedDelivery}` : "") + `\n` : "") +
+            (parsedUnknown.vendorNotes ? `Catatan : ${parsedUnknown.vendorNotes}\n` : "") +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `⚠️ _Nomor HP tidak terdaftar sebagai vendor. Periksa data vendor dan input manual di BizPortal._\n\n` +
+            `Pesan asli:\n${message}`;
+          await sendWhatsApp(adminWa, forwardMsg);
+          logger.warn({ sender, refNum, price: parsedUnknown.vendorPrice }, "Unknown sender sent price reply — forwarded to admin");
+        } else {
+          const forwardMsg =
+            `💬 *Pesan Masuk (WA)*\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `Dari    : ${displayName}\n` +
+            `No. HP  : ${sender}\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `${message}`;
+          await sendWhatsApp(adminWa, forwardMsg);
+          logger.info({ sender }, "Forwarded unknown sender message to admin group");
+        }
       }
     }
   } catch (err: unknown) {

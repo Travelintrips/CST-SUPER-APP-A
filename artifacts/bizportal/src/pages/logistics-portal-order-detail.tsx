@@ -242,7 +242,17 @@ export default function LogisticsPortalOrderDetailPage() {
     return vp + (vp * mp / 100);
   }
 
-  const activeVendors = vendors.filter((v) => v.isActive);
+  // Filter vendors: active + serviceType compatible with order shipment type
+  // Vendors with null/empty serviceType ("Semua tipe") always appear
+  const activeVendors = vendors.filter((v) => {
+    if (!v.isActive) return false;
+    if (!v.serviceType) return true;
+    const st = v.serviceType.toLowerCase().trim();
+    if (!st || st === "semua tipe" || st === "all") return true;
+    const orderType = (order?.shipmentType ?? "").toLowerCase().trim();
+    if (!orderType) return true;
+    return orderType.includes(st) || st.includes(orderType);
+  });
 
   if (isLoading) {
     return (
