@@ -263,6 +263,7 @@ export default function JasaDetail() {
   // Step 2 cargo state
   const [orderNow, setOrderNow] = useState(false);
   const [cargoCategory, setCargoCategory] = useState("");
+  const [truckingNotes, setTruckingNotes] = useState("");
   const [koliQty, setKoliQty] = useState("");
   const [grossWeight, setGrossWeight] = useState("");
   const [dimensions, setDimensions] = useState<DimRow[]>([newDimRow()]);
@@ -580,6 +581,7 @@ export default function JasaDetail() {
           ...(truckingStops.length > 0 ? { stops: truckingStops.map(s => s.city).join(" → ") } : {}),
           order_now: String(orderNow),
           cargo_category: cargoCategory,
+          notes: truckingNotes,
           koli_qty: koliQty,
           gross_weight_kg: grossWeight,
           dimensions: JSON.stringify(dimensions),
@@ -1014,6 +1016,16 @@ export default function JasaDetail() {
                                   <span className="text-sm font-bold text-[#0B5CAD]">{calcTotalVolumeM3(dimensions).toFixed(3)} M³</span>
                                 </div>
                               )}
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-600 font-medium block mb-1.5">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+                              <textarea
+                                rows={2}
+                                placeholder="Catatan tambahan tentang barang, penanganan, atau instruksi khusus..."
+                                value={truckingNotes}
+                                onChange={e => setTruckingNotes(e.target.value)}
+                                className="w-full rounded-lg border border-gray-200 text-xs px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#0B5CAD]/30 focus:border-[#0B5CAD] placeholder:text-gray-400"
+                              />
                             </div>
                             <div>
                               <div className="flex items-baseline justify-between mb-1.5">

@@ -533,6 +533,9 @@ export default function BookPage() {
       toast({ title: "Tambahkan minimal 1 layanan ke pesanan", variant: "destructive" });
       return;
     }
+    const truckingItem = cartItems.find(c => c.calculatorType === "trucking");
+    const truckingInputData = (truckingItem?.inputData ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (v ? String(v) : "");
     createOrder.mutate({ data: {
       companyName,
       customerName,
@@ -541,13 +544,14 @@ export default function BookPage() {
       shipmentType: shipmentType || customerForm.destination,
       origin,
       destination,
-      commodity: customerForm.commodity || null,
+      commodity: customerForm.commodity || str(truckingInputData.cargo_category) || null,
       cargoDescription: customerForm.cargoDescription || null,
       grossWeight: parseFloat(customerForm.grossWeight) || null,
       volumeCbm: parseFloat(customerForm.volumeCbm) || null,
       requiredDate: customerForm.requiredDate || null,
       notes: [
         customerForm.quantity ? `Qty: ${customerForm.quantity}${customerForm.unit ? ` ${customerForm.unit}` : ""}` : "",
+        str(truckingInputData.notes),
         customerForm.notes,
       ].filter(Boolean).join(" | ") || null,
       paymentType: paymentType === "gateway"
