@@ -317,8 +317,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       orderNumber: "Nomor Pesanan",
       company: "Perusahaan",
       pic: "PIC",
-      comodity: "Komoditi",
-      //shipmentType: "Tipe Pengiriman",
+      shipmentType: "Tipe Pengiriman",
       origin: "Asal",
       destination: "Tujuan",
       createdAt: "Tanggal Dibuat",
@@ -1460,7 +1459,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     products: {
       catalogLabel: "产品目录",
-      title: "我们的产品",
+      title: "我们的产擁",
       description: "发现各类优质产品，满足您的业务需求。",
       search: "搜索产品或分类...",
       all: "全部",
@@ -4816,7 +4815,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       selected: "चयनित",
       back: "वापस",
       createAccount: "खाता बनाएं",
-      creatingAccount: "खाता बनाया ज�پ रहा है...",
+      creatingAccount: "खाता बनाया जा रहा है...",
       alreadyHaveAccount: "पहले से खाता है?",
       signIn: "साइन इन करें",
       redirectToCheckout:

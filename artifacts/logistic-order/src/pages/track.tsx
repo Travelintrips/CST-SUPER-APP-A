@@ -127,7 +127,9 @@ export default function TrackPage() {
                     <span className="font-medium text-foreground text-right">
                       {order.customerName}
                     </span>
-                    <span className="text-muted-foreground">Comodity</span>
+                    <span className="text-muted-foreground">
+                      Tipe Pengiriman
+                    </span>
                     <span className="font-medium text-foreground text-right">
                       {order.commodity}
                     </span>
