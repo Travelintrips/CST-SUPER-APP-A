@@ -180,13 +180,20 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     const sender = typeof body.sender === "string" ? body.sender : null;
     const message = typeof body.message === "string" ? body.message : null;
     const senderName = typeof body.sender_name === "string" ? body.sender_name : null;
+    // Fonnte sends `member` when the message comes from a group (the actual typer's number)
+    const member = typeof body.member === "string" ? body.member : null;
 
     if (!sender || !message) {
       logger.warn({ body }, "Fonnte webhook: missing sender or message");
       return;
     }
 
-    const normalizedSender = normalizePhone(sender);
+    // isGroup: sender is the group JID (ends with @g.us or @lid)
+    const isGroup = sender.includes("@g.us") || sender.includes("@lid");
+    // The person who actually typed — for group messages this is `member`, for DM it's `sender`
+    const actualSender = (isGroup && member) ? member : sender;
+
+    const normalizedSender = normalizePhone(actualSender);
     const adminWa = await getAdminWa();
 
     // ─── 1. Check if sender is an authorized admin ───────────────────────────
