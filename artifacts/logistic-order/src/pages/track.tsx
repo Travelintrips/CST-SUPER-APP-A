@@ -131,7 +131,14 @@ export default function TrackPage() {
                       Tipe Pengiriman
                     </span>
                     <span className="font-medium text-foreground text-right">
-                      {order.commodity}
+                      {order.shipmentType}
+                    </span>
+                    <span className="text-muted-foreground">Komoditas</span>
+                    <span className="font-medium text-foreground text-right">
+                      {order.commodity ||
+                        (order.items?.[0]?.inputData as Record<string, unknown>)
+                          ?.commodity ||
+                        "-"}
                     </span>
                     {origin && (
                       <>
