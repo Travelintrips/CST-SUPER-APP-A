@@ -22,7 +22,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Solusi Logistik Terintegrasi & Berbasis Teknologi",
       title: "Logistik Global, Presisi Tanpa Kompromi.",
-      description: "Solusi ekspor, impor, dan kepabeanan yang andal — menghubungkan bisnis Anda ke seluruh dunia dengan aman dan tepat waktu.",
+      description:
+        "Solusi ekspor, impor, dan kepabeanan yang andal — menghubungkan bisnis Anda ke seluruh dunia dengan aman dan tepat waktu.",
       primaryCta: "Lihat Layanan",
       secondaryCta: "Daftar sebagai Mitra",
     },
@@ -35,10 +36,12 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "Tentang Kami",
       title: "Infrastruktur & Keahlian yang Tidak Tertandingi",
-      description: "adalah perusahaan freight forwarding dan customs brokerage terpercaya yang melayani kebutuhan ekspor-impor korporat maupun UMKM di Indonesia. Kami memiliki tim bersertifikat dan jaringan agen global di lebih dari 150 negara.",
+      description:
+        "adalah perusahaan freight forwarding dan customs brokerage terpercaya yang melayani kebutuhan ekspor-impor korporat maupun UMKM di Indonesia. Kami memiliki tim bersertifikat dan jaringan agen global di lebih dari 150 negara.",
       cta: "Bergabung Bersama Kami",
       point1: "Visibilitas rantai pasok dari ujung ke ujung secara real-time",
-      point2: "Tenaga ahli kepabeanan berlisensi untuk pengurusan dokumen cepat",
+      point2:
+        "Tenaga ahli kepabeanan berlisensi untuk pengurusan dokumen cepat",
       point3: "Fasilitas pergudangan strategis dekat pelabuhan utama",
       point4: "Account manager dedikasi untuk klien korporat",
       point5: "Teknologi tracking shipment berbasis cloud",
@@ -46,19 +49,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Keunggulan Kami",
       title: "Mengapa Percayakan Logistik kepada Kami?",
-      description: "Kami tidak sekadar mengangkut barang — kami memastikan seluruh perjalanan kargo Anda berjalan mulus dari dokumen hingga tiba di tujuan.",
+      description:
+        "Kami tidak sekadar mengangkut barang — kami memastikan seluruh perjalanan kargo Anda berjalan mulus dari dokumen hingga tiba di tujuan.",
       card1Title: "Kepabeanan Ekspres",
-      card1Desc: "Tim ahli kami memproses dokumen BC 2.0 / BC 3.0 dengan cepat sehingga kargo tidak tertahan di pelabuhan.",
+      card1Desc:
+        "Tim ahli kami memproses dokumen BC 2.0 / BC 3.0 dengan cepat sehingga kargo tidak tertahan di pelabuhan.",
       card2Title: "Jaringan Global",
-      card2Desc: "Agen di lebih dari 150 negara memastikan pengiriman door-to-door ke destinasi manapun di dunia.",
+      card2Desc:
+        "Agen di lebih dari 150 negara memastikan pengiriman door-to-door ke destinasi manapun di dunia.",
       card3Title: "Teknologi Transparan",
-      card3Desc: "Platform berbasis cloud kami memberi visibilitas penuh atas status pengiriman kapan saja dan di mana saja.",
+      card3Desc:
+        "Platform berbasis cloud kami memberi visibilitas penuh atas status pengiriman kapan saja dan di mana saja.",
       card4Title: "Asuransi Kargo",
-      card4Desc: "Perlindungan komprehensif untuk setiap pengiriman, melindungi investasi bisnis Anda dari risiko tak terduga.",
+      card4Desc:
+        "Perlindungan komprehensif untuk setiap pengiriman, melindungi investasi bisnis Anda dari risiko tak terduga.",
       card5Title: "Harga Kompetitif",
-      card5Desc: "Negosiasi tarif terbaik dengan maskapai dan pelayaran global sehingga biaya logistik Anda lebih efisien.",
+      card5Desc:
+        "Negosiasi tarif terbaik dengan maskapai dan pelayaran global sehingga biaya logistik Anda lebih efisien.",
       card6Title: "Dukungan 24/7",
-      card6Desc: "Tim customer service kami siap membantu kapan pun Anda membutuhkan informasi atau penanganan darurat.",
+      card6Desc:
+        "Tim customer service kami siap membantu kapan pun Anda membutuhkan informasi atau penanganan darurat.",
     },
     cta: {
       title: "Siap mempercepat logistik global Anda?",
@@ -72,7 +82,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Hubungi Kami",
       title: "Ada yang bisa kami bantu?",
-      description: "Tim kami siap menjawab pertanyaan Anda seputar layanan ekspor-impor, kepabeanan, pergudangan, dan solusi logistik lainnya.",
+      description:
+        "Tim kami siap menjawab pertanyaan Anda seputar layanan ekspor-impor, kepabeanan, pergudangan, dan solusi logistik lainnya.",
       sendMessage: "Kirim Pesan",
       fullName: "Nama Lengkap",
       email: "Email",
@@ -80,7 +91,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Kebutuhan Layanan",
       message: "Pesan",
       submit: "Kirim Pesan",
-      successAlert: "Pesan Anda telah terkirim. Tim kami akan segera menghubungi Anda.",
+      successAlert:
+        "Pesan Anda telah terkirim. Tim kami akan segera menghubungi Anda.",
       addressLabel: "Alamat Kantor",
       emailLabel: "Email",
       phoneLabel: "Telepon",
@@ -111,7 +123,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       domestic: "Distribusi Domestik",
       allRights: "Semua hak cipta dilindungi.",
       tagline: "Solusi logistik terintegrasi untuk bisnis global Anda.",
-      description: "Solusi logistik terintegrasi dan berbasis teknologi untuk kebutuhan ekspor, impor, dan distribusi bisnis Anda.",
+      description:
+        "Solusi logistik terintegrasi dan berbasis teknologi untuk kebutuhan ekspor, impor, dan distribusi bisnis Anda.",
       location: "Lokasi",
       phone: "Telepon",
       email: "Email",
@@ -128,13 +141,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       desc: "Dengar langsung dari klien yang telah merasakan layanan logistik kami.",
       t1Name: "Budi Santoso",
       t1Role: "Direktur Operasional · PT. Karya Maju Bersama",
-      t1Text: "CST Logistics membantu kami mengekspor produk furnitur ke 12 negara tanpa hambatan. Proses kepabeanan yang cepat benar-benar mengubah cara kami berbisnis secara global.",
+      t1Text:
+        "CST Logistics membantu kami mengekspor produk furnitur ke 12 negara tanpa hambatan. Proses kepabeanan yang cepat benar-benar mengubah cara kami berbisnis secara global.",
       t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
-      t2Text: "Platform tracking real-time mereka sangat membantu. Kami bisa pantau kargo dari gudang asal hingga tangan pelanggan kami di luar negeri kapan saja.",
+      t2Text:
+        "Platform tracking real-time mereka sangat membantu. Kami bisa pantau kargo dari gudang asal hingga tangan pelanggan kami di luar negeri kapan saja.",
       t3Name: "Ahmad Fauzi",
       t3Role: "CEO · PT. Nusantara Trading Co.",
-      t3Text: "Tim mereka responsif 24/7. Ketika ada perubahan regulasi impor mendadak, mereka langsung mencarikan solusi terbaik untuk kelangsungan bisnis kami.",
+      t3Text:
+        "Tim mereka responsif 24/7. Ketika ada perubahan regulasi impor mendadak, mereka langsung mencarikan solusi terbaik untuk kelangsungan bisnis kami.",
     },
     partners: {
       label: "Mitra Carrier Global",
@@ -145,7 +161,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Selamat datang kembali",
       subtitle: "Masukkan kredensial Anda untuk mengakses portal",
       sideTitle: "Kelola pengiriman global Anda dengan mudah.",
-      sideDesc: "Akses dashboard untuk melacak pesanan, mengelola dokumen, dan meminta kuotasi baru.",
+      sideDesc:
+        "Akses dashboard untuk melacak pesanan, mengelola dokumen, dan meminta kuotasi baru.",
       sideTrust: "Dipercaya oleh 1.000+ bisnis di seluruh dunia",
       email: "Email",
       password: "Password",
@@ -154,11 +171,13 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       signingIn: "Sedang masuk...",
       noAccount: "Belum punya akun?",
       createAccount: "Buat akun",
-      loginRequired: "Login terlebih dahulu untuk melanjutkan ke halaman checkout.",
+      loginRequired:
+        "Login terlebih dahulu untuk melanjutkan ke halaman checkout.",
     },
     register: {
       title: "Buat akun Anda",
-      subtitle: "Bergabung dengan platform kami untuk mengelola logistik Anda dengan mudah",
+      subtitle:
+        "Bergabung dengan platform kami untuk mengelola logistik Anda dengan mudah",
       stepOf: "Langkah",
       of: "dari",
       continueToServices: "Lanjut ke Pemilihan Layanan",
@@ -168,19 +187,22 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "Nomor Telepon",
       password: "Password",
       servicesTitle: "Layanan apa yang Anda minati?",
-      servicesDesc: "Pilih semua yang sesuai agar kami dapat menyesuaikan pengalaman Anda.",
+      servicesDesc:
+        "Pilih semua yang sesuai agar kami dapat menyesuaikan pengalaman Anda.",
       selected: "dipilih",
       back: "Kembali",
       createAccount: "Buat Akun",
       creatingAccount: "Membuat Akun...",
       alreadyHaveAccount: "Sudah punya akun?",
       signIn: "Masuk",
-      redirectToCheckout: "Buat akun untuk melanjutkan pemesanan layanan logistik Anda. Setelah daftar, Anda langsung diarahkan ke halaman checkout.",
+      redirectToCheckout:
+        "Buat akun untuk melanjutkan pemesanan layanan logistik Anda. Setelah daftar, Anda langsung diarahkan ke halaman checkout.",
     },
     products: {
       catalogLabel: "Katalog Produk",
       title: "Produk Kami",
-      description: "Temukan berbagai produk berkualitas untuk kebutuhan bisnis Anda.",
+      description:
+        "Temukan berbagai produk berkualitas untuk kebutuhan bisnis Anda.",
       search: "Cari produk atau kategori...",
       all: "Semua",
       negotiable: "Harga Negosiasi",
@@ -223,7 +245,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Katalog Jasa",
       title: "Layanan Kami",
-      description: "Temukan layanan logistik, kepabeanan, dan pengiriman internasional kami yang dirancang sesuai kebutuhan bisnis Anda.",
+      description:
+        "Temukan layanan logistik, kepabeanan, dan pengiriman internasional kami yang dirancang sesuai kebutuhan bisnis Anda.",
       search: "Cari layanan atau kategori...",
       price: "Harga",
       negotiable: "Harga Negosiasi",
@@ -263,7 +286,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     orders: {
       title: "Riwayat Pesanan",
-      description: "Lihat dan lacak semua pesanan dan pengiriman logistik Anda.",
+      description:
+        "Lihat dan lacak semua pesanan dan pengiriman logistik Anda.",
       search: "Cari nomor pesanan...",
       orderDetails: "Detail Pesanan",
       date: "Tanggal",
@@ -293,7 +317,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       orderNumber: "Nomor Pesanan",
       company: "Perusahaan",
       pic: "PIC",
-      shipmentType: "Tipe Pengiriman",
+      comodity: "Komoditi",
+      //shipmentType: "Tipe Pengiriman",
       origin: "Asal",
       destination: "Tujuan",
       createdAt: "Tanggal Dibuat",
@@ -301,7 +326,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Total Estimasi",
       services: "Layanan",
       infoTitle: "Informasi",
-      infoDesc: "Tim kami akan menghubungi Anda untuk konfirmasi dan penawaran final. Jika ada pertanyaan, hubungi customer service kami.",
+      infoDesc:
+        "Tim kami akan menghubungi Anda untuk konfirmasi dan penawaran final. Jika ada pertanyaan, hubungi customer service kami.",
       newOrder: "Buat Pesanan Baru",
       trackOrder: "Lacak Pesanan",
     },
@@ -323,11 +349,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     servicesMenu: {
       tagline: "Layanan logistik terintegrasi untuk kebutuhan bisnis Anda",
       viewAll: "Lihat Semua Layanan",
-      freight: { title: "Freight Shipment", desc: "Pengiriman udara & laut internasional ke seluruh dunia" },
-      customs: { title: "Custom Management/PPJK", desc: "Pengurusan kepabeanan, bea cukai & dokumen impor/ekspor" },
-      domestic: { title: "Domestic Distribution", desc: "Distribusi kargo domestik ke seluruh Indonesia" },
-      trucking: { title: "Trucking", desc: "Angkutan darat profesional, dalam kota & antar kota" },
-      tracking: { title: "Shipment Tracking", desc: "Lacak status pengiriman Anda secara real-time" },
+      freight: {
+        title: "Freight Shipment",
+        desc: "Pengiriman udara & laut internasional ke seluruh dunia",
+      },
+      customs: {
+        title: "Custom Management/PPJK",
+        desc: "Pengurusan kepabeanan, bea cukai & dokumen impor/ekspor",
+      },
+      domestic: {
+        title: "Domestic Distribution",
+        desc: "Distribusi kargo domestik ke seluruh Indonesia",
+      },
+      trucking: {
+        title: "Trucking",
+        desc: "Angkutan darat profesional, dalam kota & antar kota",
+      },
+      tracking: {
+        title: "Shipment Tracking",
+        desc: "Lacak status pengiriman Anda secara real-time",
+      },
     },
     homePromo: {
       products: {
@@ -342,7 +383,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
         desc: "Dari sea freight hingga customs brokerage — kami menyediakan solusi lengkap untuk kebutuhan ekspor impor Anda.",
         cta: "Lihat Semua Layanan",
         item1Title: "Freight Shipment",
-        item1Desc: "Pengiriman udara & laut internasional ke lebih dari 150 negara.",
+        item1Desc:
+          "Pengiriman udara & laut internasional ke lebih dari 150 negara.",
         item2Title: "Custom Management/PPJK",
         item2Desc: "Pengurusan kepabeanan, bea cukai & dokumen impor/ekspor.",
         item3Title: "Trucking",
@@ -356,11 +398,13 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
         desc: "Dapatkan harga terbaik dan penawaran eksklusif untuk kebutuhan logistik Anda.",
         cta: "Dapatkan Penawaran",
         item1Title: "Diskon Sea Freight 15%",
-        item1Desc: "Nikmati diskon khusus untuk pengiriman laut rute Asia Tenggara.",
+        item1Desc:
+          "Nikmati diskon khusus untuk pengiriman laut rute Asia Tenggara.",
         item1Badge: "Promo",
         item1Valid: "Berlaku hingga akhir bulan",
         item2Title: "Free Customs Consultation",
-        item2Desc: "Konsultasi gratis pengurusan dokumen bea cukai untuk klien baru.",
+        item2Desc:
+          "Konsultasi gratis pengurusan dokumen bea cukai untuk klien baru.",
         item2Badge: "Spesial",
         item2Valid: "Untuk klien baru",
         item3Title: "Paket Bundling Hemat",
@@ -382,7 +426,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
         submit: "Kirim Pesan",
         whatsapp: "Chat WhatsApp",
         call: "Hubungi Sekarang",
-        successMsg: "Pesan Anda telah terkirim! Tim kami akan segera menghubungi Anda.",
+        successMsg:
+          "Pesan Anda telah terkirim! Tim kami akan segera menghubungi Anda.",
         info: "Informasi Kontak",
         infoDesc: "Kami siap melayani Anda setiap hari kerja",
       },
@@ -391,7 +436,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       title: "Kalkulator Estimasi Biaya",
       label: "Kalkulator",
       desc: "Hitung estimasi biaya pengiriman Anda secara instan",
-      disclaimer: "Estimasi ini bersifat indikatif. Harga final akan dikonfirmasi oleh tim CST Logistics.",
+      disclaimer:
+        "Estimasi ini bersifat indikatif. Harga final akan dikonfirmasi oleh tim CST Logistics.",
       serviceType: "Jenis Layanan",
       selectService: "Pilih layanan...",
       origin: "Negara Asal",
@@ -427,7 +473,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       ctaQuote: "Minta Penawaran Resmi",
       ctaContact: "Hubungi Admin",
       ctaSend: "Kirim Detail Pengiriman",
-      projectNote: "Untuk Project Cargo, silakan hubungi tim kami untuk penawaran khusus yang disesuaikan dengan kebutuhan proyek Anda.",
+      projectNote:
+        "Untuk Project Cargo, silakan hubungi tim kami untuk penawaran khusus yang disesuaikan dengan kebutuhan proyek Anda.",
       services: {
         seaFreight: "Sea Freight",
         airFreight: "Air Freight",
@@ -466,7 +513,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Integrated Logistics Solutions Powered by Technology",
       title: "Global Logistics, Precision Without Compromise.",
-      description: "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
+      description:
+        "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
       primaryCta: "View Services",
       secondaryCta: "Become a Partner",
     },
@@ -479,7 +527,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "About Us",
       title: "Unmatched Infrastructure & Expertise",
-      description: "is a trusted freight forwarding and customs brokerage company serving corporate and MSME export-import needs in Indonesia. We are supported by a certified team and a global agent network across more than 150 countries.",
+      description:
+        "is a trusted freight forwarding and customs brokerage company serving corporate and MSME export-import needs in Indonesia. We are supported by a certified team and a global agent network across more than 150 countries.",
       cta: "Join Us",
       point1: "End-to-end supply chain visibility in real-time",
       point2: "Licensed customs specialists for fast document processing",
@@ -490,19 +539,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Our Advantages",
       title: "Why Trust Us With Your Logistics?",
-      description: "We don't just move goods — we ensure the entire cargo journey runs smoothly from documentation to delivery.",
+      description:
+        "We don't just move goods — we ensure the entire cargo journey runs smoothly from documentation to delivery.",
       card1Title: "Express Customs",
-      card1Desc: "Our specialists process BC 2.0 / BC 3.0 documents quickly so cargo is never held up at the port.",
+      card1Desc:
+        "Our specialists process BC 2.0 / BC 3.0 documents quickly so cargo is never held up at the port.",
       card2Title: "Global Network",
-      card2Desc: "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
+      card2Desc:
+        "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
       card3Title: "Transparent Technology",
-      card3Desc: "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
+      card3Desc:
+        "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
       card4Title: "Cargo Insurance",
-      card4Desc: "Comprehensive coverage for every shipment, protecting your business investment from unexpected risks.",
+      card4Desc:
+        "Comprehensive coverage for every shipment, protecting your business investment from unexpected risks.",
       card5Title: "Competitive Pricing",
-      card5Desc: "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
+      card5Desc:
+        "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
       card6Title: "24/7 Support",
-      card6Desc: "Our customer service team is always ready to assist whenever you need information or emergency handling.",
+      card6Desc:
+        "Our customer service team is always ready to assist whenever you need information or emergency handling.",
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
@@ -516,7 +572,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Contact Us",
       title: "How can we help you?",
-      description: "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
+      description:
+        "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
       sendMessage: "Send a Message",
       fullName: "Full Name",
       email: "Email",
@@ -524,7 +581,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Service Needed",
       message: "Message",
       submit: "Send Message",
-      successAlert: "Your message has been sent. Our team will contact you shortly.",
+      successAlert:
+        "Your message has been sent. Our team will contact you shortly.",
       addressLabel: "Office Address",
       emailLabel: "Email",
       phoneLabel: "Phone",
@@ -555,7 +613,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       domestic: "Domestic Distribution",
       allRights: "All rights reserved.",
       tagline: "Integrated logistics solutions for your global business.",
-      description: "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
+      description:
+        "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
       location: "Location",
       phone: "Phone",
       email: "Email",
@@ -572,13 +631,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       desc: "Hear directly from clients who have experienced our logistics services.",
       t1Name: "Budi Santoso",
       t1Role: "Operations Director · PT. Karya Maju Bersama",
-      t1Text: "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
+      t1Text:
+        "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
       t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
-      t2Text: "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
+      t2Text:
+        "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
       t3Name: "Ahmad Fauzi",
       t3Role: "CEO · PT. Nusantara Trading Co.",
-      t3Text: "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
+      t3Text:
+        "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
     },
     partners: {
       label: "Global Carrier Partners",
@@ -589,7 +651,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Welcome back",
       subtitle: "Enter your credentials to access your portal",
       sideTitle: "Manage your global shipments with ease.",
-      sideDesc: "Access your dashboard to track orders, manage documents, and request new quotes.",
+      sideDesc:
+        "Access your dashboard to track orders, manage documents, and request new quotes.",
       sideTrust: "Trusted by 1,000+ businesses globally",
       email: "Email",
       password: "Password",
@@ -619,7 +682,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "Creating Account...",
       alreadyHaveAccount: "Already have an account?",
       signIn: "Sign in",
-      redirectToCheckout: "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
+      redirectToCheckout:
+        "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
     },
     products: {
       catalogLabel: "Product Catalog",
@@ -667,7 +731,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Service Catalog",
       title: "Our Services",
-      description: "Discover our logistics, customs, and international shipping services designed for your business needs.",
+      description:
+        "Discover our logistics, customs, and international shipping services designed for your business needs.",
       search: "Search services or categories...",
       price: "Price",
       negotiable: "Price Negotiable",
@@ -745,7 +810,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Estimated Total",
       services: "Services",
       infoTitle: "Information",
-      infoDesc: "Our team will contact you for confirmation and final pricing. For any questions, please reach our customer service.",
+      infoDesc:
+        "Our team will contact you for confirmation and final pricing. For any questions, please reach our customer service.",
       newOrder: "Create New Order",
       trackOrder: "Track Order",
     },
@@ -767,11 +833,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     servicesMenu: {
       tagline: "Integrated logistics services for your business needs",
       viewAll: "View All Services",
-      freight: { title: "Freight Shipment", desc: "International air & sea freight to and from anywhere in the world" },
-      customs: { title: "Custom Management/PPJK", desc: "Customs clearance, brokerage & import/export documentation" },
-      domestic: { title: "Domestic Distribution", desc: "Domestic cargo distribution across Indonesia" },
-      trucking: { title: "Trucking", desc: "Professional land transport, city and inter-city" },
-      tracking: { title: "Shipment Tracking", desc: "Track your shipment status in real-time" },
+      freight: {
+        title: "Freight Shipment",
+        desc: "International air & sea freight to and from anywhere in the world",
+      },
+      customs: {
+        title: "Custom Management/PPJK",
+        desc: "Customs clearance, brokerage & import/export documentation",
+      },
+      domestic: {
+        title: "Domestic Distribution",
+        desc: "Domestic cargo distribution across Indonesia",
+      },
+      trucking: {
+        title: "Trucking",
+        desc: "Professional land transport, city and inter-city",
+      },
+      tracking: {
+        title: "Shipment Tracking",
+        desc: "Track your shipment status in real-time",
+      },
     },
     homePromo: {
       products: {
@@ -788,7 +869,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
         item1Title: "Freight Shipment",
         item1Desc: "International air & sea freight to over 150 countries.",
         item2Title: "Custom Management/PPJK",
-        item2Desc: "Customs clearance, brokerage & import/export documentation.",
+        item2Desc:
+          "Customs clearance, brokerage & import/export documentation.",
         item3Title: "Trucking",
         item3Desc: "Professional land transport, city and inter-city.",
         item4Title: "Domestic Distribution",
@@ -826,7 +908,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
         submit: "Send Message",
         whatsapp: "Chat on WhatsApp",
         call: "Call Us Now",
-        successMsg: "Your message has been sent! Our team will contact you shortly.",
+        successMsg:
+          "Your message has been sent! Our team will contact you shortly.",
         info: "Contact Information",
         infoDesc: "We are available every business day",
       },
@@ -835,7 +918,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       title: "Cost Estimation Calculator",
       label: "Calculator",
       desc: "Calculate your shipping cost estimate instantly",
-      disclaimer: "This estimate is indicative. Final pricing will be confirmed by the CST Logistics team.",
+      disclaimer:
+        "This estimate is indicative. Final pricing will be confirmed by the CST Logistics team.",
       serviceType: "Service Type",
       selectService: "Select a service...",
       origin: "Origin Country",
@@ -871,7 +955,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       ctaQuote: "Request Official Quote",
       ctaContact: "Contact Admin",
       ctaSend: "Send Shipment Details",
-      projectNote: "For Project Cargo, please contact our team for a customized quote tailored to your project requirements.",
+      projectNote:
+        "For Project Cargo, please contact our team for a customized quote tailored to your project requirements.",
       services: {
         seaFreight: "Sea Freight",
         airFreight: "Air Freight",
@@ -908,7 +993,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Integrated Logistics Solutions Powered by Technology",
       title: "Global Logistics, Precision Without Compromise.",
-      description: "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
+      description:
+        "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
       primaryCta: "View Services",
       secondaryCta: "Become a Partner",
     },
@@ -921,7 +1007,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "About Us",
       title: "Unmatched Infrastructure & Expertise",
-      description: "is a trusted freight forwarding and customs brokerage company supporting corporate and SME export-import needs in Indonesia. We are backed by certified specialists and a global agent network across more than 150 countries.",
+      description:
+        "is a trusted freight forwarding and customs brokerage company supporting corporate and SME export-import needs in Indonesia. We are backed by certified specialists and a global agent network across more than 150 countries.",
       cta: "Join Us",
       point1: "End-to-end supply chain visibility in real-time",
       point2: "Licensed customs specialists for rapid document processing",
@@ -932,19 +1019,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Our Strengths",
       title: "Why Trust Us With Your Logistics?",
-      description: "We don't merely move goods — we ensure your entire cargo journey runs smoothly from documentation to delivery.",
+      description:
+        "We don't merely move goods — we ensure your entire cargo journey runs smoothly from documentation to delivery.",
       card1Title: "Express Customs",
-      card1Desc: "Our specialists process customs documents swiftly so cargo is never held up at the port.",
+      card1Desc:
+        "Our specialists process customs documents swiftly so cargo is never held up at the port.",
       card2Title: "Global Network",
-      card2Desc: "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
+      card2Desc:
+        "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
       card3Title: "Transparent Technology",
-      card3Desc: "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
+      card3Desc:
+        "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
       card4Title: "Cargo Insurance",
-      card4Desc: "Comprehensive coverage for every shipment, safeguarding your business investment from unforeseen risks.",
+      card4Desc:
+        "Comprehensive coverage for every shipment, safeguarding your business investment from unforeseen risks.",
       card5Title: "Competitive Pricing",
-      card5Desc: "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
+      card5Desc:
+        "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
       card6Title: "24/7 Support",
-      card6Desc: "Our customer service team is always on hand to assist whenever you need information or urgent support.",
+      card6Desc:
+        "Our customer service team is always on hand to assist whenever you need information or urgent support.",
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
@@ -958,7 +1052,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Contact Us",
       title: "How can we help you?",
-      description: "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
+      description:
+        "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
       sendMessage: "Send a Message",
       fullName: "Full Name",
       email: "Email",
@@ -966,7 +1061,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Service Required",
       message: "Message",
       submit: "Send Message",
-      successAlert: "Your message has been sent. Our team will be in touch shortly.",
+      successAlert:
+        "Your message has been sent. Our team will be in touch shortly.",
       addressLabel: "Office Address",
       emailLabel: "Email",
       phoneLabel: "Telephone",
@@ -997,7 +1093,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       domestic: "Domestic Distribution",
       allRights: "All rights reserved.",
       tagline: "Integrated logistics solutions for your global business.",
-      description: "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
+      description:
+        "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
       location: "Location",
       phone: "Phone",
       email: "Email",
@@ -1014,13 +1111,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       desc: "Hear directly from clients who have experienced our logistics services.",
       t1Name: "Budi Santoso",
       t1Role: "Operations Director · PT. Karya Maju Bersama",
-      t1Text: "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
+      t1Text:
+        "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
       t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
-      t2Text: "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
+      t2Text:
+        "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
       t3Name: "Ahmad Fauzi",
       t3Role: "CEO · PT. Nusantara Trading Co.",
-      t3Text: "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
+      t3Text:
+        "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
     },
     partners: {
       label: "Global Carrier Partners",
@@ -1031,7 +1131,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Welcome back",
       subtitle: "Enter your credentials to access your portal",
       sideTitle: "Manage your global shipments with ease.",
-      sideDesc: "Access your dashboard to track orders, manage documents, and request new quotes.",
+      sideDesc:
+        "Access your dashboard to track orders, manage documents, and request new quotes.",
       sideTrust: "Trusted by 1,000+ businesses globally",
       email: "Email",
       password: "Password",
@@ -1061,7 +1162,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "Creating Account...",
       alreadyHaveAccount: "Already have an account?",
       signIn: "Sign in",
-      redirectToCheckout: "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
+      redirectToCheckout:
+        "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
     },
     products: {
       catalogLabel: "Product Catalogue",
@@ -1109,7 +1211,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Service Catalogue",
       title: "Our Services",
-      description: "Discover our logistics, customs, and international shipping services designed for your business needs.",
+      description:
+        "Discover our logistics, customs, and international shipping services designed for your business needs.",
       search: "Search services or categories...",
       price: "Price",
       negotiable: "Price on Application",
@@ -1187,7 +1290,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Estimated Total",
       services: "Services",
       infoTitle: "Information",
-      infoDesc: "Our team will contact you to confirm and provide final pricing. For any enquiries, please reach our customer service.",
+      infoDesc:
+        "Our team will contact you to confirm and provide final pricing. For any enquiries, please reach our customer service.",
       newOrder: "Create New Order",
       trackOrder: "Track Order",
     },
@@ -1226,7 +1330,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "技术驱动的一体化物流解决方案",
       title: "全球物流，精准无妥协。",
-      description: "可靠的进出口及海关解决方案，将您的业务安全、准时地连接至全球各地。",
+      description:
+        "可靠的进出口及海关解决方案，将您的业务安全、准时地连接至全球各地。",
       primaryCta: "查看服务",
       secondaryCta: "成为合作伙伴",
     },
@@ -1239,7 +1344,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "关于我们",
       title: "无与伦比的基础设施与专业能力",
-      description: "是一家值得信赖的货运代理和海关经纪公司，服务于印度尼西亚的企业及中小微企业进出口业务。我们拥有认证专业团队，并在全球150多个国家建立了代理网络。",
+      description:
+        "是一家值得信赖的货运代理和海关经纪公司，服务于印度尼西亚的企业及中小微企业进出口业务。我们拥有认证专业团队，并在全球150多个国家建立了代理网络。",
       cta: "加入我们",
       point1: "端对端供应链全程实时可视",
       point2: "持牌海关专家，快速处理通关文件",
@@ -1250,7 +1356,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "我们的优势",
       title: "为何将您的物流托付给我们？",
-      description: "我们不仅仅是搬运货物——我们确保整个货运流程从单证到交货顺畅无阻。",
+      description:
+        "我们不仅仅是搬运货物——我们确保整个货运流程从单证到交货顺畅无阻。",
       card1Title: "快速清关",
       card1Desc: "我们的专家迅速处理通关文件，确保货物不在港口积压滞留。",
       card2Title: "全球网络",
@@ -1276,7 +1383,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "联系我们",
       title: "有什么我们可以帮助您的吗？",
-      description: "我们的团队随时解答您关于进出口服务、海关清关、仓储及其他物流方案的问题。",
+      description:
+        "我们的团队随时解答您关于进出口服务、海关清关、仓储及其他物流方案的问题。",
       sendMessage: "发送消息",
       fullName: "全名",
       email: "电子邮件",
@@ -1347,7 +1455,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "正在创建账户...",
       alreadyHaveAccount: "已有账户？",
       signIn: "登录",
-      redirectToCheckout: "创建账户以继续订购物流服务。注册后，您将直接跳转到结账页面。",
+      redirectToCheckout:
+        "创建账户以继续订购物流服务。注册后，您将直接跳转到结账页面。",
     },
     products: {
       catalogLabel: "产品目录",
@@ -1512,7 +1621,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "科技驅動的一體化物流解決方案",
       title: "全球物流，精準無妥協。",
-      description: "可靠的進出口及海關解決方案，將您的業務安全、準時地連結至全球各地。",
+      description:
+        "可靠的進出口及海關解決方案，將您的業務安全、準時地連結至全球各地。",
       primaryCta: "查看服務",
       secondaryCta: "成為合作夥伴",
     },
@@ -1525,7 +1635,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "關於我們",
       title: "無與倫比的基礎設施與專業能力",
-      description: "是一家值得信賴的貨運代理和海關經紀公司，服務於印度尼西亞的企業及中小微企業進出口業務。我們擁有認證專業團隊，並在全球150多個國家建立了代理網路。",
+      description:
+        "是一家值得信賴的貨運代理和海關經紀公司，服務於印度尼西亞的企業及中小微企業進出口業務。我們擁有認證專業團隊，並在全球150多個國家建立了代理網路。",
       cta: "加入我們",
       point1: "端對端供應鏈全程即時可視",
       point2: "持牌海關專家，快速處理通關文件",
@@ -1536,7 +1647,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "我們的優勢",
       title: "為何將您的物流託付給我們？",
-      description: "我們不僅僅是搬運貨物——我們確保整個貨運流程從單證到交貨順暢無阻。",
+      description:
+        "我們不僅僅是搬運貨物——我們確保整個貨運流程從單證到交貨順暢無阻。",
       card1Title: "快速清關",
       card1Desc: "我們的專家迅速處理通關文件，確保貨物不在港口積壓滯留。",
       card2Title: "全球網路",
@@ -1562,7 +1674,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "聯絡我們",
       title: "有什麼我們可以幫助您的嗎？",
-      description: "我們的團隊隨時解答您關於進出口服務、海關清關、倉儲及其他物流方案的問題。",
+      description:
+        "我們的團隊隨時解答您關於進出口服務、海關清關、倉儲及其他物流方案的問題。",
       sendMessage: "發送訊息",
       fullName: "全名",
       email: "電子郵件",
@@ -1633,7 +1746,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "正在建立帳戶...",
       alreadyHaveAccount: "已有帳戶？",
       signIn: "登入",
-      redirectToCheckout: "建立帳戶以繼續訂購物流服務。註冊後，您將直接跳轉到結帳頁面。",
+      redirectToCheckout:
+        "建立帳戶以繼續訂購物流服務。註冊後，您將直接跳轉到結帳頁面。",
     },
     products: {
       catalogLabel: "產品目錄",
@@ -1798,7 +1912,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "テクノロジー主導の統合物流ソリューション",
       title: "グローバル物流、妥協なき精確さ。",
-      description: "信頼性の高い輸出入・通関ソリューション — 安全かつ時間通りにお客様のビジネスを世界中と結びます。",
+      description:
+        "信頼性の高い輸出入・通関ソリューション — 安全かつ時間通りにお客様のビジネスを世界中と結びます。",
       primaryCta: "サービスを見る",
       secondaryCta: "パートナーになる",
     },
@@ -1811,7 +1926,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "会社概要",
       title: "比類なきインフラと専門知識",
-      description: "は、インドネシアの企業およびMSMEの輸出入ニーズに応える信頼できる国際貨物輸送・通関業者です。認定専門チームと150カ国以上のグローバル代理店ネットワークを有しています。",
+      description:
+        "は、インドネシアの企業およびMSMEの輸出入ニーズに応える信頼できる国際貨物輸送・通関業者です。認定専門チームと150カ国以上のグローバル代理店ネットワークを有しています。",
       cta: "参加する",
       point1: "リアルタイムでのエンドツーエンドのサプライチェーン可視性",
       point2: "迅速な書類処理を行うライセンス取得済み通関専門家",
@@ -1822,19 +1938,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "当社の強み",
       title: "なぜ物流を当社に任せるのか？",
-      description: "単なる輸送にとどまらず、書類手続きから納品まで、貨物の旅全体がスムーズに進むよう徹底します。",
+      description:
+        "単なる輸送にとどまらず、書類手続きから納品まで、貨物の旅全体がスムーズに進むよう徹底します。",
       card1Title: "通関迅速化",
-      card1Desc: "専門家が通関書類を迅速に処理し、貨物が港湾で滞留しないようにします。",
+      card1Desc:
+        "専門家が通関書類を迅速に処理し、貨物が港湾で滞留しないようにします。",
       card2Title: "グローバルネットワーク",
-      card2Desc: "150カ国以上のエージェントが、世界中どこへでもドア・ツー・ドア配送を保証します。",
+      card2Desc:
+        "150カ国以上のエージェントが、世界中どこへでもドア・ツー・ドア配送を保証します。",
       card3Title: "透明なテクノロジー",
-      card3Desc: "クラウドプラットフォームにより、いつでもどこでも出荷状況を完全に把握できます。",
+      card3Desc:
+        "クラウドプラットフォームにより、いつでもどこでも出荷状況を完全に把握できます。",
       card4Title: "貨物保険",
-      card4Desc: "すべての出荷に包括的な補償を提供し、不測のリスクからビジネス投資を守ります。",
+      card4Desc:
+        "すべての出荷に包括的な補償を提供し、不測のリスクからビジネス投資を守ります。",
       card5Title: "競争力のある価格",
-      card5Desc: "グローバルな航空会社・海運会社と最良の運賃を交渉し、物流コストを抑えます。",
+      card5Desc:
+        "グローバルな航空会社・海運会社と最良の運賃を交渉し、物流コストを抑えます。",
       card6Title: "24時間365日サポート",
-      card6Desc: "カスタマーサービスチームが常時待機し、情報提供や緊急対応をいつでも行います。",
+      card6Desc:
+        "カスタマーサービスチームが常時待機し、情報提供や緊急対応をいつでも行います。",
     },
     cta: {
       title: "グローバル物流を加速する準備はできていますか？",
@@ -1848,7 +1971,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "お問い合わせ",
       title: "何かお手伝いできることはありますか？",
-      description: "輸出入サービス、通関、倉庫保管、その他の物流ソリューションに関するご質問に、チームがお答えします。",
+      description:
+        "輸出入サービス、通関、倉庫保管、その他の物流ソリューションに関するご質問に、チームがお答えします。",
       sendMessage: "メッセージを送る",
       fullName: "氏名",
       email: "メールアドレス",
@@ -1856,7 +1980,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "必要なサービス",
       message: "メッセージ",
       submit: "送信",
-      successAlert: "メッセージが送信されました。担当者より近日中にご連絡いたします。",
+      successAlert:
+        "メッセージが送信されました。担当者より近日中にご連絡いたします。",
       addressLabel: "事務所住所",
       emailLabel: "メール",
       phoneLabel: "電話番号",
@@ -1888,7 +2013,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "おかえりなさい",
       subtitle: "ポータルにアクセスするための認証情報を入力してください",
       sideTitle: "グローバルな出荷を簡単に管理。",
-      sideDesc: "ダッシュボードにアクセスして、注文を追跡し、書類を管理し、新しい見積もりを依頼しましょう。",
+      sideDesc:
+        "ダッシュボードにアクセスして、注文を追跡し、書類を管理し、新しい見積もりを依頼しましょう。",
       sideTrust: "世界1,000社以上から信頼",
       email: "メールアドレス",
       password: "パスワード",
@@ -1918,7 +2044,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "作成中...",
       alreadyHaveAccount: "すでにアカウントをお持ちですか？",
       signIn: "ログイン",
-      redirectToCheckout: "物流サービスの注文を続けるためにアカウントを作成してください。登録後、チェックアウトページに直接移動します。",
+      redirectToCheckout:
+        "物流サービスの注文を続けるためにアカウントを作成してください。登録後、チェックアウトページに直接移動します。",
     },
     products: {
       catalogLabel: "製品カタログ",
@@ -1966,7 +2093,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "サービスカタログ",
       title: "当社のサービス",
-      description: "お客様のビジネスニーズに合わせた物流・通関・国際輸送サービスをご覧ください。",
+      description:
+        "お客様のビジネスニーズに合わせた物流・通関・国際輸送サービスをご覧ください。",
       search: "サービスまたはカテゴリを検索...",
       price: "価格",
       negotiable: "価格応相談",
@@ -2044,7 +2172,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "予定合計",
       services: "サービス",
       infoTitle: "お知らせ",
-      infoDesc: "担当者より確認と最終価格についてご連絡いたします。ご質問はカスタマーサービスまでお問い合わせください。",
+      infoDesc:
+        "担当者より確認と最終価格についてご連絡いたします。ご質問はカスタマーサービスまでお問い合わせください。",
       newOrder: "新規注文作成",
       trackOrder: "注文追跡",
     },
@@ -2083,7 +2212,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "기술 기반 통합 물류 솔루션",
       title: "글로벌 물류, 타협 없는 정밀함.",
-      description: "신뢰할 수 있는 수출입 및 통관 솔루션 — 안전하고 정시에 귀사 비즈니스를 전 세계와 연결합니다.",
+      description:
+        "신뢰할 수 있는 수출입 및 통관 솔루션 — 안전하고 정시에 귀사 비즈니스를 전 세계와 연결합니다.",
       primaryCta: "서비스 보기",
       secondaryCta: "파트너 되기",
     },
@@ -2096,7 +2226,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "회사 소개",
       title: "타의 추종을 불허하는 인프라와 전문성",
-      description: "은 인도네시아 기업 및 중소기업의 수출입 수요를 담당하는 신뢰할 수 있는 국제 화물 운송 및 관세사 회사입니다. 공인된 팀과 150개국 이상의 글로벌 대리점 네트워크를 보유하고 있습니다.",
+      description:
+        "은 인도네시아 기업 및 중소기업의 수출입 수요를 담당하는 신뢰할 수 있는 국제 화물 운송 및 관세사 회사입니다. 공인된 팀과 150개국 이상의 글로벌 대리점 네트워크를 보유하고 있습니다.",
       cta: "합류하기",
       point1: "실시간 엔드투엔드 공급망 가시성",
       point2: "신속한 서류 처리를 위한 면허 보유 통관 전문가",
@@ -2107,19 +2238,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "우리의 강점",
       title: "왜 물류를 저희에게 맡겨야 하나요?",
-      description: "단순히 화물을 운반하는 것을 넘어 — 서류 작성부터 배송까지 전체 화물 여정이 원활하게 진행되도록 보장합니다.",
+      description:
+        "단순히 화물을 운반하는 것을 넘어 — 서류 작성부터 배송까지 전체 화물 여정이 원활하게 진행되도록 보장합니다.",
       card1Title: "신속 통관",
-      card1Desc: "전문가가 통관 서류를 신속하게 처리하여 화물이 항구에서 지연되지 않도록 합니다.",
+      card1Desc:
+        "전문가가 통관 서류를 신속하게 처리하여 화물이 항구에서 지연되지 않도록 합니다.",
       card2Title: "글로벌 네트워크",
-      card2Desc: "150개국 이상의 대리점이 전 세계 어디든 도어 투 도어 배송을 보장합니다.",
+      card2Desc:
+        "150개국 이상의 대리점이 전 세계 어디든 도어 투 도어 배송을 보장합니다.",
       card3Title: "투명한 기술",
-      card3Desc: "클라우드 플랫폼으로 언제 어디서나 화물 상태를 완전히 파악할 수 있습니다.",
+      card3Desc:
+        "클라우드 플랫폼으로 언제 어디서나 화물 상태를 완전히 파악할 수 있습니다.",
       card4Title: "화물 보험",
-      card4Desc: "모든 출하에 포괄적인 보장을 제공하여 예상치 못한 위험으로부터 사업 투자를 보호합니다.",
+      card4Desc:
+        "모든 출하에 포괄적인 보장을 제공하여 예상치 못한 위험으로부터 사업 투자를 보호합니다.",
       card5Title: "경쟁력 있는 가격",
-      card5Desc: "글로벌 항공사 및 선사와 최저 운임을 협상하여 물류 비용을 효율적으로 관리합니다.",
+      card5Desc:
+        "글로벌 항공사 및 선사와 최저 운임을 협상하여 물류 비용을 효율적으로 관리합니다.",
       card6Title: "24/7 지원",
-      card6Desc: "고객 서비스팀이 정보 제공이나 긴급 처리가 필요할 때 언제든 도움을 드립니다.",
+      card6Desc:
+        "고객 서비스팀이 정보 제공이나 긴급 처리가 필요할 때 언제든 도움을 드립니다.",
     },
     cta: {
       title: "글로벌 물류를 가속할 준비가 되셨나요?",
@@ -2133,7 +2271,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "문의하기",
       title: "어떻게 도와드릴까요?",
-      description: "수출입 서비스, 통관, 창고보관 및 기타 물류 솔루션에 관한 질문에 팀이 답변해 드립니다.",
+      description:
+        "수출입 서비스, 통관, 창고보관 및 기타 물류 솔루션에 관한 질문에 팀이 답변해 드립니다.",
       sendMessage: "메시지 보내기",
       fullName: "이름",
       email: "이메일",
@@ -2196,14 +2335,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "전화번호",
       password: "비밀번호",
       servicesTitle: "어떤 서비스에 관심이 있으신가요?",
-      servicesDesc: "경험을 맞춤화할 수 있도록 해당하는 모든 항목을 선택해 주세요.",
+      servicesDesc:
+        "경험을 맞춤화할 수 있도록 해당하는 모든 항목을 선택해 주세요.",
       selected: "선택됨",
       back: "뒤로",
       createAccount: "계정 만들기",
       creatingAccount: "계정 생성 중...",
       alreadyHaveAccount: "이미 계정이 있으신가요?",
       signIn: "로그인",
-      redirectToCheckout: "물류 서비스 주문을 계속하려면 계정을 만드세요. 등록 후 결제 페이지로 바로 이동합니다.",
+      redirectToCheckout:
+        "물류 서비스 주문을 계속하려면 계정을 만드세요. 등록 후 결제 페이지로 바로 이동합니다.",
     },
     products: {
       catalogLabel: "제품 카탈로그",
@@ -2251,7 +2392,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "서비스 카탈로그",
       title: "당사 서비스",
-      description: "비즈니스 요구에 맞게 설계된 물류, 통관 및 국제 운송 서비스를 확인하세요.",
+      description:
+        "비즈니스 요구에 맞게 설계된 물류, 통관 및 국제 운송 서비스를 확인하세요.",
       search: "서비스 또는 카테고리 검색...",
       price: "가격",
       negotiable: "가격 협의",
@@ -2329,7 +2471,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "예상 합계",
       services: "서비스",
       infoTitle: "안내",
-      infoDesc: "담당자가 확인 및 최종 가격 제공을 위해 연락드릴 것입니다. 문의 사항은 고객 서비스에 연락하세요.",
+      infoDesc:
+        "담당자가 확인 및 최종 가격 제공을 위해 연락드릴 것입니다. 문의 사항은 고객 서비스에 연락하세요.",
       newOrder: "새 주문 생성",
       trackOrder: "주문 추적",
     },
@@ -2368,7 +2511,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Penyelesaian Logistik Bersepadu Berkuasa Teknologi",
       title: "Logistik Global, Ketepatan Tanpa Kompromi.",
-      description: "Penyelesaian eksport, import, dan kastam yang boleh dipercayai — menghubungkan perniagaan anda ke seluruh dunia dengan selamat dan tepat masa.",
+      description:
+        "Penyelesaian eksport, import, dan kastam yang boleh dipercayai — menghubungkan perniagaan anda ke seluruh dunia dengan selamat dan tepat masa.",
       primaryCta: "Lihat Perkhidmatan",
       secondaryCta: "Jadi Rakan Kongsi",
     },
@@ -2381,9 +2525,11 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "Tentang Kami",
       title: "Infrastruktur & Kepakaran Tiada Tandingan",
-      description: "adalah syarikat penghantar kargo dan ejen kastam yang dipercayai yang melayani keperluan eksport-import korporat dan PKS di Indonesia. Kami mempunyai pasukan bertauliah dan rangkaian ejen global di lebih 150 negara.",
+      description:
+        "adalah syarikat penghantar kargo dan ejen kastam yang dipercayai yang melayani keperluan eksport-import korporat dan PKS di Indonesia. Kami mempunyai pasukan bertauliah dan rangkaian ejen global di lebih 150 negara.",
       cta: "Sertai Kami",
-      point1: "Keterlihatan rantaian bekalan hujung-ke-hujung secara masa nyata",
+      point1:
+        "Keterlihatan rantaian bekalan hujung-ke-hujung secara masa nyata",
       point2: "Pakar kastam berlesen untuk pemprosesan dokumen yang pantas",
       point3: "Kemudahan gudang strategik berhampiran pelabuhan utama",
       point4: "Pengurus akaun khusus untuk pelanggan korporat",
@@ -2392,19 +2538,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Kelebihan Kami",
       title: "Mengapa Percayakan Logistik kepada Kami?",
-      description: "Kami bukan sekadar mengangkut barang — kami memastikan keseluruhan perjalanan kargo anda berjalan lancar dari dokumentasi hingga penghantaran.",
+      description:
+        "Kami bukan sekadar mengangkut barang — kami memastikan keseluruhan perjalanan kargo anda berjalan lancar dari dokumentasi hingga penghantaran.",
       card1Title: "Kastam Ekspres",
-      card1Desc: "Pakar kami memproses dokumen kastam dengan cepat supaya kargo tidak tertahan di pelabuhan.",
+      card1Desc:
+        "Pakar kami memproses dokumen kastam dengan cepat supaya kargo tidak tertahan di pelabuhan.",
       card2Title: "Rangkaian Global",
-      card2Desc: "Ejen di lebih 150 negara memastikan penghantaran pintu-ke-pintu ke mana-mana destinasi di seluruh dunia.",
+      card2Desc:
+        "Ejen di lebih 150 negara memastikan penghantaran pintu-ke-pintu ke mana-mana destinasi di seluruh dunia.",
       card3Title: "Teknologi Telus",
-      card3Desc: "Platform berasaskan awan kami memberi anda keterlihatan penuh terhadap status penghantaran bila-bila masa, di mana sahaja.",
+      card3Desc:
+        "Platform berasaskan awan kami memberi anda keterlihatan penuh terhadap status penghantaran bila-bila masa, di mana sahaja.",
       card4Title: "Insurans Kargo",
-      card4Desc: "Perlindungan komprehensif untuk setiap penghantaran, melindungi pelaburan perniagaan anda daripada risiko tidak dijangka.",
+      card4Desc:
+        "Perlindungan komprehensif untuk setiap penghantaran, melindungi pelaburan perniagaan anda daripada risiko tidak dijangka.",
       card5Title: "Harga Kompetitif",
-      card5Desc: "Kami merunding kadar terbaik dengan syarikat penerbangan dan pelayaran global untuk memastikan kos logistik anda lebih cekap.",
+      card5Desc:
+        "Kami merunding kadar terbaik dengan syarikat penerbangan dan pelayaran global untuk memastikan kos logistik anda lebih cekap.",
       card6Title: "Sokongan 24/7",
-      card6Desc: "Pasukan perkhidmatan pelanggan kami sedia membantu bila-bila masa anda memerlukan maklumat atau pengendalian kecemasan.",
+      card6Desc:
+        "Pasukan perkhidmatan pelanggan kami sedia membantu bila-bila masa anda memerlukan maklumat atau pengendalian kecemasan.",
     },
     cta: {
       title: "Bersedia untuk mempercepatkan logistik global anda?",
@@ -2418,7 +2571,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Hubungi Kami",
       title: "Ada yang boleh kami bantu?",
-      description: "Pasukan kami sedia menjawab soalan anda mengenai perkhidmatan eksport-import, pelepasan kastam, pergudangan, dan penyelesaian logistik lain.",
+      description:
+        "Pasukan kami sedia menjawab soalan anda mengenai perkhidmatan eksport-import, pelepasan kastam, pergudangan, dan penyelesaian logistik lain.",
       sendMessage: "Hantar Mesej",
       fullName: "Nama Penuh",
       email: "E-mel",
@@ -2426,7 +2580,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Keperluan Perkhidmatan",
       message: "Mesej",
       submit: "Hantar Mesej",
-      successAlert: "Mesej anda telah dihantar. Pasukan kami akan menghubungi anda tidak lama lagi.",
+      successAlert:
+        "Mesej anda telah dihantar. Pasukan kami akan menghubungi anda tidak lama lagi.",
       addressLabel: "Alamat Pejabat",
       emailLabel: "E-mel",
       phoneLabel: "Telefon",
@@ -2458,7 +2613,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Selamat kembali",
       subtitle: "Masukkan kelayakan anda untuk mengakses portal",
       sideTitle: "Urus penghantaran global anda dengan mudah.",
-      sideDesc: "Akses papan pemuka untuk menjejak pesanan, mengurus dokumen, dan meminta sebut harga baharu.",
+      sideDesc:
+        "Akses papan pemuka untuk menjejak pesanan, mengurus dokumen, dan meminta sebut harga baharu.",
       sideTrust: "Dipercayai oleh 1,000+ perniagaan di seluruh dunia",
       email: "E-mel",
       password: "Kata Laluan",
@@ -2471,7 +2627,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     register: {
       title: "Buat akaun anda",
-      subtitle: "Sertai platform kami untuk mengurus logistik anda dengan mudah",
+      subtitle:
+        "Sertai platform kami untuk mengurus logistik anda dengan mudah",
       stepOf: "Langkah",
       of: "daripada",
       continueToServices: "Teruskan ke Pemilihan Perkhidmatan",
@@ -2481,19 +2638,22 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "Nombor Telefon",
       password: "Kata Laluan",
       servicesTitle: "Perkhidmatan apa yang anda minati?",
-      servicesDesc: "Pilih semua yang berkenaan agar kami dapat menyesuaikan pengalaman anda.",
+      servicesDesc:
+        "Pilih semua yang berkenaan agar kami dapat menyesuaikan pengalaman anda.",
       selected: "dipilih",
       back: "Kembali",
       createAccount: "Buat Akaun",
       creatingAccount: "Mencipta Akaun...",
       alreadyHaveAccount: "Sudah ada akaun?",
       signIn: "Log Masuk",
-      redirectToCheckout: "Buat akaun untuk meneruskan pemesanan perkhidmatan logistik anda. Selepas pendaftaran, anda akan diarahkan ke halaman pembayaran.",
+      redirectToCheckout:
+        "Buat akaun untuk meneruskan pemesanan perkhidmatan logistik anda. Selepas pendaftaran, anda akan diarahkan ke halaman pembayaran.",
     },
     products: {
       catalogLabel: "Katalog Produk",
       title: "Produk Kami",
-      description: "Temui pelbagai produk berkualiti untuk keperluan perniagaan anda.",
+      description:
+        "Temui pelbagai produk berkualiti untuk keperluan perniagaan anda.",
       search: "Cari produk atau kategori...",
       all: "Semua",
       negotiable: "Harga Boleh Runding",
@@ -2536,7 +2696,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Katalog Perkhidmatan",
       title: "Perkhidmatan Kami",
-      description: "Temui perkhidmatan logistik, kastam, dan penghantaran antarabangsa kami yang direka bentuk untuk keperluan perniagaan anda.",
+      description:
+        "Temui perkhidmatan logistik, kastam, dan penghantaran antarabangsa kami yang direka bentuk untuk keperluan perniagaan anda.",
       search: "Cari perkhidmatan atau kategori...",
       price: "Harga",
       negotiable: "Harga Boleh Runding",
@@ -2576,7 +2737,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     orders: {
       title: "Sejarah Pesanan",
-      description: "Lihat dan jejak semua pesanan dan penghantaran logistik anda.",
+      description:
+        "Lihat dan jejak semua pesanan dan penghantaran logistik anda.",
       search: "Cari nombor pesanan...",
       orderDetails: "Butiran Pesanan",
       date: "Tarikh",
@@ -2614,7 +2776,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Jumlah Anggaran",
       services: "Perkhidmatan",
       infoTitle: "Maklumat",
-      infoDesc: "Pasukan kami akan menghubungi anda untuk pengesahan dan harga akhir. Untuk sebarang pertanyaan, sila hubungi perkhidmatan pelanggan kami.",
+      infoDesc:
+        "Pasukan kami akan menghubungi anda untuk pengesahan dan harga akhir. Untuk sebarang pertanyaan, sila hubungi perkhidmatan pelanggan kami.",
       newOrder: "Buat Pesanan Baru",
       trackOrder: "Jejak Pesanan",
     },
@@ -2653,7 +2816,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Integrated Logistics Solutions Powered by Technology",
       title: "Global Logistics, Precision Without Compromise.",
-      description: "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
+      description:
+        "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
       primaryCta: "View Services",
       secondaryCta: "Become a Partner",
     },
@@ -2666,7 +2830,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "About Us",
       title: "Unmatched Infrastructure & Expertise",
-      description: "is a trusted freight forwarding and customs brokerage company serving corporate and SME export-import needs across Asia. We have a certified team and a global agent network in more than 150 countries.",
+      description:
+        "is a trusted freight forwarding and customs brokerage company serving corporate and SME export-import needs across Asia. We have a certified team and a global agent network in more than 150 countries.",
       cta: "Join Us",
       point1: "End-to-end supply chain visibility in real-time",
       point2: "Licensed customs specialists for fast document processing",
@@ -2677,19 +2842,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Our Advantages",
       title: "Why Trust Us With Your Logistics?",
-      description: "We don't just move goods — we ensure the entire cargo journey runs smoothly from documentation to delivery.",
+      description:
+        "We don't just move goods — we ensure the entire cargo journey runs smoothly from documentation to delivery.",
       card1Title: "Express Customs",
-      card1Desc: "Our specialists process customs documents quickly so cargo is never held up at the port.",
+      card1Desc:
+        "Our specialists process customs documents quickly so cargo is never held up at the port.",
       card2Title: "Global Network",
-      card2Desc: "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
+      card2Desc:
+        "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
       card3Title: "Transparent Technology",
-      card3Desc: "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
+      card3Desc:
+        "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
       card4Title: "Cargo Insurance",
-      card4Desc: "Comprehensive coverage for every shipment, protecting your business investment from unexpected risks.",
+      card4Desc:
+        "Comprehensive coverage for every shipment, protecting your business investment from unexpected risks.",
       card5Title: "Competitive Pricing",
-      card5Desc: "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
+      card5Desc:
+        "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
       card6Title: "24/7 Support",
-      card6Desc: "Our customer service team is always ready to assist whenever you need information or emergency handling.",
+      card6Desc:
+        "Our customer service team is always ready to assist whenever you need information or emergency handling.",
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
@@ -2703,7 +2875,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Contact Us",
       title: "How can we help you?",
-      description: "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
+      description:
+        "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
       sendMessage: "Send a Message",
       fullName: "Full Name",
       email: "Email",
@@ -2711,7 +2884,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Service Needed",
       message: "Message",
       submit: "Send Message",
-      successAlert: "Your message has been sent. Our team will contact you shortly.",
+      successAlert:
+        "Your message has been sent. Our team will contact you shortly.",
       addressLabel: "Office Address",
       emailLabel: "Email",
       phoneLabel: "Phone",
@@ -2742,7 +2916,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       domestic: "Domestic Distribution",
       allRights: "All rights reserved.",
       tagline: "Integrated logistics solutions for your global business.",
-      description: "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
+      description:
+        "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
       location: "Location",
       phone: "Phone",
       email: "Email",
@@ -2758,13 +2933,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       desc: "Hear directly from clients who have experienced our logistics services.",
       t1Name: "Budi Santoso",
       t1Role: "Operations Director · PT. Karya Maju Bersama",
-      t1Text: "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
+      t1Text:
+        "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
       t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
-      t2Text: "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
+      t2Text:
+        "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
       t3Name: "Ahmad Fauzi",
       t3Role: "CEO · PT. Nusantara Trading Co.",
-      t3Text: "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
+      t3Text:
+        "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
     },
     partners: {
       label: "Global Carrier Partners",
@@ -2775,7 +2953,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Welcome back",
       subtitle: "Enter your credentials to access your portal",
       sideTitle: "Manage your global shipments with ease.",
-      sideDesc: "Access your dashboard to track orders, manage documents, and request new quotes.",
+      sideDesc:
+        "Access your dashboard to track orders, manage documents, and request new quotes.",
       sideTrust: "Trusted by 1,000+ businesses globally",
       email: "Email",
       password: "Password",
@@ -2805,7 +2984,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "Creating Account...",
       alreadyHaveAccount: "Already have an account?",
       signIn: "Sign in",
-      redirectToCheckout: "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
+      redirectToCheckout:
+        "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
     },
     products: {
       catalogLabel: "Product Catalog",
@@ -2853,7 +3033,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Service Catalog",
       title: "Our Services",
-      description: "Discover our logistics, customs, and international shipping services designed for your business needs.",
+      description:
+        "Discover our logistics, customs, and international shipping services designed for your business needs.",
       search: "Search services or categories...",
       price: "Price",
       negotiable: "Price Negotiable",
@@ -2931,7 +3112,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Estimated Total",
       services: "Services",
       infoTitle: "Information",
-      infoDesc: "Our team will contact you for confirmation and final pricing. For any queries, please reach our customer service.",
+      infoDesc:
+        "Our team will contact you for confirmation and final pricing. For any queries, please reach our customer service.",
       newOrder: "Create New Order",
       trackOrder: "Track Order",
     },
@@ -2970,7 +3152,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Integrierte Logistiklösungen auf Technologiebasis",
       title: "Globale Logistik, Präzision ohne Kompromisse.",
-      description: "Zuverlässige Export-, Import- und Zolllösungen, die Ihr Unternehmen weltweit sicher und pünktlich verbinden.",
+      description:
+        "Zuverlässige Export-, Import- und Zolllösungen, die Ihr Unternehmen weltweit sicher und pünktlich verbinden.",
       primaryCta: "Dienstleistungen ansehen",
       secondaryCta: "Partner werden",
     },
@@ -2983,10 +3166,12 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "Über uns",
       title: "Unübertroffene Infrastruktur & Expertise",
-      description: "ist ein vertrauenswürdiges Speditions- und Zollmaklerunternehmen, das Unternehmen und KMU in Indonesien bei ihren Export-Import-Bedürfnissen unterstützt. Wir verfügen über ein zertifiziertes Team und ein globales Agenturnetzwerk in mehr als 150 Ländern.",
+      description:
+        "ist ein vertrauenswürdiges Speditions- und Zollmaklerunternehmen, das Unternehmen und KMU in Indonesien bei ihren Export-Import-Bedürfnissen unterstützt. Wir verfügen über ein zertifiziertes Team und ein globales Agenturnetzwerk in mehr als 150 Ländern.",
       cta: "Jetzt mitmachen",
       point1: "End-to-End-Transparenz der Lieferkette in Echtzeit",
-      point2: "Lizenzierte Zollspezialisten für schnelle Dokumentenverarbeitung",
+      point2:
+        "Lizenzierte Zollspezialisten für schnelle Dokumentenverarbeitung",
       point3: "Strategische Lagereinrichtungen in der Nähe wichtiger Häfen",
       point4: "Dedizierte Account Manager für Firmenkunden",
       point5: "Cloud-basierte Sendungsverfolgungstechnologie",
@@ -2994,19 +3179,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Unsere Stärken",
       title: "Warum uns Ihre Logistik anvertrauen?",
-      description: "Wir transportieren nicht nur Waren — wir stellen sicher, dass die gesamte Frachttransportkette von der Dokumentation bis zur Lieferung reibungslos verläuft.",
+      description:
+        "Wir transportieren nicht nur Waren — wir stellen sicher, dass die gesamte Frachttransportkette von der Dokumentation bis zur Lieferung reibungslos verläuft.",
       card1Title: "Express-Zollabwicklung",
-      card1Desc: "Unsere Spezialisten bearbeiten Zolldokumente schnell, damit die Fracht nicht im Hafen aufgehalten wird.",
+      card1Desc:
+        "Unsere Spezialisten bearbeiten Zolldokumente schnell, damit die Fracht nicht im Hafen aufgehalten wird.",
       card2Title: "Globales Netzwerk",
-      card2Desc: "Agenten in mehr als 150 Ländern gewährleisten die Haustür-zu-Haustür-Lieferung an jeden Bestimmungsort weltweit.",
+      card2Desc:
+        "Agenten in mehr als 150 Ländern gewährleisten die Haustür-zu-Haustür-Lieferung an jeden Bestimmungsort weltweit.",
       card3Title: "Transparente Technologie",
-      card3Desc: "Unsere Cloud-Plattform gibt Ihnen jederzeit und überall vollständige Transparenz über Ihren Sendungsstatus.",
+      card3Desc:
+        "Unsere Cloud-Plattform gibt Ihnen jederzeit und überall vollständige Transparenz über Ihren Sendungsstatus.",
       card4Title: "Frachtversicherung",
-      card4Desc: "Umfassender Schutz für jede Sendung, der Ihre Geschäftsinvestitionen vor unerwarteten Risiken schützt.",
+      card4Desc:
+        "Umfassender Schutz für jede Sendung, der Ihre Geschäftsinvestitionen vor unerwarteten Risiken schützt.",
       card5Title: "Wettbewerbsfähige Preise",
-      card5Desc: "Wir verhandeln die besten Tarife mit globalen Fluggesellschaften und Reedereien, um Ihre Logistikkosten effizient zu halten.",
+      card5Desc:
+        "Wir verhandeln die besten Tarife mit globalen Fluggesellschaften und Reedereien, um Ihre Logistikkosten effizient zu halten.",
       card6Title: "24/7-Support",
-      card6Desc: "Unser Kundenservice-Team steht immer bereit, wann immer Sie Informationen oder Notfallhilfe benötigen.",
+      card6Desc:
+        "Unser Kundenservice-Team steht immer bereit, wann immer Sie Informationen oder Notfallhilfe benötigen.",
     },
     cta: {
       title: "Bereit, Ihre globale Logistik zu beschleunigen?",
@@ -3020,7 +3212,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Kontakt",
       title: "Wie können wir Ihnen helfen?",
-      description: "Unser Team beantwortet Ihre Fragen zu Export-Import-Dienstleistungen, Zollabwicklung, Lagerhaltung und anderen Logistiklösungen.",
+      description:
+        "Unser Team beantwortet Ihre Fragen zu Export-Import-Dienstleistungen, Zollabwicklung, Lagerhaltung und anderen Logistiklösungen.",
       sendMessage: "Nachricht senden",
       fullName: "Vollständiger Name",
       email: "E-Mail",
@@ -3028,7 +3221,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Benötigter Service",
       message: "Nachricht",
       submit: "Nachricht senden",
-      successAlert: "Ihre Nachricht wurde gesendet. Unser Team wird sich in Kürze bei Ihnen melden.",
+      successAlert:
+        "Ihre Nachricht wurde gesendet. Unser Team wird sich in Kürze bei Ihnen melden.",
       addressLabel: "Büroadresse",
       emailLabel: "E-Mail",
       phoneLabel: "Telefon",
@@ -3058,9 +3252,11 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     login: {
       welcomeBack: "Willkommen zurück",
-      subtitle: "Geben Sie Ihre Anmeldedaten ein, um auf Ihr Portal zuzugreifen",
+      subtitle:
+        "Geben Sie Ihre Anmeldedaten ein, um auf Ihr Portal zuzugreifen",
       sideTitle: "Verwalten Sie Ihre globalen Sendungen mit Leichtigkeit.",
-      sideDesc: "Greifen Sie auf Ihr Dashboard zu, um Bestellungen zu verfolgen, Dokumente zu verwalten und neue Angebote anzufordern.",
+      sideDesc:
+        "Greifen Sie auf Ihr Dashboard zu, um Bestellungen zu verfolgen, Dokumente zu verwalten und neue Angebote anzufordern.",
       sideTrust: "Von über 1.000 Unternehmen weltweit vertraut",
       email: "E-Mail",
       password: "Passwort",
@@ -3073,7 +3269,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     register: {
       title: "Konto erstellen",
-      subtitle: "Treten Sie unserer Plattform bei, um Ihre Logistik einfach zu verwalten",
+      subtitle:
+        "Treten Sie unserer Plattform bei, um Ihre Logistik einfach zu verwalten",
       stepOf: "Schritt",
       of: "von",
       continueToServices: "Weiter zur Serviceauswahl",
@@ -3083,19 +3280,22 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "Telefonnummer",
       password: "Passwort",
       servicesTitle: "Für welche Services interessieren Sie sich?",
-      servicesDesc: "Wählen Sie alle zutreffenden aus, damit wir Ihr Erlebnis anpassen können.",
+      servicesDesc:
+        "Wählen Sie alle zutreffenden aus, damit wir Ihr Erlebnis anpassen können.",
       selected: "ausgewählt",
       back: "Zurück",
       createAccount: "Konto erstellen",
       creatingAccount: "Konto wird erstellt...",
       alreadyHaveAccount: "Schon ein Konto?",
       signIn: "Anmelden",
-      redirectToCheckout: "Erstellen Sie ein Konto, um die Bestellung von Logistikdienstleistungen fortzusetzen. Nach der Registrierung werden Sie direkt zur Kasse weitergeleitet.",
+      redirectToCheckout:
+        "Erstellen Sie ein Konto, um die Bestellung von Logistikdienstleistungen fortzusetzen. Nach der Registrierung werden Sie direkt zur Kasse weitergeleitet.",
     },
     products: {
       catalogLabel: "Produktkatalog",
       title: "Unsere Produkte",
-      description: "Entdecken Sie hochwertige Produkte für Ihre Geschäftsbedürfnisse.",
+      description:
+        "Entdecken Sie hochwertige Produkte für Ihre Geschäftsbedürfnisse.",
       search: "Produkte oder Kategorien suchen...",
       all: "Alle",
       negotiable: "Preis verhandelbar",
@@ -3138,7 +3338,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Servicekatalog",
       title: "Unsere Dienstleistungen",
-      description: "Entdecken Sie unsere Logistik-, Zoll- und internationalen Versanddienstleistungen, die auf Ihre Geschäftsbedürfnisse zugeschnitten sind.",
+      description:
+        "Entdecken Sie unsere Logistik-, Zoll- und internationalen Versanddienstleistungen, die auf Ihre Geschäftsbedürfnisse zugeschnitten sind.",
       search: "Services oder Kategorien suchen...",
       price: "Preis",
       negotiable: "Preis verhandelbar",
@@ -3178,7 +3379,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     orders: {
       title: "Bestellverlauf",
-      description: "Sehen und verfolgen Sie alle Ihre Logistikbestellungen und Sendungen.",
+      description:
+        "Sehen und verfolgen Sie alle Ihre Logistikbestellungen und Sendungen.",
       search: "Nach Bestellnummer suchen...",
       orderDetails: "Bestelldetails",
       date: "Datum",
@@ -3192,13 +3394,15 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       noResultsDesc: "Versuchen Sie ein anderes Stichwort.",
       cancelOrder: "Bestellung stornieren",
       cancelConfirmPrefix: "Bestellung stornieren",
-      cancelFailed: "Bestellung konnte nicht storniert werden. Bitte versuchen Sie es erneut.",
+      cancelFailed:
+        "Bestellung konnte nicht storniert werden. Bitte versuchen Sie es erneut.",
       activeFilterLabel: "Aktiver Filter:",
       hapusFilter: "Filter löschen",
     },
     tracking: {
       title: "Bestellstatus verfolgen",
-      description: "Geben Sie Ihre Bestellnummer ein, um den aktuellen Status zu sehen",
+      description:
+        "Geben Sie Ihre Bestellnummer ein, um den aktuellen Status zu sehen",
       placeholder: "z. B. LOG-250429-12345",
       search: "Suchen",
       searching: "Suche läuft...",
@@ -3216,7 +3420,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Geschätzte Gesamtsumme",
       services: "Dienstleistungen",
       infoTitle: "Information",
-      infoDesc: "Unser Team wird sich zur Bestätigung und endgültigen Preisgestaltung bei Ihnen melden. Bei Fragen wenden Sie sich bitte an unseren Kundenservice.",
+      infoDesc:
+        "Unser Team wird sich zur Bestätigung und endgültigen Preisgestaltung bei Ihnen melden. Bei Fragen wenden Sie sich bitte an unseren Kundenservice.",
       newOrder: "Neue Bestellung erstellen",
       trackOrder: "Sendung verfolgen",
     },
@@ -3255,7 +3460,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Solutions logistiques intégrées propulsées par la technologie",
       title: "Logistique mondiale, précision sans compromis.",
-      description: "Des solutions fiables d'export, d'import et de douane — connectant votre entreprise au monde entier en toute sécurité et dans les délais.",
+      description:
+        "Des solutions fiables d'export, d'import et de douane — connectant votre entreprise au monde entier en toute sécurité et dans les délais.",
       primaryCta: "Voir les services",
       secondaryCta: "Devenir partenaire",
     },
@@ -3268,30 +3474,41 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "À propos de nous",
       title: "Une infrastructure et une expertise incomparables",
-      description: "est une entreprise de transit de fret et de courtage en douane de confiance, au service des besoins d'import-export des entreprises et des PME en Indonésie. Nous disposons d'une équipe certifiée et d'un réseau mondial d'agents dans plus de 150 pays.",
+      description:
+        "est une entreprise de transit de fret et de courtage en douane de confiance, au service des besoins d'import-export des entreprises et des PME en Indonésie. Nous disposons d'une équipe certifiée et d'un réseau mondial d'agents dans plus de 150 pays.",
       cta: "Nous rejoindre",
-      point1: "Visibilité de la chaîne d'approvisionnement de bout en bout en temps réel",
-      point2: "Spécialistes des douanes agréés pour un traitement rapide des documents",
-      point3: "Installations d'entreposage stratégiques près des principaux ports",
+      point1:
+        "Visibilité de la chaîne d'approvisionnement de bout en bout en temps réel",
+      point2:
+        "Spécialistes des douanes agréés pour un traitement rapide des documents",
+      point3:
+        "Installations d'entreposage stratégiques près des principaux ports",
       point4: "Gestionnaires de compte dédiés pour les clients entreprises",
       point5: "Technologie de suivi des expéditions basée sur le cloud",
     },
     why: {
       label: "Nos atouts",
       title: "Pourquoi nous confier votre logistique ?",
-      description: "Nous ne transportons pas seulement des marchandises — nous veillons à ce que l'ensemble du trajet de votre cargaison se déroule sans accroc, de la documentation à la livraison.",
+      description:
+        "Nous ne transportons pas seulement des marchandises — nous veillons à ce que l'ensemble du trajet de votre cargaison se déroule sans accroc, de la documentation à la livraison.",
       card1Title: "Dédouanement express",
-      card1Desc: "Nos spécialistes traitent les documents douaniers rapidement pour que la cargaison ne soit jamais bloquée au port.",
+      card1Desc:
+        "Nos spécialistes traitent les documents douaniers rapidement pour que la cargaison ne soit jamais bloquée au port.",
       card2Title: "Réseau mondial",
-      card2Desc: "Des agents dans plus de 150 pays assurent la livraison de porte à porte vers n'importe quelle destination dans le monde.",
+      card2Desc:
+        "Des agents dans plus de 150 pays assurent la livraison de porte à porte vers n'importe quelle destination dans le monde.",
       card3Title: "Technologie transparente",
-      card3Desc: "Notre plateforme cloud vous offre une visibilité complète sur le statut de votre expédition à tout moment et en tout lieu.",
+      card3Desc:
+        "Notre plateforme cloud vous offre une visibilité complète sur le statut de votre expédition à tout moment et en tout lieu.",
       card4Title: "Assurance cargo",
-      card4Desc: "Une couverture complète pour chaque expédition, protégeant votre investissement commercial contre les risques imprévus.",
+      card4Desc:
+        "Une couverture complète pour chaque expédition, protégeant votre investissement commercial contre les risques imprévus.",
       card5Title: "Prix compétitifs",
-      card5Desc: "Nous négocions les meilleurs tarifs avec les compagnies aériennes et les armateurs mondiaux pour que vos coûts logistiques restent maîtrisés.",
+      card5Desc:
+        "Nous négocions les meilleurs tarifs avec les compagnies aériennes et les armateurs mondiaux pour que vos coûts logistiques restent maîtrisés.",
       card6Title: "Support 24h/24, 7j/7",
-      card6Desc: "Notre équipe de service client est toujours disponible pour vous aider chaque fois que vous avez besoin d'informations ou d'une intervention d'urgence.",
+      card6Desc:
+        "Notre équipe de service client est toujours disponible pour vous aider chaque fois que vous avez besoin d'informations ou d'une intervention d'urgence.",
     },
     cta: {
       title: "Prêt à accélérer votre logistique mondiale ?",
@@ -3305,7 +3522,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Nous contacter",
       title: "Comment pouvons-nous vous aider ?",
-      description: "Notre équipe est prête à répondre à vos questions sur les services d'import-export, le dédouanement, l'entreposage et d'autres solutions logistiques.",
+      description:
+        "Notre équipe est prête à répondre à vos questions sur les services d'import-export, le dédouanement, l'entreposage et d'autres solutions logistiques.",
       sendMessage: "Envoyer un message",
       fullName: "Nom complet",
       email: "E-mail",
@@ -3313,7 +3531,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Service requis",
       message: "Message",
       submit: "Envoyer le message",
-      successAlert: "Votre message a été envoyé. Notre équipe vous contactera dans les plus brefs délais.",
+      successAlert:
+        "Votre message a été envoyé. Notre équipe vous contactera dans les plus brefs délais.",
       addressLabel: "Adresse du bureau",
       emailLabel: "E-mail",
       phoneLabel: "Téléphone",
@@ -3339,13 +3558,15 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       customs: "Courtier en douane",
       domestic: "Distribution nationale",
       allRights: "Tous droits réservés.",
-      tagline: "Solutions logistiques intégrées pour votre entreprise mondiale.",
+      tagline:
+        "Solutions logistiques intégrées pour votre entreprise mondiale.",
     },
     login: {
       welcomeBack: "Bon retour",
       subtitle: "Entrez vos identifiants pour accéder à votre portail",
       sideTitle: "Gérez vos expéditions mondiales en toute simplicité.",
-      sideDesc: "Accédez à votre tableau de bord pour suivre les commandes, gérer les documents et demander de nouveaux devis.",
+      sideDesc:
+        "Accédez à votre tableau de bord pour suivre les commandes, gérer les documents et demander de nouveaux devis.",
       sideTrust: "La confiance de plus de 1 000 entreprises dans le monde",
       email: "E-mail",
       password: "Mot de passe",
@@ -3358,7 +3579,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     register: {
       title: "Créez votre compte",
-      subtitle: "Rejoignez notre plateforme pour gérer facilement votre logistique",
+      subtitle:
+        "Rejoignez notre plateforme pour gérer facilement votre logistique",
       stepOf: "Étape",
       of: "sur",
       continueToServices: "Continuer vers les services",
@@ -3368,19 +3590,22 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "Numéro de téléphone",
       password: "Mot de passe",
       servicesTitle: "Quels services vous intéressent ?",
-      servicesDesc: "Sélectionnez tout ce qui s'applique pour que nous puissions personnaliser votre expérience.",
+      servicesDesc:
+        "Sélectionnez tout ce qui s'applique pour que nous puissions personnaliser votre expérience.",
       selected: "sélectionné(s)",
       back: "Retour",
       createAccount: "Créer un compte",
       creatingAccount: "Création du compte...",
       alreadyHaveAccount: "Vous avez déjà un compte ?",
       signIn: "Se connecter",
-      redirectToCheckout: "Créez un compte pour continuer à commander des services logistiques. Après l'inscription, vous serez redirigé vers le paiement.",
+      redirectToCheckout:
+        "Créez un compte pour continuer à commander des services logistiques. Après l'inscription, vous serez redirigé vers le paiement.",
     },
     products: {
       catalogLabel: "Catalogue produits",
       title: "Nos produits",
-      description: "Découvrez des produits de qualité pour vos besoins professionnels.",
+      description:
+        "Découvrez des produits de qualité pour vos besoins professionnels.",
       search: "Rechercher des produits ou des catégories...",
       all: "Tous",
       negotiable: "Prix négociable",
@@ -3423,7 +3648,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Catalogue de services",
       title: "Nos services",
-      description: "Découvrez nos services logistiques, douaniers et d'expédition internationale conçus pour vos besoins professionnels.",
+      description:
+        "Découvrez nos services logistiques, douaniers et d'expédition internationale conçus pour vos besoins professionnels.",
       search: "Rechercher des services ou des catégories...",
       price: "Prix",
       negotiable: "Prix négociable",
@@ -3463,7 +3689,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     orders: {
       title: "Historique des commandes",
-      description: "Consultez et suivez toutes vos commandes et expéditions logistiques.",
+      description:
+        "Consultez et suivez toutes vos commandes et expéditions logistiques.",
       search: "Rechercher par numéro de commande...",
       orderDetails: "Détails de la commande",
       date: "Date",
@@ -3483,7 +3710,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     tracking: {
       title: "Suivre le statut de la commande",
-      description: "Entrez votre numéro de commande pour voir le statut le plus récent",
+      description:
+        "Entrez votre numéro de commande pour voir le statut le plus récent",
       placeholder: "ex. LOG-250429-12345",
       search: "Rechercher",
       searching: "Recherche en cours...",
@@ -3501,7 +3729,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Total estimé",
       services: "Services",
       infoTitle: "Information",
-      infoDesc: "Notre équipe vous contactera pour confirmation et tarification finale. Pour toute question, veuillez contacter notre service client.",
+      infoDesc:
+        "Notre équipe vous contactera pour confirmation et tarification finale. Pour toute question, veuillez contacter notre service client.",
       newOrder: "Créer une nouvelle commande",
       trackOrder: "Suivre la commande",
     },
@@ -3538,9 +3767,11 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       cart: "Winkelwagen",
     },
     hero: {
-      badge: "Geïntegreerde logistieke oplossingen aangedreven door technologie",
+      badge:
+        "Geïntegreerde logistieke oplossingen aangedreven door technologie",
       title: "Wereldwijde logistiek, precisie zonder compromis.",
-      description: "Betrouwbare export-, import- en douaneoplossingen die uw bedrijf veilig en op tijd verbinden met de wereld.",
+      description:
+        "Betrouwbare export-, import- en douaneoplossingen die uw bedrijf veilig en op tijd verbinden met de wereld.",
       primaryCta: "Diensten bekijken",
       secondaryCta: "Partner worden",
     },
@@ -3553,7 +3784,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "Over ons",
       title: "Ongeëvenaarde infrastructuur & expertise",
-      description: "is een betrouwbaar expeditiebedrijf en douanemakelaar dat de export-importbehoeften van bedrijven en het MKB in Indonesië bedient. We hebben een gecertificeerd team en een wereldwijd agentennetwerk in meer dan 150 landen.",
+      description:
+        "is een betrouwbaar expeditiebedrijf en douanemakelaar dat de export-importbehoeften van bedrijven en het MKB in Indonesië bedient. We hebben een gecertificeerd team en een wereldwijd agentennetwerk in meer dan 150 landen.",
       cta: "Doe mee",
       point1: "End-to-end zichtbaarheid van de supply chain in real-time",
       point2: "Erkende douanespecialisten voor snelle documentverwerking",
@@ -3564,19 +3796,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Onze voordelen",
       title: "Waarom uw logistiek aan ons toevertrouwen?",
-      description: "We verplaatsen niet alleen goederen — we zorgen ervoor dat de volledige vrachtreis soepel verloopt van documentatie tot levering.",
+      description:
+        "We verplaatsen niet alleen goederen — we zorgen ervoor dat de volledige vrachtreis soepel verloopt van documentatie tot levering.",
       card1Title: "Express douane",
-      card1Desc: "Onze specialisten verwerken douanedocumenten snel zodat vracht nooit wordt vastgehouden in de haven.",
+      card1Desc:
+        "Onze specialisten verwerken douanedocumenten snel zodat vracht nooit wordt vastgehouden in de haven.",
       card2Title: "Wereldwijd netwerk",
-      card2Desc: "Agenten in meer dan 150 landen zorgen voor deur-tot-deurlevering naar elke bestemming wereldwijd.",
+      card2Desc:
+        "Agenten in meer dan 150 landen zorgen voor deur-tot-deurlevering naar elke bestemming wereldwijd.",
       card3Title: "Transparante technologie",
-      card3Desc: "Ons cloudplatform geeft u altijd en overal volledig inzicht in de status van uw zending.",
+      card3Desc:
+        "Ons cloudplatform geeft u altijd en overal volledig inzicht in de status van uw zending.",
       card4Title: "Vrachtverzekerng",
-      card4Desc: "Uitgebreide dekking voor elke zending, die uw bedrijfsinvestering beschermt tegen onverwachte risico's.",
+      card4Desc:
+        "Uitgebreide dekking voor elke zending, die uw bedrijfsinvestering beschermt tegen onverwachte risico's.",
       card5Title: "Concurrerende prijzen",
-      card5Desc: "We onderhandelen de beste tarieven met wereldwijde luchtvaartmaatschappijen en rederijen om uw logistieke kosten efficiënt te houden.",
+      card5Desc:
+        "We onderhandelen de beste tarieven met wereldwijde luchtvaartmaatschappijen en rederijen om uw logistieke kosten efficiënt te houden.",
       card6Title: "24/7 ondersteuning",
-      card6Desc: "Ons klantenserviceteam staat altijd klaar om te helpen wanneer u informatie of noodhulp nodig heeft.",
+      card6Desc:
+        "Ons klantenserviceteam staat altijd klaar om te helpen wanneer u informatie of noodhulp nodig heeft.",
     },
     cta: {
       title: "Klaar om uw wereldwijde logistiek te versnellen?",
@@ -3590,7 +3829,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Contact",
       title: "Hoe kunnen we u helpen?",
-      description: "Ons team staat klaar om uw vragen te beantwoorden over export-importdiensten, douaneafhandeling, opslag en andere logistieke oplossingen.",
+      description:
+        "Ons team staat klaar om uw vragen te beantwoorden over export-importdiensten, douaneafhandeling, opslag en andere logistieke oplossingen.",
       sendMessage: "Bericht sturen",
       fullName: "Volledige naam",
       email: "E-mail",
@@ -3598,7 +3838,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Benodigde dienst",
       message: "Bericht",
       submit: "Bericht versturen",
-      successAlert: "Uw bericht is verzonden. Ons team neemt binnenkort contact met u op.",
+      successAlert:
+        "Uw bericht is verzonden. Ons team neemt binnenkort contact met u op.",
       addressLabel: "Kantooradres",
       emailLabel: "E-mail",
       phoneLabel: "Telefoon",
@@ -3624,13 +3865,15 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       customs: "Douanemakelaar",
       domestic: "Binnenlandse distributie",
       allRights: "Alle rechten voorbehouden.",
-      tagline: "Geïntegreerde logistieke oplossingen voor uw wereldwijde bedrijf.",
+      tagline:
+        "Geïntegreerde logistieke oplossingen voor uw wereldwijde bedrijf.",
     },
     login: {
       welcomeBack: "Welkom terug",
       subtitle: "Voer uw inloggegevens in om toegang te krijgen tot uw portaal",
       sideTitle: "Beheer uw mondiale zendingen met gemak.",
-      sideDesc: "Open uw dashboard om bestellingen te volgen, documenten te beheren en nieuwe offertes aan te vragen.",
+      sideDesc:
+        "Open uw dashboard om bestellingen te volgen, documenten te beheren en nieuwe offertes aan te vragen.",
       sideTrust: "Vertrouwd door 1.000+ bedrijven wereldwijd",
       email: "E-mail",
       password: "Wachtwoord",
@@ -3643,7 +3886,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     register: {
       title: "Maak uw account aan",
-      subtitle: "Word lid van ons platform om uw logistiek eenvoudig te beheren",
+      subtitle:
+        "Word lid van ons platform om uw logistiek eenvoudig te beheren",
       stepOf: "Stap",
       of: "van",
       continueToServices: "Doorgaan naar diensten",
@@ -3653,14 +3897,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "Telefoonnummer",
       password: "Wachtwoord",
       servicesTitle: "Voor welke diensten heeft u interesse?",
-      servicesDesc: "Selecteer alles wat van toepassing is zodat we uw ervaring kunnen aanpassen.",
+      servicesDesc:
+        "Selecteer alles wat van toepassing is zodat we uw ervaring kunnen aanpassen.",
       selected: "geselecteerd",
       back: "Terug",
       createAccount: "Account aanmaken",
       creatingAccount: "Account aanmaken...",
       alreadyHaveAccount: "Al een account?",
       signIn: "Inloggen",
-      redirectToCheckout: "Maak een account aan om logistieke diensten te bestellen. Na registratie wordt u doorgestuurd naar de afrekenpagina.",
+      redirectToCheckout:
+        "Maak een account aan om logistieke diensten te bestellen. Na registratie wordt u doorgestuurd naar de afrekenpagina.",
     },
     products: {
       catalogLabel: "Productencatalogus",
@@ -3708,7 +3954,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Dienstencatalogus",
       title: "Onze diensten",
-      description: "Ontdek onze logistieke, douane- en internationale transportdiensten die zijn ontworpen voor uw zakelijke behoeften.",
+      description:
+        "Ontdek onze logistieke, douane- en internationale transportdiensten die zijn ontworpen voor uw zakelijke behoeften.",
       search: "Zoek diensten of categorieën...",
       price: "Prijs",
       negotiable: "Prijs bespreekbaar",
@@ -3786,7 +4033,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Geschatte totaal",
       services: "Diensten",
       infoTitle: "Informatie",
-      infoDesc: "Ons team neemt contact met u op voor bevestiging en definitieve prijsstelling. Neem voor vragen contact op met onze klantenservice.",
+      infoDesc:
+        "Ons team neemt contact met u op voor bevestiging en definitieve prijsstelling. Neem voor vragen contact op met onze klantenservice.",
       newOrder: "Nieuwe bestelling aanmaken",
       trackOrder: "Zending volgen",
     },
@@ -3825,7 +4073,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Soluciones logísticas integradas impulsadas por tecnología",
       title: "Logística global, precisión sin compromiso.",
-      description: "Soluciones confiables de exportación, importación y aduanas que conectan su negocio con el mundo de forma segura y puntual.",
+      description:
+        "Soluciones confiables de exportación, importación y aduanas que conectan su negocio con el mundo de forma segura y puntual.",
       primaryCta: "Ver servicios",
       secondaryCta: "Convertirse en socio",
     },
@@ -3838,30 +4087,41 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "Acerca de nosotros",
       title: "Infraestructura y experiencia sin igual",
-      description: "es una empresa de carga y correduría aduanera de confianza que atiende las necesidades de exportación e importación de empresas y pymes en Indonesia. Contamos con un equipo certificado y una red de agentes globales en más de 150 países.",
+      description:
+        "es una empresa de carga y correduría aduanera de confianza que atiende las necesidades de exportación e importación de empresas y pymes en Indonesia. Contamos con un equipo certificado y una red de agentes globales en más de 150 países.",
       cta: "Únase a nosotros",
-      point1: "Visibilidad de la cadena de suministro de extremo a extremo en tiempo real",
-      point2: "Especialistas en aduanas con licencia para el procesamiento rápido de documentos",
-      point3: "Instalaciones de almacenamiento estratégicas cerca de los principales puertos",
+      point1:
+        "Visibilidad de la cadena de suministro de extremo a extremo en tiempo real",
+      point2:
+        "Especialistas en aduanas con licencia para el procesamiento rápido de documentos",
+      point3:
+        "Instalaciones de almacenamiento estratégicas cerca de los principales puertos",
       point4: "Gestores de cuentas dedicados para clientes corporativos",
       point5: "Tecnología de seguimiento de envíos basada en la nube",
     },
     why: {
       label: "Nuestras ventajas",
       title: "¿Por qué confiar su logística a nosotros?",
-      description: "No solo movemos mercancías — nos aseguramos de que todo el viaje de la carga transcurra sin problemas desde la documentación hasta la entrega.",
+      description:
+        "No solo movemos mercancías — nos aseguramos de que todo el viaje de la carga transcurra sin problemas desde la documentación hasta la entrega.",
       card1Title: "Aduana exprés",
-      card1Desc: "Nuestros especialistas procesan los documentos aduaneros rápidamente para que la carga nunca se retenga en el puerto.",
+      card1Desc:
+        "Nuestros especialistas procesan los documentos aduaneros rápidamente para que la carga nunca se retenga en el puerto.",
       card2Title: "Red global",
-      card2Desc: "Agentes en más de 150 países garantizan la entrega puerta a puerta a cualquier destino del mundo.",
+      card2Desc:
+        "Agentes en más de 150 países garantizan la entrega puerta a puerta a cualquier destino del mundo.",
       card3Title: "Tecnología transparente",
-      card3Desc: "Nuestra plataforma en la nube le ofrece visibilidad completa del estado de su envío en cualquier momento y lugar.",
+      card3Desc:
+        "Nuestra plataforma en la nube le ofrece visibilidad completa del estado de su envío en cualquier momento y lugar.",
       card4Title: "Seguro de carga",
-      card4Desc: "Cobertura integral para cada envío, que protege su inversión empresarial de riesgos inesperados.",
+      card4Desc:
+        "Cobertura integral para cada envío, que protege su inversión empresarial de riesgos inesperados.",
       card5Title: "Precios competitivos",
-      card5Desc: "Negociamos las mejores tarifas con aerolíneas y navieras globales para mantener eficientes sus costos logísticos.",
+      card5Desc:
+        "Negociamos las mejores tarifas con aerolíneas y navieras globales para mantener eficientes sus costos logísticos.",
       card6Title: "Soporte 24/7",
-      card6Desc: "Nuestro equipo de atención al cliente siempre está disponible para ayudarle cuando necesite información o asistencia urgente.",
+      card6Desc:
+        "Nuestro equipo de atención al cliente siempre está disponible para ayudarle cuando necesite información o asistencia urgente.",
     },
     cta: {
       title: "¿Listo para acelerar su logística global?",
@@ -3874,7 +4134,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Contacto",
       title: "¿Cómo podemos ayudarle?",
-      description: "Nuestro equipo está listo para responder sus preguntas sobre servicios de exportación-importación, despacho de aduanas, almacenamiento y otras soluciones logísticas.",
+      description:
+        "Nuestro equipo está listo para responder sus preguntas sobre servicios de exportación-importación, despacho de aduanas, almacenamiento y otras soluciones logísticas.",
       sendMessage: "Enviar un mensaje",
       fullName: "Nombre completo",
       email: "Correo electrónico",
@@ -3882,7 +4143,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Servicio necesario",
       message: "Mensaje",
       submit: "Enviar mensaje",
-      successAlert: "Su mensaje ha sido enviado. Nuestro equipo se pondrá en contacto con usted en breve.",
+      successAlert:
+        "Su mensaje ha sido enviado. Nuestro equipo se pondrá en contacto con usted en breve.",
       addressLabel: "Dirección de la oficina",
       emailLabel: "Correo electrónico",
       phoneLabel: "Teléfono",
@@ -3914,7 +4176,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Bienvenido de nuevo",
       subtitle: "Ingrese sus credenciales para acceder a su portal",
       sideTitle: "Gestione sus envíos globales con facilidad.",
-      sideDesc: "Acceda a su panel para rastrear pedidos, gestionar documentos y solicitar nuevas cotizaciones.",
+      sideDesc:
+        "Acceda a su panel para rastrear pedidos, gestionar documentos y solicitar nuevas cotizaciones.",
       sideTrust: "Con la confianza de más de 1.000 empresas en todo el mundo",
       email: "Correo electrónico",
       password: "Contraseña",
@@ -3927,7 +4190,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     register: {
       title: "Cree su cuenta",
-      subtitle: "Únase a nuestra plataforma para gestionar su logística fácilmente",
+      subtitle:
+        "Únase a nuestra plataforma para gestionar su logística fácilmente",
       stepOf: "Paso",
       of: "de",
       continueToServices: "Continuar a servicios",
@@ -3937,19 +4201,22 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "Número de teléfono",
       password: "Contraseña",
       servicesTitle: "¿En qué servicios está interesado?",
-      servicesDesc: "Seleccione todos los que correspondan para que podamos personalizar su experiencia.",
+      servicesDesc:
+        "Seleccione todos los que correspondan para que podamos personalizar su experiencia.",
       selected: "seleccionado(s)",
       back: "Atrás",
       createAccount: "Crear cuenta",
       creatingAccount: "Creando cuenta...",
       alreadyHaveAccount: "¿Ya tiene una cuenta?",
       signIn: "Iniciar sesión",
-      redirectToCheckout: "Cree una cuenta para continuar con el pedido de servicios logísticos. Tras el registro, será redirigido al pago.",
+      redirectToCheckout:
+        "Cree una cuenta para continuar con el pedido de servicios logísticos. Tras el registro, será redirigido al pago.",
     },
     products: {
       catalogLabel: "Catálogo de productos",
       title: "Nuestros productos",
-      description: "Descubra productos de calidad para las necesidades de su negocio.",
+      description:
+        "Descubra productos de calidad para las necesidades de su negocio.",
       search: "Buscar productos o categorías...",
       all: "Todos",
       negotiable: "Precio negociable",
@@ -3992,7 +4259,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Catálogo de servicios",
       title: "Nuestros servicios",
-      description: "Descubra nuestros servicios de logística, aduanas y envío internacional diseñados para las necesidades de su negocio.",
+      description:
+        "Descubra nuestros servicios de logística, aduanas y envío internacional diseñados para las necesidades de su negocio.",
       search: "Buscar servicios o categorías...",
       price: "Precio",
       negotiable: "Precio negociable",
@@ -4046,13 +4314,15 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       noResultsDesc: "Pruebe con otra palabra clave.",
       cancelOrder: "Cancelar pedido",
       cancelConfirmPrefix: "Cancelar pedido",
-      cancelFailed: "Error al cancelar el pedido. Por favor, inténtelo de nuevo.",
+      cancelFailed:
+        "Error al cancelar el pedido. Por favor, inténtelo de nuevo.",
       activeFilterLabel: "Filtro activo:",
       hapusFilter: "Borrar filtro",
     },
     tracking: {
       title: "Rastrear estado del pedido",
-      description: "Ingrese su número de pedido para ver el estado más reciente",
+      description:
+        "Ingrese su número de pedido para ver el estado más reciente",
       placeholder: "ej. LOG-250429-12345",
       search: "Buscar",
       searching: "Buscando...",
@@ -4070,7 +4340,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Total estimado",
       services: "Servicios",
       infoTitle: "Información",
-      infoDesc: "Nuestro equipo se pondrá en contacto con usted para confirmar y proporcionar el precio final. Para cualquier consulta, comuníquese con nuestro servicio de atención al cliente.",
+      infoDesc:
+        "Nuestro equipo se pondrá en contacto con usted para confirmar y proporcionar el precio final. Para cualquier consulta, comuníquese con nuestro servicio de atención al cliente.",
       newOrder: "Crear nuevo pedido",
       trackOrder: "Rastrear pedido",
     },
@@ -4109,7 +4380,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Soluzioni logistiche integrate alimentate dalla tecnologia",
       title: "Logistica globale, precisione senza compromessi.",
-      description: "Soluzioni affidabili di esportazione, importazione e dogana che collegano la tua azienda al mondo in modo sicuro e puntuale.",
+      description:
+        "Soluzioni affidabili di esportazione, importazione e dogana che collegano la tua azienda al mondo in modo sicuro e puntuale.",
       primaryCta: "Scopri i servizi",
       secondaryCta: "Diventa partner",
     },
@@ -4122,30 +4394,40 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "Chi siamo",
       title: "Infrastruttura e competenza senza pari",
-      description: "è un'azienda di spedizioni internazionali e brokeraggio doganale di fiducia che serve le esigenze di importazione ed esportazione di aziende e PMI in Indonesia. Disponiamo di un team certificato e di una rete di agenti globali in più di 150 paesi.",
+      description:
+        "è un'azienda di spedizioni internazionali e brokeraggio doganale di fiducia che serve le esigenze di importazione ed esportazione di aziende e PMI in Indonesia. Disponiamo di un team certificato e di una rete di agenti globali in più di 150 paesi.",
       cta: "Unisciti a noi",
       point1: "Visibilità end-to-end della supply chain in tempo reale",
-      point2: "Specialisti doganali abilitati per l'elaborazione rapida dei documenti",
-      point3: "Strutture di magazzinaggio strategiche vicino ai principali porti",
+      point2:
+        "Specialisti doganali abilitati per l'elaborazione rapida dei documenti",
+      point3:
+        "Strutture di magazzinaggio strategiche vicino ai principali porti",
       point4: "Account manager dedicati per i clienti aziendali",
       point5: "Tecnologia di tracciamento delle spedizioni basata su cloud",
     },
     why: {
       label: "I nostri punti di forza",
       title: "Perché affidarci la vostra logistica?",
-      description: "Non ci limitiamo a spostare merci — ci assicuriamo che l'intero viaggio del carico si svolga senza intoppi dalla documentazione alla consegna.",
+      description:
+        "Non ci limitiamo a spostare merci — ci assicuriamo che l'intero viaggio del carico si svolga senza intoppi dalla documentazione alla consegna.",
       card1Title: "Sdoganamento espresso",
-      card1Desc: "I nostri specialisti elaborano i documenti doganali rapidamente per evitare che il carico venga trattenuto in porto.",
+      card1Desc:
+        "I nostri specialisti elaborano i documenti doganali rapidamente per evitare che il carico venga trattenuto in porto.",
       card2Title: "Rete globale",
-      card2Desc: "Agenti in oltre 150 paesi garantiscono la consegna porta a porta in qualsiasi destinazione nel mondo.",
+      card2Desc:
+        "Agenti in oltre 150 paesi garantiscono la consegna porta a porta in qualsiasi destinazione nel mondo.",
       card3Title: "Tecnologia trasparente",
-      card3Desc: "La nostra piattaforma cloud offre piena visibilità sullo stato della spedizione in qualsiasi momento e ovunque.",
+      card3Desc:
+        "La nostra piattaforma cloud offre piena visibilità sullo stato della spedizione in qualsiasi momento e ovunque.",
       card4Title: "Assicurazione cargo",
-      card4Desc: "Copertura completa per ogni spedizione, che protegge il vostro investimento aziendale da rischi imprevisti.",
+      card4Desc:
+        "Copertura completa per ogni spedizione, che protegge il vostro investimento aziendale da rischi imprevisti.",
       card5Title: "Prezzi competitivi",
-      card5Desc: "Negoziamo le migliori tariffe con compagnie aeree e armatori globali per mantenere efficienti i costi logistici.",
+      card5Desc:
+        "Negoziamo le migliori tariffe con compagnie aeree e armatori globali per mantenere efficienti i costi logistici.",
       card6Title: "Supporto 24/7",
-      card6Desc: "Il nostro team di assistenza clienti è sempre disponibile per aiutarvi quando avete bisogno di informazioni o assistenza urgente.",
+      card6Desc:
+        "Il nostro team di assistenza clienti è sempre disponibile per aiutarvi quando avete bisogno di informazioni o assistenza urgente.",
     },
     cta: {
       title: "Pronti ad accelerare la vostra logistica globale?",
@@ -4158,7 +4440,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Contattaci",
       title: "Come possiamo aiutarti?",
-      description: "Il nostro team è pronto a rispondere alle vostre domande sui servizi di import-export, sdoganamento, magazzinaggio e altre soluzioni logistiche.",
+      description:
+        "Il nostro team è pronto a rispondere alle vostre domande sui servizi di import-export, sdoganamento, magazzinaggio e altre soluzioni logistiche.",
       sendMessage: "Invia un messaggio",
       fullName: "Nome completo",
       email: "E-mail",
@@ -4166,7 +4449,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Servizio richiesto",
       message: "Messaggio",
       submit: "Invia messaggio",
-      successAlert: "Il vostro messaggio è stato inviato. Il nostro team vi contatterà a breve.",
+      successAlert:
+        "Il vostro messaggio è stato inviato. Il nostro team vi contatterà a breve.",
       addressLabel: "Indirizzo ufficio",
       emailLabel: "E-mail",
       phoneLabel: "Telefono",
@@ -4198,7 +4482,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Bentornato",
       subtitle: "Inserisci le tue credenziali per accedere al portale",
       sideTitle: "Gestisci le tue spedizioni globali con facilità.",
-      sideDesc: "Accedi alla dashboard per tracciare gli ordini, gestire i documenti e richiedere nuovi preventivi.",
+      sideDesc:
+        "Accedi alla dashboard per tracciare gli ordini, gestire i documenti e richiedere nuovi preventivi.",
       sideTrust: "Affidato da oltre 1.000 aziende in tutto il mondo",
       email: "E-mail",
       password: "Password",
@@ -4211,7 +4496,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     register: {
       title: "Crea il tuo account",
-      subtitle: "Unisciti alla nostra piattaforma per gestire facilmente la tua logistica",
+      subtitle:
+        "Unisciti alla nostra piattaforma per gestire facilmente la tua logistica",
       stepOf: "Fase",
       of: "di",
       continueToServices: "Continua ai servizi",
@@ -4221,19 +4507,22 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "Numero di telefono",
       password: "Password",
       servicesTitle: "Quali servizi ti interessano?",
-      servicesDesc: "Seleziona tutto ciò che ti riguarda così possiamo personalizzare la tua esperienza.",
+      servicesDesc:
+        "Seleziona tutto ciò che ti riguarda così possiamo personalizzare la tua esperienza.",
       selected: "selezionato/i",
       back: "Indietro",
       createAccount: "Crea account",
       creatingAccount: "Creazione account...",
       alreadyHaveAccount: "Hai già un account?",
       signIn: "Accedi",
-      redirectToCheckout: "Crea un account per continuare a ordinare servizi logistici. Dopo la registrazione, sarai reindirizzato al pagamento.",
+      redirectToCheckout:
+        "Crea un account per continuare a ordinare servizi logistici. Dopo la registrazione, sarai reindirizzato al pagamento.",
     },
     products: {
       catalogLabel: "Catalogo prodotti",
       title: "I nostri prodotti",
-      description: "Scopri prodotti di qualità per le esigenze della tua azienda.",
+      description:
+        "Scopri prodotti di qualità per le esigenze della tua azienda.",
       search: "Cerca prodotti o categorie...",
       all: "Tutti",
       negotiable: "Prezzo trattabile",
@@ -4276,7 +4565,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Catalogo servizi",
       title: "I nostri servizi",
-      description: "Scopri i nostri servizi logistici, doganali e di spedizione internazionale progettati per le esigenze della tua azienda.",
+      description:
+        "Scopri i nostri servizi logistici, doganali e di spedizione internazionale progettati per le esigenze della tua azienda.",
       search: "Cerca servizi o categorie...",
       price: "Prezzo",
       negotiable: "Prezzo trattabile",
@@ -4316,7 +4606,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     orders: {
       title: "Cronologia ordini",
-      description: "Visualizza e traccia tutti i tuoi ordini e spedizioni logistiche.",
+      description:
+        "Visualizza e traccia tutti i tuoi ordini e spedizioni logistiche.",
       search: "Cerca per numero ordine...",
       orderDetails: "Dettagli ordine",
       date: "Data",
@@ -4336,7 +4627,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     tracking: {
       title: "Traccia stato ordine",
-      description: "Inserisci il numero d'ordine per vedere lo stato più recente",
+      description:
+        "Inserisci il numero d'ordine per vedere lo stato più recente",
       placeholder: "es. LOG-250429-12345",
       search: "Cerca",
       searching: "Ricerca in corso...",
@@ -4354,7 +4646,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Totale stimato",
       services: "Servizi",
       infoTitle: "Informazione",
-      infoDesc: "Il nostro team ti contatterà per la conferma e il prezzo finale. Per qualsiasi domanda, contatta il nostro servizio clienti.",
+      infoDesc:
+        "Il nostro team ti contatterà per la conferma e il prezzo finale. Per qualsiasi domanda, contatta il nostro servizio clienti.",
       newOrder: "Crea nuovo ordine",
       trackOrder: "Traccia ordine",
     },
@@ -4393,7 +4686,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "प्रौद्योगिकी-संचालित एकीकृत लॉजिस्टिक्स समाधान",
       title: "वैश्विक लॉजिस्टिक्स, समझौता-रहित सटीकता।",
-      description: "विश्वसनीय निर्यात, आयात और सीमा शुल्क समाधान — आपके व्यवसाय को सुरक्षित और समय पर विश्वभर से जोड़ते हैं।",
+      description:
+        "विश्वसनीय निर्यात, आयात और सीमा शुल्क समाधान — आपके व्यवसाय को सुरक्षित और समय पर विश्वभर से जोड़ते हैं।",
       primaryCta: "सेवाएं देखें",
       secondaryCta: "पार्टनर बनें",
     },
@@ -4406,10 +4700,12 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "हमारे बारे में",
       title: "अतुलनीय बुनियादी ढांचा और विशेषज्ञता",
-      description: "इंडोनेशिया में कॉर्पोरेट और MSME की निर्यात-आयात आवश्यकताओं की पूर्ति करने वाली एक विश्वसनीय फ्रेट फॉरवर्डिंग और कस्टम्स ब्रोकरेज कंपनी है। हमारे पास प्रमाणित टीम और 150 से अधिक देशों में वैश्विक एजेंट नेटवर्क है।",
+      description:
+        "इंडोनेशिया में कॉर्पोरेट और MSME की निर्यात-आयात आवश्यकताओं की पूर्ति करने वाली एक विश्वसनीय फ्रेट फॉरवर्डिंग और कस्टम्स ब्रोकरेज कंपनी है। हमारे पास प्रमाणित टीम और 150 से अधिक देशों में वैश्विक एजेंट नेटवर्क है।",
       cta: "हमसे जुड़ें",
       point1: "वास्तविक समय में एंड-टू-एंड सप्लाई चेन दृश्यता",
-      point2: "तेज़ दस्तावेज़ प्रसंस्करण के लिए लाइसेंस प्राप्त सीमा शुल्क विशेषज्ञ",
+      point2:
+        "तेज़ दस्तावेज़ प्रसंस्करण के लिए लाइसेंस प्राप्त सीमा शुल्क विशेषज्ञ",
       point3: "प्रमुख बंदरगाहों के पास रणनीतिक गोदाम सुविधाएं",
       point4: "कॉर्पोरेट ग्राहकों के लिए समर्पित अकाउंट मैनेजर",
       point5: "क्लाउड-आधारित शिपमेंट ट्रैकिंग तकनीक",
@@ -4417,19 +4713,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "हमारे फायदे",
       title: "हम पर अपनी लॉजिस्टिक्स क्यों भरोसा करें?",
-      description: "हम केवल माल नहीं ढोते — हम यह सुनिश्चित करते हैं कि दस्तावेज़ीकरण से डिलीवरी तक पूरी कार्गो यात्रा सुचारू रूप से चले।",
+      description:
+        "हम केवल माल नहीं ढोते — हम यह सुनिश्चित करते हैं कि दस्तावेज़ीकरण से डिलीवरी तक पूरी कार्गो यात्रा सुचारू रूप से चले।",
       card1Title: "एक्सप्रेस कस्टम्स",
-      card1Desc: "हमारे विशेषज्ञ कस्टम्स दस्तावेज़ों को तेज़ी से प्रोसेस करते हैं ताकि कार्गो बंदरगाह पर न रुके।",
+      card1Desc:
+        "हमारे विशेषज्ञ कस्टम्स दस्तावेज़ों को तेज़ी से प्रोसेस करते हैं ताकि कार्गो बंदरगाह पर न रुके।",
       card2Title: "वैश्विक नेटवर्क",
-      card2Desc: "150 से अधिक देशों में एजेंट विश्व के किसी भी गंतव्य तक डोर-टू-डोर डिलीवरी सुनिश्चित करते हैं।",
+      card2Desc:
+        "150 से अधिक देशों में एजेंट विश्व के किसी भी गंतव्य तक डोर-टू-डोर डिलीवरी सुनिश्चित करते हैं।",
       card3Title: "पारदर्शी तकनीक",
-      card3Desc: "हमारा क्लाउड-आधारित प्लेटफ़ॉर्म कभी भी, कहीं भी आपकी शिपमेंट स्थिति पर पूर्ण दृश्यता देता है।",
+      card3Desc:
+        "हमारा क्लाउड-आधारित प्लेटफ़ॉर्म कभी भी, कहीं भी आपकी शिपमेंट स्थिति पर पूर्ण दृश्यता देता है।",
       card4Title: "कार्गो बीमा",
-      card4Desc: "हर शिपमेंट के लिए व्यापक कवरेज, आपके व्यावसायिक निवेश को अप्रत्याशित जोखिमों से बचाता है।",
+      card4Desc:
+        "हर शिपमेंट के लिए व्यापक कवरेज, आपके व्यावसायिक निवेश को अप्रत्याशित जोखिमों से बचाता है।",
       card5Title: "प्रतिस्पर्धी मूल्य निर्धारण",
-      card5Desc: "हम वैश्विक एयरलाइंस और शिपिंग लाइनों के साथ सर्वोत्तम दरें बातचीत करते हैं ताकि आपकी लॉजिस्टिक्स लागत कुशल रहे।",
+      card5Desc:
+        "हम वैश्विक एयरलाइंस और शिपिंग लाइनों के साथ सर्वोत्तम दरें बातचीत करते हैं ताकि आपकी लॉजिस्टिक्स लागत कुशल रहे।",
       card6Title: "24/7 सहायता",
-      card6Desc: "हमारी ग्राहक सेवा टीम हमेशा तैयार है जब भी आपको जानकारी या आपातकालीन सहायता की आवश्यकता हो।",
+      card6Desc:
+        "हमारी ग्राहक सेवा टीम हमेशा तैयार है जब भी आपको जानकारी या आपातकालीन सहायता की आवश्यकता हो।",
     },
     cta: {
       title: "अपनी वैश्विक लॉजिस्टिक्स को तेज़ करने के लिए तैयार हैं?",
@@ -4442,7 +4745,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "हमसे संपर्क करें",
       title: "हम आपकी कैसे मदद कर सकते हैं?",
-      description: "हमारी टीम निर्यात-आयात सेवाओं, सीमा शुल्क निकासी, वेयरहाउसिंग और अन्य लॉजिस्टिक्स समाधानों के बारे में आपके प्रश्नों का उत्तर देने के लिए तैयार है।",
+      description:
+        "हमारी टीम निर्यात-आयात सेवाओं, सीमा शुल्क निकासी, वेयरहाउसिंग और अन्य लॉजिस्टिक्स समाधानों के बारे में आपके प्रश्नों का उत्तर देने के लिए तैयार है।",
       sendMessage: "संदेश भेजें",
       fullName: "पूरा नाम",
       email: "ईमेल",
@@ -4450,7 +4754,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "आवश्यक सेवा",
       message: "संदेश",
       submit: "संदेश भेजें",
-      successAlert: "आपका संदेश भेज दिया गया है। हमारी टीम जल्द ही आपसे संपर्क करेगी।",
+      successAlert:
+        "आपका संदेश भेज दिया गया है। हमारी टीम जल्द ही आपसे संपर्क करेगी।",
       addressLabel: "कार्यालय का पता",
       emailLabel: "ईमेल",
       phoneLabel: "फोन",
@@ -4482,7 +4787,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "वापस स्वागत है",
       subtitle: "अपने पोर्टल तक पहुंचने के लिए क्रेडेंशियल दर्ज करें",
       sideTitle: "अपनी वैश्विक शिपमेंट को आसानी से प्रबंधित करें।",
-      sideDesc: "ऑर्डर ट्रैक करने, दस्तावेज़ प्रबंधित करने और नए कोटेशन अनुरोध करने के लिए डैशबोर्ड एक्सेस करें।",
+      sideDesc:
+        "ऑर्डर ट्रैक करने, दस्तावेज़ प्रबंधित करने और नए कोटेशन अनुरोध करने के लिए डैशबोर्ड एक्सेस करें।",
       sideTrust: "विश्वभर में 1,000+ व्यवसायों द्वारा विश्वसनीय",
       email: "ईमेल",
       password: "पासवर्ड",
@@ -4495,7 +4801,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     },
     register: {
       title: "अपना खाता बनाएं",
-      subtitle: "अपनी लॉजिस्टिक्स आसानी से प्रबंधित करने के लिए हमारे प्लेटफ़ॉर्म से जुड़ें",
+      subtitle:
+        "अपनी लॉजिस्टिक्स आसानी से प्रबंधित करने के लिए हमारे प्लेटफ़ॉर्म से जुड़ें",
       stepOf: "चरण",
       of: "का",
       continueToServices: "सेवाओं पर जारी रखें",
@@ -4509,15 +4816,17 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       selected: "चयनित",
       back: "वापस",
       createAccount: "खाता बनाएं",
-      creatingAccount: "खाता बनाया जा रहा है...",
+      creatingAccount: "खाता बनाया ज�پ रहा है...",
       alreadyHaveAccount: "पहले से खाता है?",
       signIn: "साइन इन करें",
-      redirectToCheckout: "लॉजिस्टिक्स सेवाएं ऑर्डर करना जारी रखने के लिए खाता बनाएं। पंजीकरण के बाद, आपको सीधे चेकआउट पर भेजा जाएगा।",
+      redirectToCheckout:
+        "लॉजिस्टिक्स सेवाएं ऑर्डर करना जारी रखने के लिए खाता बनाएं। पंजीकरण के बाद, आपको सीधे चेकआउट पर भेजा जाएगा।",
     },
     products: {
       catalogLabel: "उत्पाद कैटलॉग",
       title: "हमारे उत्पाद",
-      description: "अपनी व्यावसायिक ज़रूरतों के लिए गुणवत्तापूर्ण उत्पाद खोजें।",
+      description:
+        "अपनी व्यावसायिक ज़रूरतों के लिए गुणवत्तापूर्ण उत्पाद खोजें।",
       search: "उत्पाद या श्रेणियां खोजें...",
       all: "सभी",
       negotiable: "कीमत बातचीत योग्य",
@@ -4560,7 +4869,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "सेवा कैटलॉग",
       title: "हमारी सेवाएं",
-      description: "आपकी व्यावसायिक जरूरतों के लिए हमारी लॉजिस्टिक्स, सीमा शुल्क और अंतरराष्ट्रीय शिपिंग सेवाएं खोजें।",
+      description:
+        "आपकी व्यावसायिक जरूरतों के लिए हमारी लॉजिस्टिक्स, सीमा शुल्क और अंतरराष्ट्रीय शिपिंग सेवाएं खोजें।",
       search: "सेवाएं या श्रेणियां खोजें...",
       price: "कीमत",
       negotiable: "कीमत बातचीत योग्य",
@@ -4638,7 +4948,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "अनुमानित कुल",
       services: "सेवाएं",
       infoTitle: "जानकारी",
-      infoDesc: "हमारी टीम पुष्टि और अंतिम मूल्य निर्धारण के लिए आपसे संपर्क करेगी। किसी भी प्रश्न के लिए, कृपया हमारी ग्राहक सेवा से संपर्क करें।",
+      infoDesc:
+        "हमारी टीम पुष्टि और अंतिम मूल्य निर्धारण के लिए आपसे संपर्क करेगी। किसी भी प्रश्न के लिए, कृपया हमारी ग्राहक सेवा से संपर्क करें।",
       newOrder: "नया ऑर्डर बनाएं",
       trackOrder: "ऑर्डर ट्रैक करें",
     },
@@ -4677,7 +4988,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "حلول لوجستية متكاملة مدعومة بالتكنولوجيا",
       title: "لوجستيات عالمية، دقة بلا تنازلات.",
-      description: "حلول موثوقة للتصدير والاستيراد والجمارك — تربط عملك بالعالم بأمان وفي الوقت المحدد.",
+      description:
+        "حلول موثوقة للتصدير والاستيراد والجمارك — تربط عملك بالعالم بأمان وفي الوقت المحدد.",
       primaryCta: "استعرض الخدمات",
       secondaryCta: "كن شريكاً",
     },
@@ -4690,7 +5002,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "من نحن",
       title: "بنية تحتية وخبرة لا مثيل لها",
-      description: "شركة موثوقة لشحن البضائع والوساطة الجمركية تخدم احتياجات التصدير والاستيراد للشركات والمنشآت الصغيرة والمتوسطة في إندونيسيا. نمتلك فريقاً معتمداً وشبكة وكلاء عالمية في أكثر من 150 دولة.",
+      description:
+        "شركة موثوقة لشحن البضائع والوساطة الجمركية تخدم احتياجات التصدير والاستيراد للشركات والمنشآت الصغيرة والمتوسطة في إندونيسيا. نمتلك فريقاً معتمداً وشبكة وكلاء عالمية في أكثر من 150 دولة.",
       cta: "انضم إلينا",
       point1: "رؤية سلسلة التوريد من البداية إلى النهاية في الوقت الفعلي",
       point2: "متخصصون جمارك مرخصون لمعالجة المستندات بسرعة",
@@ -4701,19 +5014,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "مزاياهنا",
       title: "لماذا تثق بنا في إدارة لوجستياتك؟",
-      description: "نحن لا نقتصر على نقل البضائع — بل نضمن أن تسير رحلة شحنك بسلاسة من المستندات حتى التسليم.",
+      description:
+        "نحن لا نقتصر على نقل البضائع — بل نضمن أن تسير رحلة شحنك بسلاسة من المستندات حتى التسليم.",
       card1Title: "تخليص جمركي سريع",
-      card1Desc: "يعالج متخصصونا المستندات الجمركية بسرعة لضمان عدم توقف البضائع في الميناء.",
+      card1Desc:
+        "يعالج متخصصونا المستندات الجمركية بسرعة لضمان عدم توقف البضائع في الميناء.",
       card2Title: "شبكة عالمية",
-      card2Desc: "وكلاء في أكثر من 150 دولة يضمنون التوصيل من الباب إلى الباب إلى أي وجهة في العالم.",
+      card2Desc:
+        "وكلاء في أكثر من 150 دولة يضمنون التوصيل من الباب إلى الباب إلى أي وجهة في العالم.",
       card3Title: "تقنية شفافة",
-      card3Desc: "تمنحك منصتنا السحابية رؤية كاملة لحالة شحنتك في أي وقت ومن أي مكان.",
+      card3Desc:
+        "تمنحك منصتنا السحابية رؤية كاملة لحالة شحنتك في أي وقت ومن أي مكان.",
       card4Title: "تأمين البضائع",
-      card4Desc: "تغطية شاملة لكل شحنة لحماية استثمارك التجاري من المخاطر غير المتوقعة.",
+      card4Desc:
+        "تغطية شاملة لكل شحنة لحماية استثمارك التجاري من المخاطر غير المتوقعة.",
       card5Title: "أسعار تنافسية",
-      card5Desc: "نتفاوض على أفضل الأسعار مع شركات الطيران والشحن العالمية لإبقاء تكاليف لوجستياتك فعالة.",
+      card5Desc:
+        "نتفاوض على أفضل الأسعار مع شركات الطيران والشحن العالمية لإبقاء تكاليف لوجستياتك فعالة.",
       card6Title: "دعم على مدار الساعة",
-      card6Desc: "فريق خدمة العملاء لدينا جاهز دائماً لمساعدتك متى احتجت إلى معلومات أو معالجة طارئة.",
+      card6Desc:
+        "فريق خدمة العملاء لدينا جاهز دائماً لمساعدتك متى احتجت إلى معلومات أو معالجة طارئة.",
     },
     cta: {
       title: "هل أنت مستعد لتسريع لوجستياتك العالمية؟",
@@ -4726,7 +5046,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "اتصل بنا",
       title: "كيف يمكننا مساعدتك؟",
-      description: "فريقنا جاهز للإجابة على أسئلتك حول خدمات التصدير والاستيراد والتخليص الجمركي والتخزين وحلول اللوجستيات الأخرى.",
+      description:
+        "فريقنا جاهز للإجابة على أسئلتك حول خدمات التصدير والاستيراد والتخليص الجمركي والتخزين وحلول اللوجستيات الأخرى.",
       sendMessage: "أرسل رسالة",
       fullName: "الاسم الكامل",
       email: "البريد الإلكتروني",
@@ -4766,7 +5087,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "مرحباً بعودتك",
       subtitle: "أدخل بيانات اعتمادك للوصول إلى البوابة",
       sideTitle: "أدر شحناتك العالمية بسهولة.",
-      sideDesc: "ادخل إلى لوحة التحكم لتتبع الطلبات وإدارة المستندات وطلب عروض أسعار جديدة.",
+      sideDesc:
+        "ادخل إلى لوحة التحكم لتتبع الطلبات وإدارة المستندات وطلب عروض أسعار جديدة.",
       sideTrust: "موثوق من قِبل أكثر من 1000 شركة حول العالم",
       email: "البريد الإلكتروني",
       password: "كلمة المرور",
@@ -4796,7 +5118,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "جارٍ إنشاء الحساب...",
       alreadyHaveAccount: "هل لديك حساب بالفعل؟",
       signIn: "تسجيل الدخول",
-      redirectToCheckout: "أنشئ حساباً لمتابعة طلب خدمات اللوجستيات. بعد التسجيل، ستُحوَّل مباشرةً إلى صفحة الدفع.",
+      redirectToCheckout:
+        "أنشئ حساباً لمتابعة طلب خدمات اللوجستيات. بعد التسجيل، ستُحوَّل مباشرةً إلى صفحة الدفع.",
     },
     products: {
       catalogLabel: "كتالوج المنتجات",
@@ -4844,7 +5167,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "كتالوج الخدمات",
       title: "خدماتنا",
-      description: "اكتشف خدمات اللوجستيات والجمارك والشحن الدولي المصممة لاحتياجات عملك.",
+      description:
+        "اكتشف خدمات اللوجستيات والجمارك والشحن الدولي المصممة لاحتياجات عملك.",
       search: "ابحث عن الخدمات أو الفئات...",
       price: "السعر",
       negotiable: "السعر قابل للتفاوض",
@@ -4922,7 +5246,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "الإجمالي التقديري",
       services: "الخدمات",
       infoTitle: "معلومات",
-      infoDesc: "سيتواصل معك فريقنا للتأكيد والتسعير النهائي. لأي استفسار، يرجى التواصل مع خدمة العملاء.",
+      infoDesc:
+        "سيتواصل معك فريقنا للتأكيد والتسعير النهائي. لأي استفسار، يرجى التواصل مع خدمة العملاء.",
       newOrder: "إنشاء طلب جديد",
       trackOrder: "تتبع الطلب",
     },
@@ -4961,7 +5286,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "حلول لوجستية متكاملة مدعومة بأحدث التقنيات",
       title: "لوجستيات عالمية، دقة بلا تنازلات.",
-      description: "حلول موثوقة للتصدير والاستيراد والجمارك — تربط أعمالك بالعالم بأمان وفي المواعيد المحددة.",
+      description:
+        "حلول موثوقة للتصدير والاستيراد والجمارك — تربط أعمالك بالعالم بأمان وفي المواعيد المحددة.",
       primaryCta: "تصفح الخدمات",
       secondaryCta: "كن شريكاً تجارياً",
     },
@@ -4974,7 +5300,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "من نحن",
       title: "بنية تحتية وخبرة لا مثيل لها",
-      description: "شركة موثوقة لشحن البضائع والوساطة الجمركية تخدم احتياجات التصدير والاستيراد للشركات والمنشآت في إندونيسيا. نمتلك فريقاً معتمداً وشبكة وكلاء عالمية تمتد في أكثر من 150 دولة.",
+      description:
+        "شركة موثوقة لشحن البضائع والوساطة الجمركية تخدم احتياجات التصدير والاستيراد للشركات والمنشآت في إندونيسيا. نمتلك فريقاً معتمداً وشبكة وكلاء عالمية تمتد في أكثر من 150 دولة.",
       cta: "انضم إلى عائلتنا",
       point1: "رؤية شاملة لسلسلة الإمداد من المصدر حتى الوجهة في الوقت الفعلي",
       point2: "متخصصون جمارك مرخصون لإنجاز المستندات بسرعة فائقة",
@@ -4985,19 +5312,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "لماذا نحن",
       title: "لماذا تثق بنا في إدارة لوجستياتك؟",
-      description: "لسنا مجرد ناقلين للبضائع — نحن نضمن أن تسير رحلة شحنك بسلاسة تامة من لحظة التوثيق حتى التسليم.",
+      description:
+        "لسنا مجرد ناقلين للبضائع — نحن نضمن أن تسير رحلة شحنك بسلاسة تامة من لحظة التوثيق حتى التسليم.",
       card1Title: "تخليص جمركي سريع",
-      card1Desc: "يُسرّع متخصصونا معالجة المستندات الجمركية لضمان انسيابية البضائع دون توقف في الموانئ.",
+      card1Desc:
+        "يُسرّع متخصصونا معالجة المستندات الجمركية لضمان انسيابية البضائع دون توقف في الموانئ.",
       card2Title: "شبكة عالمية واسعة",
-      card2Desc: "شبكة وكلاء في أكثر من 150 دولة تكفل إيصال شحناتك من الباب إلى الباب في أي مكان بالعالم.",
+      card2Desc:
+        "شبكة وكلاء في أكثر من 150 دولة تكفل إيصال شحناتك من الباب إلى الباب في أي مكان بالعالم.",
       card3Title: "تقنية شفافة وموثوقة",
-      card3Desc: "توفر منصتنا السحابية إمكانية متابعة حالة شحنتك بشكل كامل في أي وقت ومن أي مكان.",
+      card3Desc:
+        "توفر منصتنا السحابية إمكانية متابعة حالة شحنتك بشكل كامل في أي وقت ومن أي مكان.",
       card4Title: "تأمين شامل للبضائع",
-      card4Desc: "تغطية تأمينية متكاملة لكل شحنة لحماية استثمارك التجاري من أي مخاطر محتملة.",
+      card4Desc:
+        "تغطية تأمينية متكاملة لكل شحنة لحماية استثمارك التجاري من أي مخاطر محتملة.",
       card5Title: "أسعار تنافسية للغاية",
-      card5Desc: "نتفاوض على أفضل الأسعار مع كبرى شركات الطيران والشحن البحري لخفض تكاليف لوجستياتك.",
+      card5Desc:
+        "نتفاوض على أفضل الأسعار مع كبرى شركات الطيران والشحن البحري لخفض تكاليف لوجستياتك.",
       card6Title: "دعم متواصل على مدار الساعة",
-      card6Desc: "فريق خدمة عملائنا في خدمتك على مدار الساعة طوال أيام الأسبوع للرد على استفساراتك وحل طوارئك.",
+      card6Desc:
+        "فريق خدمة عملائنا في خدمتك على مدار الساعة طوال أيام الأسبوع للرد على استفساراتك وحل طوارئك.",
     },
     cta: {
       title: "هل أنت جاهز للارتقاء بلوجستياتك العالمية؟",
@@ -5010,7 +5344,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "تواصل معنا",
       title: "كيف يمكننا خدمتك؟",
-      description: "فريقنا على أتم الاستعداد للإجابة على كافة تساؤلاتك حول خدمات التصدير والاستيراد والتخليص الجمركي والتخزين وجميع الحلول اللوجستية.",
+      description:
+        "فريقنا على أتم الاستعداد للإجابة على كافة تساؤلاتك حول خدمات التصدير والاستيراد والتخليص الجمركي والتخزين وجميع الحلول اللوجستية.",
       sendMessage: "أرسل رسالتك",
       fullName: "الاسم الكامل",
       email: "البريد الإلكتروني",
@@ -5050,7 +5385,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "أهلاً بعودتك",
       subtitle: "أدخل بيانات حسابك للوصول إلى البوابة الإلكترونية",
       sideTitle: "أدر شحناتك العالمية بكل يسر وسهولة.",
-      sideDesc: "ادخل إلى لوحة التحكم لتتبع طلباتك وإدارة مستنداتك وطلب عروض الأسعار الجديدة.",
+      sideDesc:
+        "ادخل إلى لوحة التحكم لتتبع طلباتك وإدارة مستنداتك وطلب عروض الأسعار الجديدة.",
       sideTrust: "تحظى بثقة أكثر من 1000 شركة حول العالم",
       email: "البريد الإلكتروني",
       password: "كلمة المرور",
@@ -5073,14 +5409,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       phone: "رقم الجوال",
       password: "كلمة المرور",
       servicesTitle: "ما الخدمات التي تودّ الاستفادة منها؟",
-      servicesDesc: "اختر كل ما ينطبق على احتياجاتك لنتمكن من تقديم تجربة مخصصة لك.",
+      servicesDesc:
+        "اختر كل ما ينطبق على احتياجاتك لنتمكن من تقديم تجربة مخصصة لك.",
       selected: "محدد",
       back: "رجوع",
       createAccount: "إنشاء الحساب",
       creatingAccount: "جارٍ إنشاء الحساب...",
       alreadyHaveAccount: "هل لديك حساب مسبقاً؟",
       signIn: "تسجيل الدخول",
-      redirectToCheckout: "أنشئ حساباً لمتابعة طلب الخدمات اللوجستية. بعد إتمام التسجيل، ستنتقل مباشرةً إلى صفحة الدفع.",
+      redirectToCheckout:
+        "أنشئ حساباً لمتابعة طلب الخدمات اللوجستية. بعد إتمام التسجيل، ستنتقل مباشرةً إلى صفحة الدفع.",
     },
     products: {
       catalogLabel: "كتالوج المنتجات",
@@ -5128,7 +5466,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "كتالوج الخدمات",
       title: "خدماتنا",
-      description: "تعرف على خدمات اللوجستيات والتخليص الجمركي والشحن الدولي المصممة خصيصاً لاحتياجات أعمالك.",
+      description:
+        "تعرف على خدمات اللوجستيات والتخليص الجمركي والشحن الدولي المصممة خصيصاً لاحتياجات أعمالك.",
       search: "ابحث عن الخدمات أو الفئات...",
       price: "السعر",
       negotiable: "السعر قابل للتفاوض",
@@ -5206,7 +5545,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "الإجمالي التقديري",
       services: "الخدمات المطلوبة",
       infoTitle: "تنبيه",
-      infoDesc: "سيتواصل معك مسؤولنا لتأكيد الطلب وتزويدك بالسعر النهائي. لأي استفسار تواصل مع فريق خدمة العملاء.",
+      infoDesc:
+        "سيتواصل معك مسؤولنا لتأكيد الطلب وتزويدك بالسعر النهائي. لأي استفسار تواصل مع فريق خدمة العملاء.",
       newOrder: "إنشاء طلب جديد",
       trackOrder: "تتبع الطلب",
     },
@@ -5245,7 +5585,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     hero: {
       badge: "Integrated Logistics Solutions Powered by Technology",
       title: "Global Logistics, Precision Without Compromise.",
-      description: "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
+      description:
+        "Reliable export, import, and customs solutions connecting your business worldwide safely and on time.",
       primaryCta: "View Services",
       secondaryCta: "Become a Partner",
     },
@@ -5258,7 +5599,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     about: {
       label: "About Us",
       title: "Unmatched Infrastructure & Expertise",
-      description: "is a trusted freight forwarding and customs brokerage company serving corporate and SME export-import needs across the Asia-Pacific region. We have a certified team and a global agent network in more than 150 countries.",
+      description:
+        "is a trusted freight forwarding and customs brokerage company serving corporate and SME export-import needs across the Asia-Pacific region. We have a certified team and a global agent network in more than 150 countries.",
       cta: "Join Us",
       point1: "End-to-end supply chain visibility in real-time",
       point2: "Licensed customs specialists for fast document processing",
@@ -5269,19 +5611,26 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     why: {
       label: "Our Strengths",
       title: "Why Trust Us With Your Logistics?",
-      description: "We don't just move goods — we make sure the entire cargo journey runs smoothly from documentation to delivery.",
+      description:
+        "We don't just move goods — we make sure the entire cargo journey runs smoothly from documentation to delivery.",
       card1Title: "Express Customs",
-      card1Desc: "Our specialists process customs documents quickly so cargo is never held up at the port.",
+      card1Desc:
+        "Our specialists process customs documents quickly so cargo is never held up at the port.",
       card2Title: "Global Network",
-      card2Desc: "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
+      card2Desc:
+        "Agents in more than 150 countries ensure door-to-door delivery to any destination worldwide.",
       card3Title: "Transparent Technology",
-      card3Desc: "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
+      card3Desc:
+        "Our cloud-based platform gives you full visibility over your shipment status anytime, anywhere.",
       card4Title: "Cargo Insurance",
-      card4Desc: "Comprehensive coverage for every shipment, protecting your business investment from unexpected risks.",
+      card4Desc:
+        "Comprehensive coverage for every shipment, protecting your business investment from unexpected risks.",
       card5Title: "Competitive Pricing",
-      card5Desc: "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
+      card5Desc:
+        "We negotiate the best rates with global airlines and shipping lines to keep your logistics costs efficient.",
       card6Title: "24/7 Support",
-      card6Desc: "Our customer service team is always on hand to assist whenever you need information or emergency support.",
+      card6Desc:
+        "Our customer service team is always on hand to assist whenever you need information or emergency support.",
     },
     cta: {
       title: "Ready to accelerate your global logistics?",
@@ -5295,7 +5644,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     contact: {
       label: "Contact Us",
       title: "How can we help you?",
-      description: "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
+      description:
+        "Our team is ready to answer your questions about export-import services, customs clearance, warehousing, and other logistics solutions.",
       sendMessage: "Send a Message",
       fullName: "Full Name",
       email: "Email",
@@ -5303,7 +5653,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       serviceNeed: "Service Needed",
       message: "Message",
       submit: "Send Message",
-      successAlert: "Your message has been sent. Our team will be in touch shortly.",
+      successAlert:
+        "Your message has been sent. Our team will be in touch shortly.",
       addressLabel: "Office Address",
       emailLabel: "Email",
       phoneLabel: "Phone",
@@ -5334,7 +5685,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       domestic: "Domestic Distribution",
       allRights: "All rights reserved.",
       tagline: "Integrated logistics solutions for your global business.",
-      description: "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
+      description:
+        "Integrated logistics and technology-driven solutions for your export, import, and business distribution needs.",
       location: "Location",
       phone: "Phone",
       email: "Email",
@@ -5350,13 +5702,16 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       desc: "Hear directly from clients who have experienced our logistics services.",
       t1Name: "Budi Santoso",
       t1Role: "Operations Director · PT. Karya Maju Bersama",
-      t1Text: "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
+      t1Text:
+        "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
       t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
-      t2Text: "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
+      t2Text:
+        "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
       t3Name: "Ahmad Fauzi",
       t3Role: "CEO · PT. Nusantara Trading Co.",
-      t3Text: "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
+      t3Text:
+        "Their team is responsive 24/7. When sudden import regulation changes occurred, they immediately found the best solution to keep our business running smoothly.",
     },
     partners: {
       label: "Global Carrier Partners",
@@ -5367,7 +5722,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       welcomeBack: "Welcome back",
       subtitle: "Enter your credentials to access your portal",
       sideTitle: "Manage your global shipments with ease.",
-      sideDesc: "Access your dashboard to track orders, manage documents, and request new quotes.",
+      sideDesc:
+        "Access your dashboard to track orders, manage documents, and request new quotes.",
       sideTrust: "Trusted by 1,000+ businesses globally",
       email: "Email",
       password: "Password",
@@ -5397,7 +5753,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       creatingAccount: "Creating Account...",
       alreadyHaveAccount: "Already have an account?",
       signIn: "Sign in",
-      redirectToCheckout: "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
+      redirectToCheckout:
+        "Create an account to continue ordering logistics services. After registration, you will be redirected to checkout.",
     },
     products: {
       catalogLabel: "Product Catalog",
@@ -5445,7 +5802,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
     services: {
       catalogLabel: "Service Catalog",
       title: "Our Services",
-      description: "Discover our logistics, customs, and international shipping services designed for your business needs.",
+      description:
+        "Discover our logistics, customs, and international shipping services designed for your business needs.",
       search: "Search services or categories...",
       price: "Price",
       negotiable: "Price Negotiable",
@@ -5523,7 +5881,8 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       total: "Estimated Total",
       services: "Services",
       infoTitle: "Information",
-      infoDesc: "Our team will contact you for confirmation and final pricing. For any queries, please reach our customer service.",
+      infoDesc:
+        "Our team will contact you for confirmation and final pricing. For any queries, please reach our customer service.",
       newOrder: "Create New Order",
       trackOrder: "Track Order",
     },
@@ -5546,16 +5905,44 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
 };
 
 export type SupportedLocale =
-  | "id-ID" | "en-US" | "en-GB" | "zh-CN" | "zh-TW"
-  | "ja-JP" | "ko-KR" | "ms-MY" | "en-SG" | "de-DE"
-  | "fr-FR" | "nl-NL" | "es-ES" | "it-IT" | "hi-IN"
-  | "ar-AE" | "ar-SA" | "en-AU";
+  | "id-ID"
+  | "en-US"
+  | "en-GB"
+  | "zh-CN"
+  | "zh-TW"
+  | "ja-JP"
+  | "ko-KR"
+  | "ms-MY"
+  | "en-SG"
+  | "de-DE"
+  | "fr-FR"
+  | "nl-NL"
+  | "es-ES"
+  | "it-IT"
+  | "hi-IN"
+  | "ar-AE"
+  | "ar-SA"
+  | "en-AU";
 
 export const SUPPORTED_LOCALES: SupportedLocale[] = [
-  "id-ID", "en-US", "en-GB", "zh-CN", "zh-TW",
-  "ja-JP", "ko-KR", "ms-MY", "en-SG", "de-DE",
-  "fr-FR", "nl-NL", "es-ES", "it-IT", "hi-IN",
-  "ar-AE", "ar-SA", "en-AU",
+  "id-ID",
+  "en-US",
+  "en-GB",
+  "zh-CN",
+  "zh-TW",
+  "ja-JP",
+  "ko-KR",
+  "ms-MY",
+  "en-SG",
+  "de-DE",
+  "fr-FR",
+  "nl-NL",
+  "es-ES",
+  "it-IT",
+  "hi-IN",
+  "ar-AE",
+  "ar-SA",
+  "en-AU",
 ];
 
 export const RTL_LOCALES: string[] = ["ar-AE", "ar-SA"];
