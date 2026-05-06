@@ -48,25 +48,26 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
   return (
     `🚢 *ORDER LOGISTIK BARU*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `No. Order  : \`${order.orderNumber}\`\n` +
-    `Customer   : ${order.customerName}${order.companyName ? ` (${order.companyName})` : ""}\n` +
-    `Email      : ${order.email}\n` +
-    `HP         : ${order.phone}\n` +
-    `Jenis      : ${order.shipmentType}\n` +
-    `Rute       : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Komoditi   : ${order.commodity}\n` : ``) +
-    (order.cargoDescription ? `Deskripsi  : ${order.cargoDescription}\n` : ``) +
-    (order.grossWeight ? `Berat      : ${order.grossWeight} kg\n` : ``) +
-    (order.volumeCbm ? `Volume     : ${order.volumeCbm} CBM\n` : ``) +
-    `Layanan    :\n${order.serviceList}\n` +
-    `Total Est. : Rp ${formatRupiah(order.grandTotal)}\n` +
-    (order.requiredDate ? `Tgl Kirim  : ${order.requiredDate}\n` : ``) +
-    (order.notes ? `Catatan    : ${order.notes}\n` : ``) +
+    `No. Order       : \`${order.orderNumber}\`\n` +
+    `Status          : Menunggu Konfirmasi\n` +
+    `Customer        : ${order.customerName}${order.companyName ? ` (${order.companyName})` : ""}\n` +
+    `Email           : ${order.email}\n` +
+    `HP              : ${order.phone}\n` +
+    `Jenis           : ${order.shipmentType}\n` +
+    `Rute            : ${order.origin} → ${order.destination}\n` +
+    (order.commodity ? `Kategori Barang : ${order.commodity}\n` : ``) +
+    (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
+    (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
+    (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    `Layanan         :\n${order.serviceList}\n` +
+    `Total Est.      : Rp ${formatRupiah(order.grandTotal)}\n` +
+    (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
+    (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
     (orderUrl ? `🔗 *Buka & Approve di BizPortal:*\n${orderUrl}\n\n` : ``) +
-    `💬 *Atau approve via WA* (setelah vendor balas):\n` +
+    `💬 *Approve via WA* (setelah vendor balas harga):\n` +
     `\`\`\`APPROVE ${order.orderNumber} [harga_jual]\`\`\`\n` +
-    `_Contoh: APPROVE ${order.orderNumber} 5500000_`
+    `_Cek penawaran vendor: \`QUOTES ${order.orderNumber}\`_`
   );
 }
 
@@ -75,23 +76,28 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     `📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `Kepada Yth. *${vendorName}*,\n\n` +
-    `No. Order        : *${order.orderNumber}*\n` +
-    `Rute             : ${order.origin} → ${order.destination}\n` +
-    (order.commodity ? `Kategori Barang  : ${order.commodity}\n` : ``) +
-    (order.cargoDescription ? `Deskripsi        : ${order.cargoDescription}\n` : ``) +
-    (order.grossWeight ? `Berat            : ${order.grossWeight} kg\n` : ``) +
-    (order.volumeCbm ? `Volume           : ${order.volumeCbm} CBM\n` : ``) +
-    (order.requiredDate ? `Tgl Butuh        : ${order.requiredDate}\n` : ``) +
-    `Layanan          :\n${order.serviceList}\n` +
-    (order.notes ? `Catatan          : ${order.notes}\n` : ``) +
+    `No. Order       : *${order.orderNumber}*\n` +
+    `Status          : Menunggu Konfirmasi\n` +
+    `Jenis           : ${order.shipmentType}\n` +
+    `Rute            : ${order.origin} → ${order.destination}\n` +
+    (order.commodity ? `Kategori Barang : ${order.commodity}\n` : ``) +
+    (order.cargoDescription ? `Deskripsi       : ${order.cargoDescription}\n` : ``) +
+    (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
+    (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
+    (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
+    `Layanan         :\n${order.serviceList}\n` +
+    `Total Est.      : Rp ${formatRupiah(order.grandTotal)}\n` +
+    (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `💬 *Cara merespon:*\n` +
     `Balas dengan memilih:\n\n` +
-    `1️⃣ *TERIMA* (Untuk menerima pesanan)\n` +
-    `2️⃣ *TOLAK* (Untuk menolak pesanan)\n\n` +
+    `1️⃣ *TERIMA* — setuju terima pesanan\n` +
+    `2️⃣ *TOLAK* — tidak dapat memenuhi\n\n` +
     `_Sertakan No. Order saat membalas, contoh:_\n` +
     `\`TERIMA ${order.orderNumber}\`\n` +
     `\`TOLAK ${order.orderNumber}\`\n\n` +
+    `_Atau balas harga jika sudah ada penawaran:_\n` +
+    `\`${order.orderNumber} [harga_vendor]\`\n\n` +
     `Terima kasih 🙏`
   );
 }
