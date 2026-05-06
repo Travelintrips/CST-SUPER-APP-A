@@ -119,7 +119,7 @@ export default function TrackPage() {
                   str(inputData.destinationPort);
                 return (
                   <div className="grid grid-cols-2 gap-y-2 text-sm">
-                    <span className="text-muted-foreground">Perusahaan</span>
+                    <span className="text-muted-foreground">Perusahaan1</span>
                     <span className="font-medium text-foreground text-right">
                       {order.companyName}
                     </span>
