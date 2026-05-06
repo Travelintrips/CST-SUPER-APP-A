@@ -513,6 +513,78 @@ router.get("/vendor/profile", requirePortalAuth, async (req, res) => {
   });
 });
 
+// POST /api/portal/vendor/quotes — submit or update a quote for an open RFQ
+router.post("/vendor/quotes", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+  if (!customer) return res.status(401).json({ message: "Tidak ditemukan" });
+
+  const { rfqId, vendorPrice, estimatedPickup, estimatedDelivery, estimatedDays, vendorNotes } = req.body as {
+    rfqId: number; vendorPrice: number; estimatedPickup?: string; estimatedDelivery?: string;
+    estimatedDays?: number; vendorNotes?: string;
+  };
+  if (!rfqId || !vendorPrice || Number(vendorPrice) <= 0) {
+    return res.status(400).json({ message: "rfqId dan vendorPrice wajib diisi" });
+  }
+
+  // Resolve linked supplier
+  const allSuppliers = await db.select().from(suppliersTable);
+  const normalizePhone = (p: string | null) => p ? p.replace(/[^\d]/g, "").replace(/^0/, "62") : null;
+  const customerPhone = normalizePhone(customer.phone);
+  const linkedSupplier = allSuppliers.find(
+    (s) =>
+      (s.contactEmail && s.contactEmail.toLowerCase() === customer.email.toLowerCase()) ||
+      (s.email && s.email.toLowerCase() === customer.email.toLowerCase()) ||
+      (customerPhone && normalizePhone(s.phone) === customerPhone)
+  ) ?? null;
+  if (!linkedSupplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });
+
+  // Validate RFQ exists and includes this supplier
+  const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+  if (!(rfq.vendorIds as number[]).includes(linkedSupplier.id)) {
+    return res.status(403).json({ message: "RFQ ini bukan untuk vendor Anda" });
+  }
+  if (rfq.status !== "open") {
+    return res.status(400).json({ message: "RFQ sudah tidak open" });
+  }
+
+  // Upsert: update existing quote or insert new one
+  const [existing] = await db.select().from(logisticOrderQuotesTable)
+    .where(and(eq(logisticOrderQuotesTable.rfqId, rfqId), eq(logisticOrderQuotesTable.vendorId, linkedSupplier.id)));
+
+  const now = new Date();
+  if (existing) {
+    await db.update(logisticOrderQuotesTable).set({
+      vendorPrice: String(vendorPrice),
+      estimatedPickup: estimatedPickup ?? null,
+      estimatedDelivery: estimatedDelivery ?? null,
+      estimatedDays: estimatedDays ?? null,
+      vendorNotes: vendorNotes ?? null,
+      replySource: "portal",
+      replyTimestamp: now,
+    }).where(eq(logisticOrderQuotesTable.id, existing.id));
+    return res.json({ success: true, quoteId: existing.id, action: "updated" });
+  } else {
+    const [inserted] = await db.insert(logisticOrderQuotesTable).values({
+      rfqId,
+      orderId: rfq.orderId,
+      vendorId: linkedSupplier.id,
+      vendorPrice: String(vendorPrice),
+      estimatedPickup: estimatedPickup ?? null,
+      estimatedDelivery: estimatedDelivery ?? null,
+      estimatedDays: estimatedDays ?? null,
+      vendorNotes: vendorNotes ?? null,
+      markupType: "percentage",
+      markupPercentage: "0",
+      quoteStatus: "pending",
+      replySource: "portal",
+      replyTimestamp: now,
+    }).returning();
+    return res.json({ success: true, quoteId: inserted.id, action: "created" });
+  }
+});
+
 // ── PORTAL CONTENT (Public) ───────────────────────────────────────────────
 // GET /api/portal/content
 router.get("/content", async (_req, res) => {
