@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
-import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations } from "@workspace/api-client-react";
+import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations, getListAiDraftQuotationsQueryKey } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
 
@@ -202,6 +202,7 @@ export function AppShell({ children }: AppShellProps) {
     query: {
       enabled: dbUser?.role === "admin",
       refetchInterval: 60_000,
+      queryKey: getListAiDraftQuotationsQueryKey(),
     },
   });
   const aiDraftCount = aiDrafts.length;

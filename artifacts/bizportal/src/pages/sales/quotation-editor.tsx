@@ -52,6 +52,8 @@ import {
   useListFreightShipments,
   useForwardSalesDocumentToVendors,
   useListEligibleVendorsForDoc,
+  getListEligibleVendorsForDocQueryKey,
+  type ForwardToVendorsBodyChannelsItem,
   getListExpensesQueryKey,
   getGetSalesDocumentQueryKey,
   getListSalesDocumentsQueryKey,
@@ -304,8 +306,21 @@ export default function SalesDocumentEditorPage() {
   const [scanOpen, setScanOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [forwardOpen, setForwardOpen] = useState(false);
+  const [fwdVendorIds, setFwdVendorIds] = useState<number[]>([]);
+  const [fwdChannels, setFwdChannels] = useState<string[]>(["wa", "email"]);
 
   const forwardMut = useForwardSalesDocumentToVendors();
+  const { data: eligibleVendors = [] } = useListEligibleVendorsForDoc(
+    id ?? 0,
+    { query: { enabled: !!id && forwardOpen, queryKey: getListEligibleVendorsForDocQueryKey(id ?? 0) } },
+  );
+
+  function toggleFwdChannel(ch: string) {
+    setFwdChannels((prev) => prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch]);
+  }
+  function toggleFwdVendor(vid: number) {
+    setFwdVendorIds((prev) => prev.includes(vid) ? prev.filter((v) => v !== vid) : [...prev, vid]);
+  }
 
   const handleScannedData = (data: ScannedDocumentData) => {
     if (data.partyName) setCustomerName(data.partyName);
@@ -725,6 +740,44 @@ export default function SalesDocumentEditorPage() {
             )}
           </div>
         </div>
+
+        {doc?.aiGenerated && (
+          <Card className="border-purple-700/60 bg-purple-950/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-purple-300 text-base">
+                <Bot className="h-4 w-4" /> Sumber AI
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm space-y-1">
+              {doc.aiSourceWaPhone ? (
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-green-400 shrink-0" />
+                  <span className="text-muted-foreground">Dari WhatsApp:</span>
+                  <span className="font-medium">{doc.aiSourceWaPhone}</span>
+                </div>
+              ) : doc.aiSourceCorrespondenceId ? (
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-blue-400 shrink-0" />
+                  <span className="text-muted-foreground">Dari Email (korespondensi #</span>
+                  <a
+                    href={`/correspondences?id=${doc.aiSourceCorrespondenceId}`}
+                    className="text-blue-400 hover:underline font-medium"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {doc.aiSourceCorrespondenceId}
+                  </a>
+                  <span className="text-muted-foreground">)</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-purple-400 shrink-0" />
+                  <span className="text-muted-foreground">Draft dibuat otomatis oleh AI</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader><CardTitle>Informasi Customer</CardTitle></CardHeader>
@@ -1274,21 +1327,21 @@ export default function SalesDocumentEditorPage() {
       </Dialog>
 
       {/* Forward ke Vendor Dialog */}
-      <Dialog open={forwardOpen} onOpenChange={(o) => !o && setForwardOpen(false)}>
-        <DialogContent>
+      <Dialog open={forwardOpen} onOpenChange={(o) => { if (!o) { setForwardOpen(false); setFwdVendorIds([]); setFwdChannels(["wa", "email"]); } }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-purple-400" />
               Forward ke Vendor
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-1 text-sm">
-            <p>
-              Kirim permintaan penawaran dari draft <strong>{doc?.docNumber}</strong> ke semua vendor
-              aktif yang sesuai via WhatsApp dan email?
-            </p>
+          <div className="space-y-4 py-1 text-sm">
             {doc && (
-              <div className="rounded-md border border-border p-3 space-y-1 bg-muted/30 text-sm">
+              <div className="rounded-md border border-border p-3 space-y-1 bg-muted/30">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Dokumen</span>
+                  <span className="font-medium">{doc.docNumber}</span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Customer</span>
                   <span className="font-medium">{doc.customerName}</span>
@@ -1303,16 +1356,79 @@ export default function SalesDocumentEditorPage() {
                 </div>
               </div>
             )}
+
+            <div>
+              <p className="font-medium mb-2">Channel Pengiriman</p>
+              <div className="flex gap-4">
+                {[
+                  { id: "wa", label: "WhatsApp", icon: <MessageSquare size={14} /> },
+                  { id: "email", label: "Email", icon: <Mail size={14} /> },
+                ].map((ch) => (
+                  <label key={ch.id} className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={fwdChannels.includes(ch.id)}
+                      onChange={() => toggleFwdChannel(ch.id)}
+                      className="accent-purple-600 h-4 w-4"
+                    />
+                    {ch.icon}
+                    {ch.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="font-medium mb-2">
+                Vendor {eligibleVendors.length > 0 ? `(${eligibleVendors.length} eligible)` : ""}
+              </p>
+              {eligibleVendors.length === 0 ? (
+                <p className="text-muted-foreground text-xs">Semua vendor aktif yang sesuai akan dihubungi.</p>
+              ) : (
+                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground mb-1 select-none">
+                    <input
+                      type="checkbox"
+                      checked={fwdVendorIds.length === 0}
+                      onChange={() => setFwdVendorIds([])}
+                      className="accent-purple-600 h-4 w-4"
+                    />
+                    <span>Semua vendor</span>
+                  </label>
+                  {eligibleVendors.map((v) => (
+                    <label key={v.id} className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={fwdVendorIds.includes(v.id)}
+                        onChange={() => toggleFwdVendor(v.id)}
+                        className="accent-purple-600 h-4 w-4"
+                      />
+                      <span className="flex-1">{v.name}</span>
+                      <span className="text-muted-foreground text-xs flex gap-1">
+                        {v.hasPhone && <MessageSquare size={11} />}
+                        {v.hasEmail && <Mail size={11} />}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setForwardOpen(false)}>Batal</Button>
             <Button
               className="bg-purple-600 hover:bg-purple-700 text-white"
-              disabled={forwardMut.isPending}
+              disabled={forwardMut.isPending || fwdChannels.length === 0}
               onClick={() => {
                 if (!id) return;
                 forwardMut.mutate(
-                  { id },
+                  {
+                    id,
+                    data: {
+                      vendorIds: fwdVendorIds.length > 0 ? fwdVendorIds : undefined,
+                      channels: fwdChannels.length > 0 ? (fwdChannels as ForwardToVendorsBodyChannelsItem[]) : undefined,
+                    },
+                  },
                   {
                     onSuccess: (data) => {
                       toast({
@@ -1320,6 +1436,8 @@ export default function SalesDocumentEditorPage() {
                         description: `${data.waCount} WA + ${data.emailCount} email ke ${data.vendorCount} vendor.`,
                       });
                       setForwardOpen(false);
+                      setFwdVendorIds([]);
+                      setFwdChannels(["wa", "email"]);
                       qc.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
                       qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
                     },
@@ -1330,7 +1448,7 @@ export default function SalesDocumentEditorPage() {
                 );
               }}
             >
-              {forwardMut.isPending ? "Mengirim..." : "Ya, Forward ke Vendor"}
+              {forwardMut.isPending ? "Mengirim..." : "Forward ke Vendor"}
             </Button>
           </DialogFooter>
         </DialogContent>

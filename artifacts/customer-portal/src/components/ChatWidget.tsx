@@ -908,21 +908,26 @@ export function ChatWidget() {
             animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
-          {/* ========== HEADER (DIPERBAIKI - PREMIUM & MODERN) ========== */}
+          {/* Header - RESPONSIVE CENTERED LAYOUT */}
           <div
-            className="flex items-center justify-between px-5 py-4 shrink-0"
+            className="flex items-center justify-between px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
             style={{
               background: "linear-gradient(135deg, #0052D4 0%, #4364F7 100%)",
               backdropFilter: "blur(10px)",
               WebkitBackdropFilter: "blur(10px)",
             }}
           >
-            {/* Title Section - Centered */}
-            <div className="flex-1 flex flex-col items-center text-center">
+            {/* Left: Icon */}
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <Bot className="h-5 w-5 text-white" />
+            </div>
+
+            {/* Center: Title & Status */}
+            <div className="flex-1 flex flex-col items-center text-center px-2">
               <h1 
-                className="text-white font-bold mb-0.5"
+                className="text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis"
                 style={{ 
-                  fontSize: 17, 
+                  fontSize: 16,
                   letterSpacing: "0.3px",
                   textShadow: "0 2px 4px rgba(0,0,0,0.15)",
                   lineHeight: 1.2
@@ -930,41 +935,41 @@ export function ChatWidget() {
               >
                 CST Logistics Assistant
               </h1>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-[11px] text-sky-100 font-medium">Online</span>
               </div>
             </div>
 
-            {/* Action Buttons - Right Side */}
-            <div className="flex items-center gap-1.5 ml-3">
+            {/* Right: Action Buttons */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               <button
                 onClick={toggleSfx}
                 title={sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   sfxEnabled
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
                 }`}
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
-                {sfxEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                {sfxEnabled ? <Bell className="h-4 w-4 sm:h-[18px] sm:w-[18px]" /> : <BellOff className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />}
               </button>
               <button
                 onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
                 title={isSpeaking ? "Berhenti bicara" : voiceOutput ? "Matikan suara AI" : "Aktifkan suara AI"}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   voiceOutput || isSpeaking
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
                 }`}
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
-                {voiceOutput || isSpeaking ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                {voiceOutput || isSpeaking ? <Volume2 className="h-4 w-4 sm:h-[18px] sm:w-[18px]" /> : <VolumeX className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />}
               </button>
               <button
                 onClick={resetChat}
-                className="h-10 px-3 text-white/70 hover:text-white text-[11px] font-semibold tracking-wide transition-all duration-300 rounded-xl hover:bg-white/15"
+                className="h-9 sm:h-10 px-2 sm:px-2.5 text-white/70 hover:text-white text-[11px] font-semibold tracking-wide transition-all duration-300 rounded-xl hover:bg-white/15 hidden sm:block"
                 title="Reset percakapan"
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
@@ -972,14 +977,13 @@ export function ChatWidget() {
               </button>
               <button
                 onClick={() => setOpen(false)}
-                className="w-10 h-10 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/15 rounded-xl transition-all duration-300"
+                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/15 rounded-xl transition-all duration-300"
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
           </div>
-          {/* ========== END HEADER ========== */}
 
           {/* Messages */}
           <div

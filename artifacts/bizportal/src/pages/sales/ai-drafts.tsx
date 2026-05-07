@@ -22,14 +22,19 @@ import {
 import {
   useListAiDraftQuotations,
   useForwardSalesDocumentToVendors,
+  useListEligibleVendorsForDoc,
   useSalesDocumentAction,
   getListAiDraftQuotationsQueryKey,
+  getListEligibleVendorsForDocQueryKey,
   getListSalesDocumentsQueryKey,
   type SalesDocument,
+  type ForwardToVendorsBodyChannelsItem,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw } from "lucide-react";
+import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", {
@@ -69,7 +74,17 @@ export default function AiDraftsPage() {
   const [forwardDoc, setForwardDoc] = useState<SalesDocument | null>(null);
   const [discardDoc, setDiscardDoc] = useState<SalesDocument | null>(null);
 
+  const [selectedVendorIds, setSelectedVendorIds] = useState<number[]>([]);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>(["wa", "email"]);
+
+  const { data: eligibleVendors = [] } = useListEligibleVendorsForDoc(
+    forwardDoc?.id ?? 0,
+    { query: { enabled: !!forwardDoc, queryKey: getListEligibleVendorsForDocQueryKey(forwardDoc?.id ?? 0) } },
+  );
+
   function handleForward(doc: SalesDocument) {
+    setSelectedVendorIds([]);
+    setSelectedChannels(["wa", "email"]);
     setForwardDoc(doc);
   }
 
@@ -77,10 +92,28 @@ export default function AiDraftsPage() {
     setDiscardDoc(doc);
   }
 
+  function toggleChannel(ch: string) {
+    setSelectedChannels((prev) =>
+      prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch],
+    );
+  }
+
+  function toggleVendor(id: number) {
+    setSelectedVendorIds((prev) =>
+      prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id],
+    );
+  }
+
   async function confirmForward() {
     if (!forwardDoc) return;
     forwardMut.mutate(
-      { id: forwardDoc.id },
+      {
+        id: forwardDoc.id,
+        data: {
+          vendorIds: selectedVendorIds.length > 0 ? selectedVendorIds : undefined,
+          channels: selectedChannels.length > 0 ? (selectedChannels as ForwardToVendorsBodyChannelsItem[]) : undefined,
+        },
+      },
       {
         onSuccess: (data) => {
           toast({
@@ -234,29 +267,27 @@ export default function AiDraftsPage() {
 
         {/* Forward Confirmation Dialog */}
         <Dialog open={!!forwardDoc} onOpenChange={(o) => !o && setForwardDoc(null)}>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Forward ke Vendor</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <Bot className="h-5 w-5 text-purple-400" />
+                Forward ke Vendor
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-3 py-2 text-sm">
-              <p>
-                Kirim permintaan penawaran dari{" "}
-                <strong>{forwardDoc?.docNumber}</strong> ke semua vendor aktif yang
-                sesuai dengan moda transport melalui WhatsApp dan email?
-              </p>
+            <div className="space-y-4 py-1 text-sm">
               {forwardDoc && (
                 <div className="rounded-md border border-border p-3 space-y-1 bg-muted/30">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Dokumen</span>
+                    <span className="font-medium">{forwardDoc.docNumber}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Customer</span>
                     <span className="font-medium">{forwardDoc.customerName}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Rute</span>
-                    <span>
-                      {[forwardDoc.origin, forwardDoc.destination]
-                        .filter(Boolean)
-                        .join(" → ") || "—"}
-                    </span>
+                    <span>{[forwardDoc.origin, forwardDoc.destination].filter(Boolean).join(" → ") || "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Moda</span>
@@ -264,17 +295,66 @@ export default function AiDraftsPage() {
                   </div>
                 </div>
               )}
+
+              <div>
+                <p className="font-medium mb-2">Channel Pengiriman</p>
+                <div className="flex gap-4">
+                  {[
+                    { id: "wa", label: "WhatsApp", icon: <MessageSquare size={14} /> },
+                    { id: "email", label: "Email", icon: <Mail size={14} /> },
+                  ].map((ch) => (
+                    <label key={ch.id} className="flex items-center gap-2 cursor-pointer select-none">
+                      <Checkbox
+                        checked={selectedChannels.includes(ch.id)}
+                        onCheckedChange={() => toggleChannel(ch.id)}
+                      />
+                      {ch.icon}
+                      {ch.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="font-medium mb-2">
+                  Vendor {eligibleVendors.length > 0 ? `(${eligibleVendors.length} eligible)` : ""}
+                </p>
+                {eligibleVendors.length === 0 ? (
+                  <p className="text-muted-foreground text-xs">Tidak ada vendor eligible — semua vendor aktif akan digunakan.</p>
+                ) : (
+                  <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground mb-1">
+                      <Checkbox
+                        checked={selectedVendorIds.length === 0}
+                        onCheckedChange={() => setSelectedVendorIds([])}
+                      />
+                      <span>Semua vendor</span>
+                    </label>
+                    {eligibleVendors.map((v) => (
+                      <label key={v.id} className="flex items-center gap-2 cursor-pointer select-none">
+                        <Checkbox
+                          checked={selectedVendorIds.includes(v.id)}
+                          onCheckedChange={() => toggleVendor(v.id)}
+                        />
+                        <span className="flex-1">{v.name}</span>
+                        <span className="text-muted-foreground text-xs flex gap-1">
+                          {v.hasPhone && <MessageSquare size={11} />}
+                          {v.hasEmail && <Mail size={11} />}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setForwardDoc(null)}>
-                Batal
-              </Button>
+              <Button variant="outline" onClick={() => setForwardDoc(null)}>Batal</Button>
               <Button
                 className="bg-purple-600 hover:bg-purple-700 text-white"
                 onClick={confirmForward}
-                disabled={forwardMut.isPending}
+                disabled={forwardMut.isPending || selectedChannels.length === 0}
               >
-                {forwardMut.isPending ? "Mengirim..." : "Ya, Forward ke Vendor"}
+                {forwardMut.isPending ? "Mengirim..." : "Forward ke Vendor"}
               </Button>
             </DialogFooter>
           </DialogContent>
