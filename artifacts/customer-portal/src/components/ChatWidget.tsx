@@ -6,6 +6,7 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "admin";
   content: string;
+  createdAt?: string;
 }
 
 interface OrderCreated {
@@ -34,6 +35,19 @@ type SseEvent =
   | { type: "form"; service: string }
   | { type: "done" }
   | { type: "error"; message: string };
+
+function formatMsgTime(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const hhmm = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return hhmm;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Kemarin ${hhmm}`;
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }) + " " + hhmm;
+}
 
 const SESSION_KEY = "cst_ai_chat_session";
 const MESSAGES_KEY = "cst_ai_chat_messages";
@@ -325,7 +339,7 @@ export function ChatWidget() {
 
         const existingIds = new Set(pendingAdminRef.current.map((m) => m.id));
         const toAdd = adminMsgs
-          .map((m) => ({ id: String(m.id), role: "admin" as const, content: m.content }))
+          .map((m) => ({ id: String(m.id), role: "admin" as const, content: m.content, createdAt: m.createdAt }))
           .filter((m) => !existingIds.has(m.id));
 
         if (toAdd.length > 0) {
@@ -407,7 +421,7 @@ export function ChatWidget() {
   async function doSend(text: string) {
     if (!text.trim() || isStreaming) return;
 
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text.trim() };
+    const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text.trim(), createdAt: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
 
     // Reset streaming state, stale status cards, inline form, and stop any TTS
@@ -503,6 +517,7 @@ export function ChatWidget() {
                   id: (Date.now() + 1).toString(),
                   role: "assistant",
                   content: finalText,
+                  createdAt: new Date().toISOString(),
                 };
                 setMessages((prev) => [...prev, aiMsg]);
                 if (!open) setUnread((n) => n + 1);
@@ -520,7 +535,7 @@ export function ChatWidget() {
               setStreamingContent(null);
               setMessages((prev) => [
                 ...prev,
-                { id: (Date.now() + 2).toString(), role: "assistant", content: event.message },
+                { id: (Date.now() + 2).toString(), role: "assistant", content: event.message, createdAt: new Date().toISOString() },
               ]);
               break;
           }
@@ -538,7 +553,7 @@ export function ChatWidget() {
         if (leftover) {
           setMessages((prev) => [
             ...prev,
-            { id: (Date.now() + 4).toString(), role: "assistant", content: leftover },
+            { id: (Date.now() + 4).toString(), role: "assistant", content: leftover, createdAt: new Date().toISOString() },
           ]);
         }
       }
@@ -548,7 +563,7 @@ export function ChatWidget() {
       setStreamingContent(null);
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 3).toString(), role: "assistant", content: "Maaf, terjadi kesalahan koneksi. Silakan coba lagi." },
+        { id: (Date.now() + 3).toString(), role: "assistant", content: "Maaf, terjadi kesalahan koneksi. Silakan coba lagi.", createdAt: new Date().toISOString() },
       ]);
     }
   }
@@ -718,19 +733,26 @@ export function ChatWidget() {
                     )}
                   </div>
                 )}
-                <div
-                  className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === "user"
-                      ? "bg-sky-600 text-white rounded-tr-sm"
-                      : msg.role === "admin"
-                      ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
-                      : "bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm"
-                  }`}
-                >
-                  {msg.role === "admin" && (
-                    <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
+                <div className={`flex flex-col max-w-[78%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                  <div
+                    className={`rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                      msg.role === "user"
+                        ? "bg-sky-600 text-white rounded-tr-sm"
+                        : msg.role === "admin"
+                        ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
+                        : "bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm"
+                    }`}
+                  >
+                    {msg.role === "admin" && (
+                      <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
+                    )}
+                    {msg.content}
+                  </div>
+                  {formatMsgTime(msg.createdAt) && (
+                    <p className="text-[10px] text-gray-400 mt-0.5 px-1">
+                      {formatMsgTime(msg.createdAt)}
+                    </p>
                   )}
-                  {msg.content}
                 </div>
               </div>
             ))}
@@ -796,6 +818,7 @@ export function ChatWidget() {
                       id: (Date.now() + 10).toString(),
                       role: "assistant",
                       content: `✅ Order berhasil dibuat! No. Order: **${orderNumber}**\nTim kami akan segera menghubungi Anda untuk konfirmasi harga.`,
+                      createdAt: new Date().toISOString(),
                     },
                   ]);
                 }}
