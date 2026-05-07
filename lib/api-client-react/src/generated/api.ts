@@ -32,6 +32,7 @@ import type {
   AiChatMessage,
   AiChatResponse,
   AiChatSessionWithMessages,
+  AiIntakeLogEntry,
   AiIntakeSettings,
   ApproveLogisticQuoteBody,
   BalanceSheetReport,
@@ -6339,6 +6340,81 @@ export function useListAiDraftQuotations<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListAiDraftQuotationsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List AI intake processing history (email + WA sources)
+ */
+export const getListAiIntakeLogUrl = () => {
+  return `/api/sales/ai-intake-log`;
+};
+
+export const listAiIntakeLog = async (
+  options?: RequestInit,
+): Promise<AiIntakeLogEntry[]> => {
+  return customFetch<AiIntakeLogEntry[]>(getListAiIntakeLogUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAiIntakeLogQueryKey = () => {
+  return [`/api/sales/ai-intake-log`] as const;
+};
+
+export const getListAiIntakeLogQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAiIntakeLog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAiIntakeLog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAiIntakeLogQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAiIntakeLog>>> = ({
+    signal,
+  }) => listAiIntakeLog({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAiIntakeLog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAiIntakeLogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAiIntakeLog>>
+>;
+export type ListAiIntakeLogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List AI intake processing history (email + WA sources)
+ */
+
+export function useListAiIntakeLog<
+  TData = Awaited<ReturnType<typeof listAiIntakeLog>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAiIntakeLog>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAiIntakeLogQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

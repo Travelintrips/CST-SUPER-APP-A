@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -21,19 +22,22 @@ import {
 } from "@/components/ui/dialog";
 import {
   useListAiDraftQuotations,
+  useListAiIntakeLog,
   useForwardSalesDocumentToVendors,
   useListEligibleVendorsForDoc,
   useSalesDocumentAction,
   getListAiDraftQuotationsQueryKey,
+  getListAiIntakeLogQueryKey,
   getListEligibleVendorsForDocQueryKey,
   getListSalesDocumentsQueryKey,
   type SalesDocument,
   type ForwardToVendorsBodyChannelsItem,
   type VendorSendResult,
+  type AiIntakeLogEntry,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail } from "lucide-react";
+import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
@@ -64,11 +68,46 @@ function SourceBadge({ doc }: { doc: SalesDocument }) {
   );
 }
 
+function IntakeSourceBadge({ entry }: { entry: AiIntakeLogEntry }) {
+  if (entry.source === "wa")
+    return (
+      <Badge variant="outline" className="text-green-600 border-green-400 gap-1">
+        <MessageSquare size={10} />
+        WhatsApp
+      </Badge>
+    );
+  return (
+    <Badge variant="outline" className="text-blue-600 border-blue-400 gap-1">
+      <Mail size={10} />
+      Email
+    </Badge>
+  );
+}
+
+function IntakeStatusBadge({ entry }: { entry: AiIntakeLogEntry }) {
+  if (entry.status === "created")
+    return (
+      <span className="flex items-center gap-1 text-green-600 text-xs font-medium">
+        <CheckCircle2 size={13} />
+        Draft dibuat
+      </span>
+    );
+  return (
+    <span className="flex items-center gap-1 text-muted-foreground text-xs">
+      <MinusCircle size={13} />
+      Dilewati
+    </span>
+  );
+}
+
 export default function AiDraftsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: drafts = [], isLoading, refetch } = useListAiDraftQuotations();
+  const { data: intakeLog = [], isLoading: isLogLoading, refetch: refetchLog } = useListAiIntakeLog({
+    query: { refetchInterval: 60_000, queryKey: getListAiIntakeLogQueryKey() },
+  });
   const forwardMut = useForwardSalesDocumentToVendors();
   const actionMut = useSalesDocumentAction();
 
@@ -166,110 +205,205 @@ export default function AiDraftsPage() {
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <Button variant="outline" size="sm" onClick={() => { refetch(); refetchLog(); }}>
             <RefreshCw size={14} className="mr-2" />
             Refresh
           </Button>
         </div>
 
-        <Card className="border-border bg-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
+        <Tabs defaultValue="drafts">
+          <TabsList>
+            <TabsTrigger value="drafts" className="gap-2">
+              <Bot size={14} />
               Draft Menunggu Review
               {drafts.length > 0 && (
-                <Badge className="bg-purple-600 text-white">{drafts.length}</Badge>
+                <Badge className="bg-purple-600 text-white ml-1 px-1.5 py-0 text-[10px] h-4 min-w-[18px]">
+                  {drafts.length}
+                </Badge>
               )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">Memuat...</div>
-            ) : drafts.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Bot size={40} className="mx-auto mb-3 opacity-30" />
-                <p className="font-medium">Belum ada AI draft</p>
-                <p className="text-xs mt-1">
-                  Draft akan muncul otomatis saat ada email/WA berisi inquiry order
-                </p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>No. Draft</TableHead>
-                    <TableHead>Sumber</TableHead>
-                    <TableHead>Pengirim</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Rute &amp; Moda</TableHead>
-                    <TableHead>Masuk</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {drafts.map((doc) => (
-                    <TableRow key={doc.id}>
-                      <TableCell>
-                        <Link
-                          href={`/sales/quotations/${doc.id}`}
-                          className="font-mono text-xs text-primary hover:underline flex items-center gap-1"
-                        >
-                          {doc.docNumber}
-                          <ExternalLink size={10} />
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <SourceBadge doc={doc} />
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">
-                        {doc.aiSourceWaPhone
-                          ? <span title={doc.aiSourceWaPhone}>{doc.aiSourceWaPhone}</span>
-                          : doc.aiSourceCorrespondenceId
-                            ? <span className="italic">Email #{doc.aiSourceCorrespondenceId}</span>
-                            : "—"}
-                      </TableCell>
-                      <TableCell className="font-medium">{doc.customerName}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        <div>{[doc.origin, doc.destination].filter(Boolean).join(" → ") || "—"}</div>
-                        {doc.transportMode && (
-                          <div className="text-xs capitalize text-muted-foreground/70">{doc.transportMode}</div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(doc.createdAt).toLocaleDateString("id-ID", {
-                          day: "2-digit",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-purple-600 hover:bg-purple-700 text-white"
-                            onClick={() => handleForward(doc)}
-                            disabled={forwardMut.isPending}
-                          >
-                            <SendHorizonal size={13} className="mr-1" />
-                            Forward ke Vendor
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-destructive border-destructive hover:bg-destructive hover:text-white"
-                            onClick={() => handleDiscard(doc)}
-                          >
-                            <Trash2 size={13} />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+            </TabsTrigger>
+            <TabsTrigger value="log" className="gap-2">
+              <ClipboardList size={14} />
+              Riwayat Intake
+              {intakeLog.length > 0 && (
+                <span className="ml-1 text-[10px] text-muted-foreground">({intakeLog.length})</span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ── Tab 1: Draft queue ── */}
+          <TabsContent value="drafts" className="mt-4">
+            <Card className="border-border bg-card">
+              <CardContent className="pt-4">
+                {isLoading ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">Memuat...</div>
+                ) : drafts.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Bot size={40} className="mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">Belum ada AI draft</p>
+                    <p className="text-xs mt-1">
+                      Draft akan muncul otomatis saat ada email/WA berisi inquiry order
+                    </p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>No. Draft</TableHead>
+                        <TableHead>Sumber</TableHead>
+                        <TableHead>Pengirim</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Rute &amp; Moda</TableHead>
+                        <TableHead>Masuk</TableHead>
+                        <TableHead className="text-right">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {drafts.map((doc) => (
+                        <TableRow key={doc.id}>
+                          <TableCell>
+                            <Link
+                              href={`/sales/quotations/${doc.id}`}
+                              className="font-mono text-xs text-primary hover:underline flex items-center gap-1"
+                            >
+                              {doc.docNumber}
+                              <ExternalLink size={10} />
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <SourceBadge doc={doc} />
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">
+                            {doc.aiSourceWaPhone
+                              ? <span title={doc.aiSourceWaPhone}>{doc.aiSourceWaPhone}</span>
+                              : doc.aiSourceCorrespondenceId
+                                ? <span className="italic">Email #{doc.aiSourceCorrespondenceId}</span>
+                                : "—"}
+                          </TableCell>
+                          <TableCell className="font-medium">{doc.customerName}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            <div>{[doc.origin, doc.destination].filter(Boolean).join(" → ") || "—"}</div>
+                            {doc.transportMode && (
+                              <div className="text-xs capitalize text-muted-foreground/70">{doc.transportMode}</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {new Date(doc.createdAt).toLocaleDateString("id-ID", {
+                              day: "2-digit",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="bg-purple-600 hover:bg-purple-700 text-white"
+                                onClick={() => handleForward(doc)}
+                                disabled={forwardMut.isPending}
+                              >
+                                <SendHorizonal size={13} className="mr-1" />
+                                Forward ke Vendor
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-destructive border-destructive hover:bg-destructive hover:text-white"
+                                onClick={() => handleDiscard(doc)}
+                              >
+                                <Trash2 size={13} />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── Tab 2: Intake log ── */}
+          <TabsContent value="log" className="mt-4">
+            <Card className="border-border bg-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-medium flex items-center gap-2">
+                  <ClipboardList size={16} className="text-purple-500" />
+                  Riwayat Pemrosesan AI
+                  <span className="text-xs font-normal text-muted-foreground">— email & WhatsApp yang diproses sistem AI</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLogLoading ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">Memuat log...</div>
+                ) : intakeLog.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <ClipboardList size={40} className="mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">Belum ada riwayat</p>
+                    <p className="text-xs mt-1">
+                      Log akan muncul setelah AI memproses email atau pesan WhatsApp pertama
+                    </p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Sumber</TableHead>
+                        <TableHead>Pengirim</TableHead>
+                        <TableHead>Subjek / Info</TableHead>
+                        <TableHead>Waktu</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Draft Terkait</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {intakeLog.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell>
+                            <IntakeSourceBadge entry={entry} />
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={entry.sender ?? undefined}>
+                            {entry.sender ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate" title={entry.subject ?? undefined}>
+                            {entry.subject ?? <span className="italic text-muted-foreground/60">Pesan WhatsApp</span>}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(entry.timestamp).toLocaleDateString("id-ID", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <IntakeStatusBadge entry={entry} />
+                          </TableCell>
+                          <TableCell>
+                            {entry.docId && entry.docNumber ? (
+                              <Link
+                                href={`/sales/quotations/${entry.docId}`}
+                                className="font-mono text-xs text-primary hover:underline flex items-center gap-1"
+                              >
+                                {entry.docNumber}
+                                <ExternalLink size={10} />
+                              </Link>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/50">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
         {/* Forward Confirmation Dialog */}
         <Dialog open={!!forwardDoc} onOpenChange={(o) => !o && setForwardDoc(null)}>

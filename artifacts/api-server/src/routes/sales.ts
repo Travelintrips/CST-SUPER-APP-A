@@ -7,6 +7,7 @@ import {
   accountingTaxesTable,
   freightShipmentsTable,
   suppliersTable,
+  emailCorrespondencesTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, count, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -570,6 +571,67 @@ router.get("/ai-drafts", async (_req, res) => {
     .where(and(eq(salesDocumentsTable.aiGenerated, true), eq(salesDocumentsTable.status, "draft")))
     .orderBy(desc(salesDocumentsTable.createdAt));
   return res.json(rows.map((r) => serializeDoc(r)));
+});
+
+// GET /api/sales/ai-intake-log — audit log of AI-processed messages
+router.get("/ai-intake-log", async (_req, res) => {
+  // Email-sourced entries: correspondences that were AI-processed
+  const emailRows = await db
+    .select({
+      corrId: emailCorrespondencesTable.id,
+      fromEmail: emailCorrespondencesTable.fromEmail,
+      subject: emailCorrespondencesTable.subject,
+      receivedAt: emailCorrespondencesTable.receivedAt,
+      linkedSalesDocId: emailCorrespondencesTable.linkedSalesDocId,
+      docNumber: salesDocumentsTable.docNumber,
+      docStatus: salesDocumentsTable.status,
+    })
+    .from(emailCorrespondencesTable)
+    .leftJoin(
+      salesDocumentsTable,
+      eq(emailCorrespondencesTable.linkedSalesDocId, salesDocumentsTable.id),
+    )
+    .where(eq(emailCorrespondencesTable.aiProcessed, true))
+    .orderBy(desc(emailCorrespondencesTable.receivedAt))
+    .limit(100);
+
+  // WA-sourced entries: AI-generated docs with a WA source phone
+  const waRows = await db
+    .select()
+    .from(salesDocumentsTable)
+    .where(and(eq(salesDocumentsTable.aiGenerated, true), sql`${salesDocumentsTable.aiSourceWaPhone} is not null`))
+    .orderBy(desc(salesDocumentsTable.createdAt))
+    .limit(100);
+
+  const emailEntries = emailRows.map((r) => ({
+    id: `email-${r.corrId}`,
+    source: "email" as const,
+    sender: r.fromEmail ?? null,
+    subject: r.subject,
+    timestamp: r.receivedAt.toISOString(),
+    status: (r.linkedSalesDocId != null ? "created" : "skipped") as "created" | "skipped",
+    docId: r.linkedSalesDocId ?? null,
+    docNumber: r.docNumber ?? null,
+    docStatus: r.docStatus ?? null,
+  }));
+
+  const waEntries = waRows.map((r) => ({
+    id: `wa-${r.id}`,
+    source: "wa" as const,
+    sender: r.aiSourceWaPhone ?? null,
+    subject: null,
+    timestamp: r.createdAt.toISOString(),
+    status: "created" as const,
+    docId: r.id,
+    docNumber: r.docNumber,
+    docStatus: r.status,
+  }));
+
+  const all = [...emailEntries, ...waEntries].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
+
+  return res.json(all.slice(0, 100));
 });
 
 // Shared helper: map transportMode → service keywords for filtering

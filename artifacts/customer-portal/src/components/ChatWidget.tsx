@@ -1,5 +1,24 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight, Mic, MicOff, ClipboardList, Volume2, VolumeX, Bell, BellOff } from "lucide-react";
+import {
+  MessageCircle,
+  X,
+  Send,
+  Bot,
+  User,
+  Package,
+  Truck,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  ArrowRight,
+  Mic,
+  MicOff,
+  ClipboardList,
+  Volume2,
+  VolumeX,
+  Bell,
+  BellOff,
+} from "lucide-react";
 import { Link } from "wouter";
 
 interface ChatMessage {
@@ -33,7 +52,13 @@ type SseEvent =
   | { type: "order"; orderNumber: string; orderId: number }
   | { type: "status"; orders: OrderStatusEntry[] }
   | { type: "form"; service: string }
-  | { type: "product_form"; productId: number; productName: string; unitPrice: number; unit: string }
+  | {
+      type: "product_form";
+      productId: number;
+      productName: string;
+      unitPrice: number;
+      unit: string;
+    }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -41,25 +66,20 @@ function formatMsgTime(iso: string | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
-  const hhmm = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  const hhmm = d.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return hhmm;
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) return `Kemarin ${hhmm}`;
-  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }) + " " + hhmm;
-}
-
-function formatDateLabel(iso: string | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return "Hari ini";
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return "Kemarin";
-  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  return (
+    d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }) +
+    " " +
+    hhmm
+  );
 }
 
 const SESSION_KEY = "cst_ai_chat_session";
@@ -67,20 +87,34 @@ const MESSAGES_KEY = "cst_ai_chat_messages";
 const LAST_SEEN_KEY = "cst_ai_chat_last_seen";
 
 function loadSession(): string | null {
-  try { return localStorage.getItem(SESSION_KEY); } catch { return null; }
+  try {
+    return localStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
 }
 function saveSession(token: string) {
-  try { localStorage.setItem(SESSION_KEY, token); } catch { /* empty */ }
+  try {
+    localStorage.setItem(SESSION_KEY, token);
+  } catch {
+    /* empty */
+  }
 }
 function loadMessages(): ChatMessage[] {
   try {
     const raw = localStorage.getItem(MESSAGES_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as ChatMessage[];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 function saveMessages(msgs: ChatMessage[]) {
-  try { localStorage.setItem(MESSAGES_KEY, JSON.stringify(msgs.slice(-80))); } catch { /* empty */ }
+  try {
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify(msgs.slice(-80)));
+  } catch {
+    /* empty */
+  }
 }
 
 const GREETING: ChatMessage = {
@@ -102,9 +136,20 @@ interface OrderFormProps {
   onDismiss: () => void;
 }
 
-const SERVICE_OPTIONS = ["Trucking", "Sea Freight", "Air Freight", "Customs", "Packing & Crating"];
+const SERVICE_OPTIONS = [
+  "Trucking",
+  "Sea Freight",
+  "Air Freight",
+  "Customs",
+  "Packing & Crating",
+];
 
-function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormProps) {
+function OrderForm({
+  service,
+  sessionToken,
+  onSuccess,
+  onDismiss,
+}: OrderFormProps) {
   const [form, setForm] = useState({
     customerName: "",
     phone: "",
@@ -125,14 +170,22 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
   function field(key: keyof typeof form) {
     return {
       value: form[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-        setForm((prev) => ({ ...prev, [key]: e.target.value })),
+      onChange: (
+        e: React.ChangeEvent<
+          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >,
+      ) => setForm((prev) => ({ ...prev, [key]: e.target.value })),
     };
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.customerName.trim() || !form.phone.trim() || !form.origin.trim() || !form.destination.trim()) {
+    if (
+      !form.customerName.trim() ||
+      !form.phone.trim() ||
+      !form.origin.trim() ||
+      !form.destination.trim()
+    ) {
       setError("Isi semua field bertanda *");
       return;
     }
@@ -144,12 +197,22 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, sessionToken }),
       });
-      const data = await res.json() as { success?: boolean; orderNumber?: string; orderId?: number; sessionToken?: string; error?: string };
+      const data = (await res.json()) as {
+        success?: boolean;
+        orderNumber?: string;
+        orderId?: number;
+        sessionToken?: string;
+        error?: string;
+      };
       if (!res.ok || !data.success) {
         setError(data.error ?? "Gagal membuat order, coba lagi.");
         return;
       }
-      onSuccess(data.orderNumber!, data.orderId!, data.sessionToken ?? sessionToken ?? "");
+      onSuccess(
+        data.orderNumber!,
+        data.orderId!,
+        data.sessionToken ?? sessionToken ?? "",
+      );
     } catch {
       setError("Gagal koneksi, coba lagi.");
     } finally {
@@ -157,15 +220,26 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
     }
   }
 
-  const inp = "w-full border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 bg-white transition-all duration-200";
-  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block";
+  const inp =
+    "w-full border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 bg-white transition-all duration-200";
+  const lbl =
+    "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block";
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-sky-200 rounded-2xl shadow-sm overflow-hidden">
+    <form
+      onSubmit={handleSubmit}
+      className="bg-white border border-sky-200 rounded-2xl shadow-sm overflow-hidden"
+    >
       <div className="flex items-center gap-2 px-3 py-2 bg-sky-50 border-b border-sky-100">
         <ClipboardList className="h-4 w-4 text-sky-600 shrink-0" />
-        <p className="text-xs font-semibold text-sky-800 flex-1">Form Order Cepat</p>
-        <button type="button" onClick={onDismiss} className="text-gray-400 hover:text-gray-600">
+        <p className="text-xs font-semibold text-sky-800 flex-1">
+          Form Order Cepat
+        </p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-gray-400 hover:text-gray-600"
+        >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -173,30 +247,50 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
       <div className="px-3 py-2.5 space-y-2">
         <div>
           <label className={lbl}>Nama Lengkap *</label>
-          <input className={inp} placeholder="Budi Santoso" {...field("customerName")} />
+          <input
+            className={inp}
+            placeholder="Budi Santoso"
+            {...field("customerName")}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={lbl}>No. WhatsApp *</label>
-            <input className={inp} placeholder="081234..." type="tel" {...field("phone")} />
+            <input
+              className={inp}
+              placeholder="081234..."
+              type="tel"
+              {...field("phone")}
+            />
           </div>
           <div>
             <label className={lbl}>Email</label>
-            <input className={inp} placeholder="email@..." type="email" {...field("email")} />
+            <input
+              className={inp}
+              placeholder="email@..."
+              type="email"
+              {...field("email")}
+            />
           </div>
         </div>
 
         <div>
           <label className={lbl}>Nama Perusahaan</label>
-          <input className={inp} placeholder="PT Contoh / individu" {...field("companyName")} />
+          <input
+            className={inp}
+            placeholder="PT Contoh / individu"
+            {...field("companyName")}
+          />
         </div>
 
         <div>
           <label className={lbl}>Jenis Pengiriman *</label>
           <select className={inp} {...field("shipmentType")}>
             {SERVICE_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>
+                {s}
+              </option>
             ))}
           </select>
         </div>
@@ -204,27 +298,52 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={lbl}>Kota Asal *</label>
-            <input className={inp} placeholder="Surabaya" {...field("origin")} />
+            <input
+              className={inp}
+              placeholder="Surabaya"
+              {...field("origin")}
+            />
           </div>
           <div>
             <label className={lbl}>Kota Tujuan *</label>
-            <input className={inp} placeholder="Jakarta" {...field("destination")} />
+            <input
+              className={inp}
+              placeholder="Jakarta"
+              {...field("destination")}
+            />
           </div>
         </div>
 
         <div>
           <label className={lbl}>Komoditi / Jenis Barang</label>
-          <input className={inp} placeholder="Elektronik, Tekstil, dll" {...field("commodity")} />
+          <input
+            className={inp}
+            placeholder="Elektronik, Tekstil, dll"
+            {...field("commodity")}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={lbl}>Berat (kg)</label>
-            <input className={inp} placeholder="500" type="number" min="0" {...field("grossWeight")} />
+            <input
+              className={inp}
+              placeholder="500"
+              type="number"
+              min="0"
+              {...field("grossWeight")}
+            />
           </div>
           <div>
             <label className={lbl}>Volume (CBM)</label>
-            <input className={inp} placeholder="2.5" type="number" min="0" step="0.1" {...field("volumeCbm")} />
+            <input
+              className={inp}
+              placeholder="2.5"
+              type="number"
+              min="0"
+              step="0.1"
+              {...field("volumeCbm")}
+            />
           </div>
         </div>
 
@@ -244,7 +363,11 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
           />
         </div>
 
-        {error && <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-2 py-1">{error}</p>}
+        {error && (
+          <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-2 py-1">
+            {error}
+          </p>
+        )}
 
         <div className="flex gap-2 pt-1">
           <button
@@ -277,26 +400,51 @@ interface ProductOrderFormProps {
   onDismiss: () => void;
 }
 
-function ProductOrderForm({ productId, productName, unitPrice, unit, sessionToken, onSuccess, onDismiss }: ProductOrderFormProps) {
-  const [form, setForm] = useState({ customerName: "", phone: "", email: "", qty: "1", notes: "" });
+function ProductOrderForm({
+  productId,
+  productName,
+  unitPrice,
+  unit,
+  sessionToken,
+  onSuccess,
+  onDismiss,
+}: ProductOrderFormProps) {
+  const [form, setForm] = useState({
+    customerName: "",
+    phone: "",
+    email: "",
+    qty: "1",
+    notes: "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   function field(key: keyof typeof form) {
     return {
       value: form[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-        setForm((prev) => ({ ...prev, [key]: e.target.value })),
+      onChange: (
+        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+      ) => setForm((prev) => ({ ...prev, [key]: e.target.value })),
     };
   }
 
   const totalPrice = unitPrice * (parseInt(form.qty) || 0);
-  const fmtPrice = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+  const fmtPrice = (n: number) =>
+    n.toLocaleString("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const qtyNum = parseInt(form.qty);
-    if (!form.customerName.trim() || !form.phone.trim() || !qtyNum || qtyNum <= 0) {
+    if (
+      !form.customerName.trim() ||
+      !form.phone.trim() ||
+      !qtyNum ||
+      qtyNum <= 0
+    ) {
       setError("Isi semua field bertanda *");
       return;
     }
@@ -318,12 +466,22 @@ function ProductOrderForm({ productId, productName, unitPrice, unit, sessionToke
           notes: form.notes,
         }),
       });
-      const data = await res.json() as { success?: boolean; orderNumber?: string; orderId?: number; sessionToken?: string; error?: string };
+      const data = (await res.json()) as {
+        success?: boolean;
+        orderNumber?: string;
+        orderId?: number;
+        sessionToken?: string;
+        error?: string;
+      };
       if (!res.ok || !data.success) {
         setError(data.error ?? "Gagal membuat order, coba lagi.");
         return;
       }
-      onSuccess(data.orderNumber!, data.orderId!, data.sessionToken ?? sessionToken ?? "");
+      onSuccess(
+        data.orderNumber!,
+        data.orderId!,
+        data.sessionToken ?? sessionToken ?? "",
+      );
     } catch {
       setError("Gagal koneksi, coba lagi.");
     } finally {
@@ -331,44 +489,79 @@ function ProductOrderForm({ productId, productName, unitPrice, unit, sessionToke
     }
   }
 
-  const inp = "w-full border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-100 bg-white transition-all duration-200";
-  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block";
+  const inp =
+    "w-full border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-100 bg-white transition-all duration-200";
+  const lbl =
+    "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block";
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-emerald-200 rounded-2xl shadow-sm overflow-hidden">
+    <form
+      onSubmit={handleSubmit}
+      className="bg-white border border-emerald-200 rounded-2xl shadow-sm overflow-hidden"
+    >
       <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border-b border-emerald-100">
         <Package className="h-4 w-4 text-emerald-600 shrink-0" />
-        <p className="text-xs font-semibold text-emerald-800 flex-1">Pesan Produk</p>
-        <button type="button" onClick={onDismiss} className="text-gray-400 hover:text-gray-600">
+        <p className="text-xs font-semibold text-emerald-800 flex-1">
+          Pesan Produk
+        </p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-gray-400 hover:text-gray-600"
+        >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
 
       <div className="px-3 py-2 bg-emerald-50/50 border-b border-emerald-100">
-        <p className="text-xs font-semibold text-gray-800 truncate">{productName}</p>
-        <p className="text-[11px] text-gray-500">{fmtPrice(unitPrice)} / {unit}</p>
+        <p className="text-xs font-semibold text-gray-800 truncate">
+          {productName}
+        </p>
+        <p className="text-[11px] text-gray-500">
+          {fmtPrice(unitPrice)} / {unit}
+        </p>
       </div>
 
       <div className="px-3 py-2.5 space-y-2">
         <div>
           <label className={lbl}>Nama Lengkap *</label>
-          <input className={inp} placeholder="Budi Santoso" {...field("customerName")} />
+          <input
+            className={inp}
+            placeholder="Budi Santoso"
+            {...field("customerName")}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={lbl}>No. WhatsApp *</label>
-            <input className={inp} placeholder="081234..." type="tel" {...field("phone")} />
+            <input
+              className={inp}
+              placeholder="081234..."
+              type="tel"
+              {...field("phone")}
+            />
           </div>
           <div>
             <label className={lbl}>Email</label>
-            <input className={inp} placeholder="email@..." type="email" {...field("email")} />
+            <input
+              className={inp}
+              placeholder="email@..."
+              type="email"
+              {...field("email")}
+            />
           </div>
         </div>
 
         <div>
           <label className={lbl}>Jumlah ({unit}) *</label>
-          <input className={inp} type="number" min="1" placeholder="1" {...field("qty")} />
+          <input
+            className={inp}
+            type="number"
+            min="1"
+            placeholder="1"
+            {...field("qty")}
+          />
         </div>
 
         {totalPrice > 0 && (
@@ -388,7 +581,11 @@ function ProductOrderForm({ productId, productName, unitPrice, unit, sessionToke
           />
         </div>
 
-        {error && <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-2 py-1">{error}</p>}
+        {error && (
+          <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-2 py-1">
+            {error}
+          </p>
+        )}
 
         <div className="flex gap-2 pt-1">
           <button
@@ -428,18 +625,31 @@ export function ChatWidget() {
   /** Inline quick-order form triggered by AI or user */
   const [showForm, setShowForm] = useState<{ service: string } | null>(null);
   /** Inline product order form triggered by AI */
-  const [showProductForm, setShowProductForm] = useState<{ productId: number; productName: string; unitPrice: number; unit: string } | null>(null);
+  const [showProductForm, setShowProductForm] = useState<{
+    productId: number;
+    productName: string;
+    unitPrice: number;
+    unit: string;
+  } | null>(null);
   /** Voice input state */
   const [isListening, setIsListening] = useState(false);
   /** TTS output: auto-speak AI responses when enabled */
   const [voiceOutput, setVoiceOutput] = useState<boolean>(() => {
-    try { return localStorage.getItem("cst_ai_voice_output") === "1"; } catch { return false; }
+    try {
+      return localStorage.getItem("cst_ai_voice_output") === "1";
+    } catch {
+      return false;
+    }
   });
   /** True while speechSynthesis is reading aloud */
   const [isSpeaking, setIsSpeaking] = useState(false);
   /** Sound effects toggle — persisted across sessions */
   const [sfxEnabled, setSfxEnabled] = useState<boolean>(() => {
-    try { return localStorage.getItem("cst_chat_sfx") !== "off"; } catch { return true; }
+    try {
+      return localStorage.getItem("cst_chat_sfx") !== "off";
+    } catch {
+      return true;
+    }
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -455,7 +665,13 @@ export function ChatWidget() {
   const pendingTranscriptRef = useRef<string>("");
   /** ISO timestamp of when the user last viewed the widget — used for admin-reply polling */
   const lastSeenAtRef = useRef<string>(
-    (() => { try { return localStorage.getItem(LAST_SEEN_KEY) ?? ""; } catch { return ""; } })()
+    (() => {
+      try {
+        return localStorage.getItem(LAST_SEEN_KEY) ?? "";
+      } catch {
+        return "";
+      }
+    })(),
   );
   /** Admin messages received while widget was closed — flushed to state on next open */
   const pendingAdminRef = useRef<ChatMessage[]>([]);
@@ -477,7 +693,11 @@ export function ChatWidget() {
       }
       const now = new Date().toISOString();
       lastSeenAtRef.current = now;
-      try { localStorage.setItem(LAST_SEEN_KEY, now); } catch { /* empty */ }
+      try {
+        localStorage.setItem(LAST_SEEN_KEY, now);
+      } catch {
+        /* empty */
+      }
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [open]);
@@ -491,18 +711,28 @@ export function ChatWidget() {
       try {
         const since = lastSeenAtRef.current || new Date(0).toISOString();
         const res = await fetch(
-          `/api/ai-agent/session/${sessionToken}?since=${encodeURIComponent(since)}`
+          `/api/ai-agent/session/${sessionToken}?since=${encodeURIComponent(since)}`,
         );
         if (!res.ok) return;
-        const data = await res.json() as {
-          messages: Array<{ id: number; role: string; content: string; createdAt: string }>;
+        const data = (await res.json()) as {
+          messages: Array<{
+            id: number;
+            role: string;
+            content: string;
+            createdAt: string;
+          }>;
         };
         const adminMsgs = data.messages.filter((m) => m.role === "admin");
         if (adminMsgs.length === 0) return;
 
         const existingIds = new Set(pendingAdminRef.current.map((m) => m.id));
         const toAdd = adminMsgs
-          .map((m) => ({ id: String(m.id), role: "admin" as const, content: m.content, createdAt: m.createdAt }))
+          .map((m) => ({
+            id: String(m.id),
+            role: "admin" as const,
+            content: m.content,
+            createdAt: m.createdAt,
+          }))
           .filter((m) => !existingIds.has(m.id));
 
         if (toAdd.length > 0) {
@@ -510,7 +740,9 @@ export function ChatWidget() {
           setUnread((n) => n + toAdd.length);
           playSound("notification");
         }
-      } catch { /* network errors are silently ignored */ }
+      } catch {
+        /* network errors are silently ignored */
+      }
     }
 
     // Run once immediately on start, then every 30 s
@@ -575,7 +807,11 @@ export function ChatWidget() {
   function toggleVoiceOutput() {
     setVoiceOutput((v) => {
       const next = !v;
-      try { localStorage.setItem("cst_ai_voice_output", next ? "1" : "0"); } catch { /* empty */ }
+      try {
+        localStorage.setItem("cst_ai_voice_output", next ? "1" : "0");
+      } catch {
+        /* empty */
+      }
       if (!next) stopSpeaking();
       return next;
     });
@@ -586,36 +822,81 @@ export function ChatWidget() {
     if (!sfxEnabled) return;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const AC: (new () => AudioContext) | undefined = (window as any).AudioContext ?? (window as any).webkitAudioContext;
+      const AC: (new () => AudioContext) | undefined =
+        (window as any).AudioContext ?? (window as any).webkitAudioContext;
       if (!AC) return;
       const ctx = new AC();
       const g = ctx.createGain();
       g.connect(ctx.destination);
 
-      const configs: Record<typeof type, { wave: OscillatorType; freqStart: number; freqEnd: number; duration: number; gain: number }> = {
-        sent:         { wave: "sine",     freqStart: 880,  freqEnd: 1100, duration: 0.12, gain: 0.28 },
-        received:     { wave: "sine",     freqStart: 660,  freqEnd: 880,  duration: 0.18, gain: 0.32 },
-        notification: { wave: "triangle", freqStart: 1200, freqEnd: 900,  duration: 0.25, gain: 0.28 },
-        error:        { wave: "sawtooth", freqStart: 280,  freqEnd: 140,  duration: 0.20, gain: 0.18 },
+      const configs: Record<
+        typeof type,
+        {
+          wave: OscillatorType;
+          freqStart: number;
+          freqEnd: number;
+          duration: number;
+          gain: number;
+        }
+      > = {
+        sent: {
+          wave: "sine",
+          freqStart: 880,
+          freqEnd: 1100,
+          duration: 0.12,
+          gain: 0.28,
+        },
+        received: {
+          wave: "sine",
+          freqStart: 660,
+          freqEnd: 880,
+          duration: 0.18,
+          gain: 0.32,
+        },
+        notification: {
+          wave: "triangle",
+          freqStart: 1200,
+          freqEnd: 900,
+          duration: 0.25,
+          gain: 0.28,
+        },
+        error: {
+          wave: "sawtooth",
+          freqStart: 280,
+          freqEnd: 140,
+          duration: 0.2,
+          gain: 0.18,
+        },
       };
       const c = configs[type];
       const osc = ctx.createOscillator();
       osc.type = c.wave;
       osc.frequency.setValueAtTime(c.freqStart, ctx.currentTime);
-      osc.frequency.linearRampToValueAtTime(c.freqEnd, ctx.currentTime + c.duration);
+      osc.frequency.linearRampToValueAtTime(
+        c.freqEnd,
+        ctx.currentTime + c.duration,
+      );
       g.gain.setValueAtTime(c.gain, ctx.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + c.duration);
       osc.connect(g);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + c.duration);
-      osc.onended = () => { void ctx.close(); };
-    } catch { /* audio blocked or unsupported — silently ignore */ }
+      osc.onended = () => {
+        void ctx.close();
+      };
+    } catch {
+      /* audio blocked or unsupported — silently ignore */
+    }
   }
 
   function toggleSfx() {
     setSfxEnabled((v) => {
       const next = !v;
-      try { localStorage.setItem("cst_chat_sfx", next ? "on" : "off"); } catch { /* empty */ }
+      try {
+        localStorage.setItem("cst_chat_sfx", next ? "on" : "off");
+      } catch {
+        /* empty */
+      }
       return next;
     });
   }
@@ -624,7 +905,12 @@ export function ChatWidget() {
   async function doSend(text: string) {
     if (!text.trim() || isStreaming) return;
 
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text.trim(), createdAt: new Date().toISOString() };
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: text.trim(),
+      createdAt: new Date().toISOString(),
+    };
     setMessages((prev) => [...prev, userMsg]);
     playSound("sent");
 
@@ -683,9 +969,13 @@ export function ChatWidget() {
         lineBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
+          if (!line.startsWith(" ")) continue;
           let event: SseEvent;
-          try { event = JSON.parse(line.slice(6)) as SseEvent; } catch { continue; }
+          try {
+            event = JSON.parse(line.slice(6)) as SseEvent;
+          } catch {
+            continue;
+          }
 
           switch (event.type) {
             case "session":
@@ -699,7 +989,10 @@ export function ChatWidget() {
               break;
 
             case "order":
-              pendingOrder = { orderNumber: event.orderNumber, orderId: event.orderId };
+              pendingOrder = {
+                orderNumber: event.orderNumber,
+                orderId: event.orderId,
+              };
               break;
 
             case "status":
@@ -711,13 +1004,21 @@ export function ChatWidget() {
               break;
 
             case "product_form":
-              setShowProductForm({ productId: event.productId, productName: event.productName, unitPrice: event.unitPrice, unit: event.unit });
+              setShowProductForm({
+                productId: event.productId,
+                productName: event.productName,
+                unitPrice: event.unitPrice,
+                unit: event.unit,
+              });
               break;
 
             case "done": {
               doneReceived = true;
               // Finalize: move streamed content into completed messages
-              if (rafId !== null) { clearTimeout(rafId); rafId = null; }
+              if (rafId !== null) {
+                clearTimeout(rafId);
+                rafId = null;
+              }
               const finalText = streamBufferRef.current;
               streamBufferRef.current = "";
               setStreamingContent(null);
@@ -744,13 +1045,21 @@ export function ChatWidget() {
 
             case "error":
               doneReceived = true;
-              if (rafId !== null) { clearTimeout(rafId); rafId = null; }
+              if (rafId !== null) {
+                clearTimeout(rafId);
+                rafId = null;
+              }
               streamBufferRef.current = "";
               setStreamingContent(null);
               playSound("error");
               setMessages((prev) => [
                 ...prev,
-                { id: (Date.now() + 2).toString(), role: "assistant", content: event.message, createdAt: new Date().toISOString() },
+                {
+                  id: (Date.now() + 2).toString(),
+                  role: "assistant",
+                  content: event.message,
+                  createdAt: new Date().toISOString(),
+                },
               ]);
               break;
           }
@@ -761,14 +1070,22 @@ export function ChatWidget() {
       // (e.g. proxy timeout, server crash mid-stream), flush whatever was buffered and
       // restore the input so the user is never left with a permanently disabled widget.
       if (!doneReceived) {
-        if (rafId !== null) { clearTimeout(rafId); rafId = null; }
+        if (rafId !== null) {
+          clearTimeout(rafId);
+          rafId = null;
+        }
         const leftover = streamBufferRef.current;
         streamBufferRef.current = "";
         setStreamingContent(null);
         if (leftover) {
           setMessages((prev) => [
             ...prev,
-            { id: (Date.now() + 4).toString(), role: "assistant", content: leftover, createdAt: new Date().toISOString() },
+            {
+              id: (Date.now() + 4).toString(),
+              role: "assistant",
+              content: leftover,
+              createdAt: new Date().toISOString(),
+            },
           ]);
         }
       }
@@ -779,7 +1096,12 @@ export function ChatWidget() {
       playSound("error");
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 3).toString(), role: "assistant", content: "Maaf, terjadi kesalahan koneksi. Silakan coba lagi.", createdAt: new Date().toISOString() },
+        {
+          id: (Date.now() + 3).toString(),
+          role: "assistant",
+          content: "Maaf, terjadi kesalahan koneksi. Silakan coba lagi.",
+          createdAt: new Date().toISOString(),
+        },
       ]);
     }
   }
@@ -802,15 +1124,45 @@ export function ChatWidget() {
   function statusStyle(status: string) {
     switch (status) {
       case "New Order":
-        return { icon: Clock, bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-500", badge: "bg-blue-100 text-blue-700" };
+        return {
+          icon: Clock,
+          bg: "bg-blue-50",
+          border: "border-blue-200",
+          text: "text-blue-500",
+          badge: "bg-blue-100 text-blue-700",
+        };
       case "In Progress":
-        return { icon: Truck, bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-500", badge: "bg-amber-100 text-amber-700" };
+        return {
+          icon: Truck,
+          bg: "bg-amber-50",
+          border: "border-amber-200",
+          text: "text-amber-500",
+          badge: "bg-amber-100 text-amber-700",
+        };
       case "Completed":
-        return { icon: CheckCircle2, bg: "bg-green-50", border: "border-green-200", text: "text-green-500", badge: "bg-green-100 text-green-700" };
+        return {
+          icon: CheckCircle2,
+          bg: "bg-green-50",
+          border: "border-green-200",
+          text: "text-green-500",
+          badge: "bg-green-100 text-green-700",
+        };
       case "Cancelled":
-        return { icon: XCircle, bg: "bg-red-50", border: "border-red-200", text: "text-red-500", badge: "bg-red-100 text-red-700" };
+        return {
+          icon: XCircle,
+          bg: "bg-red-50",
+          border: "border-red-200",
+          text: "text-red-500",
+          badge: "bg-red-100 text-red-700",
+        };
       default:
-        return { icon: Package, bg: "bg-gray-50", border: "border-gray-200", text: "text-gray-500", badge: "bg-gray-100 text-gray-700" };
+        return {
+          icon: Package,
+          bg: "bg-gray-50",
+          border: "border-gray-200",
+          text: "text-gray-500",
+          badge: "bg-gray-100 text-gray-700",
+        };
     }
   }
 
@@ -820,7 +1172,19 @@ export function ChatWidget() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const SR: (new () => { lang: string; continuous: boolean; interimResults: boolean; maxAlternatives: number; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: ((e: any) => void) | null; start(): void; stop(): void }) | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    const SR:
+      | (new () => {
+          lang: string;
+          continuous: boolean;
+          interimResults: boolean;
+          maxAlternatives: number;
+          onresult: ((e: any) => void) | null;
+          onend: (() => void) | null;
+          onerror: ((e: any) => void) | null;
+          start(): void;
+          stop(): void;
+        })
+      | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!SR) {
       alert("Browser Anda belum mendukung input suara. Coba Chrome atau Edge.");
       return;
@@ -873,7 +1237,9 @@ export function ChatWidget() {
     try {
       localStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(MESSAGES_KEY);
-    } catch { /* empty */ }
+    } catch {
+      /* empty */
+    }
     setSessionToken(null);
     setMessages([GREETING]);
     setOrderCreated(null);
@@ -915,83 +1281,101 @@ export function ChatWidget() {
             border: "1px solid rgba(0,0,0,0.06)",
             boxShadow:
               "0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03)",
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            fontFamily:
+              "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
             WebkitTapHighlightColor: "transparent",
             animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
-          {/* ========== HEADER (HANYA BAGIAN INI YANG DIUBAH) ========== */}
+          {/* Header - DENGAN LOGO CST */}
           <div
-            className="flex items-center gap-2 px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
+            className="flex items-center justify-between px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
             style={{
               background: "linear-gradient(135deg, #0052D4 0%, #4364F7 100%)",
               backdropFilter: "blur(10px)",
               WebkitBackdropFilter: "blur(10px)",
             }}
           >
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-              <Bot className="h-5 w-5 text-white" />
+            {/* Left: Logo CST */}
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <img
+                src="https://i.ibb.co/v631Kq5F/logo.png"
+                alt="CST Logistic"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback jika gambar gagal load
+                  (e.target as HTMLImageElement).src =
+                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚢%3C/text%3E%3C/svg%3E";
+                }}
+              />
             </div>
 
-            {/* Area Teks: Judul + Status - PERBAIKAN: flex-col + items-end + hapus overflow */}
-            <div className="flex-1 min-w-0 flex flex-col items-end justify-center pr-2">
-              <p 
-                className="font-semibold text-white whitespace-nowrap text-right" 
-                style={{ 
-                  fontSize: 14, 
-                  letterSpacing: "0.2px", 
-                  textShadow: "0 1px 2px rgba(0,0,0,0.15)",
-                  lineHeight: 1.3
+            {/* Center: Title & Status */}
+            <div className="flex-1 flex flex-col items-center text-center px-2">
+              <h1
+                className="text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis"
+                style={{
+                  fontSize: 16,
+                  letterSpacing: "0.3px",
+                  textShadow: "0 2px 4px rgba(0,0,0,0.15)",
+                  lineHeight: 1.2,
                 }}
               >
                 CST Logistics Assistant
-              </p>
-              <p className="text-[11px] text-sky-200 flex items-center gap-1 mt-0.5">
-                {isSpeaking ? (
-                  <>
-                    <span className="w-1.5 h-1.5 rounded-full inline-block bg-purple-300 animate-pulse" />
-                    <span className="animate-pulse">Berbicara…</span>
-                  </>
-                ) : (
-                  <>
-                    <span className={`w-1.5 h-1.5 rounded-full inline-block ${isStreaming ? "bg-yellow-400 animate-pulse" : "bg-green-400"}`} />
-                    {isStreaming ? "Mengetik…" : "Online"}
-                  </>
-                )}
-              </p>
+              </h1>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-[11px] text-sky-100 font-medium">
+                  Online
+                </span>
+              </div>
             </div>
 
-            {/* Icon button group — right-aligned */}
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
-              {/* Sound effects toggle */}
+            {/* Right: Action Buttons */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               <button
                 onClick={toggleSfx}
-                title={sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"}
-                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                title={
+                  sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"
+                }
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   sfxEnabled
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
                 }`}
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
-                {sfxEnabled ? <Bell className="h-[18px] w-[18px]" /> : <BellOff className="h-[18px] w-[18px]" />}
+                {sfxEnabled ? (
+                  <Bell className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                ) : (
+                  <BellOff className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                )}
               </button>
-              {/* Voice output toggle */}
               <button
                 onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
-                title={isSpeaking ? "Berhenti bicara" : voiceOutput ? "Matikan suara AI" : "Aktifkan suara AI"}
-                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                title={
+                  isSpeaking
+                    ? "Berhenti bicara"
+                    : voiceOutput
+                      ? "Matikan suara AI"
+                      : "Aktifkan suara AI"
+                }
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   voiceOutput || isSpeaking
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
                 }`}
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
-                {voiceOutput || isSpeaking ? <Volume2 className="h-[18px] w-[18px]" /> : <VolumeX className="h-[18px] w-[18px]" />}
+                {voiceOutput || isSpeaking ? (
+                  <Volume2 className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                ) : (
+                  <VolumeX className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                )}
               </button>
               <button
                 onClick={resetChat}
-                className="h-11 sm:h-9 px-2.5 text-white/65 hover:text-white text-[11px] font-semibold tracking-wide transition-all duration-300 rounded-xl hover:bg-white/15"
+                className="h-9 sm:h-10 px-2 sm:px-2.5 text-white/70 hover:text-white text-[11px] font-semibold tracking-wide transition-all duration-300 rounded-xl hover:bg-white/15 hidden sm:block"
                 title="Reset percakapan"
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
@@ -999,77 +1383,73 @@ export function ChatWidget() {
               </button>
               <button
                 onClick={() => setOpen(false)}
-                className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/15 rounded-xl transition-all duration-300"
+                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/15 rounded-xl transition-all duration-300"
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
           </div>
-          {/* ========== END HEADER ========== */}
 
           {/* Messages */}
           <div
             className="flex-1 overflow-y-auto px-4 sm:px-3 py-4 sm:py-3 space-y-3 bg-gray-50"
-            style={{ WebkitOverflowScrolling: "touch", scrollBehavior: "smooth" }}
+            style={{
+              WebkitOverflowScrolling: "touch",
+              scrollBehavior: "smooth",
+            }}
           >
-            {messages.reduce<{ lastDateStr: string | null; els: React.ReactNode[] }>(
-              (acc, msg) => {
-                const dateStr = msg.createdAt ? new Date(msg.createdAt).toDateString() : null;
-                if (dateStr && dateStr !== acc.lastDateStr) {
-                  const label = formatDateLabel(msg.createdAt);
-                  if (label) {
-                    acc.els.push(
-                      <div key={`sep-${msg.id}`} className="flex items-center gap-2 py-1">
-                        <div className="flex-1 h-px bg-gray-200" />
-                        <span className="text-[10px] text-gray-400 font-medium px-2 shrink-0">{label}</span>
-                        <div className="flex-1 h-px bg-gray-200" />
-                      </div>
-                    );
-                  }
-                  acc.lastDateStr = dateStr;
-                }
-                const msgTime = formatMsgTime(msg.createdAt);
-                acc.els.push(
-                  <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                    {msg.role !== "user" && (
-                      <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
-                        {msg.role === "admin" ? (
-                          <User className="h-4 w-4 text-sky-700" />
-                        ) : (
-                          <Bot className="h-4 w-4 text-sky-600" />
-                        )}
-                      </div>
-                    )}
-                    <div className={`flex flex-col max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                      <div
-                        className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                          msg.role === "user"
-                            ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm"
-                            : msg.role === "admin"
-                            ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-2xl rounded-tl-sm"
-                            : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm"
-                        }`}
-                        style={{
-                          boxShadow: msg.role === "user" ? "0 2px 8px rgba(14,165,233,0.22)" : "0 2px 8px rgba(0,0,0,0.06)",
-                          transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
-                        }}
-                      >
-                        {msg.role === "admin" && (
-                          <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
-                        )}
-                        {msg.content}
-                      </div>
-                      {msgTime && (
-                        <p className="text-[10px] text-gray-400 mt-1 px-1">{msgTime}</p>
+            {messages.map((msg) => {
+              const msgTime = formatMsgTime(msg.createdAt);
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+                >
+                  {msg.role !== "user" && (
+                    <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
+                      {msg.role === "admin" ? (
+                        <User className="h-4 w-4 text-sky-700" />
+                      ) : (
+                        <Bot className="h-4 w-4 text-sky-600" />
                       )}
                     </div>
+                  )}
+                  <div
+                    className={`flex flex-col max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}
+                  >
+                    <div
+                      className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                        msg.role === "user"
+                          ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm"
+                          : msg.role === "admin"
+                            ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-2xl rounded-tl-sm"
+                            : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm"
+                      }`}
+                      style={{
+                        boxShadow:
+                          msg.role === "user"
+                            ? "0 2px 8px rgba(14,165,233,0.22)"
+                            : "0 2px 8px rgba(0,0,0,0.06)",
+                        transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
+                      }}
+                    >
+                      {msg.role === "admin" && (
+                        <p className="text-[10px] font-semibold text-amber-600 mb-1">
+                          Admin CST
+                        </p>
+                      )}
+                      {msg.content}
+                    </div>
+                    {msgTime && (
+                      <p className="text-[10px] text-gray-400 mt-1 px-1">
+                        {msgTime}
+                      </p>
+                    )}
                   </div>
-                );
-                return acc;
-              },
-              { lastDateStr: null, els: [] },
-            ).els}
+                </div>
+              );
+            })}
 
             {/* Live streaming bubble — replaces the old bouncing dots */}
             {isStreaming && (
@@ -1077,7 +1457,10 @@ export function ChatWidget() {
                 <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
                   <Bot className="h-4 w-4 text-sky-600" />
                 </div>
-                <div className="max-w-[85%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap" style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div
+                  className="max-w-[85%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
+                  style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+                >
                   {streamingContent || (
                     /* Bouncing dots only while waiting for the first token */
                     <span className="flex gap-1 items-center h-5">
@@ -1102,8 +1485,12 @@ export function ChatWidget() {
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-start gap-3">
                 <Package className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-semibold text-green-800">Order Berhasil Dibuat!</p>
-                  <p className="text-xs text-green-700 mt-0.5">No. Order: {orderCreated.orderNumber}</p>
+                  <p className="text-sm font-semibold text-green-800">
+                    Order Berhasil Dibuat!
+                  </p>
+                  <p className="text-xs text-green-700 mt-0.5">
+                    No. Order: {orderCreated.orderNumber}
+                  </p>
                   <Link
                     href="/track"
                     className="text-xs text-green-700 underline font-medium mt-1 inline-block"
@@ -1171,15 +1558,26 @@ export function ChatWidget() {
             {orderStatuses.length > 0 && (
               <div className="space-y-2">
                 {orderStatuses.map((ord) => {
-                  const { icon: StatusIcon, bg, border, text, badge } = statusStyle(ord.status);
+                  const {
+                    icon: StatusIcon,
+                    bg,
+                    border,
+                    text,
+                    badge,
+                  } = statusStyle(ord.status);
                   return (
-                    <div key={ord.orderNumber} className={`rounded-xl border ${border} ${bg} p-3`}>
+                    <div
+                      key={ord.orderNumber}
+                      className={`rounded-xl border ${border} ${bg} p-3`}
+                    >
                       <div className="flex items-center gap-2 mb-1.5">
                         <StatusIcon className={`h-4 w-4 ${text} shrink-0`} />
                         <span className="text-xs font-semibold text-gray-700 flex-1 truncate">
                           {ord.orderNumber}
                         </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge}`}>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge}`}
+                        >
                           {ord.status}
                         </span>
                       </div>
@@ -1220,7 +1618,10 @@ export function ChatWidget() {
                     <span
                       key={i}
                       className="w-1 rounded-full bg-red-500 inline-block animate-bounce"
-                      style={{ height: `${6 + i * 3}px`, animationDelay: `${i * 0.1}s` }}
+                      style={{
+                        height: `${6 + i * 3}px`,
+                        animationDelay: `${i * 0.1}s`,
+                      }}
                     />
                   ))}
                 </span>
@@ -1230,8 +1631,14 @@ export function ChatWidget() {
             <div className="flex gap-2 items-center">
               <button
                 type="button"
-                onMouseDown={(e) => { e.preventDefault(); startListening(); }}
-                onTouchStart={(e) => { e.preventDefault(); startListening(); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  startListening();
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  startListening();
+                }}
                 disabled={isStreaming}
                 title="Tahan untuk merekam suara, lepas untuk kirim"
                 className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 select-none ${
@@ -1240,7 +1647,11 @@ export function ChatWidget() {
                     : "bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-red-100 active:text-red-500"
                 }`}
               >
-                {isListening ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4 w-4" />}
+                {isListening ? (
+                  <MicOff className="h-4.5 w-4.5" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
               </button>
               <input
                 ref={inputRef}
@@ -1248,7 +1659,13 @@ export function ChatWidget() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder={isStreaming ? "Menunggu balasan…" : isListening ? "Bicara sekarang…" : "Ketik atau bicara…"}
+                placeholder={
+                  isStreaming
+                    ? "Menunggu balasan…"
+                    : isListening
+                      ? "Bicara sekarang…"
+                      : "Ketik atau bicara…"
+                }
                 className="flex-1 rounded-full border outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                 style={{
                   fontSize: 16,
@@ -1264,7 +1681,10 @@ export function ChatWidget() {
                 onClick={() => void sendMessage()}
                 disabled={isStreaming || !input.trim()}
                 className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: "linear-gradient(135deg, #0284c7, #1d4ed8)", boxShadow: "0 2px 8px rgba(14,165,233,0.35)" }}
+                style={{
+                  background: "linear-gradient(135deg, #0284c7, #1d4ed8)",
+                  boxShadow: "0 2px 8px rgba(14,165,233,0.35)",
+                }}
               >
                 <Send className="h-4 w-4 text-white" />
               </button>
@@ -1291,7 +1711,8 @@ export function ChatWidget() {
           width: 52,
           height: 52,
           background: "linear-gradient(135deg, #0ea5e9 0%, #1d4ed8 100%)",
-          boxShadow: "0 4px 20px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)",
+          boxShadow:
+            "0 4px 20px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)",
           WebkitTapHighlightColor: "transparent",
         }}
         onMouseEnter={(e) => {

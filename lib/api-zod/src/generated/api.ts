@@ -1827,6 +1827,22 @@ export const ListAiDraftQuotationsResponse = zod.array(
 );
 
 /**
+ * @summary List AI intake processing history (email + WA sources)
+ */
+export const ListAiIntakeLogResponseItem = zod.object({
+  id: zod.string(),
+  source: zod.enum(["email", "wa"]),
+  sender: zod.string().nullish(),
+  subject: zod.string().nullish(),
+  timestamp: zod.string(),
+  status: zod.enum(["created", "skipped"]),
+  docId: zod.number().nullish(),
+  docNumber: zod.string().nullish(),
+  docStatus: zod.string().nullish(),
+});
+export const ListAiIntakeLogResponse = zod.array(ListAiIntakeLogResponseItem);
+
+/**
  * @summary List eligible vendors to forward this document to
  */
 export const ListEligibleVendorsForDocParams = zod.object({

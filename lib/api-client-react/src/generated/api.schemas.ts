@@ -2386,6 +2386,34 @@ export interface AiChatSessionWithMessages {
   messages: AiChatMessage[];
 }
 
+export type AiIntakeLogEntrySource =
+  (typeof AiIntakeLogEntrySource)[keyof typeof AiIntakeLogEntrySource];
+
+export const AiIntakeLogEntrySource = {
+  email: "email",
+  wa: "wa",
+} as const;
+
+export type AiIntakeLogEntryStatus =
+  (typeof AiIntakeLogEntryStatus)[keyof typeof AiIntakeLogEntryStatus];
+
+export const AiIntakeLogEntryStatus = {
+  created: "created",
+  skipped: "skipped",
+} as const;
+
+export interface AiIntakeLogEntry {
+  id: string;
+  source: AiIntakeLogEntrySource;
+  sender?: string | null;
+  subject?: string | null;
+  timestamp: string;
+  status: AiIntakeLogEntryStatus;
+  docId?: number | null;
+  docNumber?: string | null;
+  docStatus?: string | null;
+}
+
 export interface AiChatOrderCreated {
   orderNumber: string;
   orderId: number;

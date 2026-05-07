@@ -1358,6 +1358,21 @@ paths:
                 items:
                   $ref: "#/components/schemas/SalesDocument"
 
+  /sales/ai-intake-log:
+    get:
+      operationId: listAiIntakeLog
+      tags: [sales]
+      summary: List AI intake processing history (email + WA sources)
+      responses:
+        "200":
+          description: AI intake log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiIntakeLogEntry"
+
   /sales/documents/{id}/eligible-vendors:
     get:
       operationId: listEligibleVendorsForDoc
@@ -5835,6 +5850,24 @@ components:
           items:
             $ref: "#/components/schemas/AiChatMessage"
       required: [session, messages]
+
+    AiIntakeLogEntry:
+      type: object
+      properties:
+        id: { type: string }
+        source:
+          type: string
+          enum: [email, wa]
+        sender: { type: string, nullable: true }
+        subject: { type: string, nullable: true }
+        timestamp: { type: string }
+        status:
+          type: string
+          enum: [created, skipped]
+        docId: { type: integer, nullable: true }
+        docNumber: { type: string, nullable: true }
+        docStatus: { type: string, nullable: true }
+      required: [id, source, timestamp, status]
 
     AiChatOrderCreated:
       type: object
