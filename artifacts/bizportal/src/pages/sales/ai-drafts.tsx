@@ -127,9 +127,35 @@ export default function AiDraftsPage() {
   const [selectedChannels, setSelectedChannels] = useState<string[]>(["wa", "email"]);
 
   // Intake log filters (client-side)
-  const [logSource, setLogSource] = useState<"all" | "email" | "wa">("all");
-  const [logDateFrom, setLogDateFrom] = useState("");
-  const [logDateTo, setLogDateTo] = useState("");
+  const LS_SOURCE = "ai-intake-log:source";
+  const LS_DATE_FROM = "ai-intake-log:dateFrom";
+  const LS_DATE_TO = "ai-intake-log:dateTo";
+
+  const [logSource, _setLogSource] = useState<"all" | "email" | "wa">(
+    () => (localStorage.getItem(LS_SOURCE) as "all" | "email" | "wa") ?? "all",
+  );
+  const [logDateFrom, _setLogDateFrom] = useState(
+    () => localStorage.getItem(LS_DATE_FROM) ?? "",
+  );
+  const [logDateTo, _setLogDateTo] = useState(
+    () => localStorage.getItem(LS_DATE_TO) ?? "",
+  );
+
+  function setLogSource(v: "all" | "email" | "wa") {
+    _setLogSource(v);
+    if (v === "all") localStorage.removeItem(LS_SOURCE);
+    else localStorage.setItem(LS_SOURCE, v);
+  }
+  function setLogDateFrom(v: string) {
+    _setLogDateFrom(v);
+    if (v === "") localStorage.removeItem(LS_DATE_FROM);
+    else localStorage.setItem(LS_DATE_FROM, v);
+  }
+  function setLogDateTo(v: string) {
+    _setLogDateTo(v);
+    if (v === "") localStorage.removeItem(LS_DATE_TO);
+    else localStorage.setItem(LS_DATE_TO, v);
+  }
 
   // Parse YYYY-MM-DD as local midnight (not UTC) to avoid timezone boundary shift
   const fromDate = logDateFrom ? new Date(logDateFrom + "T00:00:00") : null;
