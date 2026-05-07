@@ -28,6 +28,7 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   requiredDate: text("required_date"),
   notes: text("notes"),
   paymentType: text("payment_type"),
+  paymentMethod: text("payment_method"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
   tax: numeric("tax", { precision: 14, scale: 2 }).notNull().default("0"),
   grandTotal: numeric("grand_total", { precision: 14, scale: 2 }).notNull().default("0"),

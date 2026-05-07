@@ -562,6 +562,11 @@ export default function BookPage() {
         str(truckingInputData.notes),
         customerForm.notes,
       ].filter(Boolean).join(" | ") || null,
+      paymentMethod: paymentType === "gateway"
+        ? "payment_gateway"
+        : paymentType === "transfer"
+        ? "transfer"
+        : null,
       paymentType: paymentType === "gateway"
         ? "payment_gateway"
         : paymentType === "transfer"
