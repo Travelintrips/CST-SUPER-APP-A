@@ -832,7 +832,7 @@ export function ChatWidget() {
 
   /** Synthesize a short UI sound via Web Audio API — no external files, iOS/Android safe */
   function playSound(type: "sent" | "received" | "notification" | "error") {
-    if (!sfxEnabled) return;
+    if (!sfxEnabledRef.current) return;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const AC: (new () => AudioContext) | undefined =
