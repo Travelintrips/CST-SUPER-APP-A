@@ -265,8 +265,12 @@ async function streamAiChat(
       stream: true,
     });
 
-    // Accumulate tool call deltas by index
+    // Accumulate tool call deltas by index.
+    // Buffer text tokens for this iteration — we only emit them to SSE if this turns
+    // out to be the final turn (no tool calls). This keeps the UI and the persisted DB
+    // history consistent: clients never see assistant text that won't be stored.
     const toolCallMap: Record<number, { id: string; name: string; arguments: string }> = {};
+    const iterTokens: string[] = [];
     let contentBuffer = "";
 
     for await (const chunk of stream) {
@@ -275,11 +279,9 @@ async function streamAiChat(
 
       const delta = choice.delta;
 
-      // Text tokens — forward immediately
       if (delta.content) {
+        iterTokens.push(delta.content);
         contentBuffer += delta.content;
-        finalContent += delta.content;
-        sendEvent({ type: "token", text: delta.content });
       }
 
       // Tool call deltas — accumulate by index
@@ -298,7 +300,9 @@ async function streamAiChat(
     const pendingToolCalls = Object.values(toolCallMap).filter((tc) => tc.name);
 
     if (pendingToolCalls.length === 0) {
-      // Final text response — no more tools needed
+      // Final text turn — emit buffered tokens to the client and exit loop
+      finalContent = contentBuffer;
+      for (const tok of iterTokens) sendEvent({ type: "token", text: tok });
       break;
     }
 
@@ -333,9 +337,7 @@ async function streamAiChat(
       toolResults.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
     chatMessages.push(...toolResults);
-
-    // Reset finalContent so we only persist the final text turn
-    finalContent = "";
+    // Loop continues: tool results are appended, next iteration will produce the final text
   }
 
   // Persist the final assistant reply

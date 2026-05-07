@@ -126,6 +126,8 @@ export function ChatWidget() {
       const decoder = new TextDecoder();
       let lineBuffer = "";
       let pendingOrder: OrderCreated | null = null;
+      /** Guard: was the stream cleanly terminated by the server? */
+      let doneReceived = false;
 
       // Update streaming bubble every N ms to batch React re-renders
       let rafId: ReturnType<typeof setTimeout> | null = null;
@@ -172,6 +174,7 @@ export function ChatWidget() {
               break;
 
             case "done": {
+              doneReceived = true;
               // Finalize: move streamed content into completed messages
               if (rafId !== null) { clearTimeout(rafId); rafId = null; }
               const finalText = streamBufferRef.current;
@@ -191,6 +194,7 @@ export function ChatWidget() {
             }
 
             case "error":
+              doneReceived = true;
               if (rafId !== null) { clearTimeout(rafId); rafId = null; }
               streamBufferRef.current = "";
               setStreamingContent(null);
@@ -200,6 +204,22 @@ export function ChatWidget() {
               ]);
               break;
           }
+        }
+      }
+
+      // Defensive finalization: if the TCP connection closed without a done/error event
+      // (e.g. proxy timeout, server crash mid-stream), flush whatever was buffered and
+      // restore the input so the user is never left with a permanently disabled widget.
+      if (!doneReceived) {
+        if (rafId !== null) { clearTimeout(rafId); rafId = null; }
+        const leftover = streamBufferRef.current;
+        streamBufferRef.current = "";
+        setStreamingContent(null);
+        if (leftover) {
+          setMessages((prev) => [
+            ...prev,
+            { id: (Date.now() + 4).toString(), role: "assistant", content: leftover },
+          ]);
         }
       }
     } catch (err: unknown) {
