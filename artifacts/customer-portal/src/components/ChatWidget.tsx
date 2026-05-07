@@ -920,9 +920,9 @@ export function ChatWidget() {
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
               <Bot className="h-5 w-5 text-white" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white leading-snug" style={{ fontSize: 15, letterSpacing: "0.3px" }}>CST Logistics Assistant</p>
-              <p className="text-xs text-sky-200 flex items-center gap-1 mt-0.5">
+            <div className="flex-1 min-w-0 pr-2">
+              <p className="font-semibold text-white leading-snug text-right" style={{ fontSize: 15, letterSpacing: "0.3px", textShadow: "0 1px 3px rgba(0,0,0,0.18)", lineHeight: 1.2 }}>CST Logistics Assistant</p>
+              <p className="text-xs text-sky-200 flex items-center justify-end gap-1 mt-0.5">
                 {isSpeaking ? (
                   <>
                     <span className="w-1.5 h-1.5 rounded-full inline-block bg-purple-300 animate-pulse" />
