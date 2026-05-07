@@ -6,8 +6,10 @@ import {
   aiChatMessagesTable,
   aiAgentSettingsTable,
   logisticOrdersTable,
+  productsTable,
+  ordersTable,
 } from "@workspace/db";
-import { eq, asc, or, inArray, sql, and, gt } from "drizzle-orm";
+import { eq, asc, or, inArray, sql, and, gt, ilike } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -21,22 +23,26 @@ const openai = new OpenAI({
 
 export const aiAgentRouter = Router();
 
-const DEFAULT_SYSTEM_PROMPT = `Kamu adalah asisten logistik virtual dari CST Logistics — perusahaan jasa pengiriman dan kepabeanan terkemuka di Indonesia.
+const DEFAULT_SYSTEM_PROMPT = `Kamu adalah asisten virtual dari CST Logistics — perusahaan jasa pengiriman, kepabeanan, dan penjualan produk terkemuka di Indonesia.
 
 Tugasmu:
 1. Menyapa pelanggan dengan ramah dan memperkenalkan layanan CST Logistics
-2. Menjawab pertanyaan seputar layanan logistik (sea freight, air freight, trucking, customs/pabean)
-3. MEMBUAT ORDER: Ketika pelanggan ingin membuat order atau booking — LANGSUNG panggil show_order_form. JANGAN tanya satu per satu. Form akan tampil di chat untuk diisi pelanggan.
+2. Menjawab pertanyaan seputar layanan logistik (sea freight, air freight, trucking, customs/pabean) maupun produk yang tersedia
+3. MEMBUAT ORDER LOGISTIK: Ketika pelanggan ingin membuat order atau booking pengiriman — LANGSUNG panggil show_order_form. JANGAN tanya satu per satu. Form akan tampil di chat.
 4. CEK STATUS: Ketika pelanggan bertanya status/tracking/posisi paket — LANGSUNG panggil get_order_status.
+5. CARI PRODUK: Ketika pelanggan menanyakan produk, stok, atau harga produk — panggil search_products terlebih dahulu, lalu tampilkan hasilnya.
+6. PESAN PRODUK: Setelah pelanggan memilih produk dan konfirmasi qty + data diri — panggil create_product_order.
 
 Aturan:
 - Gunakan Bahasa Indonesia yang sopan dan singkat
-- Jika pelanggan hanya konsultasi/tanya harga, jawab ringkas lalu tawarkan buat order via form
-- TOLAK SOPAN pertanyaan di luar layanan logistik/pengiriman
-- WAJIB show_order_form: kata kunci "mau kirim", "booking", "order", "pesan", "buat pengiriman", menyebut nama layanan + niat kirim
+- WAJIB show_order_form: kata kunci "mau kirim", "booking", "order pengiriman", "pesan kirim", menyebut nama layanan + niat kirim
 - WAJIB get_order_status: kata kunci "status", "cek order", "tracking", "mana paket", "sudah sampai", "posisi"
-- Setelah get_order_status: SELALU tulis ringkasan hasil — jangan biarkan respons kosong
-- Jika get_order_status found=false: beritahu dan tawarkan cari via nomor WhatsApp
+- WAJIB search_products: kata kunci "cari produk", "ada produk", "jual apa", "harga produk", nama produk spesifik
+- WAJIB create_product_order: setelah pelanggan konfirmasi beli produk dengan qty dan data diri lengkap
+- Setelah get_order_status/search_products: SELALU tulis ringkasan hasil — jangan biarkan respons kosong
+- Jika search_products tidak menemukan produk: beritahu dan tawarkan bantuan lain
+- Sebelum create_product_order: pastikan sudah tahu nama, email/WA, dan daftar produk + qty
+- TOLAK SOPAN pertanyaan di luar layanan CST Logistics
 
 Layanan yang tersedia:
 - Sea Freight (Laut): FCL dan LCL, domestik & internasional
@@ -44,8 +50,9 @@ Layanan yang tersedia:
 - Trucking (Darat): CDE, CDD, Fuso, Wingbox, Trailer
 - Customs/Pabean: PIB, PEB, dokumen kepabeanan
 - Packing & Crating: pengemasan profesional
+- Penjualan Produk: tersedia berbagai produk, cek stok & harga via pencarian
 
-Harga dikonfirmasi tim setelah order masuk (tergantung volume, rute, pasar).`;
+Harga layanan logistik dikonfirmasi tim setelah order masuk. Harga produk sesuai katalog.`;
 
 /** Load the active system prompt from DB, fall back to the hardcoded default */
 async function getSystemPrompt(): Promise<string> {
@@ -97,6 +104,51 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
           },
         },
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_products",
+      description: "Cari produk yang tersedia berdasarkan kata kunci nama, SKU, atau kategori. Gunakan saat pelanggan bertanya tentang produk, stok, atau harga produk.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Kata kunci pencarian (nama produk, SKU, atau kategori)" },
+          itemType: { type: "string", enum: ["barang", "jasa"], description: "Filter tipe item (opsional)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_product_order",
+      description: "Buat order pembelian produk setelah pelanggan konfirmasi produk, qty, dan data diri. Hanya panggil setelah mendapat konfirmasi eksplisit dari pelanggan.",
+      parameters: {
+        type: "object",
+        properties: {
+          customerName: { type: "string", description: "Nama lengkap pelanggan" },
+          customerEmail: { type: "string", description: "Email pelanggan" },
+          customerPhone: { type: "string", description: "Nomor WhatsApp pelanggan (opsional)" },
+          items: {
+            type: "array",
+            description: "Daftar produk yang dipesan",
+            items: {
+              type: "object",
+              properties: {
+                productId: { type: "number", description: "ID produk dari hasil search_products" },
+                name: { type: "string", description: "Nama produk" },
+                qty: { type: "number", description: "Jumlah yang dipesan" },
+                unitPrice: { type: "number", description: "Harga satuan produk" },
+              },
+              required: ["productId", "name", "qty", "unitPrice"],
+            },
+          },
+        },
+        required: ["customerName", "customerEmail", "items"],
       },
     },
   },
@@ -331,6 +383,110 @@ async function handleToolCall(
     } catch (err) {
       logger.error({ err }, "AI agent create_logistic_order failed");
       return JSON.stringify({ success: false, error: "Gagal membuat order. Silakan coba lagi atau hubungi kami langsung." });
+    }
+  }
+
+  if (toolName === "search_products") {
+    try {
+      const { query, itemType } = args as { query: string; itemType?: string };
+      const q = query.trim();
+      const conds = [eq(productsTable.isActive, true)];
+      if (q) {
+        conds.push(or(
+          ilike(productsTable.name, `%${q}%`),
+          ilike(productsTable.sku, `%${q}%`),
+          ilike(productsTable.subcategory, `%${q}%`),
+          ilike(productsTable.description, `%${q}%`),
+        )!);
+      }
+      if (itemType) conds.push(eq(productsTable.itemType, itemType));
+
+      const products = await db
+        .select({
+          id: productsTable.id,
+          name: productsTable.name,
+          sku: productsTable.sku,
+          price: productsTable.price,
+          stock: productsTable.stock,
+          unit: productsTable.unit,
+          description: productsTable.description,
+          itemType: productsTable.itemType,
+        })
+        .from(productsTable)
+        .where(and(...conds))
+        .orderBy(productsTable.name)
+        .limit(10);
+
+      if (products.length === 0) {
+        return JSON.stringify({ found: false, message: `Tidak ada produk yang cocok dengan kata kunci "${q}".` });
+      }
+
+      return JSON.stringify({
+        found: true,
+        total: products.length,
+        products: products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          price: Number(p.price),
+          stock: p.stock,
+          unit: p.unit,
+          description: p.description ?? null,
+          itemType: p.itemType,
+        })),
+      });
+    } catch (err) {
+      logger.error({ err }, "AI agent search_products failed");
+      return JSON.stringify({ found: false, message: "Gagal mencari produk. Silakan coba lagi." });
+    }
+  }
+
+  if (toolName === "create_product_order") {
+    try {
+      const {
+        customerName, customerEmail, customerPhone, items,
+      } = args as {
+        customerName: string;
+        customerEmail: string;
+        customerPhone?: string;
+        items: Array<{ productId: number; name: string; qty: number; unitPrice: number }>;
+      };
+
+      if (!items || items.length === 0) {
+        return JSON.stringify({ success: false, error: "Tidak ada produk yang dipilih." });
+      }
+
+      const totalAmount = items.reduce((sum, it) => sum + it.qty * it.unitPrice, 0);
+      const lineItems = items.map((it) => ({
+        name: it.name,
+        qty: it.qty,
+        unitPrice: it.unitPrice,
+      }));
+      const itemsSummary = items.map((it) => `${it.name} x${it.qty}`).join(", ");
+
+      const [order] = await db.insert(ordersTable).values({
+        customerName,
+        customerEmail,
+        customerPhone: customerPhone ?? null,
+        status: "pending",
+        totalAmount: String(totalAmount),
+        taxAmount: "0",
+        grandTotal: String(totalAmount),
+        items: itemsSummary,
+        lineItems,
+      }).returning();
+
+      return JSON.stringify({
+        success: true,
+        orderId: order.id,
+        orderNumber: `ORD-${String(order.id).padStart(6, "0")}`,
+        totalAmount,
+        items: lineItems,
+        message: `Order produk berhasil dibuat (ID #${order.id}). Tim kami akan menghubungi Anda untuk konfirmasi pengiriman.`,
+      });
+    } catch (err) {
+      logger.error({ err }, "AI agent create_product_order failed");
+      return JSON.stringify({ success: false, error: "Gagal membuat order produk. Silakan coba lagi." });
     }
   }
 
