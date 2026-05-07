@@ -1297,7 +1297,7 @@ export function ChatWidget() {
             }}
           >
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-              <img src="/images/logo-baru.png" className="h-7 w-7 object-contain rounded-full" alt="logo" />
+              <img src="/images/logo-baru.png" className="h-8 w-8 object-contain" alt="logo" />
             </div>
             <div className="flex-1 min-w-0 pr-2">
               <p
@@ -1411,7 +1411,7 @@ export function ChatWidget() {
                       {msg.role === "admin" ? (
                         <User className="h-4 w-4 text-sky-700" />
                       ) : (
-                        <img src="/images/logo-baru.png" className="h-4 w-4 object-contain" alt="logo" />
+                        <img src="/images/logo-baru.png" className="h-6 w-6 object-contain" alt="logo" />
                       )}
                     </div>
                   )}
@@ -1455,7 +1455,7 @@ export function ChatWidget() {
             {isStreaming && (
               <div className="flex gap-2 flex-row">
                 <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <img src="/images/logo-baru.png" className="h-4 w-4 object-contain" alt="logo" />
+                  <img src="/images/logo-baru.png" className="h-6 w-6 object-contain" alt="logo" />
                 </div>
                 <div
                   className="max-w-[85%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap"
