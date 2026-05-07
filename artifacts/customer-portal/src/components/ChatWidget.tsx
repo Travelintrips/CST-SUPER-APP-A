@@ -1301,15 +1301,17 @@ export function ChatWidget() {
             </div>
             <div className="flex-1 min-w-0 pr-2">
               <p
-                className="font-semibold text-white leading-snug text-center sm:text-right text-[11px] sm:text-sm whitespace-nowrap truncate"
+                className="font-semibold text-white leading-snug text-center sm:text-right text-[11px] sm:text-sm whitespace-nowrap"
                 style={{
-                  fontSize: 14,
                   letterSpacing: "0.3px",
                   textShadow: "0 1px 3px rgba(0,0,0,0.18)",
                   lineHeight: 1.2,
                 }}
               >
-                CST Logistics Assistant
+                <span className="sm:hidden">CST Logistics Assistant</span>
+                <span className="hidden sm:inline">
+                  CST Logistics Assistant
+                </span>
               </p>
               <p className="text-xs text-sky-200 flex items-center justify-end gap-1 mt-0.5">
                 {isSpeaking ? (
@@ -1335,7 +1337,7 @@ export function ChatWidget() {
                 title={
                   sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"
                 }
-                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                className={`w-7 h-7 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center transition-all duration-300 ${
                   sfxEnabled
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
@@ -1343,9 +1345,9 @@ export function ChatWidget() {
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
                 {sfxEnabled ? (
-                  <Bell className="h-[18px] w-[18px]" />
+                  <Bell className="h-3.5 w-3.5 sm:h-[18px] sm:w-[18px]" />
                 ) : (
-                  <BellOff className="h-[18px] w-[18px]" />
+                  <BellOff className="h-3.5 w-3.5 sm:h-[18px] sm:w-[18px]" />
                 )}
               </button>
               {/* Voice output toggle */}
@@ -1358,7 +1360,7 @@ export function ChatWidget() {
                       ? "Matikan suara AI"
                       : "Aktifkan suara AI"
                 }
-                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                className={`w-7 h-7 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center transition-all duration-300 ${
                   voiceOutput || isSpeaking
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
@@ -1366,9 +1368,9 @@ export function ChatWidget() {
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
                 {voiceOutput || isSpeaking ? (
-                  <Volume2 className="h-[18px] w-[18px]" />
+                  <Volume2 className="h-3.5 w-3.5 sm:h-[18px] sm:w-[18px]" />
                 ) : (
-                  <VolumeX className="h-[18px] w-[18px]" />
+                  <VolumeX className="h-3.5 w-3.5 sm:h-[18px] sm:w-[18px]" />
                 )}
               </button>
               <button
