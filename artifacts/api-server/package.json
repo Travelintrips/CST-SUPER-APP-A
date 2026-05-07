@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/express": "^2.1.6",
+    "@clerk/shared": "^4.10.0",
     "@google-cloud/storage": "^7.19.0",
     "@swc/helpers": "^0.5.21",
     "@types/bcryptjs": "^3.0.0",
