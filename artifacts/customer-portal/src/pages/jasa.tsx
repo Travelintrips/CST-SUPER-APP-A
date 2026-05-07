@@ -292,25 +292,44 @@ export default function Jasa() {
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(59,130,246,0.11), 0 1px 4px rgba(59,130,246,0.06), inset 0 1px 0 rgba(255,255,255,0.88)"; }}
           >
             <div className="flex items-start gap-4 flex-1 min-w-0">
-              {/* Icon cluster */}
+              {/* Icon cluster — premium images */}
               <div className="flex gap-2 shrink-0">
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{
-                    background: "rgba(37,99,235,0.13)",
-                    boxShadow: "0 0 0 6px rgba(37,99,235,0.06), 0 2px 8px rgba(37,99,235,0.16)",
-                  }}
+                  className="w-11 h-11 rounded-xl overflow-hidden"
+                  style={{ boxShadow: "0 0 0 3px rgba(37,99,235,0.18), 0 2px 8px rgba(37,99,235,0.22)" }}
                 >
-                  <Ship className="h-5 w-5 text-blue-700" />
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/sea-freight.png`}
+                    alt="Sea Freight"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      const parent = el.parentElement as HTMLElement | null;
+                      if (parent) {
+                        parent.style.background = "rgba(37,99,235,0.13)";
+                        parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-700 m-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>';
+                      }
+                    }}
+                  />
                 </div>
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{
-                    background: "rgba(14,165,233,0.13)",
-                    boxShadow: "0 0 0 6px rgba(14,165,233,0.06), 0 2px 8px rgba(14,165,233,0.16)",
-                  }}
+                  className="w-11 h-11 rounded-xl overflow-hidden"
+                  style={{ boxShadow: "0 0 0 3px rgba(14,165,233,0.18), 0 2px 8px rgba(14,165,233,0.22)" }}
                 >
-                  <Plane className="h-5 w-5 text-sky-600" />
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/air-freight.png`}
+                    alt="Air Freight"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      const parent = el.parentElement as HTMLElement | null;
+                      if (parent) {
+                        parent.style.background = "rgba(14,165,233,0.13)";
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <div className="min-w-0">
