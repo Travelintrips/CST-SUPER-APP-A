@@ -111,6 +111,7 @@ export function AppShell({ children }: AppShellProps) {
         { title: "Master Item", href: "/sales/items", icon: Boxes },
         { title: "Quotations", href: "/sales/quotations", icon: FileText },
         { title: "Sales Orders", href: "/sales/orders", icon: ShoppingBag },
+        { title: "AI Drafts", href: "/sales/ai-drafts", icon: Bot },
         { title: "Customers", href: "/sales/customers", icon: UserCircle },
         { title: "Invoices", href: "/sales/invoices", icon: Receipt },
       ],

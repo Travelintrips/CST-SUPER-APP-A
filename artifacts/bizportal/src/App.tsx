@@ -27,6 +27,7 @@ import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
 import SalesDocumentsListPage from "@/pages/sales/documents-list";
 import SalesDocumentEditorPage from "@/pages/sales/quotation-editor";
+import AiDraftsPage from "@/pages/sales/ai-drafts";
 import CustomersPage from "@/pages/sales/customers";
 import SalesInvoicesPage from "@/pages/sales/invoices";
 import SalesItemsPage from "@/pages/sales/items";
@@ -262,6 +263,9 @@ function Router() {
       </Route>
       <Route path="/sales/customers">
         <ProtectedRoute component={CustomersPage} />
+      </Route>
+      <Route path="/sales/ai-drafts">
+        <ProtectedRoute component={AiDraftsPage} />
       </Route>
       <Route path="/sales/invoices">
         <ProtectedRoute component={SalesInvoicesPage} />

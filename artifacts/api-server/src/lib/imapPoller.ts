@@ -9,6 +9,7 @@ import {
 import { eq } from "drizzle-orm";
 import { objectStorageClient } from "./objectStorage.js";
 import { logger } from "./logger.js";
+import { processEmailForAiIntake } from "./aiOrderIntake.js";
 
 function getImapConfig() {
   const host = process.env.IMAP_HOST;
@@ -130,6 +131,16 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
             .returning();
 
           if (!saved) continue;
+
+          // Async AI intake — fire-and-forget (don't block email sync)
+          if (body && parsed.subject) {
+            processEmailForAiIntake(
+              saved.id,
+              parsed.subject ?? "(No Subject)",
+              body,
+              fromEmail,
+            ).catch((err) => logger.warn({ err, emailId: saved.id }, "AI intake: email processing failed"));
+          }
 
           for (const att of parsed.attachments ?? []) {
             if (!att.content) continue;

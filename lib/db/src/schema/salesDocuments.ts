@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, numeric, timestamp, date, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, date, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
@@ -54,6 +54,9 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   paymentType: text("payment_type"),
   confirmedAt: timestamp("confirmed_at"),
   createdById: text("created_by_id"),
+  aiGenerated: boolean("ai_generated").notNull().default(false),
+  aiSourceCorrespondenceId: integer("ai_source_correspondence_id"),
+  aiSourceWaPhone: text("ai_source_wa_phone"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

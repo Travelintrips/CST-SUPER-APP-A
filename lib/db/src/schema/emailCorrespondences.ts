@@ -12,6 +12,8 @@ export const emailCorrespondencesTable = pgTable("email_correspondences", {
   status: text("status").notNull().default("new"),
   validatedBy: text("validated_by"),
   validatedAt: timestamp("validated_at"),
+  aiProcessed: boolean("ai_processed").notNull().default(false),
+  linkedSalesDocId: integer("linked_sales_doc_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

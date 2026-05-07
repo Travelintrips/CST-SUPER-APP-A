@@ -3,6 +3,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { getAiIntakeSettings, saveAiIntakeSettings } from "../lib/aiOrderIntake.js";
 
 const router = Router();
 
@@ -93,6 +94,29 @@ router.put("/cargo-types", async (req: Request, res: Response) => {
       set: { value: JSON.stringify(cleaned), updatedAt: new Date() },
     });
   return res.json({ ok: true, count: cleaned.length });
+});
+
+// GET /api/settings/ai-intake — get AI intake settings (admin)
+router.get("/ai-intake", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const settings = await getAiIntakeSettings();
+  return res.json(settings);
+});
+
+// PUT /api/settings/ai-intake — update AI intake settings (admin)
+router.put("/ai-intake", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { enabled, replyWaTemplate, replyEmailSubject, replyEmailBody } = req.body ?? {};
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    return res.status(400).json({ message: "enabled harus boolean" });
+  }
+  await saveAiIntakeSettings({
+    enabled: enabled ?? true,
+    replyWaTemplate: typeof replyWaTemplate === "string" ? replyWaTemplate : undefined,
+    replyEmailSubject: typeof replyEmailSubject === "string" ? replyEmailSubject : undefined,
+    replyEmailBody: typeof replyEmailBody === "string" ? replyEmailBody : undefined,
+  });
+  return res.json({ ok: true });
 });
 
 export default router;

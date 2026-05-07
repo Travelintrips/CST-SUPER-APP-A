@@ -50,6 +50,7 @@ import {
   useListJournals,
   useListExpenses,
   useListFreightShipments,
+  useForwardSalesDocumentToVendors,
   getListExpensesQueryKey,
   getGetSalesDocumentQueryKey,
   getListSalesDocumentsQueryKey,
@@ -57,11 +58,12 @@ import {
   getListFreightShipmentsQueryKey,
   getListProductsQueryKey,
   getListCustomersQueryKey,
+  getListAiDraftQuotationsQueryKey,
   type Product,
   type Customer,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -300,6 +302,9 @@ export default function SalesDocumentEditorPage() {
 
   const [scanOpen, setScanOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [forwardOpen, setForwardOpen] = useState(false);
+
+  const forwardMut = useForwardSalesDocumentToVendors();
 
   const handleScannedData = (data: ScannedDocumentData) => {
     if (data.partyName) setCustomerName(data.partyName);
@@ -700,6 +705,16 @@ export default function SalesDocumentEditorPage() {
             {!isNew && doc && (
               <Button variant="outline" onClick={() => setEmailOpen(true)} data-testid="button-send-email">
                 <Mail className="mr-2 h-4 w-4" /> Kirim Email
+              </Button>
+            )}
+            {!isNew && doc?.aiGenerated && doc?.status === "draft" && (
+              <Button
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={() => setForwardOpen(true)}
+                disabled={forwardMut.isPending}
+                data-testid="button-forward-vendors"
+              >
+                <SendHorizonal className="mr-2 h-4 w-4" /> Forward ke Vendor
               </Button>
             )}
             {!isNew && doc?.kind === "order" && doc?.status === "confirmed" && doc?.invoiceStatus === "to_invoice" && (
@@ -1252,6 +1267,69 @@ export default function SalesDocumentEditorPage() {
             <Button variant="outline" onClick={() => setAddCustomerOpen(false)}>Batal</Button>
             <Button onClick={handleSaveNewCustomer} disabled={createCustomerMut.isPending} data-testid="button-save-new-customer">
               Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Forward ke Vendor Dialog */}
+      <Dialog open={forwardOpen} onOpenChange={(o) => !o && setForwardOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5 text-purple-400" />
+              Forward ke Vendor
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1 text-sm">
+            <p>
+              Kirim permintaan penawaran dari draft <strong>{doc?.docNumber}</strong> ke semua vendor
+              aktif yang sesuai via WhatsApp dan email?
+            </p>
+            {doc && (
+              <div className="rounded-md border border-border p-3 space-y-1 bg-muted/30 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Customer</span>
+                  <span className="font-medium">{doc.customerName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Rute</span>
+                  <span>{[doc.origin, doc.destination].filter(Boolean).join(" → ") || "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Moda</span>
+                  <span className="capitalize">{doc.transportMode ?? "—"}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setForwardOpen(false)}>Batal</Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              disabled={forwardMut.isPending}
+              onClick={() => {
+                if (!id) return;
+                forwardMut.mutate(
+                  { id },
+                  {
+                    onSuccess: (data) => {
+                      toast({
+                        title: "Diteruskan ke vendor",
+                        description: `${data.waCount} WA + ${data.emailCount} email ke ${data.vendorCount} vendor.`,
+                      });
+                      setForwardOpen(false);
+                      qc.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
+                      qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
+                    },
+                    onError: () => {
+                      toast({ title: "Gagal", description: "Tidak dapat meneruskan ke vendor.", variant: "destructive" });
+                    },
+                  },
+                );
+              }}
+            >
+              {forwardMut.isPending ? "Mengirim..." : "Ya, Forward ke Vendor"}
             </Button>
           </DialogFooter>
         </DialogContent>

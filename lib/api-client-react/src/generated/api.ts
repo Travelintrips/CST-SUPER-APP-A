@@ -32,6 +32,7 @@ import type {
   AiChatMessage,
   AiChatResponse,
   AiChatSessionWithMessages,
+  AiIntakeSettings,
   ApproveLogisticQuoteBody,
   BalanceSheetReport,
   Correspondence,
@@ -77,6 +78,7 @@ import type {
   ExpenseCategory,
   ExpenseDetail,
   ExpenseSummary,
+  ForwardToVendorsResponse,
   FreightAttachment,
   FreightQuote,
   FreightRfq,
@@ -6269,6 +6271,169 @@ export const useDeleteSalesDocument = <
 };
 
 /**
+ * @summary List AI-generated draft quotations pending review
+ */
+export const getListAiDraftQuotationsUrl = () => {
+  return `/api/sales/ai-drafts`;
+};
+
+export const listAiDraftQuotations = async (
+  options?: RequestInit,
+): Promise<SalesDocument[]> => {
+  return customFetch<SalesDocument[]>(getListAiDraftQuotationsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAiDraftQuotationsQueryKey = () => {
+  return [`/api/sales/ai-drafts`] as const;
+};
+
+export const getListAiDraftQuotationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAiDraftQuotations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAiDraftQuotations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAiDraftQuotationsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAiDraftQuotations>>
+  > = ({ signal }) => listAiDraftQuotations({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAiDraftQuotations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAiDraftQuotationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAiDraftQuotations>>
+>;
+export type ListAiDraftQuotationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List AI-generated draft quotations pending review
+ */
+
+export function useListAiDraftQuotations<
+  TData = Awaited<ReturnType<typeof listAiDraftQuotations>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAiDraftQuotations>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAiDraftQuotationsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Forward a sales document (AI draft) to matching vendors via WA and email
+ */
+export const getForwardSalesDocumentToVendorsUrl = (id: number) => {
+  return `/api/sales/documents/${id}/forward-to-vendors`;
+};
+
+export const forwardSalesDocumentToVendors = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ForwardToVendorsResponse> => {
+  return customFetch<ForwardToVendorsResponse>(
+    getForwardSalesDocumentToVendorsUrl(id),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getForwardSalesDocumentToVendorsMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["forwardSalesDocumentToVendors"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return forwardSalesDocumentToVendors(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ForwardSalesDocumentToVendorsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>
+>;
+
+export type ForwardSalesDocumentToVendorsMutationError =
+  ErrorType<MessageResponse>;
+
+/**
+ * @summary Forward a sales document (AI draft) to matching vendors via WA and email
+ */
+export const useForwardSalesDocumentToVendors = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getForwardSalesDocumentToVendorsMutationOptions(options));
+};
+
+/**
  * @summary Perform a workflow action on a sales document (send, confirm, cancel, invoice, deliver, draft)
  */
 export const getSalesDocumentActionUrl = (id: number) => {
@@ -9922,6 +10087,167 @@ export const useCancelPortalLogisticOrder = <
   TContext
 > => {
   return useMutation(getCancelPortalLogisticOrderMutationOptions(options));
+};
+
+/**
+ * @summary Get AI order intake settings (admin)
+ */
+export const getGetAiIntakeSettingsUrl = () => {
+  return `/api/settings/ai-intake`;
+};
+
+export const getAiIntakeSettings = async (
+  options?: RequestInit,
+): Promise<AiIntakeSettings> => {
+  return customFetch<AiIntakeSettings>(getGetAiIntakeSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAiIntakeSettingsQueryKey = () => {
+  return [`/api/settings/ai-intake`] as const;
+};
+
+export const getGetAiIntakeSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAiIntakeSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAiIntakeSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAiIntakeSettingsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAiIntakeSettings>>
+  > = ({ signal }) => getAiIntakeSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAiIntakeSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAiIntakeSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAiIntakeSettings>>
+>;
+export type GetAiIntakeSettingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get AI order intake settings (admin)
+ */
+
+export function useGetAiIntakeSettings<
+  TData = Awaited<ReturnType<typeof getAiIntakeSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAiIntakeSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAiIntakeSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update AI order intake settings (admin)
+ */
+export const getUpdateAiIntakeSettingsUrl = () => {
+  return `/api/settings/ai-intake`;
+};
+
+export const updateAiIntakeSettings = async (
+  aiIntakeSettings: AiIntakeSettings,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getUpdateAiIntakeSettingsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiIntakeSettings),
+  });
+};
+
+export const getUpdateAiIntakeSettingsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAiIntakeSettings>>,
+    TError,
+    { data: BodyType<AiIntakeSettings> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAiIntakeSettings>>,
+  TError,
+  { data: BodyType<AiIntakeSettings> },
+  TContext
+> => {
+  const mutationKey = ["updateAiIntakeSettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAiIntakeSettings>>,
+    { data: BodyType<AiIntakeSettings> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateAiIntakeSettings(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAiIntakeSettingsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAiIntakeSettings>>
+>;
+export type UpdateAiIntakeSettingsMutationBody = BodyType<AiIntakeSettings>;
+export type UpdateAiIntakeSettingsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update AI order intake settings (admin)
+ */
+export const useUpdateAiIntakeSettings = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAiIntakeSettings>>,
+    TError,
+    { data: BodyType<AiIntakeSettings> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAiIntakeSettings>>,
+  TError,
+  { data: BodyType<AiIntakeSettings> },
+  TContext
+> => {
+  return useMutation(getUpdateAiIntakeSettingsMutationOptions(options));
 };
 
 /**

@@ -4,6 +4,7 @@ import { eq, sql, and, desc } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
+import { processWaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
 
 const router = Router();
 
@@ -646,27 +647,69 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     } else {
       // Unknown sender — check if message looks like a vendor price reply
       const parsedUnknown = parseVendorReply(message);
-      if (adminWa) {
-        const displayName = senderName ?? sender;
-        if (parsedUnknown && (parsedUnknown.rfqNumber || parsedUnknown.orderNumber)) {
-          // Looks like a vendor quote reply — highlight it for admin
-          const refNum = parsedUnknown.rfqNumber ?? parsedUnknown.orderNumber ?? "";
-          const forwardMsg =
-            `⚠️ *BALASAN HARGA DARI NOMOR TIDAK DIKENAL*\n` +
-            `━━━━━━━━━━━━━━━━━━\n` +
-            `Dari    : ${displayName}\n` +
-            `No. HP  : ${sender}\n` +
-            `Ref.    : \`${refNum}\`\n` +
-            `Harga   : *${fmt(parsedUnknown.vendorPrice)}*\n` +
-            (parsedUnknown.estimatedPickup ? `ETA     : ${parsedUnknown.estimatedPickup}` +
-              (parsedUnknown.estimatedDelivery ? ` / ${parsedUnknown.estimatedDelivery}` : "") + `\n` : "") +
-            (parsedUnknown.vendorNotes ? `Catatan : ${parsedUnknown.vendorNotes}\n` : "") +
-            `━━━━━━━━━━━━━━━━━━\n` +
-            `⚠️ _Nomor HP tidak terdaftar sebagai vendor. Periksa data vendor dan input manual di BizPortal._\n\n` +
-            `Pesan asli:\n${message}`;
-          await sendWhatsApp(adminWa, forwardMsg);
-          logger.warn({ sender, refNum, price: parsedUnknown.vendorPrice }, "Unknown sender sent price reply — forwarded to admin");
-        } else {
+      const displayName = senderName ?? sender;
+
+      if (adminWa && parsedUnknown && (parsedUnknown.rfqNumber || parsedUnknown.orderNumber)) {
+        // Looks like a vendor quote reply — highlight it for admin
+        const refNum = parsedUnknown.rfqNumber ?? parsedUnknown.orderNumber ?? "";
+        const forwardMsg =
+          `⚠️ *BALASAN HARGA DARI NOMOR TIDAK DIKENAL*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Dari    : ${displayName}\n` +
+          `No. HP  : ${sender}\n` +
+          `Ref.    : \`${refNum}\`\n` +
+          `Harga   : *${fmt(parsedUnknown.vendorPrice)}*\n` +
+          (parsedUnknown.estimatedPickup ? `ETA     : ${parsedUnknown.estimatedPickup}` +
+            (parsedUnknown.estimatedDelivery ? ` / ${parsedUnknown.estimatedDelivery}` : "") + `\n` : "") +
+          (parsedUnknown.vendorNotes ? `Catatan : ${parsedUnknown.vendorNotes}\n` : "") +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `⚠️ _Nomor HP tidak terdaftar sebagai vendor. Periksa data vendor dan input manual di BizPortal._\n\n` +
+          `Pesan asli:\n${message}`;
+        await sendWhatsApp(adminWa, forwardMsg);
+        logger.warn({ sender, refNum, price: parsedUnknown.vendorPrice }, "Unknown sender sent price reply — forwarded to admin");
+      } else {
+        // Try AI order intake — maybe this is a customer inquiry
+        let aiResult = null;
+        try {
+          aiResult = await processWaForAiIntake(sender, message, senderName);
+        } catch (aiErr) {
+          logger.warn({ aiErr, sender }, "AI intake: WA processing failed");
+        }
+
+        if (aiResult) {
+          // AI created a draft — notify admin and optionally reply to sender
+          logger.info({ sender, docId: aiResult.docId, docNumber: aiResult.docNumber }, "AI intake: WA draft created");
+
+          const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+          const draftUrl = domain ? `https://${domain}/bizportal/sales/ai-drafts` : "";
+
+          if (adminWa) {
+            const adminMsg =
+              `🤖 *DRAFT QUOTATION OTOMATIS (AI)*\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              `Dari    : ${displayName}\n` +
+              `No. HP  : ${sender}\n` +
+              `Draft   : *${aiResult.docNumber}*\n` +
+              `Customer: ${aiResult.customerName}\n` +
+              `Konfiden: ${aiResult.confidence}\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              (draftUrl ? `🔗 Review di BizPortal:\n${draftUrl}\n\n` : "") +
+              `Pesan asli:\n${message}`;
+            sendWhatsApp(adminWa, adminMsg).catch(() => undefined);
+          }
+
+          // Reply to customer with the draft number
+          try {
+            const settings = await getAiIntakeSettings();
+            if (settings.replyWaTemplate) {
+              const replyMsg = buildAiReplyWa(settings.replyWaTemplate, aiResult.docNumber);
+              sendWhatsApp(sender, replyMsg).catch(() => undefined);
+            }
+          } catch (replyErr) {
+            logger.warn({ replyErr }, "AI intake: WA reply failed");
+          }
+        } else if (adminWa) {
+          // Not an order inquiry — forward as generic message
           const forwardMsg =
             `💬 *Pesan Masuk (WA)*\n` +
             `━━━━━━━━━━━━━━━━━━\n` +

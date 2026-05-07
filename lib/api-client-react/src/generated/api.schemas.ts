@@ -534,6 +534,9 @@ export interface SalesDocument {
   amountPaid: number;
   createdAt: string;
   updatedAt: string;
+  aiGenerated?: boolean;
+  aiSourceWaPhone?: string | null;
+  aiSourceCorrespondenceId?: number | null;
 }
 
 export type SalesDocumentDetail = SalesDocument & {
@@ -2283,6 +2286,20 @@ export interface UpdateLogisticQuoteBody {
 
 export interface ApproveLogisticQuoteBody {
   quoteId: number;
+}
+
+export interface ForwardToVendorsResponse {
+  message: string;
+  vendorCount: number;
+  waCount: number;
+  emailCount: number;
+}
+
+export interface AiIntakeSettings {
+  enabled: boolean;
+  replyWaTemplate: string;
+  replyEmailSubject: string;
+  replyEmailBody: string;
 }
 
 export interface AiChatMessage {

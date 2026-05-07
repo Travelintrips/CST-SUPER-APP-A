@@ -1343,6 +1343,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
 
+  /sales/ai-drafts:
+    get:
+      operationId: listAiDraftQuotations
+      tags: [sales]
+      summary: List AI-generated draft quotations pending review
+      responses:
+        "200":
+          description: AI draft quotations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesDocument"
+
+  /sales/documents/{id}/forward-to-vendors:
+    post:
+      operationId: forwardSalesDocumentToVendors
+      tags: [sales]
+      summary: Forward a sales document (AI draft) to matching vendors via WA and email
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Forward result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForwardToVendorsResponse"
+        "404":
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
   /sales/documents/{id}/action:
     post:
       operationId: salesDocumentAction
@@ -2190,6 +2230,36 @@ paths:
           description: Unauthorized
         "404":
           description: Not Found
+
+  /settings/ai-intake:
+    get:
+      operationId: getAiIntakeSettings
+      tags: [sales]
+      summary: Get AI order intake settings (admin)
+      responses:
+        "200":
+          description: AI intake settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiIntakeSettings"
+    put:
+      operationId: updateAiIntakeSettings
+      tags: [sales]
+      summary: Update AI order intake settings (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiIntakeSettings"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
 
   /accounting/settings:
     get:
@@ -3990,6 +4060,14 @@ components:
           type: string
         updatedAt:
           type: string
+        aiGenerated:
+          type: boolean
+        aiSourceWaPhone:
+          type: string
+          nullable: true
+        aiSourceCorrespondenceId:
+          type: integer
+          nullable: true
       required: [id, docNumber, kind, status, invoiceStatus, deliveryStatus, paymentStatus, customerName, totalAmount, taxAmount, grandTotal, amountPaid, createdAt, updatedAt]
 
     SalesDocumentDetail:
@@ -5632,6 +5710,24 @@ components:
       properties:
         quoteId: { type: integer }
       required: [quoteId]
+
+    ForwardToVendorsResponse:
+      type: object
+      properties:
+        message: { type: string }
+        vendorCount: { type: integer }
+        waCount: { type: integer }
+        emailCount: { type: integer }
+      required: [message, vendorCount, waCount, emailCount]
+
+    AiIntakeSettings:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        replyWaTemplate: { type: string }
+        replyEmailSubject: { type: string }
+        replyEmailBody: { type: string }
+      required: [enabled, replyWaTemplate, replyEmailSubject, replyEmailBody]
 
     AiChatMessage:
       type: object

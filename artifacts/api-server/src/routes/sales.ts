@@ -6,6 +6,7 @@ import {
   salesDocumentLinesTable,
   accountingTaxesTable,
   freightShipmentsTable,
+  suppliersTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, count, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -558,6 +559,84 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
   });
 
   res.json({ message: "Email berhasil dikirim", to, filename });
+});
+
+// GET /api/sales/ai-drafts — list AI-generated draft quotations
+router.get("/ai-drafts", async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(salesDocumentsTable)
+    .where(and(eq(salesDocumentsTable.aiGenerated, true), eq(salesDocumentsTable.status, "draft")))
+    .orderBy(desc(salesDocumentsTable.createdAt));
+  return res.json(rows.map((r) => serializeDoc(r)));
+});
+
+// POST /api/sales/documents/:id/forward-to-vendors — forward AI draft to matching vendors via WA/email
+router.post("/documents/:id/forward-to-vendors", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
+  if (!doc) return res.status(404).json({ message: "Document not found" });
+
+  // Find eligible vendors by transportMode or all active logistics vendors
+  const tmToService: Record<string, string[]> = {
+    sea: ["laut", "sea", "fcl", "lcl"],
+    air: ["udara", "air"],
+    land: ["darat", "land", "trucking"],
+    multimodal: ["freight", "forwarding"],
+  };
+  const serviceKeywords = doc.transportMode
+    ? (tmToService[doc.transportMode] ?? [])
+    : ["freight", "laut", "udara", "darat", "forwarding"];
+
+  const allActive = await db
+    .select()
+    .from(suppliersTable)
+    .where(eq(suppliersTable.isActive, true));
+
+  const eligible = allActive.filter((v) => {
+    if (!v.serviceType) return false;
+    const st = v.serviceType.toLowerCase();
+    return serviceKeywords.some((kw) => st.includes(kw));
+  });
+
+  let waCount = 0;
+  let emailCount = 0;
+
+  const routeLabel = [doc.origin, doc.destination].filter(Boolean).join(" → ") || "N/A";
+  const transportLabel = doc.transportMode ?? "Freight";
+
+  for (const vendor of eligible) {
+    if (vendor.phone) {
+      const msg =
+        `📋 *PERMINTAAN PENAWARAN — CST LOGISTICS*\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `Kepada Yth. *${vendor.name}*,\n\n` +
+        `No. Draft   : *${doc.docNumber}*\n` +
+        `Customer    : ${doc.customerName}\n` +
+        `Jenis       : ${transportLabel}\n` +
+        `Rute        : ${routeLabel}\n` +
+        (doc.notes ? `Catatan     :\n${doc.notes}\n` : "") +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `💬 Mohon berikan penawaran harga Anda.\n` +
+        `Terima kasih 🙏`;
+      sendWhatsApp(vendor.phone, msg).catch(() => undefined);
+      waCount++;
+    }
+
+    if (vendor.contactEmail && isSmtpConfigured()) {
+      sendMail({
+        to: vendor.contactEmail,
+        subject: `[Permintaan Penawaran] ${doc.docNumber} — ${transportLabel}`,
+        text: `Kepada ${vendor.name},\n\nMohon berikan penawaran untuk:\nNo. Draft: ${doc.docNumber}\nCustomer: ${doc.customerName}\nJenis: ${transportLabel}\nRute: ${routeLabel}\n${doc.notes ? `\nCatatan:\n${doc.notes}` : ""}\n\nTerima kasih,\nCST Logistics`,
+        html: `<p>Kepada <strong>${vendor.name}</strong>,</p><p>Mohon berikan penawaran untuk:</p><ul><li>No. Draft: <strong>${doc.docNumber}</strong></li><li>Customer: ${doc.customerName}</li><li>Jenis: ${transportLabel}</li><li>Rute: ${routeLabel}</li></ul>${doc.notes ? `<p>Catatan:<br>${doc.notes.replace(/\n/g, "<br>")}</p>` : ""}<p>Terima kasih,<br>CST Logistics</p>`,
+      }).catch(() => undefined);
+      emailCount++;
+    }
+  }
+
+  return res.json({ message: "Forwarded to vendors", vendorCount: eligible.length, waCount, emailCount });
 });
 
 export default router;

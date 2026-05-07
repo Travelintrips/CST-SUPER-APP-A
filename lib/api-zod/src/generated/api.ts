@@ -1606,6 +1606,9 @@ export const ListSalesDocumentsResponseItem = zod.object({
   amountPaid: zod.number(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
+  aiGenerated: zod.boolean().optional(),
+  aiSourceWaPhone: zod.string().nullish(),
+  aiSourceCorrespondenceId: zod.number().nullish(),
 });
 export const ListSalesDocumentsResponse = zod.array(
   ListSalesDocumentsResponseItem,
@@ -1673,6 +1676,9 @@ export const GetSalesDocumentResponse = zod
     amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    aiGenerated: zod.boolean().optional(),
+    aiSourceWaPhone: zod.string().nullish(),
+    aiSourceCorrespondenceId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -1750,6 +1756,9 @@ export const UpdateSalesDocumentResponse = zod
     amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    aiGenerated: zod.boolean().optional(),
+    aiSourceWaPhone: zod.string().nullish(),
+    aiSourceCorrespondenceId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -1777,6 +1786,58 @@ export const DeleteSalesDocumentParams = zod.object({
 
 export const DeleteSalesDocumentResponse = zod.object({
   message: zod.string(),
+});
+
+/**
+ * @summary List AI-generated draft quotations pending review
+ */
+export const ListAiDraftQuotationsResponseItem = zod.object({
+  id: zod.number(),
+  docNumber: zod.string(),
+  kind: zod.enum(["quote", "order"]),
+  status: zod.enum(["draft", "sent", "confirmed", "done", "cancelled"]),
+  invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]),
+  deliveryStatus: zod.enum(["none", "to_deliver", "delivered"]),
+  customerId: zod.number().nullish(),
+  customerName: zod.string(),
+  totalAmount: zod.number(),
+  taxRateId: zod.number().nullish(),
+  taxAmount: zod.number(),
+  grandTotal: zod.number(),
+  origin: zod.string().nullish(),
+  destination: zod.string().nullish(),
+  transportMode: zod.enum(["sea", "air", "land", "multimodal"]).nullish(),
+  etd: zod.string().nullish(),
+  eta: zod.string().nullish(),
+  validUntil: zod.string().nullish(),
+  expectedDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  confirmedAt: zod.string().nullish(),
+  customerAddress: zod.string().nullish(),
+  paymentStatus: zod.enum(["unpaid", "partial", "paid"]),
+  amountPaid: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+  aiGenerated: zod.boolean().optional(),
+  aiSourceWaPhone: zod.string().nullish(),
+  aiSourceCorrespondenceId: zod.number().nullish(),
+});
+export const ListAiDraftQuotationsResponse = zod.array(
+  ListAiDraftQuotationsResponseItem,
+);
+
+/**
+ * @summary Forward a sales document (AI draft) to matching vendors via WA and email
+ */
+export const ForwardSalesDocumentToVendorsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ForwardSalesDocumentToVendorsResponse = zod.object({
+  message: zod.string(),
+  vendorCount: zod.number(),
+  waCount: zod.number(),
+  emailCount: zod.number(),
 });
 
 /**
@@ -1825,6 +1886,9 @@ export const SalesDocumentActionResponse = zod
     amountPaid: zod.number(),
     createdAt: zod.string(),
     updatedAt: zod.string(),
+    aiGenerated: zod.boolean().optional(),
+    aiSourceWaPhone: zod.string().nullish(),
+    aiSourceCorrespondenceId: zod.number().nullish(),
   })
   .and(
     zod.object({
@@ -2927,6 +2991,30 @@ export const CancelPortalLogisticOrderResponse = zod.object({
   shipmentType: zod.string(),
   origin: zod.string(),
   destination: zod.string(),
+});
+
+/**
+ * @summary Get AI order intake settings (admin)
+ */
+export const GetAiIntakeSettingsResponse = zod.object({
+  enabled: zod.boolean(),
+  replyWaTemplate: zod.string(),
+  replyEmailSubject: zod.string(),
+  replyEmailBody: zod.string(),
+});
+
+/**
+ * @summary Update AI order intake settings (admin)
+ */
+export const UpdateAiIntakeSettingsBody = zod.object({
+  enabled: zod.boolean(),
+  replyWaTemplate: zod.string(),
+  replyEmailSubject: zod.string(),
+  replyEmailBody: zod.string(),
+});
+
+export const UpdateAiIntakeSettingsResponse = zod.object({
+  message: zod.string(),
 });
 
 /**

@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
@@ -320,6 +322,146 @@ function CargoTypesCard() {
   );
 }
 
+interface AiIntakeSettingsData {
+  enabled: boolean;
+  replyWaTemplate: string;
+  replyEmailSubject: string;
+  replyEmailBody: string;
+}
+
+function AiIntakeSettingsCard() {
+  const { getToken } = useAuth();
+  const { toast } = useToast();
+  const [data, setData] = useState<AiIntakeSettingsData>({
+    enabled: true,
+    replyWaTemplate: "",
+    replyEmailSubject: "",
+    replyEmailBody: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("/api/settings/ai-intake", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const json = await res.json() as AiIntakeSettingsData;
+          setData(json);
+        }
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, [getToken]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/settings/ai-intake", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      toast({ title: "Pengaturan AI Intake berhasil disimpan" });
+    } catch (err) {
+      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Card className="col-span-1 md:col-span-3 bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <Bot className="h-5 w-5 text-purple-400" />
+          AI Order Intake
+        </CardTitle>
+        <CardDescription>
+          Ketika email atau WhatsApp masuk berisi inquiry order/freight, AI akan otomatis mengekstrak
+          data dan membuat draft penawaran di menu <strong>Sales › AI Drafts</strong> untuk direview admin.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2].map((i) => <div key={i} className="h-10 rounded bg-muted animate-pulse" />)}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div>
+                <p className="font-medium text-sm">Aktifkan AI Intake</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  AI akan memproses setiap email/WA masuk dan membuat draft jika terdeteksi sebagai inquiry order
+                </p>
+              </div>
+              <Switch
+                checked={data.enabled}
+                onCheckedChange={(v) => setData((d) => ({ ...d, enabled: v }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-reply-wa">Template Balasan WhatsApp Otomatis</Label>
+              <Textarea
+                id="ai-reply-wa"
+                value={data.replyWaTemplate}
+                onChange={(e) => setData((d) => ({ ...d, replyWaTemplate: e.target.value }))}
+                rows={4}
+                className="font-mono text-sm"
+                placeholder="Gunakan {docNumber} untuk menyisipkan nomor draft"
+                disabled={!data.enabled}
+              />
+              <p className="text-xs text-muted-foreground">
+                Gunakan <code className="bg-muted px-1 rounded">{"{docNumber}"}</code> untuk menyisipkan nomor draft secara otomatis.
+                Kosongkan untuk tidak mengirim balasan.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-email-subj">Subject Email Balasan Otomatis</Label>
+              <Input
+                id="ai-email-subj"
+                value={data.replyEmailSubject}
+                onChange={(e) => setData((d) => ({ ...d, replyEmailSubject: e.target.value }))}
+                placeholder="[Draft Diterima] {docNumber} — Terima kasih"
+                disabled={!data.enabled}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-email-body">Isi Email Balasan Otomatis</Label>
+              <Textarea
+                id="ai-email-body"
+                value={data.replyEmailBody}
+                onChange={(e) => setData((d) => ({ ...d, replyEmailBody: e.target.value }))}
+                rows={5}
+                className="font-mono text-sm"
+                placeholder="Gunakan {docNumber} untuk menyisipkan nomor draft"
+                disabled={!data.enabled}
+              />
+            </div>
+
+            <div className="flex justify-end pt-1 border-t border-border">
+              <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Save className="h-4 w-4" />}
+                {saving ? "Menyimpan..." : saved ? "Tersimpan!" : "Simpan Pengaturan"}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function WhatsAppNotificationCard() {
   const { getToken } = useAuth();
   const { toast } = useToast();
@@ -537,6 +679,7 @@ export default function SettingsPage() {
           </Card>
           
           {isAdmin && <WhatsAppNotificationCard />}
+          {isAdmin && <AiIntakeSettingsCard />}
           {isAdmin && <CargoTypesCard />}
           {isAdmin && <CalculatorRatesCard />}
 
