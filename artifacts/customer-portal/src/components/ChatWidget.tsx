@@ -145,8 +145,8 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
     }
   }
 
-  const inp = "w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-sky-400 bg-white";
-  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5 block";
+  const inp = "w-full border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 bg-white transition-all duration-200";
+  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block";
 
   return (
     <form onSubmit={handleSubmit} className="bg-white border border-sky-200 rounded-2xl shadow-sm overflow-hidden">
@@ -319,8 +319,8 @@ function ProductOrderForm({ productId, productName, unitPrice, unit, sessionToke
     }
   }
 
-  const inp = "w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-sky-400 bg-white";
-  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5 block";
+  const inp = "w-full border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-100 bg-white transition-all duration-200";
+  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block";
 
   return (
     <form onSubmit={handleSubmit} className="bg-white border border-emerald-200 rounded-2xl shadow-sm overflow-hidden">
@@ -821,20 +821,31 @@ export function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-[9999] flex flex-col items-end gap-2">
+    <div className="fixed inset-x-0 bottom-0 sm:inset-x-auto sm:bottom-5 sm:right-5 z-[9999] flex flex-col items-end pointer-events-none">
       {open && (
         <div
-          className="flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
-          style={{ width: 368, maxHeight: "80vh", height: 560 }}
+          className="pointer-events-auto w-full sm:w-[368px] h-[calc(100dvh_-_72px)] sm:h-[560px] flex flex-col bg-white sm:rounded-2xl overflow-hidden border border-gray-100 transition-all duration-300"
+          style={{
+            boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            WebkitTapHighlightColor: "transparent",
+          }}
         >
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-sky-600 to-blue-700 text-white">
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-              <Bot className="h-4 w-4" />
+          <div
+            className="flex items-center gap-3 px-4 py-3 shrink-0"
+            style={{
+              background: "linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+          >
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <Bot className="h-5 w-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm leading-tight">CST Logistics Assistant</p>
-              <p className="text-xs text-sky-200 flex items-center gap-1">
+              <p className="font-semibold text-sm leading-tight text-white tracking-tight">CST Logistics Assistant</p>
+              <p className="text-xs text-sky-200 flex items-center gap-1 mt-0.5">
                 {isSpeaking ? (
                   <>
                     <span className="w-1.5 h-1.5 rounded-full inline-block bg-purple-300 animate-pulse" />
@@ -852,50 +863,57 @@ export function ChatWidget() {
             <button
               onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
               title={isSpeaking ? "Berhenti bicara" : voiceOutput ? "Matikan suara AI" : "Aktifkan suara AI"}
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors mr-0.5 ${
+              className={`w-11 h-11 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
                 voiceOutput || isSpeaking
                   ? "bg-white/25 text-white"
-                  : "bg-white/10 text-white/50 hover:text-white hover:bg-white/20"
+                  : "bg-white/10 text-white/60 hover:text-white hover:bg-white/20"
               }`}
             >
-              {voiceOutput || isSpeaking ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+              {voiceOutput || isSpeaking ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             </button>
             <button
               onClick={resetChat}
-              className="text-white/60 hover:text-white text-xs mr-1 transition-colors"
+              className="h-11 sm:h-8 px-3 text-white/70 hover:text-white text-xs font-medium transition-all duration-200 rounded-lg hover:bg-white/10"
               title="Reset percakapan"
             >
               Reset
             </button>
-            <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white transition-colors">
+            <button
+              onClick={() => setOpen(false)}
+              className="w-11 h-11 sm:w-8 sm:h-8 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-all duration-200"
+            >
               <X className="h-5 w-5" />
             </button>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-gray-50">
+          <div
+            className="flex-1 overflow-y-auto px-4 sm:px-3 py-4 sm:py-3 space-y-3 bg-gray-50"
+            style={{ WebkitOverflowScrolling: "touch", scrollBehavior: "smooth" }}
+          >
             {messages.map((msg) => {
               const msgTime = formatMsgTime(msg.createdAt);
               return (
                 <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                   {msg.role !== "user" && (
-                    <div className="w-7 h-7 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
                       {msg.role === "admin" ? (
-                        <User className="h-3.5 w-3.5 text-sky-700" />
+                        <User className="h-4 w-4 text-sky-700" />
                       ) : (
-                        <Bot className="h-3.5 w-3.5 text-sky-600" />
+                        <Bot className="h-4 w-4 text-sky-600" />
                       )}
                     </div>
                   )}
-                  <div className={`flex flex-col max-w-[78%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`flex flex-col max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <div
-                      className={`rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                      className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap transition-all duration-200 ${
                         msg.role === "user"
-                          ? "bg-sky-600 text-white rounded-tr-sm"
+                          ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-tr-sm shadow-sm"
                           : msg.role === "admin"
-                          ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
-                          : "bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm"
+                          ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm shadow-sm"
+                          : "bg-white border border-gray-100 text-gray-800 rounded-tl-sm"
                       }`}
+                      style={{ boxShadow: msg.role === "user" ? "0 2px 12px rgba(14,165,233,0.25)" : "0 1px 4px rgba(0,0,0,0.06)" }}
                     >
                       {msg.role === "admin" && (
                         <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
@@ -903,7 +921,7 @@ export function ChatWidget() {
                       {msg.content}
                     </div>
                     {msgTime && (
-                      <p className="text-[10px] text-gray-400 mt-0.5 px-1">{msgTime}</p>
+                      <p className="text-[10px] text-gray-400 mt-1 px-1">{msgTime}</p>
                     )}
                   </div>
                 </div>
@@ -913,10 +931,10 @@ export function ChatWidget() {
             {/* Live streaming bubble — replaces the old bouncing dots */}
             {isStreaming && (
               <div className="flex gap-2 flex-row">
-                <div className="w-7 h-7 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="h-3.5 w-3.5 text-sky-600" />
+                <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="h-4 w-4 text-sky-600" />
                 </div>
-                <div className="max-w-[78%] bg-white border border-gray-100 text-gray-800 shadow-sm rounded-2xl rounded-tl-sm px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap">
+                <div className="max-w-[85%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap" style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                   {streamingContent || (
                     /* Bouncing dots only while waiting for the first token */
                     <span className="flex gap-1 items-center h-5">
@@ -1051,9 +1069,9 @@ export function ChatWidget() {
           </div>
 
           {/* Input */}
-          <div className="px-3 py-2.5 bg-white border-t border-gray-100">
+          <div className="px-3 py-3 sm:py-2.5 bg-white border-t border-gray-100 shrink-0">
             {isListening && (
-              <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium mb-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium mb-2">
                 <span className="flex gap-0.5 items-center">
                   {[0, 1, 2].map((i) => (
                     <span
@@ -1066,20 +1084,20 @@ export function ChatWidget() {
                 Merekam… lepas tombol untuk kirim
               </div>
             )}
-            <div className="flex gap-1.5 items-center">
+            <div className="flex gap-2 items-center">
               <button
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); startListening(); }}
                 onTouchStart={(e) => { e.preventDefault(); startListening(); }}
                 disabled={isStreaming}
                 title="Tahan untuk merekam suara, lepas untuk kirim"
-                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-40 select-none ${
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 select-none ${
                   isListening
                     ? "bg-red-500 text-white scale-110 shadow-lg"
                     : "bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-red-100 active:text-red-500"
                 }`}
               >
-                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                {isListening ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4 w-4" />}
               </button>
               <input
                 ref={inputRef}
@@ -1088,21 +1106,23 @@ export function ChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
                 placeholder={isStreaming ? "Menunggu balasan…" : isListening ? "Bicara sekarang…" : "Ketik atau bicara…"}
-                className="flex-1 text-sm rounded-xl border border-gray-200 px-3 py-2 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 bg-gray-50"
+                className="flex-1 rounded-full border border-gray-200 px-4 py-2.5 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 bg-gray-50 transition-all duration-200"
+                style={{ fontSize: 16, lineHeight: "1.4" }}
                 disabled={isStreaming}
               />
               <button
                 onClick={() => void sendMessage()}
                 disabled={isStreaming || !input.trim()}
-                className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: "linear-gradient(135deg, #0284c7, #1d4ed8)", boxShadow: "0 2px 8px rgba(14,165,233,0.35)" }}
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-4 w-4 text-white" />
               </button>
             </div>
             <button
               type="button"
               onClick={() => setShowForm({ service: "" })}
-              className="w-full mt-1.5 text-[11px] text-sky-600 hover:text-sky-700 flex items-center justify-center gap-1 py-1 rounded-lg hover:bg-sky-50 transition-colors"
+              className="w-full mt-2 text-[11px] text-sky-600 hover:text-sky-700 flex items-center justify-center gap-1 py-1.5 rounded-xl hover:bg-sky-50 transition-all duration-200 min-h-[36px]"
             >
               <ClipboardList className="h-3.5 w-3.5" />
               Buka form order langsung
@@ -1114,8 +1134,8 @@ export function ChatWidget() {
       {/* Bubble button */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative w-14 h-14 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 shadow-lg hover:shadow-xl text-white flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95"
-        style={{ boxShadow: "0 4px 24px rgba(14,165,233,0.45)" }}
+        className="pointer-events-auto relative w-14 h-14 mb-4 mr-4 sm:mb-0 sm:mr-0 rounded-full text-white flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95"
+        style={{ background: "linear-gradient(135deg, #0ea5e9, #1d4ed8)", boxShadow: "0 4px 24px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)" }}
         aria-label="Chat dengan AI assistant"
       >
         {open ? (
