@@ -651,6 +651,8 @@ export function ChatWidget() {
       return true;
     }
   });
+  /** Mutable ref so the polling interval closure always reads the live value */
+  const sfxEnabledRef = useRef(sfxEnabled);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -739,6 +741,12 @@ export function ChatWidget() {
           pendingAdminRef.current = [...pendingAdminRef.current, ...toAdd];
           setUnread((n) => n + toAdd.length);
           playSound("notification");
+          // Native browser notification when tab is hidden
+          const preview =
+            toAdd.length === 1
+              ? `Admin: ${toAdd[0].content.slice(0, 100)}`
+              : `${toAdd.length} pesan baru dari Admin`;
+          fireDesktopNotif(preview);
         }
       } catch {
         /* network errors are silently ignored */
@@ -758,6 +766,11 @@ export function ChatWidget() {
   useEffect(() => {
     if (!isStreaming) saveMessages(messages);
   }, [messages, isStreaming]);
+
+  // Keep sfxEnabledRef in sync so the polling closure always sees the latest value
+  useEffect(() => {
+    sfxEnabledRef.current = sfxEnabled;
+  }, [sfxEnabled]);
 
   // Cancel any inflight stream on unmount; also stop any TTS
   useEffect(() => {
@@ -897,8 +910,33 @@ export function ChatWidget() {
       } catch {
         /* empty */
       }
+      // Request browser notification permission when user enables sfx
+      if (next && "Notification" in window && Notification.permission === "default") {
+        void Notification.requestPermission();
+      }
       return next;
     });
+  }
+
+  /**
+   * Show a native browser notification when the tab is hidden and permission
+   * is granted. Only fired when sfxEnabledRef.current is true so it respects
+   * the same toggle as the audio ding.
+   */
+  function fireDesktopNotif(body: string) {
+    if (!sfxEnabledRef.current) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (!document.hidden) return;
+    try {
+      const n = new Notification("CST Logistics — Pesan baru", {
+        body,
+        icon: "/favicon.ico",
+        tag: "cst-admin-reply",
+      });
+      setTimeout(() => n.close(), 8_000);
+    } catch {
+      /* unsupported or blocked */
+    }
   }
 
   /** Core send logic — accepts text directly so push-to-talk and keyboard can share it */
@@ -1333,7 +1371,9 @@ export function ChatWidget() {
               <button
                 onClick={toggleSfx}
                 title={
-                  sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"
+                  sfxEnabled
+                    ? "Matikan suara & notifikasi"
+                    : "Aktifkan suara & notifikasi"
                 }
                 className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   sfxEnabled
