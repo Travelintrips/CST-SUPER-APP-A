@@ -1,0 +1,22 @@
+import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { logisticOrdersTable } from "./logisticOrders";
+
+export const aiChatSessionsTable = pgTable("ai_chat_sessions", {
+  id: serial("id").primaryKey(),
+  sessionToken: text("session_token").notNull().unique(),
+  logisticOrderId: integer("logistic_order_id").references(
+    () => logisticOrdersTable.id,
+    { onDelete: "set null" }
+  ),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const aiChatMessagesTable = pgTable("ai_chat_messages", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id")
+    .notNull()
+    .references(() => aiChatSessionsTable.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

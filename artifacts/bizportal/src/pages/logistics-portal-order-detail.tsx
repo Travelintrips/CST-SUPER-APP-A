@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -87,6 +87,9 @@ export default function LogisticsPortalOrderDetailPage() {
   });
 
   const [approveDialog, setApproveDialog] = useState<LogisticQuote | null>(null);
+  const [adminReply, setAdminReply] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const { data: order, isLoading } = useGetLogisticOrder(orderId);
   const { data: rfqs = [] } = useListLogisticOrderRfqs(orderId);
@@ -104,6 +107,48 @@ export default function LogisticsPortalOrderDetailPage() {
       return res.json() as Promise<VendorRow[]>;
     },
   });
+
+  interface AiChatMessage { id: number; role: string; content: string; createdAt: string }
+  interface AiChatSession { id: number; sessionToken: string; logisticOrderId: number | null; createdAt: string }
+  interface AiChatData { session: AiChatSession; messages: AiChatMessage[] }
+
+  const isAiOrder = !!(order && (order as { source?: string }).source === "ai_agent");
+  const { data: chatData, refetch: refetchChat } = useQuery<AiChatData>({
+    queryKey: ["ai-chat", orderId],
+    enabled: isAiOrder,
+    queryFn: async () => {
+      const res = await fetch(`/api/ai-agent/session/by-order/${orderId}`);
+      if (!res.ok) throw new Error("Chat tidak ditemukan");
+      return res.json() as Promise<AiChatData>;
+    },
+  });
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatData]);
+
+  async function handleAdminReply() {
+    if (!adminReply.trim() || !chatData?.session.sessionToken) return;
+    setSendingReply(true);
+    try {
+      const res = await fetch(`/api/ai-agent/session/${chatData.session.sessionToken}/admin-reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: adminReply.trim() }),
+      });
+      if (res.ok) {
+        setAdminReply("");
+        await refetchChat();
+        toast({ title: "Balasan terkirim" });
+      } else {
+        toast({ title: "Gagal mengirim balasan", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Gagal mengirim balasan", variant: "destructive" });
+    } finally {
+      setSendingReply(false);
+    }
+  }
 
   const createRfq = useCreateLogisticOrderRfq();
   const createQuote = useCreateLogisticOrderQuote();
@@ -310,7 +355,7 @@ export default function LogisticsPortalOrderDetailPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="detail">
+        <Tabs defaultValue={isAiOrder ? "chat-ai" : "detail"}>
           <TabsList>
             <TabsTrigger value="detail">Detail Order</TabsTrigger>
             <TabsTrigger value="rfq">
@@ -321,6 +366,17 @@ export default function LogisticsPortalOrderDetailPage() {
                 </span>
               )}
             </TabsTrigger>
+            {isAiOrder && (
+              <TabsTrigger value="chat-ai" className="gap-1.5">
+                <MessageCircle className="h-3.5 w-3.5" />
+                Chat AI
+                {chatData && chatData.messages.length > 0 && (
+                  <span className="ml-0.5 inline-flex items-center justify-center rounded-full bg-violet-600 text-white text-[10px] w-4 h-4">
+                    {chatData.messages.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* ── Tab 1: Order Detail ── */}
@@ -548,6 +604,83 @@ export default function LogisticsPortalOrderDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          {/* ── Tab 3: Chat AI ── */}
+          {isAiOrder && (
+            <TabsContent value="chat-ai" className="mt-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-violet-600" />
+                    Riwayat Percakapan AI
+                    <span className="text-xs font-normal text-muted-foreground">— order dibuat via chatbot CST Logistics</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Messages */}
+                  <div className="border rounded-xl bg-gray-50 p-3 space-y-3 max-h-[420px] overflow-y-auto">
+                    {!chatData ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Memuat riwayat chat...</p>
+                    ) : chatData.messages.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Tidak ada pesan</p>
+                    ) : (
+                      chatData.messages.map((msg) => (
+                        <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5 ${
+                            msg.role === "user" ? "bg-sky-100 text-sky-700" :
+                            msg.role === "admin" ? "bg-amber-100 text-amber-700" :
+                            "bg-violet-100 text-violet-700"
+                          }`}>
+                            {msg.role === "user" ? "C" : msg.role === "admin" ? "A" : "AI"}
+                          </div>
+                          <div className={`max-w-[75%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                            msg.role === "user"
+                              ? "bg-sky-600 text-white rounded-tr-sm"
+                              : msg.role === "admin"
+                              ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
+                              : "bg-white border border-gray-200 text-gray-800 shadow-sm rounded-tl-sm"
+                          }`}>
+                            {msg.role === "admin" && (
+                              <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin (via WA)</p>
+                            )}
+                            {msg.content}
+                            <p className="text-[10px] mt-1 opacity-50">
+                              {new Date(msg.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Admin Reply */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Balas ke Pelanggan (via WhatsApp)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Tulis balasan untuk pelanggan..."
+                        value={adminReply}
+                        onChange={(e) => setAdminReply(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleAdminReply(); } }}
+                        disabled={sendingReply}
+                      />
+                      <Button
+                        onClick={() => void handleAdminReply()}
+                        disabled={sendingReply || !adminReply.trim()}
+                        className="gap-2 shrink-0"
+                      >
+                        <Send className="h-4 w-4" />
+                        {sendingReply ? "Mengirim..." : "Kirim WA"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Balasan akan dikirim via WhatsApp ke nomor pelanggan ({order?.phone ?? "—"})
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 

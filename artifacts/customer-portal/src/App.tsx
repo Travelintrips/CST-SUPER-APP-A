@@ -13,6 +13,7 @@ import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { BackToTopButton } from "@/components/BackToTopButton";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { LanguageProvider } from "@/i18n/LanguageContext";
+import { ChatWidget } from "@/components/ChatWidget";
 
 // Portal pages
 import Home from "@/pages/home";
@@ -90,6 +91,7 @@ function AppShell() {
       <AdminToolbar />
       <WhatsAppButton />
       <BackToTopButton />
+      <ChatWidget />
       <ScrollToTop />
     </div>
   );

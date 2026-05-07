@@ -32,6 +32,8 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   namaPenerima: text("nama_penerima"),
   nomorPenerima: text("nomor_penerima"),
   jamOrder: text("jam_order"),
+  source: text("source").default("manual").notNull(),
+  aiSessionToken: text("ai_session_token"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
   tax: numeric("tax", { precision: 14, scale: 2 }).notNull().default("0"),
   grandTotal: numeric("grand_total", { precision: 14, scale: 2 }).notNull().default("0"),

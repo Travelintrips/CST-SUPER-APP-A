@@ -2122,6 +2122,8 @@ export interface LogisticOrder {
   namaPenerima?: string | null;
   nomorPenerima?: string | null;
   jamOrder?: string | null;
+  source: string;
+  aiSessionToken?: string | null;
   subtotal: number;
   tax: number;
   grandTotal: number;

@@ -22,3 +22,4 @@ export * from "./portalCustomers";
 export * from "./logisticOrders";
 export * from "./drivers";
 export * from "./driverJobs";
+export * from "./aiChat";

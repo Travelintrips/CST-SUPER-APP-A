@@ -5338,6 +5338,8 @@ components:
         namaPenerima: { type: string, nullable: true }
         nomorPenerima: { type: string, nullable: true }
         jamOrder: { type: string, nullable: true }
+        source: { type: string }
+        aiSessionToken: { type: string, nullable: true }
         subtotal: { type: number }
         tax: { type: number }
         grandTotal: { type: number }
@@ -5350,7 +5352,7 @@ components:
         finalSellingPrice: { type: number, nullable: true }
         quotationSentAt: { type: string, nullable: true }
         createdAt: { type: string }
-      required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, subtotal, tax, grandTotal, status, createdAt]
+      required: [id, orderNumber, companyName, customerName, email, phone, shipmentType, origin, destination, source, subtotal, tax, grandTotal, status, createdAt]
 
     LogisticOrderItem:
       type: object

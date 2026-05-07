@@ -23,6 +23,7 @@ import { logisticRfqRouter } from "./logisticRfq";
 import settingsRouter from "./settings";
 import { driverRouter, driversAdminRouter } from "./driver";
 import webhooksRouter from "./webhooks";
+import { aiAgentRouter } from "./aiAgent";
 
 const router: IRouter = Router();
 
@@ -51,5 +52,6 @@ router.use("/driver", driverRouter);
 router.use("/drivers", driversAdminRouter);
 router.use(storageRouter);
 router.use(webhooksRouter);
+router.use("/ai-agent", aiAgentRouter);
 
 export default router;

@@ -243,7 +243,14 @@ export default function LogisticsPortalOrdersPage() {
                 ) : filtered.map((o) => (
                   <TableRow key={o.id}>
                     <TableCell>
-                      <span className="font-mono text-xs font-medium">{o.orderNumber}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-xs font-medium">{o.orderNumber}</span>
+                        {(o as { source?: string }).source === "ai_agent" && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
+                            🤖 Via AI
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
