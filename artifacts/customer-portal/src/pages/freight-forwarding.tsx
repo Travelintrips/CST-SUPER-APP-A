@@ -620,15 +620,30 @@ export default function FreightForwarding() {
 
         {/* ── Step 2: Mode ─────────────────────────────────────── */}
         {step === 2 && (
-          <div className="space-y-5">
+          <div className="space-y-6">
+            {/* Header */}
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Badge variant="secondary">{direction}</Badge>
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
+                  style={{ background: "rgba(11,92,173,0.10)", color: "#0B5CAD", letterSpacing: "0.04em" }}
+                >
+                  {direction}
+                </span>
               </div>
-              <h2 className="text-[22px] font-bold text-slate-900 tracking-tight">Pilih Moda Pengiriman</h2>
-              <p className="text-sm text-slate-500 mt-1.5">Pilih moda transportasi yang sesuai</p>
+              <h2
+                className="font-bold text-slate-900 tracking-tight"
+                style={{ fontSize: "clamp(20px,4vw,26px)", lineHeight: 1.25 }}
+              >
+                Pilih Moda Pengiriman
+              </h2>
+              <p className="text-slate-400 mt-1.5" style={{ fontSize: "14px" }}>
+                Pilih moda transportasi yang paling sesuai dengan kebutuhan Anda
+              </p>
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
+
+            {/* Mode cards */}
+            <div className="grid sm:grid-cols-2 gap-5">
               {MODES.map((m) => {
                 const logoKey = `ff_mode_logo_${m.label}`;
                 const rawLogoPath = content[logoKey];
@@ -636,73 +651,134 @@ export default function FreightForwarding() {
                   ? (rawLogoPath.startsWith("/") ? (resolveImageUrl(rawLogoPath) ?? rawLogoPath) : rawLogoPath)
                   : null;
                 const isUploading = uploadingLogo === `mode_${m.label}`;
+                const isSelected = mode === m.label;
                 return (
-                  <div key={m.label} className="relative">
+                  <div key={m.label} className="relative group">
                     <button
                       onClick={() => { setMode(m.label); if (m.label !== "Sea") setSeaType(null); if (!editMode) setStep(3); }}
-                      className={`w-full rounded-2xl border-2 text-left transition-all duration-200 overflow-hidden ${
-                        mode === m.label
-                          ? "border-[#0B5CAD] shadow-xl scale-[1.015]"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-lg"
-                      }`}
+                      style={{
+                        width: "100%",
+                        borderRadius: "20px",
+                        border: isSelected ? "2.5px solid #0B5CAD" : "2px solid #E8EDF4",
+                        background: isSelected
+                          ? "linear-gradient(160deg,#EFF6FF 0%,#F0F7FF 100%)"
+                          : "#FFFFFF",
+                        boxShadow: isSelected
+                          ? "0 8px 32px rgba(11,92,173,0.18), 0 2px 8px rgba(11,92,173,0.10)"
+                          : "0 2px 12px rgba(15,23,42,0.06)",
+                        transform: isSelected ? "translateY(-2px) scale(1.012)" : "translateY(0) scale(1)",
+                        transition: "all 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+                        overflow: "hidden",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        display: "block",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 28px rgba(15,23,42,0.12)";
+                          (e.currentTarget as HTMLElement).style.borderColor = "#C8D9EE";
+                          (e.currentTarget as HTMLElement).style.transform = "translateY(-3px) scale(1.008)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 12px rgba(15,23,42,0.06)";
+                          (e.currentTarget as HTMLElement).style.borderColor = "#E8EDF4";
+                          (e.currentTarget as HTMLElement).style.transform = "translateY(0) scale(1)";
+                        }
+                      }}
                     >
-                      {/* Premium image banner */}
-                      <div className="relative w-full h-36 overflow-hidden">
+                      {/* Image area */}
+                      <div className="relative w-full overflow-hidden" style={{ height: "200px" }}>
                         <img
                           src={logoSrc ?? m.defaultImg}
                           alt={m.desc}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          className="w-full h-full object-cover"
+                          style={{ transition: "transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94)" }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLImageElement).style.transform = "scale(1.06)"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLImageElement).style.transform = "scale(1)"; }}
                           onError={(e) => {
                             const el = e.currentTarget as HTMLImageElement;
                             el.style.display = "none";
-                            const next = el.nextElementSibling as HTMLElement | null;
-                            if (next) next.style.display = "flex";
+                            const fb = el.nextElementSibling as HTMLElement | null;
+                            if (fb) fb.style.display = "flex";
                           }}
                         />
-                        {/* Icon fallback (hidden by default, shown on img error) */}
+                        {/* Icon fallback */}
                         <div className="absolute inset-0 items-center justify-center bg-slate-100" style={{ display: "none" }}>
                           {m.icon}
                         </div>
-                        {/* Gradient overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
-                        {/* Label badge */}
-                        <div className="absolute bottom-3 left-3 flex items-center gap-2">
-                          <span className="bg-white/20 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full border border-white/30">
+                        {/* Gradient overlay — richer at bottom */}
+                        <div
+                          className="absolute inset-0 pointer-events-none"
+                          style={{ background: "linear-gradient(to top, rgba(5,15,35,0.72) 0%, rgba(5,15,35,0.18) 45%, transparent 100%)" }}
+                        />
+                        {/* Mode title on image */}
+                        <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 pt-8">
+                          <p
+                            className="text-white font-bold"
+                            style={{ fontSize: "18px", letterSpacing: "-0.01em", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}
+                          >
                             {m.desc}
-                          </span>
+                          </p>
                         </div>
-                        {mode === m.label && (
-                          <div className="absolute top-3 right-3 w-7 h-7 rounded-full bg-[#0B5CAD] flex items-center justify-center shadow-lg">
-                            <Check className="h-4 w-4 text-white" />
+                        {/* Selected checkmark */}
+                        {isSelected && (
+                          <div
+                            className="absolute top-3.5 right-3.5 flex items-center justify-center"
+                            style={{
+                              width: "28px", height: "28px", borderRadius: "50%",
+                              background: "#0B5CAD",
+                              boxShadow: "0 2px 8px rgba(11,92,173,0.5)",
+                            }}
+                          >
+                            <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
                           </div>
                         )}
+                        {/* Edit upload overlay */}
                         {editMode && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); logoFileRefs.current[`mode_${m.label}`]?.click(); }}
                             className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
-                            title="Upload gambar"
                           >
                             {isUploading ? <Loader2 className="h-6 w-6 text-white animate-spin" /> : <ImagePlus className="h-6 w-6 text-white" />}
-                            <span className="text-white text-xs mt-1">Upload gambar</span>
+                            <span className="text-white text-xs mt-1.5">Upload gambar</span>
                           </button>
                         )}
                       </div>
-                      {/* Text content */}
-                      <div className="p-4 flex items-center justify-between">
-                        <p className="text-sm text-slate-500 leading-relaxed">{m.detail}</p>
+
+                      {/* Description area */}
+                      <div className="px-4 py-4">
+                        <p
+                          className="leading-relaxed"
+                          style={{ fontSize: "13.5px", color: "#64748B", fontWeight: 400 }}
+                        >
+                          {m.detail}
+                        </p>
+                        {/* Select indicator */}
+                        <div
+                          className="flex items-center gap-1.5 mt-3"
+                          style={{ opacity: isSelected ? 1 : 0, transition: "opacity 0.2s" }}
+                        >
+                          <div
+                            className="rounded-full"
+                            style={{ width: "6px", height: "6px", background: "#0B5CAD" }}
+                          />
+                          <span style={{ fontSize: "12px", color: "#0B5CAD", fontWeight: 600 }}>Dipilih</span>
+                        </div>
                         {editMode && logoSrc && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); updateField(logoKey, ""); }}
-                            className="text-xs text-muted-foreground hover:text-red-500 ml-3 shrink-0"
-                            title="Hapus gambar CMS"
+                            className="text-xs text-slate-400 hover:text-red-500 mt-2"
                           >
-                            Hapus
+                            Hapus gambar
                           </button>
                         )}
                       </div>
                     </button>
+
                     <input
                       ref={(el) => { logoFileRefs.current[`mode_${m.label}`] = el; }}
                       type="file"
@@ -716,7 +792,7 @@ export default function FreightForwarding() {
                     />
                     {editMode && (
                       <div className="absolute top-2 right-2 bg-primary/90 text-primary-foreground text-[10px] font-medium px-1.5 py-0.5 rounded pointer-events-none">
-                        Edit: hover icon untuk upload logo
+                        Edit: hover untuk upload
                       </div>
                     )}
                   </div>
