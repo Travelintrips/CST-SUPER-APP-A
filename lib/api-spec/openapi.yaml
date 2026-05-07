@@ -5805,7 +5805,7 @@ components:
           type: string
           enum: [all, by-service-type]
           description: "all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen"
-      required: [enabled, replyWaTemplate, replyEmailSubject, replyEmailBody, vendorFilterMode]
+      required: [enabled, replyWaTemplate, replyEmailSubject, replyEmailBody]
 
     AiChatMessage:
       type: object

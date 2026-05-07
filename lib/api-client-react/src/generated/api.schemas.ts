@@ -2363,7 +2363,7 @@ export interface AiIntakeSettings {
   replyEmailSubject: string;
   replyEmailBody: string;
   /** all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen */
-  vendorFilterMode: AiIntakeSettingsVendorFilterMode;
+  vendorFilterMode?: AiIntakeSettingsVendorFilterMode;
 }
 
 export interface AiChatMessage {

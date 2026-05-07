@@ -3042,6 +3042,7 @@ export const GetAiIntakeSettingsResponse = zod.object({
   replyEmailBody: zod.string(),
   vendorFilterMode: zod
     .enum(["all", "by-service-type"])
+    .optional()
     .describe(
       "all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen",
     ),
@@ -3057,6 +3058,7 @@ export const UpdateAiIntakeSettingsBody = zod.object({
   replyEmailBody: zod.string(),
   vendorFilterMode: zod
     .enum(["all", "by-service-type"])
+    .optional()
     .describe(
       "all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen",
     ),
