@@ -821,14 +821,32 @@ export function ChatWidget() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 sm:inset-x-auto sm:bottom-5 sm:right-5 z-[9999] flex flex-col items-end pointer-events-none">
+    <>
+      {/* Backdrop */}
       {open && (
         <div
-          className="pointer-events-auto w-full sm:w-[368px] h-[calc(100dvh_-_72px)] sm:h-[560px] flex flex-col bg-white sm:rounded-2xl overflow-hidden border border-gray-100 transition-all duration-300"
+          className="fixed inset-0 z-[9998] bg-black/50 transition-opacity duration-300"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* Chat panel — centered modal */}
+      {open && (
+        <div
+          className="fixed z-[9999] flex flex-col bg-white overflow-hidden border border-gray-100"
           style={{
-            boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: "90%",
+            maxWidth: 450,
+            height: "75vh",
+            maxHeight: 600,
+            borderRadius: 20,
+            boxShadow: "0 10px 40px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1)",
             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
             WebkitTapHighlightColor: "transparent",
+            animation: "chatModalIn 0.3s ease-out",
           }}
         >
           {/* Header */}
@@ -1131,10 +1149,10 @@ export function ChatWidget() {
         </div>
       )}
 
-      {/* Bubble button */}
+      {/* Bubble button — fixed at bottom-right */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="pointer-events-auto relative w-14 h-14 mb-4 mr-4 sm:mb-0 sm:mr-0 rounded-full text-white flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95"
+        className="fixed bottom-5 right-5 z-[9999] w-14 h-14 rounded-full text-white flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95"
         style={{ background: "linear-gradient(135deg, #0ea5e9, #1d4ed8)", boxShadow: "0 4px 24px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)" }}
         aria-label="Chat dengan AI assistant"
       >
@@ -1151,6 +1169,6 @@ export function ChatWidget() {
           </>
         )}
       </button>
-    </div>
+    </>
   );
 }
