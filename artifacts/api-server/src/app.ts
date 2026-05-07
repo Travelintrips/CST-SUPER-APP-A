@@ -2,7 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
-import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
+import { CLERK_PROXY_PATH, clerkProxyMiddleware, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
@@ -50,7 +50,16 @@ app.use(cors({ credentials: true, origin: true }));
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
-app.use(clerkMiddleware());
+// Dynamically pass proxyUrl so clerkMiddleware can validate JWT tokens
+// that were issued through the Clerk proxy in production.
+app.use((req, res, next) => {
+  const host = getClerkProxyHost(req);
+  const protocol = (Array.isArray(req.headers["x-forwarded-proto"])
+    ? req.headers["x-forwarded-proto"][0]
+    : req.headers["x-forwarded-proto"])?.split(",")[0]?.trim() || "https";
+  const proxyUrl = host ? `${protocol}://${host}${CLERK_PROXY_PATH}` : undefined;
+  clerkMiddleware({ proxyUrl })(req, res, next);
+});
 
 app.use("/api", router);
 
