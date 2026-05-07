@@ -116,7 +116,7 @@ router.put("/ai-intake", async (req: Request, res: Response) => {
     replyEmailSubject: typeof replyEmailSubject === "string" ? replyEmailSubject : undefined,
     replyEmailBody: typeof replyEmailBody === "string" ? replyEmailBody : undefined,
   });
-  return res.json({ ok: true });
+  return res.json({ message: "Pengaturan AI intake disimpan." });
 });
 
 export default router;

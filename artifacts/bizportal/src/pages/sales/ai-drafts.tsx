@@ -198,10 +198,9 @@ export default function AiDraftsPage() {
                   <TableRow>
                     <TableHead>No. Draft</TableHead>
                     <TableHead>Sumber</TableHead>
+                    <TableHead>Pengirim</TableHead>
                     <TableHead>Customer</TableHead>
-                    <TableHead>Rute</TableHead>
-                    <TableHead>Moda</TableHead>
-                    <TableHead className="text-right">Total Est.</TableHead>
+                    <TableHead>Rute &amp; Moda</TableHead>
                     <TableHead>Masuk</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
@@ -221,15 +220,19 @@ export default function AiDraftsPage() {
                       <TableCell>
                         <SourceBadge doc={doc} />
                       </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">
+                        {doc.aiSourceWaPhone
+                          ? <span title={doc.aiSourceWaPhone}>{doc.aiSourceWaPhone}</span>
+                          : doc.aiSourceCorrespondenceId
+                            ? <span className="italic">Email #{doc.aiSourceCorrespondenceId}</span>
+                            : "—"}
+                      </TableCell>
                       <TableCell className="font-medium">{doc.customerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {[doc.origin, doc.destination].filter(Boolean).join(" → ") || "—"}
-                      </TableCell>
-                      <TableCell className="text-sm capitalize text-muted-foreground">
-                        {doc.transportMode ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {idr(doc.grandTotal)}
+                        <div>{[doc.origin, doc.destination].filter(Boolean).join(" → ") || "—"}</div>
+                        {doc.transportMode && (
+                          <div className="text-xs capitalize text-muted-foreground/70">{doc.transportMode}</div>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {new Date(doc.createdAt).toLocaleDateString("id-ID", {

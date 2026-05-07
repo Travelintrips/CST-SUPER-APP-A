@@ -6,7 +6,7 @@ import {
   emailCorrespondencesTable,
   portalContentTable,
 } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, gt } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { sendMail, isSmtpConfigured } from "./mailer.js";
 
@@ -282,6 +282,23 @@ export async function processWaForAiIntake(
   senderName?: string | null,
 ): Promise<AiIntakeResult | null> {
   if (!(await isAiIntakeEnabled())) return null;
+
+  // Idempotency: skip if a draft from same phone was created in the last 10 minutes
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const [recent] = await db
+    .select({ id: salesDocumentsTable.id })
+    .from(salesDocumentsTable)
+    .where(
+      and(
+        eq(salesDocumentsTable.aiSourceWaPhone, phone),
+        gt(salesDocumentsTable.createdAt, tenMinutesAgo),
+      ),
+    )
+    .limit(1);
+  if (recent) {
+    logger.info({ phone, existingDocId: recent.id }, "AI intake: duplicate WA skipped (recent draft exists)");
+    return null;
+  }
 
   const content = `From: ${senderName ?? phone}\nPhone: ${phone}\n\n${message}`;
   const extracted = await extractOrderFromText(content);
