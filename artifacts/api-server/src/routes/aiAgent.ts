@@ -216,11 +216,17 @@ async function handleToolCall(
   return JSON.stringify({ error: "Unknown tool" });
 }
 
-async function runAiChat(
+/** Stream AI chat to an SSE response. Handles tool-call loops internally. */
+async function streamAiChat(
   sessionId: number,
   sessionToken: string,
   userMessage: string,
-): Promise<{ assistantMessage: string; orderCreated?: { orderNumber: string; orderId: number } }> {
+  res: Response,
+): Promise<void> {
+  function sendEvent(data: Record<string, unknown>) {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  }
+
   const existingMessages = await db
     .select()
     .from(aiChatMessagesTable)
@@ -235,7 +241,7 @@ async function runAiChat(
 
   const visibleMessages = existingMessages.filter((m) => m.role === "user" || m.role === "assistant");
 
-  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+  const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: SYSTEM_PROMPT },
     ...visibleMessages.map((m) => ({
       role: m.role as "user" | "assistant",
@@ -244,63 +250,107 @@ async function runAiChat(
     { role: "user", content: userMessage },
   ];
 
-  let orderCreated: { orderNumber: string; orderId: number } | undefined;
-
-  let response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages,
-    tools: TOOLS,
-    tool_choice: "auto",
-    max_completion_tokens: 1000,
-  });
-
-  let assistantMsg = response.choices[0]?.message;
+  let finalContent = "";
   let loopCount = 0;
 
-  while (assistantMsg?.tool_calls && assistantMsg.tool_calls.length > 0 && loopCount < 5) {
+  while (loopCount < 5) {
     loopCount++;
-    messages.push({ role: "assistant", content: assistantMsg.content ?? null, tool_calls: assistantMsg.tool_calls });
 
+    const stream = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: chatMessages,
+      tools: TOOLS,
+      tool_choice: "auto",
+      max_completion_tokens: 1000,
+      stream: true,
+    });
+
+    // Accumulate tool call deltas by index
+    const toolCallMap: Record<number, { id: string; name: string; arguments: string }> = {};
+    let contentBuffer = "";
+
+    for await (const chunk of stream) {
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+
+      const delta = choice.delta;
+
+      // Text tokens — forward immediately
+      if (delta.content) {
+        contentBuffer += delta.content;
+        finalContent += delta.content;
+        sendEvent({ type: "token", text: delta.content });
+      }
+
+      // Tool call deltas — accumulate by index
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (!toolCallMap[tc.index]) {
+            toolCallMap[tc.index] = { id: "", name: "", arguments: "" };
+          }
+          if (tc.id) toolCallMap[tc.index].id = tc.id;
+          if (tc.function?.name) toolCallMap[tc.index].name += tc.function.name;
+          if (tc.function?.arguments) toolCallMap[tc.index].arguments += tc.function.arguments;
+        }
+      }
+    }
+
+    const pendingToolCalls = Object.values(toolCallMap).filter((tc) => tc.name);
+
+    if (pendingToolCalls.length === 0) {
+      // Final text response — no more tools needed
+      break;
+    }
+
+    // Append assistant turn with tool calls to message history
+    chatMessages.push({
+      role: "assistant",
+      content: contentBuffer || null,
+      tool_calls: pendingToolCalls.map((tc) => ({
+        id: tc.id,
+        type: "function" as const,
+        function: { name: tc.name, arguments: tc.arguments },
+      })),
+    });
+
+    // Execute each tool call
     const toolResults: OpenAI.Chat.ChatCompletionMessageParam[] = [];
-    for (const tc of assistantMsg.tool_calls) {
+    for (const tc of pendingToolCalls) {
       let args: Record<string, unknown> = {};
-      try { args = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* empty */ }
-      const result = await handleToolCall(tc.function.name, args, sessionToken, sessionId);
+      try { args = JSON.parse(tc.arguments) as Record<string, unknown>; } catch { /* empty */ }
 
-      if (tc.function.name === "create_logistic_order") {
+      const result = await handleToolCall(tc.name, args, sessionToken, sessionId);
+
+      if (tc.name === "create_logistic_order") {
         try {
           const parsed = JSON.parse(result) as { success?: boolean; orderNumber?: string; orderId?: number };
           if (parsed.success && parsed.orderNumber && parsed.orderId) {
-            orderCreated = { orderNumber: parsed.orderNumber, orderId: parsed.orderId };
+            sendEvent({ type: "order", orderNumber: parsed.orderNumber, orderId: parsed.orderId });
           }
         } catch { /* empty */ }
       }
 
       toolResults.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
-    messages.push(...toolResults);
+    chatMessages.push(...toolResults);
 
-    response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages,
-      tools: TOOLS,
-      tool_choice: "auto",
-      max_completion_tokens: 1000,
-    });
-    assistantMsg = response.choices[0]?.message;
+    // Reset finalContent so we only persist the final text turn
+    finalContent = "";
   }
 
-  const finalContent = assistantMsg?.content ?? "Maaf, terjadi kesalahan. Silakan coba lagi.";
+  // Persist the final assistant reply
+  if (finalContent) {
+    await db.insert(aiChatMessagesTable).values({
+      sessionId,
+      role: "assistant",
+      content: finalContent,
+    });
+  }
 
-  await db.insert(aiChatMessagesTable).values({
-    sessionId,
-    role: "assistant",
-    content: finalContent,
-  });
-
-  return { assistantMessage: finalContent, orderCreated };
+  sendEvent({ type: "done" });
 }
 
+// ── POST /api/ai-agent/chat  (SSE streaming) ──────────────────────────────────
 aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
   const { sessionToken: incomingToken, message } = req.body as {
     sessionToken?: string;
@@ -309,6 +359,17 @@ aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
 
   if (!message || typeof message !== "string" || !message.trim()) {
     return res.status(400).json({ message: "Pesan tidak boleh kosong" });
+  }
+
+  // Set SSE headers before any async work so the client can start reading
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  function sendEvent(data: Record<string, unknown>) {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
   }
 
   try {
@@ -331,23 +392,20 @@ aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
       session = created;
     }
 
-    const { assistantMessage, orderCreated } = await runAiChat(
-      session.id,
-      session.sessionToken,
-      message.trim(),
-    );
+    // Send session token early so the client can persist it
+    sendEvent({ type: "session", sessionToken: session.sessionToken });
 
-    return res.json({
-      sessionToken: session.sessionToken,
-      message: assistantMessage,
-      orderCreated: orderCreated ?? null,
-    });
+    await streamAiChat(session.id, session.sessionToken, message.trim(), res);
+
+    res.end();
   } catch (err) {
-    logger.error({ err }, "AI agent chat error");
-    return res.status(500).json({ message: "Terjadi kesalahan pada AI. Silakan coba lagi." });
+    logger.error({ err }, "AI agent stream error");
+    sendEvent({ type: "error", message: "Terjadi kesalahan pada AI. Silakan coba lagi." });
+    res.end();
   }
 });
 
+// ── GET /api/ai-agent/session/:token ─────────────────────────────────────────
 aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
 
@@ -380,6 +438,7 @@ aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
   });
 });
 
+// ── GET /api/ai-agent/session/by-order/:orderId ───────────────────────────────
 aiAgentRouter.get("/session/by-order/:orderId", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
@@ -415,6 +474,7 @@ aiAgentRouter.get("/session/by-order/:orderId", async (req: Request, res: Respon
   });
 });
 
+// ── POST /api/ai-agent/session/:token/admin-reply ────────────────────────────
 aiAgentRouter.post("/session/:token/admin-reply", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 

@@ -13,6 +13,14 @@ interface OrderCreated {
   orderId: number;
 }
 
+/** SSE events sent by /api/ai-agent/chat */
+type SseEvent =
+  | { type: "session"; sessionToken: string }
+  | { type: "token"; text: string }
+  | { type: "order"; orderNumber: string; orderId: number }
+  | { type: "done" }
+  | { type: "error"; message: string };
+
 const SESSION_KEY = "cst_ai_chat_session";
 const MESSAGES_KEY = "cst_ai_chat_messages";
 
@@ -53,12 +61,19 @@ export function ChatWidget() {
     return saved.length > 0 ? saved : [GREETING];
   });
   const [sessionToken, setSessionToken] = useState<string | null>(loadSession);
-  const [loading, setLoading] = useState(false);
+  /** Content being streamed right now (null = not streaming) */
+  const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [orderCreated, setOrderCreated] = useState<OrderCreated | null>(null);
   const [unread, setUnread] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Keep a mutable ref to accumulate text tokens without extra re-renders */
+  const streamBufferRef = useRef<string>("");
+  /** AbortController so we can cancel inflight stream on unmount */
+  const abortRef = useRef<AbortController | null>(null);
+
+  const isStreaming = streamingContent !== null;
 
   useEffect(() => {
     if (open) {
@@ -68,56 +83,133 @@ export function ChatWidget() {
   }, [open]);
 
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-    saveMessages(messages);
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, streamingContent]);
+
+  useEffect(() => {
+    if (!isStreaming) saveMessages(messages);
+  }, [messages, isStreaming]);
+
+  // Cancel any inflight stream on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
 
   async function sendMessage() {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || isStreaming) return;
     setInput("");
 
     const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
+
+    // Reset streaming state
+    streamBufferRef.current = "";
+    setStreamingContent("");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const res = await fetch("/api/ai-agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionToken, message: text }),
+        signal: controller.signal,
       });
-      const data = (await res.json()) as {
-        sessionToken?: string;
-        message?: string;
-        orderCreated?: OrderCreated | null;
-      };
 
-      if (data.sessionToken) {
-        setSessionToken(data.sessionToken);
-        saveSession(data.sessionToken);
+      if (!res.ok || !res.body) {
+        throw new Error(`HTTP ${res.status}`);
       }
-      if (data.message) {
-        const aiMsg: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: data.message,
-        };
-        setMessages((prev) => [...prev, aiMsg]);
-        if (!open) setUnread((n) => n + 1);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let lineBuffer = "";
+      let pendingOrder: OrderCreated | null = null;
+
+      // Update streaming bubble every N ms to batch React re-renders
+      let rafId: ReturnType<typeof setTimeout> | null = null;
+
+      function flushStreamToState() {
+        rafId = null;
+        setStreamingContent(streamBufferRef.current);
       }
-      if (data.orderCreated) {
-        setOrderCreated(data.orderCreated);
+
+      function scheduleFlush() {
+        if (rafId === null) {
+          rafId = setTimeout(flushStreamToState, 30);
+        }
       }
-    } catch {
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        lineBuffer += decoder.decode(value, { stream: true });
+
+        // Split on newlines; keep incomplete last segment in buffer
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          let event: SseEvent;
+          try { event = JSON.parse(line.slice(6)) as SseEvent; } catch { continue; }
+
+          switch (event.type) {
+            case "session":
+              setSessionToken(event.sessionToken);
+              saveSession(event.sessionToken);
+              break;
+
+            case "token":
+              streamBufferRef.current += event.text;
+              scheduleFlush();
+              break;
+
+            case "order":
+              pendingOrder = { orderNumber: event.orderNumber, orderId: event.orderId };
+              break;
+
+            case "done": {
+              // Finalize: move streamed content into completed messages
+              if (rafId !== null) { clearTimeout(rafId); rafId = null; }
+              const finalText = streamBufferRef.current;
+              streamBufferRef.current = "";
+              setStreamingContent(null);
+              if (finalText) {
+                const aiMsg: ChatMessage = {
+                  id: (Date.now() + 1).toString(),
+                  role: "assistant",
+                  content: finalText,
+                };
+                setMessages((prev) => [...prev, aiMsg]);
+                if (!open) setUnread((n) => n + 1);
+              }
+              if (pendingOrder) setOrderCreated(pendingOrder);
+              break;
+            }
+
+            case "error":
+              if (rafId !== null) { clearTimeout(rafId); rafId = null; }
+              streamBufferRef.current = "";
+              setStreamingContent(null);
+              setMessages((prev) => [
+                ...prev,
+                { id: (Date.now() + 2).toString(), role: "assistant", content: event.message },
+              ]);
+              break;
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as { name?: string }).name === "AbortError") return;
+      streamBufferRef.current = "";
+      setStreamingContent(null);
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 2).toString(), role: "assistant", content: "Maaf, terjadi kesalahan koneksi. Silakan coba lagi." },
+        { id: (Date.now() + 3).toString(), role: "assistant", content: "Maaf, terjadi kesalahan koneksi. Silakan coba lagi." },
       ]);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -129,6 +221,7 @@ export function ChatWidget() {
   }
 
   function resetChat() {
+    abortRef.current?.abort();
     try {
       localStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(MESSAGES_KEY);
@@ -136,6 +229,8 @@ export function ChatWidget() {
     setSessionToken(null);
     setMessages([GREETING]);
     setOrderCreated(null);
+    streamBufferRef.current = "";
+    setStreamingContent(null);
   }
 
   return (
@@ -153,8 +248,8 @@ export function ChatWidget() {
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm leading-tight">CST Logistics Assistant</p>
               <p className="text-xs text-sky-200 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
-                Online
+                <span className={`w-1.5 h-1.5 rounded-full inline-block ${isStreaming ? "bg-yellow-400 animate-pulse" : "bg-green-400"}`} />
+                {isStreaming ? "Mengetik…" : "Online"}
               </p>
             </div>
             <button
@@ -198,24 +293,34 @@ export function ChatWidget() {
                 </div>
               </div>
             ))}
-            {loading && (
+
+            {/* Live streaming bubble — replaces the old bouncing dots */}
+            {isStreaming && (
               <div className="flex gap-2 flex-row">
                 <div className="w-7 h-7 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
                   <Bot className="h-3.5 w-3.5 text-sky-600" />
                 </div>
-                <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-tl-sm px-4 py-3">
-                  <span className="flex gap-1">
-                    {[0, 1, 2].map((i) => (
-                      <span
-                        key={i}
-                        className="w-2 h-2 rounded-full bg-sky-400 inline-block animate-bounce"
-                        style={{ animationDelay: `${i * 0.15}s` }}
-                      />
-                    ))}
-                  </span>
+                <div className="max-w-[78%] bg-white border border-gray-100 text-gray-800 shadow-sm rounded-2xl rounded-tl-sm px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap">
+                  {streamingContent || (
+                    /* Bouncing dots only while waiting for the first token */
+                    <span className="flex gap-1 items-center h-5">
+                      {[0, 1, 2].map((i) => (
+                        <span
+                          key={i}
+                          className="w-2 h-2 rounded-full bg-sky-400 inline-block animate-bounce"
+                          style={{ animationDelay: `${i * 0.15}s` }}
+                        />
+                      ))}
+                    </span>
+                  )}
+                  {/* Blinking cursor at end of streaming text */}
+                  {streamingContent && (
+                    <span className="inline-block w-0.5 h-4 bg-sky-500 align-middle ml-0.5 animate-pulse" />
+                  )}
                 </div>
               </div>
             )}
+
             {orderCreated && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-start gap-3">
                 <Package className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
@@ -244,13 +349,13 @@ export function ChatWidget() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Ketik pesan..."
+                placeholder={isStreaming ? "Menunggu balasan…" : "Ketik pesan..."}
                 className="flex-1 text-sm rounded-xl border border-gray-200 px-3 py-2 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 bg-gray-50"
-                disabled={loading}
+                disabled={isStreaming}
               />
               <button
                 onClick={() => void sendMessage()}
-                disabled={loading || !input.trim()}
+                disabled={isStreaming || !input.trim()}
                 className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
               >
                 <Send className="h-4 w-4" />
@@ -263,7 +368,7 @@ export function ChatWidget() {
       {/* Bubble button */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-14 h-14 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 shadow-lg hover:shadow-xl text-white flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95"
+        className="relative w-14 h-14 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 shadow-lg hover:shadow-xl text-white flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95"
         style={{ boxShadow: "0 4px 24px rgba(14,165,233,0.45)" }}
         aria-label="Chat dengan AI assistant"
       >
