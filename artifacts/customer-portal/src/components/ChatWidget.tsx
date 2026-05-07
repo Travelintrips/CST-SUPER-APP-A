@@ -969,7 +969,7 @@ export function ChatWidget() {
         lineBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
+          if (!line.startsWith(" ")) continue;
           let event: SseEvent;
           try {
             event = JSON.parse(line.slice(6)) as SseEvent;
@@ -1287,9 +1287,9 @@ export function ChatWidget() {
             animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
-          {/* Header */}
+          {/* Header - PERBAIKAN ALIGNMENT TEKS */}
           <div
-            className="flex items-center gap-2 px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
+            className="flex items-center justify-between px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
             style={{
               background: "linear-gradient(135deg, #0052D4 0%, #4364F7 100%)",
               backdropFilter: "blur(10px)",
@@ -1299,9 +1299,10 @@ export function ChatWidget() {
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
               <Bot className="h-5 w-5 text-white" />
             </div>
-            <div className="flex-1 min-w-0 pr-2">
+            {/* PERUBAHAN: Text centered untuk mobile */}
+            <div className="flex-1 min-w-0 px-2">
               <p
-                className="font-semibold text-white leading-snug text-right"
+                className="font-semibold text-white leading-snug text-center sm:text-right"
                 style={{
                   fontSize: 15,
                   letterSpacing: "0.3px",
@@ -1311,7 +1312,7 @@ export function ChatWidget() {
               >
                 CST Logistics Assistant
               </p>
-              <p className="text-xs text-sky-200 flex items-center justify-end gap-1 mt-0.5">
+              <p className="text-xs text-sky-200 flex items-center justify-center sm:justify-end gap-1 mt-0.5">
                 {isSpeaking ? (
                   <>
                     <span className="w-1.5 h-1.5 rounded-full inline-block bg-purple-300 animate-pulse" />
