@@ -908,7 +908,7 @@ export function ChatWidget() {
             animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
-          {/* Header */}
+          {/* ========== HEADER (HANYA BAGIAN INI YANG DIUBAH) ========== */}
           <div
             className="flex items-center gap-2 px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
             style={{
@@ -920,9 +920,21 @@ export function ChatWidget() {
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
               <Bot className="h-5 w-5 text-white" />
             </div>
-            <div className="flex-1 min-w-0 pr-2">
-              <p className="font-semibold text-white leading-snug text-right" style={{ fontSize: 15, letterSpacing: "0.3px", textShadow: "0 1px 3px rgba(0,0,0,0.18)", lineHeight: 1.2 }}>CST Logistics Assistant</p>
-              <p className="text-xs text-sky-200 flex items-center justify-end gap-1 mt-0.5">
+
+            {/* Area Teks: Judul + Status - PERBAIKAN: flex-col + items-end + hapus overflow */}
+            <div className="flex-1 min-w-0 flex flex-col items-end justify-center pr-2">
+              <p 
+                className="font-semibold text-white whitespace-nowrap text-right" 
+                style={{ 
+                  fontSize: 14, 
+                  letterSpacing: "0.2px", 
+                  textShadow: "0 1px 2px rgba(0,0,0,0.15)",
+                  lineHeight: 1.3
+                }}
+              >
+                CST Logistics Assistant
+              </p>
+              <p className="text-[11px] text-sky-200 flex items-center gap-1 mt-0.5">
                 {isSpeaking ? (
                   <>
                     <span className="w-1.5 h-1.5 rounded-full inline-block bg-purple-300 animate-pulse" />
@@ -936,6 +948,7 @@ export function ChatWidget() {
                 )}
               </p>
             </div>
+
             {/* Icon button group — right-aligned */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
               {/* Sound effects toggle */}
@@ -981,6 +994,7 @@ export function ChatWidget() {
               </button>
             </div>
           </div>
+          {/* ========== END HEADER ========== */}
 
           {/* Messages */}
           <div
