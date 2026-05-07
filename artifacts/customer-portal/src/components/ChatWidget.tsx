@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Bot, User, Package } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 
 interface ChatMessage {
@@ -13,11 +13,24 @@ interface OrderCreated {
   orderId: number;
 }
 
+interface OrderStatusEntry {
+  orderNumber: string;
+  status: string;
+  shipmentType: string;
+  origin: string;
+  destination: string;
+  customerName: string;
+  requiredDate: string | null;
+  createdAt: string;
+  latestAdminReply: string | null;
+}
+
 /** SSE events sent by /api/ai-agent/chat */
 type SseEvent =
   | { type: "session"; sessionToken: string }
   | { type: "token"; text: string }
   | { type: "order"; orderNumber: string; orderId: number }
+  | { type: "status"; orders: OrderStatusEntry[] }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -64,6 +77,8 @@ export function ChatWidget() {
   /** Content being streamed right now (null = not streaming) */
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [orderCreated, setOrderCreated] = useState<OrderCreated | null>(null);
+  /** Latest order status results shown as a compact card */
+  const [orderStatuses, setOrderStatuses] = useState<OrderStatusEntry[]>([]);
   const [unread, setUnread] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -173,6 +188,10 @@ export function ChatWidget() {
               pendingOrder = { orderNumber: event.orderNumber, orderId: event.orderId };
               break;
 
+            case "status":
+              setOrderStatuses(event.orders);
+              break;
+
             case "done": {
               doneReceived = true;
               // Finalize: move streamed content into completed messages
@@ -240,6 +259,21 @@ export function ChatWidget() {
     }
   }
 
+  function statusStyle(status: string) {
+    switch (status) {
+      case "New Order":
+        return { icon: Clock, bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-500", badge: "bg-blue-100 text-blue-700" };
+      case "In Progress":
+        return { icon: Truck, bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-500", badge: "bg-amber-100 text-amber-700" };
+      case "Completed":
+        return { icon: CheckCircle2, bg: "bg-green-50", border: "border-green-200", text: "text-green-500", badge: "bg-green-100 text-green-700" };
+      case "Cancelled":
+        return { icon: XCircle, bg: "bg-red-50", border: "border-red-200", text: "text-red-500", badge: "bg-red-100 text-red-700" };
+      default:
+        return { icon: Package, bg: "bg-gray-50", border: "border-gray-200", text: "text-gray-500", badge: "bg-gray-100 text-gray-700" };
+    }
+  }
+
   function resetChat() {
     abortRef.current?.abort();
     try {
@@ -249,6 +283,7 @@ export function ChatWidget() {
     setSessionToken(null);
     setMessages([GREETING]);
     setOrderCreated(null);
+    setOrderStatuses([]);
     streamBufferRef.current = "";
     setStreamingContent(null);
   }
@@ -355,6 +390,47 @@ export function ChatWidget() {
                     Lacak status order →
                   </Link>
                 </div>
+              </div>
+            )}
+
+            {orderStatuses.length > 0 && (
+              <div className="space-y-2">
+                {orderStatuses.map((ord) => {
+                  const { icon: StatusIcon, bg, border, text, badge } = statusStyle(ord.status);
+                  return (
+                    <div key={ord.orderNumber} className={`rounded-xl border ${border} ${bg} p-3`}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <StatusIcon className={`h-4 w-4 ${text} shrink-0`} />
+                        <span className="text-xs font-semibold text-gray-700 flex-1 truncate">
+                          {ord.orderNumber}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge}`}>
+                          {ord.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
+                        <Truck className="h-3 w-3 shrink-0 text-gray-400" />
+                        <span className="truncate">{ord.shipmentType}</span>
+                        <span className="mx-0.5 text-gray-300">·</span>
+                        <span className="truncate">{ord.origin}</span>
+                        <ArrowRight className="h-3 w-3 shrink-0 text-gray-400" />
+                        <span className="truncate">{ord.destination}</span>
+                      </div>
+                      {ord.latestAdminReply && (
+                        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1 leading-snug line-clamp-2">
+                          💬 {ord.latestAdminReply}
+                        </p>
+                      )}
+                      <Link
+                        href="/track"
+                        className="text-[11px] text-sky-600 underline font-medium mt-1.5 inline-block"
+                        onClick={() => setOpen(false)}
+                      >
+                        Lihat detail →
+                      </Link>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div ref={messagesEndRef} />

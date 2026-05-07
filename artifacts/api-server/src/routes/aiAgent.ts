@@ -6,7 +6,7 @@ import {
   aiChatMessagesTable,
   logisticOrdersTable,
 } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, or } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -39,6 +39,7 @@ Tugasmu:
    - Catatan tambahan (opsional)
 4. Setelah semua info terkumpul, tampilkan RINGKASAN dan minta konfirmasi sebelum membuat order
 5. Setelah pelanggan KONFIRMASI, gunakan tool create_logistic_order untuk membuat order
+6. Jika pelanggan bertanya tentang status order, tracking, posisi paket, kapan tiba, konfirmasi, dll — LANGSUNG panggil tool get_order_status
 
 Aturan:
 - Gunakan Bahasa Indonesia yang sopan dan ramah
@@ -47,6 +48,9 @@ Aturan:
 - TOLAK SOPAN pertanyaan yang tidak berkaitan dengan layanan logistik/pengiriman
 - JANGAN pernah membuat order tanpa konfirmasi eksplisit dari pelanggan
 - Nomor order akan diberikan setelah order berhasil dibuat
+- WAJIB: Ketika pelanggan menggunakan kata "status", "cek order", "tracking", "mana paket", "sudah dikirim", "posisi", atau hal serupa — panggil get_order_status SEGERA tanpa bertanya nomor HP atau nomor order terlebih dahulu. Tool sudah otomatis tahu sesi ini.
+- Setelah get_order_status mengembalikan hasil: WAJIB tulis ringkasan ramah — jangan biarkan respons kosong
+- Jika tool mengembalikan found=false: beri tahu pelanggan dan tawarkan untuk mencari dengan nomor WhatsApp mereka
 
 Layanan yang tersedia:
 - Sea Freight (Laut): FCL dan LCL, rute domestik & internasional
@@ -64,6 +68,20 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
       name: "get_available_services",
       description: "Dapatkan daftar layanan dan jenis pengiriman yang tersedia di CST Logistics",
       parameters: { type: "object", properties: {}, required: [] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_order_status",
+      description: "Cek status order logistik pelanggan. Otomatis mencari berdasarkan sesi chat ini. Jika pelanggan menyebut nomor WhatsApp lain, gunakan parameter phone.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "Nomor WhatsApp pelanggan (opsional, untuk mencari order dari nomor lain)" },
+        },
+        required: [],
+      },
     },
   },
   {
@@ -128,6 +146,79 @@ async function handleToolCall(
       ],
       priceInfo: "Harga bervariasi berdasarkan rute, volume, dan kondisi pasar. Tim kami akan menghubungi setelah order dibuat.",
     });
+  }
+
+  if (toolName === "get_order_status") {
+    try {
+      const { phone } = args as { phone?: string };
+
+      // Build OR condition: match by current session token, or by phone if provided
+      const conditions = [eq(logisticOrdersTable.aiSessionToken, sessionToken)];
+      if (phone && phone.trim()) {
+        conditions.push(eq(logisticOrdersTable.phone, phone.trim()));
+      }
+
+      const orders = await db
+        .select({
+          id: logisticOrdersTable.id,
+          orderNumber: logisticOrdersTable.orderNumber,
+          status: logisticOrdersTable.status,
+          shipmentType: logisticOrdersTable.shipmentType,
+          origin: logisticOrdersTable.origin,
+          destination: logisticOrdersTable.destination,
+          customerName: logisticOrdersTable.customerName,
+          requiredDate: logisticOrdersTable.requiredDate,
+          createdAt: logisticOrdersTable.createdAt,
+        })
+        .from(logisticOrdersTable)
+        .where(or(...conditions))
+        .orderBy(asc(logisticOrdersTable.createdAt));
+
+      if (orders.length === 0) {
+        return JSON.stringify({
+          found: false,
+          message: "Tidak ada order yang ditemukan untuk sesi ini. Jika Anda memiliki nomor WhatsApp yang terdaftar, silakan sebutkan.",
+        });
+      }
+
+      // For each order, get the latest admin reply via the linked ai_chat_session
+      const enriched = await Promise.all(
+        orders.map(async (order) => {
+          const [session] = await db
+            .select({ id: aiChatSessionsTable.id })
+            .from(aiChatSessionsTable)
+            .where(eq(aiChatSessionsTable.logisticOrderId, order.id));
+
+          let latestAdminReply: string | null = null;
+          if (session) {
+            const allMsgs = await db
+              .select({ role: aiChatMessagesTable.role, content: aiChatMessagesTable.content })
+              .from(aiChatMessagesTable)
+              .where(eq(aiChatMessagesTable.sessionId, session.id))
+              .orderBy(asc(aiChatMessagesTable.createdAt));
+            const lastAdminMsg = [...allMsgs].reverse().find((m) => m.role === "admin");
+            latestAdminReply = lastAdminMsg?.content ?? null;
+          }
+
+          return {
+            orderNumber: order.orderNumber,
+            status: order.status,
+            shipmentType: order.shipmentType,
+            origin: order.origin,
+            destination: order.destination,
+            customerName: order.customerName,
+            requiredDate: order.requiredDate ?? null,
+            createdAt: order.createdAt.toISOString(),
+            latestAdminReply,
+          };
+        })
+      );
+
+      return JSON.stringify({ found: true, orders: enriched });
+    } catch (err) {
+      logger.error({ err }, "AI agent get_order_status failed");
+      return JSON.stringify({ found: false, message: "Gagal mengambil status order. Silakan coba lagi." });
+    }
   }
 
   if (toolName === "create_logistic_order") {
@@ -330,6 +421,28 @@ async function streamAiChat(
           const parsed = JSON.parse(result) as { success?: boolean; orderNumber?: string; orderId?: number };
           if (parsed.success && parsed.orderNumber && parsed.orderId) {
             sendEvent({ type: "order", orderNumber: parsed.orderNumber, orderId: parsed.orderId });
+          }
+        } catch { /* empty */ }
+      }
+
+      if (tc.name === "get_order_status") {
+        try {
+          const parsed = JSON.parse(result) as {
+            found?: boolean;
+            orders?: Array<{
+              orderNumber: string;
+              status: string;
+              shipmentType: string;
+              origin: string;
+              destination: string;
+              customerName: string;
+              requiredDate: string | null;
+              createdAt: string;
+              latestAdminReply: string | null;
+            }>;
+          };
+          if (parsed.found && parsed.orders && parsed.orders.length > 0) {
+            sendEvent({ type: "status", orders: parsed.orders });
           }
         } catch { /* empty */ }
       }
