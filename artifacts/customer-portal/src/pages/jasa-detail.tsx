@@ -589,6 +589,10 @@ export default function JasaDetail() {
         toast({ title: "Pilih jenis pembayaran (wajib)", variant: "destructive" });
         return;
       }
+      if (truckingPayment === "transfer" && !truckingTransferTerm) {
+        toast({ title: "Pilih jenis transfer (Full Payment, Termin, atau DP / Advance)", variant: "destructive" });
+        return;
+      }
       setTruckingStep(2);
     }
   }
@@ -1619,7 +1623,8 @@ export default function JasaDetail() {
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="sm:min-w-[200px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    disabled={truckingPayment === "transfer" && !truckingTransferTerm}
+                    className="sm:min-w-[200px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
                     Lanjut <ArrowRight className="h-4 w-4" />
                   </button>
