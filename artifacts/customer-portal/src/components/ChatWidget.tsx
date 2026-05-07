@@ -825,7 +825,13 @@ export function ChatWidget() {
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-[9998] bg-black/50 transition-opacity duration-300"
+          className="fixed inset-0 z-[9998] transition-opacity duration-300"
+          style={{
+            background: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(4px)",
+            WebkitBackdropFilter: "blur(4px)",
+            animation: "backdropIn 0.25s ease-out",
+          }}
           onClick={() => setOpen(false)}
         />
       )}
@@ -833,20 +839,21 @@ export function ChatWidget() {
       {/* Chat panel — centered modal */}
       {open && (
         <div
-          className="fixed z-[9999] flex flex-col bg-white overflow-hidden border border-gray-100"
+          className="fixed z-[9999] flex flex-col bg-white overflow-hidden"
           style={{
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
-            width: "90%",
-            maxWidth: 450,
-            height: "75vh",
-            maxHeight: 600,
-            borderRadius: 20,
-            boxShadow: "0 10px 40px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1)",
+            width: "min(90vw, 460px)",
+            maxWidth: 460,
+            height: "min(78vh, 620px)",
+            borderRadius: 24,
+            border: "1px solid rgba(255,255,255,0.15)",
+            boxShadow:
+              "0 24px 64px rgba(0,0,0,0.22), 0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)",
             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
             WebkitTapHighlightColor: "transparent",
-            animation: "chatModalIn 0.3s ease-out",
+            animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
           {/* Header */}
@@ -1152,8 +1159,24 @@ export function ChatWidget() {
       {/* Bubble button — fixed at bottom-right */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-5 right-5 z-[9999] w-14 h-14 rounded-full text-white flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95"
-        style={{ background: "linear-gradient(135deg, #0ea5e9, #1d4ed8)", boxShadow: "0 4px 24px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)" }}
+        className="fixed z-[9999] rounded-full text-white flex items-center justify-center transition-all duration-300 hover:-translate-y-1 active:scale-95"
+        style={{
+          bottom: 24,
+          right: 20,
+          width: 52,
+          height: 52,
+          background: "linear-gradient(135deg, #0ea5e9 0%, #1d4ed8 100%)",
+          boxShadow: "0 4px 20px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)",
+          WebkitTapHighlightColor: "transparent",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.boxShadow =
+            "0 8px 28px rgba(14,165,233,0.6), 0 4px 12px rgba(0,0,0,0.18)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.boxShadow =
+            "0 4px 20px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)";
+        }}
         aria-label="Chat dengan AI assistant"
       >
         {open ? (

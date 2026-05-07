@@ -20,35 +20,38 @@ export function BackToTopButton() {
       className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
       style={{
         position: "fixed",
-        bottom: "100px",
-        right: "24px",
-        zIndex: 50,
-        width: "44px",
-        height: "44px",
+        bottom: 158,
+        right: 20,
+        zIndex: 9997,
+        width: 52,
+        height: 52,
         borderRadius: "50%",
-        background: "#0F172A",
+        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
         color: "#ffffff",
         border: "none",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "0 4px 16px rgba(15,23,42,0.28)",
+        boxShadow: "0 4px 20px rgba(15,23,42,0.35), 0 2px 8px rgba(0,0,0,0.12)",
         opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(12px)",
+        transform: visible ? "translateY(0) scale(1)" : "translateY(16px) scale(0.85)",
         pointerEvents: visible ? "auto" : "none",
-        transition: "opacity 0.25s ease, transform 0.25s ease",
+        transition: "opacity 0.3s ease, transform 0.3s ease, box-shadow 0.2s ease",
+        WebkitTapHighlightColor: "transparent",
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.transform = "scale(1.1)";
-        (e.currentTarget as HTMLElement).style.background = "#1E293B";
+        const el = e.currentTarget as HTMLElement;
+        el.style.transform = "translateY(-3px) scale(1.05)";
+        el.style.boxShadow = "0 8px 28px rgba(15,23,42,0.45), 0 4px 12px rgba(0,0,0,0.15)";
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.transform = visible ? "translateY(0) scale(1)" : "translateY(12px)";
-        (e.currentTarget as HTMLElement).style.background = "#0F172A";
+        const el = e.currentTarget as HTMLElement;
+        el.style.transform = visible ? "translateY(0) scale(1)" : "translateY(16px) scale(0.85)";
+        el.style.boxShadow = "0 4px 20px rgba(15,23,42,0.35), 0 2px 8px rgba(0,0,0,0.12)";
       }}
     >
-      <ArrowUp style={{ width: "20px", height: "20px" }} />
+      <ArrowUp style={{ width: 20, height: 20 }} />
     </button>
   );
 }
