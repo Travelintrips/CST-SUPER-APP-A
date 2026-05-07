@@ -36,6 +36,18 @@ uri = "file://artifacts/cst-driver/assets/images/icon.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "WRIOcz6uJ1DdXNfuZpYJr"
+uri = "file://artifacts/customer-portal/public/images/sea-freight.png"
+type = "image"
+title = "sea freight cargo ship"
+
+[[generated]]
+id = "kAKLpiov8HHsPNtbcdHnh"
+uri = "file://artifacts/customer-portal/public/images/air-freight.png"
+type = "image"
+title = "air freight cargo aircraft"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"

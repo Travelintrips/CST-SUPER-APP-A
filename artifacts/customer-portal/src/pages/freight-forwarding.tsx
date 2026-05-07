@@ -433,18 +433,20 @@ export default function FreightForwarding() {
   ];
 
   /* ── STEP 2: Mode ─────────────────────────────────────────────── */
-  const MODES: { label: Mode; icon: React.ReactNode; desc: string; detail: string }[] = [
+  const MODES: { label: Mode; icon: React.ReactNode; desc: string; detail: string; defaultImg: string }[] = [
     {
       label: "Sea",
       icon: <Ship className="h-8 w-8 text-blue-600" />,
       desc: "Sea Freight",
       detail: "Pengiriman via kapal laut. Kapasitas besar, biaya lebih ekonomis.",
+      defaultImg: `${import.meta.env.BASE_URL}images/sea-freight.png`,
     },
     {
       label: "Air",
       icon: <Plane className="h-8 w-8 text-sky-500" />,
       desc: "Air Freight",
       detail: "Pengiriman via pesawat. Lebih cepat, ideal untuk barang sensitif waktu.",
+      defaultImg: `${import.meta.env.BASE_URL}images/air-freight.png`,
     },
   ];
 
@@ -638,52 +640,65 @@ export default function FreightForwarding() {
                   <div key={m.label} className="relative">
                     <button
                       onClick={() => { setMode(m.label); if (m.label !== "Sea") setSeaType(null); if (!editMode) setStep(3); }}
-                      className={`w-full rounded-2xl border-2 p-6 text-left transition-all duration-200 ${
+                      className={`w-full rounded-2xl border-2 text-left transition-all duration-200 overflow-hidden ${
                         mode === m.label
-                          ? "border-[#0B5CAD] bg-gradient-to-br from-blue-50 to-sky-50 shadow-lg scale-[1.015]"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
+                          ? "border-[#0B5CAD] shadow-xl scale-[1.015]"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-lg"
                       }`}
                     >
-                      <div className="flex flex-col items-center gap-3 text-center">
-                        <div className="relative w-12 h-12 flex items-center justify-center">
-                          {logoSrc ? (
-                            <img
-                              src={logoSrc}
-                              alt={m.label}
-                              className="w-12 h-12 object-contain rounded-lg"
-                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                            />
-                          ) : (
-                            m.icon
-                          )}
-                          {editMode && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); logoFileRefs.current[`mode_${m.label}`]?.click(); }}
-                              className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 rounded-lg opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
-                              title="Upload logo"
-                            >
-                              {isUploading ? <Loader2 className="h-5 w-5 text-white animate-spin" /> : <ImagePlus className="h-5 w-5 text-white" />}
-                            </button>
-                          )}
+                      {/* Premium image banner */}
+                      <div className="relative w-full h-36 overflow-hidden">
+                        <img
+                          src={logoSrc ?? m.defaultImg}
+                          alt={m.desc}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          onError={(e) => {
+                            const el = e.currentTarget as HTMLImageElement;
+                            el.style.display = "none";
+                            const next = el.nextElementSibling as HTMLElement | null;
+                            if (next) next.style.display = "flex";
+                          }}
+                        />
+                        {/* Icon fallback (hidden by default, shown on img error) */}
+                        <div className="absolute inset-0 items-center justify-center bg-slate-100" style={{ display: "none" }}>
+                          {m.icon}
                         </div>
-                        <div>
-                          <p className="font-bold text-base">{m.desc}</p>
-                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{m.detail}</p>
+                        {/* Gradient overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
+                        {/* Label badge */}
+                        <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                          <span className="bg-white/20 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full border border-white/30">
+                            {m.desc}
+                          </span>
                         </div>
                         {mode === m.label && (
-                          <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                            <Check className="h-3.5 w-3.5 text-white" />
+                          <div className="absolute top-3 right-3 w-7 h-7 rounded-full bg-[#0B5CAD] flex items-center justify-center shadow-lg">
+                            <Check className="h-4 w-4 text-white" />
                           </div>
                         )}
+                        {editMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); logoFileRefs.current[`mode_${m.label}`]?.click(); }}
+                            className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                            title="Upload gambar"
+                          >
+                            {isUploading ? <Loader2 className="h-6 w-6 text-white animate-spin" /> : <ImagePlus className="h-6 w-6 text-white" />}
+                            <span className="text-white text-xs mt-1">Upload gambar</span>
+                          </button>
+                        )}
+                      </div>
+                      {/* Text content */}
+                      <div className="p-4 flex items-center justify-between">
+                        <p className="text-sm text-slate-500 leading-relaxed">{m.detail}</p>
                         {editMode && logoSrc && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); updateField(logoKey, ""); }}
-                            className="text-xs text-muted-foreground hover:text-red-500"
-                            title="Hapus logo"
+                            className="text-xs text-muted-foreground hover:text-red-500 ml-3 shrink-0"
+                            title="Hapus gambar CMS"
                           >
-                            Hapus logo
+                            Hapus
                           </button>
                         )}
                       </div>
