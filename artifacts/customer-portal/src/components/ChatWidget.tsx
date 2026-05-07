@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight, Mic, MicOff, ClipboardList, Volume2, VolumeX } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight, Mic, MicOff, ClipboardList, Volume2, VolumeX, Bell, BellOff } from "lucide-react";
 import { Link } from "wouter";
 
 interface ChatMessage {
@@ -425,6 +425,10 @@ export function ChatWidget() {
   });
   /** True while speechSynthesis is reading aloud */
   const [isSpeaking, setIsSpeaking] = useState(false);
+  /** Sound effects toggle — persisted across sessions */
+  const [sfxEnabled, setSfxEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem("cst_chat_sfx") !== "off"; } catch { return true; }
+  });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -492,6 +496,7 @@ export function ChatWidget() {
         if (toAdd.length > 0) {
           pendingAdminRef.current = [...pendingAdminRef.current, ...toAdd];
           setUnread((n) => n + toAdd.length);
+          playSound("notification");
         }
       } catch { /* network errors are silently ignored */ }
     }
@@ -564,12 +569,52 @@ export function ChatWidget() {
     });
   }
 
+  /** Synthesize a short UI sound via Web Audio API — no external files, iOS/Android safe */
+  function playSound(type: "sent" | "received" | "notification" | "error") {
+    if (!sfxEnabled) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const AC: (new () => AudioContext) | undefined = (window as any).AudioContext ?? (window as any).webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const g = ctx.createGain();
+      g.connect(ctx.destination);
+
+      const configs: Record<typeof type, { wave: OscillatorType; freqStart: number; freqEnd: number; duration: number; gain: number }> = {
+        sent:         { wave: "sine",     freqStart: 880,  freqEnd: 1100, duration: 0.12, gain: 0.28 },
+        received:     { wave: "sine",     freqStart: 660,  freqEnd: 880,  duration: 0.18, gain: 0.32 },
+        notification: { wave: "triangle", freqStart: 1200, freqEnd: 900,  duration: 0.25, gain: 0.28 },
+        error:        { wave: "sawtooth", freqStart: 280,  freqEnd: 140,  duration: 0.20, gain: 0.18 },
+      };
+      const c = configs[type];
+      const osc = ctx.createOscillator();
+      osc.type = c.wave;
+      osc.frequency.setValueAtTime(c.freqStart, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(c.freqEnd, ctx.currentTime + c.duration);
+      g.gain.setValueAtTime(c.gain, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + c.duration);
+      osc.connect(g);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + c.duration);
+      osc.onended = () => { void ctx.close(); };
+    } catch { /* audio blocked or unsupported — silently ignore */ }
+  }
+
+  function toggleSfx() {
+    setSfxEnabled((v) => {
+      const next = !v;
+      try { localStorage.setItem("cst_chat_sfx", next ? "on" : "off"); } catch { /* empty */ }
+      return next;
+    });
+  }
+
   /** Core send logic — accepts text directly so push-to-talk and keyboard can share it */
   async function doSend(text: string) {
     if (!text.trim() || isStreaming) return;
 
     const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text.trim(), createdAt: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
+    playSound("sent");
 
     // Reset streaming state, stale status cards, inline forms, and stop any TTS
     streamBufferRef.current = "";
@@ -672,7 +717,12 @@ export function ChatWidget() {
                   createdAt: new Date().toISOString(),
                 };
                 setMessages((prev) => [...prev, aiMsg]);
-                if (!open) setUnread((n) => n + 1);
+                if (!open) {
+                  setUnread((n) => n + 1);
+                  playSound("notification");
+                } else {
+                  playSound("received");
+                }
                 // Auto-speak if voice output mode is on
                 if (voiceOutput) speak(finalText);
               }
@@ -685,6 +735,7 @@ export function ChatWidget() {
               if (rafId !== null) { clearTimeout(rafId); rafId = null; }
               streamBufferRef.current = "";
               setStreamingContent(null);
+              playSound("error");
               setMessages((prev) => [
                 ...prev,
                 { id: (Date.now() + 2).toString(), role: "assistant", content: event.message, createdAt: new Date().toISOString() },
@@ -713,6 +764,7 @@ export function ChatWidget() {
       if ((err as { name?: string }).name === "AbortError") return;
       streamBufferRef.current = "";
       setStreamingContent(null);
+      playSound("error");
       setMessages((prev) => [
         ...prev,
         { id: (Date.now() + 3).toString(), role: "assistant", content: "Maaf, terjadi kesalahan koneksi. Silakan coba lagi.", createdAt: new Date().toISOString() },
@@ -884,6 +936,18 @@ export function ChatWidget() {
                 )}
               </p>
             </div>
+            {/* Sound effects toggle */}
+            <button
+              onClick={toggleSfx}
+              title={sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"}
+              className={`w-11 h-11 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                sfxEnabled
+                  ? "bg-white/25 text-white"
+                  : "bg-white/10 text-white/60 hover:text-white hover:bg-white/20"
+              }`}
+            >
+              {sfxEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+            </button>
             {/* Voice output toggle */}
             <button
               onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
