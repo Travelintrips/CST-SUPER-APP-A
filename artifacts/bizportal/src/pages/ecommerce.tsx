@@ -707,7 +707,7 @@ export default function EcommercePage() {
                       <div className="grid gap-2">
                         <Label>Kategori <span className="text-muted-foreground text-xs">(pilih satu atau lebih)</span></Label>
                         <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2" data-testid="create-product-categories">
-                          {productCategories.map((c) => (
+                          {[...productCategories].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
                             <div key={c.id} className="flex items-center gap-2">
                               <Checkbox
                                 id={`create-cat-${c.id}`}
@@ -1618,7 +1618,7 @@ export default function EcommercePage() {
                 <div className="grid gap-2">
                   <Label>Kategori <span className="text-muted-foreground text-xs">(pilih satu atau lebih)</span></Label>
                   <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2" data-testid="edit-product-categories">
-                    {productCategories.map((c) => (
+                    {[...productCategories].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
                       <div key={c.id} className="flex items-center gap-2">
                         <Checkbox
                           id={`edit-cat-${c.id}`}
