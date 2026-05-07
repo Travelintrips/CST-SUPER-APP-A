@@ -25,6 +25,19 @@ export interface LogisticOrderData {
   serviceList: string;
   requiredDate?: string | null;
   notes?: string | null;
+  createdAt?: Date | string | null;
+}
+
+const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+
+function formatTanggal(dt: Date | string): string {
+  const d = new Date(dt);
+  return `${String(d.getDate()).padStart(2,"0")} ${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatJam(dt: Date | string): string {
+  const d = new Date(dt);
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 
 function getOrderUrl(orderId: number): string {
@@ -103,14 +116,17 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
 }
 
 function buildCustomerWaMessage(order: LogisticOrderData): string {
+  const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
+  const jam = order.createdAt ? formatJam(order.createdAt) : "";
   return (
     `✅ *PESANAN ANDA DITERIMA*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
     `Halo ${order.customerName},\n\n` +
     `Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.\n\n` +
     `No. Order       : *${order.orderNumber}*\n` +
+    (tgl ? `Tanggal         : ${tgl}\n` : ``) +
+    (jam ? `Jam             : ${jam}\n` : ``) +
     `Status          : Menunggu Konfirmasi\n` +
-    `Jenis           : ${order.shipmentType}\n` +
     `Rute            : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `Kategori Barang : ${order.commodity}\n` : ``) +
     (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +

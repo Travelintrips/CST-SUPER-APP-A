@@ -155,6 +155,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     serviceList,
     requiredDate: body.requiredDate ?? null,
     notes: body.notes ?? null,
+    createdAt: order.createdAt,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
   });
