@@ -2114,6 +2114,7 @@ export interface LogisticOrder {
   cargoDescription?: string | null;
   grossWeight?: number | null;
   volumeCbm?: number | null;
+  jumlahKoli?: number | null;
   requiredDate?: string | null;
   notes?: string | null;
   paymentType?: string | null;
@@ -2168,6 +2169,7 @@ export interface CreateLogisticOrderBody {
   cargoDescription?: string | null;
   grossWeight?: number | null;
   volumeCbm?: number | null;
+  jumlahKoli?: number | null;
   requiredDate?: string | null;
   notes?: string | null;
   paymentType?: string | null;

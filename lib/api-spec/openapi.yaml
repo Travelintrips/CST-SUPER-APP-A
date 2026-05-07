@@ -5330,6 +5330,7 @@ components:
         cargoDescription: { type: string, nullable: true }
         grossWeight: { type: number, nullable: true }
         volumeCbm: { type: number, nullable: true }
+        jumlahKoli: { type: integer, nullable: true }
         requiredDate: { type: string, nullable: true }
         notes: { type: string, nullable: true }
         paymentType: { type: string, nullable: true }
@@ -5396,6 +5397,7 @@ components:
         cargoDescription: { type: string, nullable: true }
         grossWeight: { type: number, nullable: true }
         volumeCbm: { type: number, nullable: true }
+        jumlahKoli: { type: integer, nullable: true }
         requiredDate: { type: string, nullable: true }
         notes: { type: string, nullable: true }
         paymentType: { type: string, nullable: true }

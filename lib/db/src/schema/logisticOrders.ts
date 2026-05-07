@@ -24,6 +24,7 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   cargoDescription: text("cargo_description"),
   grossWeight: numeric("gross_weight", { precision: 12, scale: 3 }),
   volumeCbm: numeric("volume_cbm", { precision: 12, scale: 3 }),
+  jumlahKoli: integer("jumlah_koli"),
   requiredDate: text("required_date"),
   notes: text("notes"),
   paymentType: text("payment_type"),

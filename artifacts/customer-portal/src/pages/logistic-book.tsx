@@ -398,7 +398,7 @@ export default function BookPage() {
   const [customerForm, setCustomerForm] = useState({
     companyName: "", customerName: "", email: "", phone: "",
     origin: "", destination: "", commodity: "", cargoDescription: "",
-    grossWeight: "", volumeCbm: "", requiredDate: "", notes: "",
+    grossWeight: "", volumeCbm: "", jumlahKoli: "", requiredDate: "", notes: "",
     quantity: "", unit: "",
   });
   const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "">("");
@@ -437,7 +437,7 @@ export default function BookPage() {
     }));
   }, [portalUser]);
 
-  // Auto-populate origin/destination from cart items' inputData (e.g. trucking pickupCity/destCity)
+  // Auto-populate origin/destination + trucking cargo fields from cart items' inputData
   useEffect(() => {
     if (cartItems.length === 0) return;
     const deriveOrigin = cartItems
@@ -446,10 +446,17 @@ export default function BookPage() {
     const deriveDestination = cartItems
       .map((c) => String(c.inputData?.destCity || c.inputData?.destinationAirport || c.inputData?.destinationPort || ""))
       .find(Boolean) ?? "";
+    const truckingData = cartItems.find(c => c.calculatorType === "trucking")?.inputData;
+    const deriveGrossWeight  = truckingData?.gross_weight_kg  ? String(truckingData.gross_weight_kg)  : "";
+    const deriveVolumeCbm    = truckingData?.total_volume_m3  ? String(truckingData.total_volume_m3)  : "";
+    const deriveJumlahKoli   = truckingData?.koli_qty         ? String(truckingData.koli_qty)         : "";
     setCustomerForm((prev) => ({
       ...prev,
-      origin:      prev.origin      || deriveOrigin,
-      destination: prev.destination || deriveDestination,
+      origin:       prev.origin       || deriveOrigin,
+      destination:  prev.destination  || deriveDestination,
+      grossWeight:  prev.grossWeight  || deriveGrossWeight,
+      volumeCbm:    prev.volumeCbm    || deriveVolumeCbm,
+      jumlahKoli:   prev.jumlahKoli   || deriveJumlahKoli,
     }));
   }, [cartItems]);
 
@@ -548,6 +555,7 @@ export default function BookPage() {
       cargoDescription: customerForm.cargoDescription || null,
       grossWeight: parseFloat(customerForm.grossWeight) || null,
       volumeCbm: parseFloat(customerForm.volumeCbm) || null,
+      jumlahKoli: parseInt(customerForm.jumlahKoli, 10) || null,
       requiredDate: customerForm.requiredDate || null,
       notes: [
         customerForm.quantity ? `Qty: ${customerForm.quantity}${customerForm.unit ? ` ${customerForm.unit}` : ""}` : "",
