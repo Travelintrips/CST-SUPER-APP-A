@@ -27,6 +27,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Search, Boxes, Package, Wrench, RefreshCw } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const DEFAULT_SUBCATEGORIES = [
   "Udara", "Laut", "Darat", "Pabean", "Handling",
@@ -93,6 +94,7 @@ function formFromProduct(p: Product): ItemForm {
 export default function SalesItemsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "barang" | "jasa">("all");
@@ -163,7 +165,7 @@ export default function SalesItemsPage() {
 
   const handleSubmit = async () => {
     const err = validate();
-    if (err) { toast({ title: err, variant: "destructive" }); return; }
+    if (err) { toast({ title: t.common.error, variant: "destructive" }); return; }
 
     const body = {
       name: form.name.trim(),
@@ -184,17 +186,17 @@ export default function SalesItemsPage() {
     try {
       if (editingId) {
         await updateMut.mutateAsync({ id: editingId, data: body });
-        toast({ title: "Item diperbarui" });
+        toast({ title: t.common.success });
       } else {
         await createMut.mutateAsync({ data: body });
-        toast({ title: "Item ditambahkan" });
+        toast({ title: t.common.success });
       }
       qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
       qc.invalidateQueries({ queryKey: getListProductCategoriesQueryKey() });
       setDialogOpen(false);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(e);
-      toast({ title: "Gagal menyimpan item", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 
@@ -202,11 +204,11 @@ export default function SalesItemsPage() {
     if (!deleteTarget) return;
     try {
       await deleteMut.mutateAsync({ id: deleteTarget.id });
-      toast({ title: "Item dihapus" });
+      toast({ title: t.common.success });
       qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(e);
-      toast({ title: "Gagal menghapus", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     } finally {
       setDeleteTarget(null);
     }
@@ -217,11 +219,11 @@ export default function SalesItemsPage() {
     try {
       const resp = await fetch("/api/ecommerce/seed-items", { method: "POST" });
       const data = await resp.json();
-      toast({ title: `Seed berhasil: ${(data.seeded ?? []).length} item ditambahkan` });
+      toast({ title: t.common.success });
       qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
       qc.invalidateQueries({ queryKey: getListProductCategoriesQueryKey() });
     } catch {
-      toast({ title: "Seed gagal", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     } finally {
       setSeeding(false);
     }

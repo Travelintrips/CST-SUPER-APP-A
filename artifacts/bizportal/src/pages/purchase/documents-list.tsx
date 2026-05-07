@@ -21,6 +21,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, X } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -72,6 +73,7 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const deleteMut = useDeletePurchaseDocument();
   const actionMut = usePurchaseDocumentAction();
 
@@ -89,20 +91,20 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
     try {
       await deleteMut.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey({ kind }) });
-      toast({ title: "Dokumen dihapus" });
+      toast({ title: t.common.success });
     } catch {
-      toast({ title: "Gagal menghapus dokumen", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     }
   };
 
   const handleCancel = async (id: number) => {
-    if (!confirm("Batalkan dokumen ini?")) return;
+    if (!confirm(t.common.confirmDeleteDesc)) return;
     try {
       await actionMut.mutateAsync({ id, data: { action: "cancel" } });
       queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey({ kind }) });
-      toast({ title: "Dokumen dibatalkan" });
+      toast({ title: t.common.success });
     } catch {
-      toast({ title: "Gagal membatalkan dokumen", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     }
   };
 

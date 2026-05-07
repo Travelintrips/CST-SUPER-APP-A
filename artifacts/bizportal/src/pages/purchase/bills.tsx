@@ -37,6 +37,7 @@ import {
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { CreditCard, FileText } from "lucide-react";
 
 const idr = (n: number) =>
@@ -59,6 +60,7 @@ function PaymentStatusBadge({ status }: { status: string }) {
 export default function PurchaseBillsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [filter, setFilter] = useState<"all" | "to_bill" | "billed">("all");
   const { data: docs } = useListPurchaseDocuments({ kind: "order" });
   const { data: journals = [] } = useListJournals();
@@ -96,12 +98,12 @@ export default function PurchaseBillsPage() {
 
   const submitPayment = async () => {
     if (!payDoc || !payForm.journalId || !payForm.date || !payForm.amount) {
-      toast({ title: "Jurnal, tanggal & jumlah wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const amt = Number(payForm.amount);
     if (Number.isNaN(amt) || amt <= 0) {
-      toast({ title: "Jumlah harus angka positif", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -118,12 +120,12 @@ export default function PurchaseBillsPage() {
           sourceDocId: payDoc.id,
         },
       });
-      toast({ title: "Pembayaran berhasil dicatat", description: `Pembayaran untuk ${payDoc.docNumber} dicatat.` });
+      toast({ title: t.common.success });
       await qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
       closePayDialog();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
-      toast({ title: "Gagal mencatat pembayaran", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 

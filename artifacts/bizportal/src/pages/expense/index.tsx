@@ -18,6 +18,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -68,6 +69,7 @@ function StatusBadge({ status }: { status: string }) {
 export default function ExpenseListPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const _urlParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const [search, setSearch] = useState(() => _urlParams.get("search") ?? "");
   const [fromFilter, setFromFilter] = useState(() => _urlParams.get("from") ?? "");
@@ -129,9 +131,9 @@ export default function ExpenseListPage() {
     try {
       await deleteMut.mutateAsync({ id: deleteId });
       qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
-      toast({ title: "Expense dihapus" });
+      toast({ title: t.common.success });
     } catch (e: any) {
-      toast({ title: e?.message ?? "Gagal hapus", variant: "destructive" });
+      toast({ title: e?.message ?? t.common.error, variant: "destructive" });
     } finally { setDeleteId(null); }
   };
 

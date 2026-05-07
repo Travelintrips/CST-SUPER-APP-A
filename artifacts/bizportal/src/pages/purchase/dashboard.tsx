@@ -8,11 +8,13 @@ import {
   useListPurchaseDocuments,
 } from "@workspace/api-client-react";
 import { ClipboardList, ShoppingBag, FileText, TrendingDown, Plus } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 export default function PurchaseDashboardPage() {
+  const { t } = useLanguage();
   const { data: summary } = useGetPurchaseSummary();
   const { data: recentDocs } = useListPurchaseDocuments();
   const recent = (recentDocs ?? []).slice(0, 8);
@@ -22,18 +24,18 @@ export default function PurchaseDashboardPage() {
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Purchase</h1>
-            <p className="text-sm text-muted-foreground">Ringkasan pembelian dan dokumen terbaru.</p>
+            <h1 className="text-2xl font-bold">{t.purchase.title}</h1>
+            <p className="text-sm text-muted-foreground">{t.purchase.subtitle}</p>
           </div>
           <div className="flex gap-2">
             <Link href="/purchase/rfq">
               <Button variant="outline" data-testid="link-go-rfq">
-                <ClipboardList className="mr-2 h-4 w-4" /> RFQ
+                <ClipboardList className="mr-2 h-4 w-4" /> {t.purchase.rfq}
               </Button>
             </Link>
             <Link href="/purchase/rfq/new">
               <Button data-testid="button-new-rfq">
-                <Plus className="mr-2 h-4 w-4" /> New RFQ
+                <Plus className="mr-2 h-4 w-4" /> {t.purchase.newRFQ}
               </Button>
             </Link>
           </div>
@@ -43,7 +45,7 @@ export default function PurchaseDashboardPage() {
           <Link href="/purchase/rfq" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">RFQs</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.purchase.rfq}</CardTitle>
                 <ClipboardList className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -54,7 +56,7 @@ export default function PurchaseDashboardPage() {
           <Link href="/purchase/orders" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Purchase Orders</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.purchase.order}</CardTitle>
                 <ShoppingBag className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -65,7 +67,7 @@ export default function PurchaseDashboardPage() {
           <Link href="/purchase/bills" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">To Bill</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.purchase.toBill}</CardTitle>
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -76,7 +78,7 @@ export default function PurchaseDashboardPage() {
           <Link href="/purchase/vendors" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Spend</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.purchase.totalSpend}</CardTitle>
                 <TrendingDown className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -91,11 +93,11 @@ export default function PurchaseDashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Dokumen Terbaru</CardTitle>
+            <CardTitle>{t.purchase.recentDocuments}</CardTitle>
           </CardHeader>
           <CardContent>
             {recent.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Belum ada dokumen.</p>
+              <p className="text-sm text-muted-foreground">{t.purchase.noDocuments}</p>
             ) : (
               <div className="space-y-2">
                 {recent.map((d) => (

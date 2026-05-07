@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useGetSalesDocument,
   useCreateSalesDocument,
@@ -225,6 +226,7 @@ export default function SalesDocumentEditorPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const isNew = !!paramsNew;
   const idStr = paramsQuote?.id ?? paramsOrder?.id;
@@ -272,12 +274,12 @@ export default function SalesDocumentEditorPage() {
 
   const submitPayment = async () => {
     if (!doc || !id || !payForm.journalId || !payForm.date || !payForm.amount) {
-      toast({ title: "Jurnal, tanggal & jumlah wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const amt = Number(payForm.amount);
     if (Number.isNaN(amt) || amt <= 0) {
-      toast({ title: "Jumlah harus angka positif", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -294,13 +296,13 @@ export default function SalesDocumentEditorPage() {
           sourceDocId: id,
         },
       });
-      toast({ title: "Pembayaran dicatat", description: `Pembayaran untuk ${doc.docNumber} berhasil.` });
+      toast({ title: t.common.success, description: doc.docNumber });
       qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey({ sourceType: "sales_order", sourceDocId: id }) });
       qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
       setPayDialogOpen(false);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
-      toast({ title: "Gagal mencatat pembayaran", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 
@@ -345,7 +347,7 @@ export default function SalesDocumentEditorPage() {
       const res = await fetch(`/api/sales/documents/${id}/pdf`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast({ title: "Gagal membuka PDF", description: (err as any)?.message ?? `Error ${res.status}`, variant: "destructive" });
+        toast({ title: t.common.error, variant: "destructive" });
         return;
       }
       const blob = await res.blob();
@@ -359,7 +361,7 @@ export default function SalesDocumentEditorPage() {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch {
-      toast({ title: "Gagal membuka PDF", description: "Periksa koneksi jaringan Anda.", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     }
   };
   const payViaPaylabs = async () => {
@@ -368,14 +370,14 @@ export default function SalesDocumentEditorPage() {
       const res = await paylabsMut.mutateAsync({ id });
       if (res.payment.paymentUrl) {
         window.open(res.payment.paymentUrl, "_blank");
-        toast({ title: "Link pembayaran dibuat", description: "Membuka tab baru..." });
+        toast({ title: t.common.success });
       } else if (!res.configured) {
-        toast({ title: "Mode simulasi", description: res.message ?? "Paylabs belum dikonfigurasi." });
+        toast({ title: t.common.success });
       } else {
-        toast({ title: "Pembayaran dibuat", description: `ID: ${res.payment.id}` });
+        toast({ title: t.common.success, description: `ID: ${res.payment.id}` });
       }
     } catch (e: any) {
-      toast({ title: "Gagal membuat link pembayaran", description: String(e?.message ?? e), variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     }
   };
   const { data: customers } = useListCustomers();
@@ -508,7 +510,7 @@ export default function SalesDocumentEditorPage() {
 
   const handleSaveNewCustomer = async () => {
     if (!addCustomerForm.name.trim()) {
-      toast({ title: "Nama customer wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -535,9 +537,9 @@ export default function SalesDocumentEditorPage() {
       }
       setAddCustomerOpen(false);
       setAddCustomerForm({ name: "", email: "", phone: "", address: "", taxId: "", notes: "", defaultSalesTaxId: null });
-      toast({ title: "Customer baru berhasil ditambahkan" });
+      toast({ title: t.common.success });
     } catch (e) {
-      toast({ title: "Gagal membuat customer", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -554,7 +556,7 @@ export default function SalesDocumentEditorPage() {
   const save = async () => {
     const err = validate();
     if (err) {
-      toast({ title: err, variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const body = {
@@ -582,16 +584,16 @@ export default function SalesDocumentEditorPage() {
       if (isNew) {
         const created = await createMut.mutateAsync({ data: body });
         qc.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
-        toast({ title: "Quotation dibuat", description: created.docNumber });
+        toast({ title: t.common.success, description: created.docNumber });
         navigate(`/sales/quotations/${created.id}`);
       } else if (id) {
         await updateMut.mutateAsync({ id, data: body });
         qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
         qc.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
-        toast({ title: "Quotation diperbarui" });
+        toast({ title: t.common.success });
       }
     } catch (e) {
-      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -601,10 +603,10 @@ export default function SalesDocumentEditorPage() {
       const result = await actionMut.mutateAsync({ id, data: { action } });
       qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
       qc.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
-      toast({ title: `Status: ${result.status}` });
+      toast({ title: t.common.success, description: result.status });
       if (action === "confirm") navigate(`/sales/orders/${id}`);
     } catch (e) {
-      toast({ title: "Aksi gagal", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -614,10 +616,10 @@ export default function SalesDocumentEditorPage() {
     try {
       await deleteMut.mutateAsync({ id });
       qc.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
-      toast({ title: "Dihapus" });
+      toast({ title: t.common.success });
       navigate("/sales/quotations");
     } catch (e) {
-      toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -1473,7 +1475,7 @@ export default function SalesDocumentEditorPage() {
                       });
                     },
                     onError: () => {
-                      toast({ title: "Gagal", description: "Tidak dapat meneruskan ke vendor.", variant: "destructive" });
+                      toast({ title: t.common.error, variant: "destructive" });
                     },
                   },
                 );

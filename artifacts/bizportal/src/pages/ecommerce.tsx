@@ -52,6 +52,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@workspace/object-storage-web";
 import { ImagePlus, ImageIcon, Loader2 } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
 type OrderStatus = typeof ORDER_STATUSES[number];
@@ -140,6 +141,7 @@ function ProductAutocomplete({
 export default function EcommercePage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const search = useSearch();
   const [, setLocation] = useLocation();
 
@@ -370,16 +372,16 @@ export default function EcommercePage() {
   const createImageUploader = useUpload({
     onSuccess: (res) => {
       setCreateImageUrl(res.objectPath);
-      toast({ title: "Gambar berhasil diunggah" });
+      toast({ title: t.common.success });
     },
-    onError: () => toast({ title: "Gagal mengunggah gambar", variant: "destructive" }),
+    onError: () => toast({ title: t.common.error, variant: "destructive" }),
   });
   const editImageUploader = useUpload({
     onSuccess: (res) => {
       setEditImageUrl(res.objectPath);
-      toast({ title: "Gambar berhasil diunggah" });
+      toast({ title: t.common.success });
     },
-    onError: () => toast({ title: "Gagal mengunggah gambar", variant: "destructive" }),
+    onError: () => toast({ title: t.common.error, variant: "destructive" }),
   });
 
   const resolveImage = (url?: string | null) => {
@@ -424,9 +426,9 @@ export default function EcommercePage() {
         setCreateProdSalesTaxId(null);
         setCreateProdPurchaseTaxId(null);
         setCreateProdCategories([]);
-        toast({ title: "Produk berhasil dibuat" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal membuat produk", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -452,9 +454,9 @@ export default function EcommercePage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         setEditingProduct(null);
-        toast({ title: "Produk berhasil diperbarui" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal memperbarui produk", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -476,9 +478,9 @@ export default function EcommercePage() {
         queryClient.invalidateQueries({ queryKey: getListProductCategoriesQueryKey() });
         setIsCategoryDialogOpen(false);
         setCreateCategoryName("");
-        toast({ title: "Kategori berhasil dibuat" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal membuat kategori", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -491,9 +493,9 @@ export default function EcommercePage() {
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         setEditingCategory(null);
         setEditCategoryName("");
-        toast({ title: "Kategori berhasil diperbarui" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal memperbarui kategori", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -504,12 +506,12 @@ export default function EcommercePage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListProductCategoriesQueryKey() });
         setDeletingCategory(null);
-        toast({ title: "Kategori berhasil dihapus" });
+        toast({ title: t.common.success });
       },
       onError: (err: unknown) => {
         setDeletingCategory(null);
         const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-        toast({ title: msg ?? "Gagal menghapus kategori", variant: "destructive" });
+        toast({ title: msg ?? t.common.error, variant: "destructive" });
       },
     });
   };
@@ -522,9 +524,9 @@ export default function EcommercePage() {
         queryClient.setQueryData<Product[]>(getListProductsQueryKey(), (old) => old?.filter(p => p.id !== id) ?? []);
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         setDeletingProduct(null);
-        toast({ title: "Produk berhasil dihapus" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal menghapus produk", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -552,7 +554,7 @@ export default function EcommercePage() {
     const formData = new FormData(e.currentTarget);
     const validLineItems = createLineItems.filter((li) => li.name.trim());
     if (validLineItems.length === 0) {
-      toast({ title: "Tambahkan minimal satu item pesanan", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const validSubtotal = validLineItems.reduce((s, li) => s + li.qty * li.unitPrice, 0);
@@ -570,9 +572,9 @@ export default function EcommercePage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         setIsOrderDialogOpen(false);
-        toast({ title: "Order berhasil dibuat" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal membuat order", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -601,9 +603,9 @@ export default function EcommercePage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         setEditingOrder(null);
-        toast({ title: "Order berhasil diperbarui" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal memperbarui order", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -615,9 +617,9 @@ export default function EcommercePage() {
         queryClient.setQueryData<Order[]>(getListOrdersQueryKey(), (old) => old?.filter(o => o.id !== id) ?? []);
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
         setDeletingOrder(null);
-        toast({ title: "Order berhasil dihapus" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal menghapus order", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 

@@ -22,6 +22,7 @@ import {
   type Product,
 } from "@workspace/api-client-react";
 import { useUpload } from "@workspace/object-storage-web";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type CartItem = {
   id: number;
@@ -48,6 +49,7 @@ const PAYMENT_OPTS: { value: PaymentMethod; label: string; icon: React.ReactNode
 ];
 
 export default function PosPage() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
@@ -74,7 +76,7 @@ export default function PosPage() {
   const docUploader = useUpload({
     onError: () => {
       setUploadingTxId(null);
-      toast({ title: "Gagal mengunggah dokumen", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     },
   });
 
@@ -87,9 +89,9 @@ export default function PosPage() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
-          toast({ title: "Dokumen berhasil dilampirkan" });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal menyimpan dokumen", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
         onSettled: () => setUploadingTxId(null),
       }
     );
@@ -147,17 +149,14 @@ export default function PosPage() {
       }
       queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetPosSummaryQueryKey() });
-      toast({ title: "Pembayaran berhasil", description: `${snapshotItems} item · ${formatIDR(snapshotSubtotal)}` });
+      toast({ title: t.common.success, description: `${snapshotItems} item · ${formatIDR(snapshotSubtotal)}` });
       clearCart();
     } catch {
       queryClient.invalidateQueries({ queryKey: getListTransactionsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetPosSummaryQueryKey() });
       setCart((cur) => cur.filter((c) => !succeeded.includes(c.id)));
       toast({
-        title: succeeded.length > 0 ? "Sebagian transaksi gagal" : "Gagal memproses transaksi",
-        description: succeeded.length > 0
-          ? `${succeeded.length} item sudah tersimpan, sisanya tetap di keranjang. Coba bayar ulang.`
-          : "Coba lagi atau cek koneksi.",
+        title: t.common.error,
         variant: "destructive",
       });
     } finally {
@@ -180,15 +179,15 @@ export default function PosPage() {
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Point of Sale</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mt-1">Kelola transaksi toko fisik dan ringkasan penjualan harian.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.pos.title}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">{t.pos.subtitle}</p>
           </div>
         </div>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as "kasir" | "history")} className="space-y-4">
           <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="kasir" className="flex-1 sm:flex-none" data-testid="tab-kasir">Kasir</TabsTrigger>
-            <TabsTrigger value="history" className="flex-1 sm:flex-none" data-testid="tab-history">Riwayat & Statistik</TabsTrigger>
+            <TabsTrigger value="kasir" className="flex-1 sm:flex-none" data-testid="tab-kasir">{t.pos.cashierTab}</TabsTrigger>
+            <TabsTrigger value="history" className="flex-1 sm:flex-none" data-testid="tab-history">{t.pos.historyStats}</TabsTrigger>
           </TabsList>
 
           {/* ─── KASIR ─── */}
@@ -198,13 +197,13 @@ export default function PosPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between gap-3">
-                    <CardTitle className="text-base">Pilih Produk</CardTitle>
+                    <CardTitle className="text-base">{t.pos.selectProduct}</CardTitle>
                     <div className="relative w-full max-w-xs">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Cari produk / SKU..."
+                        placeholder={t.pos.searchProductSku}
                         className="pl-8 h-9"
                         data-testid="input-search-product"
                       />
@@ -221,7 +220,7 @@ export default function PosPage() {
                   ) : filteredProducts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center text-muted-foreground py-12">
                       <ShoppingBag className="h-10 w-10 mb-3 opacity-40" />
-                      <p className="text-sm">{search ? `Tidak ada produk untuk "${search}".` : "Belum ada produk. Tambahkan dari halaman E-Commerce."}</p>
+                      <p className="text-sm">{search ? `${t.common.noResults} "${search}"` : t.pos.noProducts}</p>
                     </div>
                   ) : (
                     <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
@@ -283,8 +282,7 @@ export default function PosPage() {
                   {cart.length === 0 ? (
                     <div className="text-center text-muted-foreground py-6">
                       <ShoppingBag className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                      <p className="text-sm">Keranjang kosong.</p>
-                      <p className="text-xs mt-1">Klik produk untuk menambahkan.</p>
+                      <p className="text-sm">{t.pos.emptyCart}</p>
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
@@ -317,15 +315,15 @@ export default function PosPage() {
                     <>
                       <div className="border-t pt-3 space-y-1">
                         <div className="flex items-center justify-between text-sm text-muted-foreground">
-                          <span>Item</span><span>{cartItems}</span>
+                          <span>{t.pos.items}</span><span>{cartItems}</span>
                         </div>
                         <div className="flex items-center justify-between text-base font-bold">
-                          <span>Total</span><span data-testid="text-cart-total">{formatIDR(cartSubtotal)}</span>
+                          <span>{t.pos.total}</span><span data-testid="text-cart-total">{formatIDR(cartSubtotal)}</span>
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Metode Pembayaran</p>
+                        <p className="text-xs font-medium text-muted-foreground">{t.pos.paymentMethod}</p>
                         <div className="grid grid-cols-3 gap-1.5">
                           {PAYMENT_OPTS.map((opt) => (
                             <button
@@ -353,7 +351,7 @@ export default function PosPage() {
                         disabled={isCheckingOut}
                         data-testid="button-checkout"
                       >
-                        {isCheckingOut ? "Memproses..." : `Bayar · ${formatIDR(cartSubtotal)}`}
+                        {isCheckingOut ? t.pos.isProcessing : `${t.pos.pay} · ${formatIDR(cartSubtotal)}`}
                       </Button>
                     </>
                   )}
@@ -366,7 +364,7 @@ export default function PosPage() {
           <TabsContent value="history" className="space-y-4">
             <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
               <PosStatCard
-                title="Penjualan Hari Ini"
+                title={t.pos.todaySales}
                 href="/pos?tab=history&filter=today"
                 icon={<Banknote className="h-4 w-4 text-emerald-500" />}
                 isLoading={isLoadingSummary}
@@ -374,7 +372,7 @@ export default function PosPage() {
                 testId="stat-today-total"
               />
               <PosStatCard
-                title="Tx Hari Ini"
+                title={t.pos.txCount}
                 href="/pos?tab=history&filter=today"
                 icon={<Receipt className="h-4 w-4 text-blue-500" />}
                 isLoading={isLoadingSummary}
@@ -382,7 +380,7 @@ export default function PosPage() {
                 testId="stat-today-count"
               />
               <PosStatCard
-                title="Penjualan Bulan Ini"
+                title={t.pos.monthSales}
                 href="/pos?tab=history&filter=month"
                 icon={<Wallet className="h-4 w-4 text-indigo-500" />}
                 isLoading={isLoadingSummary}
@@ -390,7 +388,7 @@ export default function PosPage() {
                 testId="stat-month-total"
               />
               <PosStatCard
-                title="Tx Bulan Ini"
+                title={t.pos.monthTxCount}
                 href="/pos?tab=history&filter=month"
                 icon={<Receipt className="h-4 w-4 text-violet-500" />}
                 isLoading={isLoadingSummary}
@@ -399,20 +397,20 @@ export default function PosPage() {
               />
             </div>
 
-            <h2 className="text-lg sm:text-xl font-semibold tracking-tight pt-2">Riwayat Transaksi</h2>
+            <h2 className="text-lg sm:text-xl font-semibold tracking-tight pt-2">{t.pos.historyTitle}</h2>
 
             <Card className="hidden md:block">
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Waktu</TableHead>
-                      <TableHead>Produk</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="text-right">Harga</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Pembayaran</TableHead>
-                      <TableHead className="text-right w-[140px]">Dokumen</TableHead>
+                      <TableHead>{t.pos.time}</TableHead>
+                      <TableHead>{t.pos.product}</TableHead>
+                      <TableHead className="text-right">{t.pos.qty}</TableHead>
+                      <TableHead className="text-right">{t.pos.price}</TableHead>
+                      <TableHead className="text-right">{t.pos.total}</TableHead>
+                      <TableHead className="text-right">{t.pos.payment}</TableHead>
+                      <TableHead className="text-right w-[140px]">{t.pos.document}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -433,7 +431,7 @@ export default function PosPage() {
                         <TableCell colSpan={7} className="h-32 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <Receipt className="h-8 w-8 mb-2 opacity-50" />
-                            <p>Belum ada transaksi.</p>
+                            <p>{t.pos.noTransactions}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -480,7 +478,7 @@ export default function PosPage() {
               ) : !transactions || transactions.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <Receipt className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Belum ada transaksi.</p>
+                  <p className="text-sm text-muted-foreground">{t.pos.noTransactions}</p>
                 </CardContent></Card>
               ) : (
                 transactions.slice().reverse().map((tx) => (

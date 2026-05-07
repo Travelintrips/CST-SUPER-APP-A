@@ -35,6 +35,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useGetPurchaseDocument,
   useCreatePurchaseDocument,
@@ -79,6 +80,7 @@ export default function PurchaseDocumentEditorPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const isNew = !!paramsNew;
   const idStr = paramsRfq?.id ?? paramsOrder?.id;
@@ -90,7 +92,7 @@ export default function PurchaseDocumentEditorPage() {
       const res = await fetch(`/api/purchase/documents/${id}/pdf`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast({ title: "Gagal membuka PDF", description: (err as any)?.message ?? `Error ${res.status}`, variant: "destructive" });
+        toast({ title: t.common.error, description: (err as any)?.message ?? `Error ${res.status}`, variant: "destructive" });
         return;
       }
       const blob = await res.blob();
@@ -104,7 +106,7 @@ export default function PurchaseDocumentEditorPage() {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch {
-      toast({ title: "Gagal membuka PDF", description: "Periksa koneksi jaringan Anda.", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     }
   };
 
@@ -158,12 +160,12 @@ export default function PurchaseDocumentEditorPage() {
 
   const submitPayment = async () => {
     if (!doc || !id || !payForm.journalId || !payForm.date || !payForm.amount) {
-      toast({ title: "Jurnal, tanggal & jumlah wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const amt = Number(payForm.amount);
     if (Number.isNaN(amt) || amt <= 0) {
-      toast({ title: "Jumlah harus angka positif", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -180,13 +182,13 @@ export default function PurchaseDocumentEditorPage() {
           sourceDocId: id,
         },
       });
-      toast({ title: "Pembayaran dicatat", description: `Pembayaran untuk ${doc.docNumber} berhasil.` });
+      toast({ title: t.common.success, description: doc.docNumber });
       qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey({ sourceType: "purchase_order", sourceDocId: id }) });
       qc.invalidateQueries({ queryKey: getGetPurchaseDocumentQueryKey(id) });
       setPayDialogOpen(false);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
-      toast({ title: "Gagal mencatat pembayaran", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 
@@ -314,7 +316,7 @@ export default function PurchaseDocumentEditorPage() {
 
   const handleSaveNewVendor = async () => {
     if (!addVendorForm.name.trim()) {
-      toast({ title: "Nama vendor wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -343,9 +345,9 @@ export default function PurchaseDocumentEditorPage() {
       }
       setAddVendorOpen(false);
       setAddVendorForm({ name: "", country: "ID", contactEmail: "", phone: "", address: "", defaultPurchaseTaxId: null });
-      toast({ title: "Vendor baru berhasil ditambahkan" });
+      toast({ title: t.common.success });
     } catch (e) {
-      toast({ title: "Gagal membuat vendor", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -362,7 +364,7 @@ export default function PurchaseDocumentEditorPage() {
   const save = async () => {
     const err = validate();
     if (err) {
-      toast({ title: err, variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const body = {
@@ -385,13 +387,13 @@ export default function PurchaseDocumentEditorPage() {
       if (isNew) {
         const created = await createMut.mutateAsync({ data: body });
         qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
-        toast({ title: "RFQ dibuat", description: created.docNumber });
+        toast({ title: t.common.success, description: created.docNumber });
         navigate(`/purchase/rfq/${created.id}`);
       } else if (id) {
         await updateMut.mutateAsync({ id, data: body });
         qc.invalidateQueries({ queryKey: getGetPurchaseDocumentQueryKey(id) });
         qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
-        toast({ title: "Dokumen diperbarui" });
+        toast({ title: t.common.success });
       }
       if (
         supplierId !== null &&
@@ -402,7 +404,7 @@ export default function PurchaseDocumentEditorPage() {
         setUpdateVendorAddrOpen(true);
       }
     } catch (e) {
-      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -413,9 +415,9 @@ export default function PurchaseDocumentEditorPage() {
       setSupplierCatalogAddress(pendingNewAddress);
       setSupplierAddressAutoFilled(true);
       qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
-      toast({ title: "Alamat vendor diperbarui", description: "Katalog vendor telah disinkronkan." });
+      toast({ title: t.common.success });
     } catch (e) {
-      toast({ title: "Gagal memperbarui vendor", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     } finally {
       setUpdateVendorAddrOpen(false);
     }
@@ -427,10 +429,10 @@ export default function PurchaseDocumentEditorPage() {
       const result = await actionMut.mutateAsync({ id, data: { action } });
       qc.invalidateQueries({ queryKey: getGetPurchaseDocumentQueryKey(id) });
       qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
-      toast({ title: `Status: ${result.status}` });
+      toast({ title: t.common.success, description: result.status });
       if (action === "confirm") navigate(`/purchase/orders/${id}`);
     } catch (e) {
-      toast({ title: "Aksi gagal", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -440,10 +442,10 @@ export default function PurchaseDocumentEditorPage() {
     try {
       await deleteMut.mutateAsync({ id });
       qc.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey() });
-      toast({ title: "Dihapus" });
+      toast({ title: t.common.success });
       navigate("/purchase/rfq");
     } catch (e) {
-      toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 

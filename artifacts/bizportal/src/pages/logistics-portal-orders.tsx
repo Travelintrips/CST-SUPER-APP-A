@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { PackageOpen, Search, RefreshCw, FilePlus, X, ExternalLink, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -54,6 +55,7 @@ function formatTanggal(iso: string) {
 export default function LogisticsPortalOrdersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [, navigate] = useLocation();
 
   const [search, setSearch] = useState("");
@@ -86,10 +88,10 @@ export default function LogisticsPortalOrdersPage() {
       { id, data: { status } },
       {
         onSuccess: () => {
-          toast({ title: `Status diperbarui: ${status}` });
+          toast({ title: t.common.success, description: status });
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
         },
-        onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
         onSettled: () => setUpdatingId(null),
       },
     );
@@ -124,11 +126,11 @@ export default function LogisticsPortalOrdersPage() {
       },
       {
         onSuccess: (doc) => {
-          toast({ title: "Sales Order berhasil dibuat!", description: doc.docNumber });
+          toast({ title: t.common.success, description: doc.docNumber });
           setSoDialog(null);
           navigate("/sales/orders");
         },
-        onError: () => toast({ title: "Gagal membuat Sales Order", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       },
     );
   }

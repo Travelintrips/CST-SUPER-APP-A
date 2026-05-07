@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const ROLES = ["admin", "ecommerce", "trading", "logistics", "pos"] as const;
 type Role = typeof ROLES[number];
@@ -36,6 +37,7 @@ const roleColor = (role: string) => {
 };
 
 export default function UsersPage() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -72,9 +74,9 @@ export default function UsersPage() {
         queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
         setEditing(null);
-        toast({ title: "Pengguna berhasil diperbarui" });
+        toast({ title: t.users.title + " — " + t.common.saved });
       },
-      onError: () => toast({ title: "Gagal memperbarui pengguna", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -84,15 +86,15 @@ export default function UsersPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Manajemen Pengguna</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Atur peran dan divisi setiap pengguna sistem.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.users.title}</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.users.subtitle}</p>
         </div>
 
         {isForbidden ? (
           <Card><CardContent className="p-8 text-center space-y-2">
             <ShieldAlert className="h-10 w-10 mx-auto text-destructive" />
-            <p className="font-medium">Akses ditolak</p>
-            <p className="text-sm text-muted-foreground">Hanya admin yang dapat membuka halaman ini.</p>
+            <p className="font-medium">{t.users.accessDenied}</p>
+            <p className="text-sm text-muted-foreground">{t.users.adminOnly}</p>
           </CardContent></Card>
         ) : (
           <>
@@ -101,11 +103,11 @@ export default function UsersPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Nama</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Peran</TableHead>
-                      <TableHead>Divisi</TableHead>
-                      <TableHead className="text-right w-[100px]">Aksi</TableHead>
+                      <TableHead>{t.common.name}</TableHead>
+                      <TableHead>{t.common.email}</TableHead>
+                      <TableHead>{t.users.role}</TableHead>
+                      <TableHead>{t.common.division}</TableHead>
+                      <TableHead className="text-right w-[100px]">{t.common.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -124,7 +126,7 @@ export default function UsersPage() {
                         <TableCell colSpan={5} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <Users className="h-8 w-8 mb-2 opacity-50" />
-                            <p>Belum ada pengguna terdaftar.</p>
+                            <p>{t.users.noUsers}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -138,7 +140,7 @@ export default function UsersPage() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">{u.division || "—"}</TableCell>
                           <TableCell className="text-right">
-                            <Button size="icon" variant="ghost" onClick={() => openEdit(u)} data-testid={`button-edit-user-${u.id}`} aria-label="Edit pengguna">
+                            <Button size="icon" variant="ghost" onClick={() => openEdit(u)} data-testid={`button-edit-user-${u.id}`} aria-label={t.common.edit}>
                               <Pencil className="h-4 w-4" />
                             </Button>
                           </TableCell>
@@ -162,7 +164,7 @@ export default function UsersPage() {
               ) : users?.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <Users className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Belum ada pengguna terdaftar.</p>
+                  <p className="text-sm text-muted-foreground">{t.users.noUsers}</p>
                 </CardContent></Card>
               ) : (
                 users?.map((u) => (
@@ -175,10 +177,10 @@ export default function UsersPage() {
                       <Badge variant="outline" className={`capitalize shrink-0 ${roleColor(u.role)}`}>{u.role}</Badge>
                     </div>
                     {u.division && (
-                      <p className="text-xs text-muted-foreground">Divisi: <span className="text-foreground">{u.division}</span></p>
+                      <p className="text-xs text-muted-foreground">{t.common.division}: <span className="text-foreground">{u.division}</span></p>
                     )}
                     <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)} data-testid={`button-edit-user-mobile-${u.id}`}>
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
                     </Button>
                   </CardContent></Card>
                 ))
@@ -193,20 +195,20 @@ export default function UsersPage() {
           {editing && (
             <form onSubmit={handleSave}>
               <DialogHeader>
-                <DialogTitle>Edit Pengguna</DialogTitle>
-                <DialogDescription>Ubah peran dan divisi pengguna.</DialogDescription>
+                <DialogTitle>{t.users.editTitle}</DialogTitle>
+                <DialogDescription>{t.users.editDesc}</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
-                  <Label>Email</Label>
+                  <Label>{t.common.email}</Label>
                   <Input value={editing.email} disabled />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="user-name">Nama</Label>
+                  <Label htmlFor="user-name">{t.common.name}</Label>
                   <Input id="user-name" value={editName} onChange={(e) => setEditName(e.target.value)} data-testid="input-edit-user-name" />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="user-role">Peran</Label>
+                  <Label htmlFor="user-role">{t.users.role}</Label>
                   <Select value={editRole} onValueChange={(v) => setEditRole(v as Role)}>
                     <SelectTrigger id="user-role" data-testid="select-edit-user-role"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -217,14 +219,14 @@ export default function UsersPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="user-division">Divisi (opsional)</Label>
+                  <Label htmlFor="user-division">{t.users.divisionOptional}</Label>
                   <Input id="user-division" value={editDivision} onChange={(e) => setEditDivision(e.target.value)} placeholder="cth. Jakarta Pusat" data-testid="input-edit-user-division" />
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setEditing(null)}>Batal</Button>
+                <Button type="button" variant="outline" onClick={() => setEditing(null)}>{t.common.cancel}</Button>
                 <Button type="submit" disabled={updateUser.isPending} data-testid="button-save-user">
-                  {updateUser.isPending ? "Menyimpan..." : "Simpan"}
+                  {updateUser.isPending ? t.common.saving : t.common.save}
                 </Button>
               </DialogFooter>
             </form>

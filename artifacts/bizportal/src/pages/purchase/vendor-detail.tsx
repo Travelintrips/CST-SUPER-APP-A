@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useListSuppliers,
   useUpdateSupplier,
@@ -125,6 +126,7 @@ export default function VendorDetailPage() {
   const vendorId = Number(id);
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const { data: allVendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
@@ -153,7 +155,7 @@ export default function VendorDetailPage() {
 
   const { uploadFile } = useUpload({
     onError: (err) => {
-      toast({ title: `Upload logo gagal: ${err.message}`, variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       setLogoUploading(false);
     },
   });
@@ -164,7 +166,7 @@ export default function VendorDetailPage() {
       const result = await uploadFile(file);
       if (result?.objectPath) {
         setV("logo", result.objectPath);
-        toast({ title: "Logo berhasil diunggah" });
+        toast({ title: t.common.success });
       }
     } finally {
       setLogoUploading(false);
@@ -208,7 +210,7 @@ export default function VendorDetailPage() {
 
   const submitItem = async () => {
     if (!itemForm.name.trim()) {
-      toast({ title: "Nama item wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const body = {
@@ -227,18 +229,18 @@ export default function VendorDetailPage() {
         qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
           old ? old.map((i) => (i.id === updated.id ? updated : i)) : [updated]
         );
-        toast({ title: "Item diperbarui" });
+        toast({ title: t.common.success });
       } else {
         const created = await createItem.mutateAsync({ id: vendorId, data: body });
         qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
           old ? [...old, created] : [created]
         );
-        toast({ title: "Item ditambahkan" });
+        toast({ title: t.common.success });
       }
       setCatalogOpen(false);
       setEditingItem(null);
     } catch (e) {
-      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -249,9 +251,9 @@ export default function VendorDetailPage() {
       qc.setQueryData<VendorCatalogItem[]>(getListVendorCatalogQueryKey(vendorId), (old) =>
         old ? old.filter((i) => i.id !== itemId) : []
       );
-      toast({ title: "Item dihapus" });
+      toast({ title: t.common.success });
     } catch (e) {
-      toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -278,7 +280,7 @@ export default function VendorDetailPage() {
   const submitVendor = async () => {
     if (!vendorForm || !vendor) return;
     if (!vendorForm.name.trim()) {
-      toast({ title: "Nama vendor wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -304,10 +306,10 @@ export default function VendorDetailPage() {
         old ? old.map((s) => (s.id === updated.id ? updated : s)) : [updated]
       );
       qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
-      toast({ title: "Vendor diperbarui" });
+      toast({ title: t.common.success });
       setVendorEditOpen(false);
     } catch (e) {
-      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 

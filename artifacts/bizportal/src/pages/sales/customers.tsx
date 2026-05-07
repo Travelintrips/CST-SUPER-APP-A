@@ -40,10 +40,12 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function CustomersPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const { data: customers } = useListCustomers({ query: { queryKey: getListCustomersQueryKey() } });
   const { data: taxes } = useListTaxes();
   const createMut = useCreateCustomer();
@@ -85,7 +87,7 @@ export default function CustomersPage() {
 
   const submit = async () => {
     if (!form.name.trim()) {
-      toast({ title: "Nama wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const body = {
@@ -103,19 +105,19 @@ export default function CustomersPage() {
         qc.setQueryData<Customer[]>(getListCustomersQueryKey(), (old) =>
           old ? old.map((c) => (c.id === updated.id ? updated : c)) : [updated]
         );
-        toast({ title: "Customer diperbarui" });
+        toast({ title: t.common.success });
       } else {
         const created = await createMut.mutateAsync({ data: body });
         qc.setQueryData<Customer[]>(getListCustomersQueryKey(), (old) =>
           old ? [...old, created] : [created]
         );
-        toast({ title: "Customer dibuat" });
+        toast({ title: t.common.success });
       }
       qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
       reset();
       setOpen(false);
     } catch (e) {
-      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -124,9 +126,9 @@ export default function CustomersPage() {
     try {
       await deleteMut.mutateAsync({ id });
       qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
-      toast({ title: "Customer dihapus" });
+      toast({ title: t.common.success });
     } catch (e) {
-      toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 

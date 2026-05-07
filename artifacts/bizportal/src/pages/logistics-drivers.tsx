@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp, Activity, ClipboardList } from "lucide-react";
@@ -99,6 +100,7 @@ export default function LogisticsDriversPage() {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const [showDialog, setShowDialog] = useState(false);
   const [editDriver, setEditDriver] = useState<Driver | null>(null);
@@ -212,11 +214,11 @@ export default function LogisticsDriversPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
-      toast({ title: "Driver berhasil ditambahkan" });
+      toast({ title: t.common.success });
       setShowDialog(false);
       setForm(EMPTY_FORM);
     },
-    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t.common.error, description: e.message, variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
@@ -226,12 +228,12 @@ export default function LogisticsDriversPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
-      toast({ title: "Driver berhasil diperbarui" });
+      toast({ title: t.common.success });
       setShowDialog(false);
       setEditDriver(null);
       setForm(EMPTY_FORM);
     },
-    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t.common.error, description: e.message, variant: "destructive" }),
   });
 
   const deactivateMutation = useMutation({
@@ -241,9 +243,9 @@ export default function LogisticsDriversPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
-      toast({ title: "Driver dinonaktifkan" });
+      toast({ title: t.common.success });
     },
-    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t.common.error, description: e.message, variant: "destructive" }),
   });
 
   const createJobMutation = useMutation({
@@ -265,12 +267,12 @@ export default function LogisticsDriversPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["driver-jobs-all"] });
       queryClient.invalidateQueries({ queryKey: ["driver-detail", jobTargetDriver?.id] });
-      toast({ title: "Job berhasil dibuat", description: `Job dikirim ke ${jobTargetDriver?.name}` });
+      toast({ title: t.common.success });
       setShowJobDialog(false);
       setJobForm(EMPTY_JOB);
       setJobTargetDriver(null);
     },
-    onError: (e: Error) => toast({ title: "Gagal membuat job", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t.common.error, description: e.message, variant: "destructive" }),
   });
 
   function openCreateJob(driver: Driver) {

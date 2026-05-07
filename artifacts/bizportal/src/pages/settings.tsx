@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { User, Mail, Briefcase, Shield, MessageCircle, Save, Loader2, CheckCircle, Calculator, ChevronDown, ChevronUp, Package, Plus, X, Bot } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface CalcRates {
   airFreight:  { baseCost: number; ratePerKg: number;  handlingPct: number; customsFee: number };
@@ -74,6 +75,7 @@ const SERVICE_FIELDS: Record<ServiceKey, FieldDef[]> = {
 function CalculatorRatesCard() {
   const { getToken } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [rates, setRates] = useState<CalcRates>(DEFAULT_RATES);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,9 +122,9 @@ function CalculatorRatesCard() {
       if (!res.ok) throw new Error(await res.text());
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      toast({ title: "Tarif kalkulator berhasil disimpan" });
+      toast({ title: t.common.success });
     } catch (err) {
-      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+      toast({ title: t.common.error, description: String(err), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -220,6 +222,7 @@ function CalculatorRatesCard() {
 function CargoTypesCard() {
   const { getToken } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [types, setTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -262,9 +265,9 @@ function CargoTypesCard() {
       if (!res.ok) throw new Error(await res.text());
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      toast({ title: "Daftar Cargo Type berhasil disimpan" });
+      toast({ title: t.common.success });
     } catch (err) {
-      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+      toast({ title: t.common.error, description: String(err), variant: "destructive" });
     } finally { setSaving(false); }
   }
 
@@ -335,6 +338,7 @@ interface AiIntakeSettingsData {
 function AiIntakeSettingsCard() {
   const { getToken } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [data, setData] = useState<AiIntakeSettingsData>({
     enabled: true,
     replyWaTemplate: "",
@@ -374,9 +378,9 @@ function AiIntakeSettingsCard() {
       if (!res.ok) throw new Error(await res.text());
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      toast({ title: "Pengaturan AI Intake berhasil disimpan" });
+      toast({ title: t.common.success });
     } catch (err) {
-      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+      toast({ title: t.common.error, description: String(err), variant: "destructive" });
     } finally { setSaving(false); }
   }
 
@@ -510,6 +514,7 @@ function AiIntakeSettingsCard() {
 function WhatsAppNotificationCard() {
   const { getToken } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [adminWa, setAdminWa] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -549,9 +554,9 @@ function WhatsAppNotificationCard() {
       if (!res.ok) throw new Error(await res.text());
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-      toast({ title: "Nomor WhatsApp admin berhasil disimpan" });
+      toast({ title: t.common.success });
     } catch (err) {
-      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+      toast({ title: t.common.error, description: String(err), variant: "destructive" });
     } finally {
       setSaving(false);
     }

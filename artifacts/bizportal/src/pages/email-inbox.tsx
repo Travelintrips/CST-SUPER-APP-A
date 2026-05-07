@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Mail, Search, RefreshCw, Loader2, ShieldCheck, XCircle, Archive,
   Link2, Paperclip, CheckCircle2, Trash2, Download, FileImage, Filter, CalendarDays,
@@ -292,6 +293,7 @@ function TransactionList({
 export default function EmailInboxPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const search = useSearch();
   const [, setLocation] = useLocation();
 
@@ -384,9 +386,9 @@ export default function EmailInboxPage() {
         setDeleteConfirmId(null);
         setDetailOpen(false);
         setSelectedId(null);
-        toast({ title: "Email berhasil dihapus" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal menghapus email", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -395,9 +397,9 @@ export default function EmailInboxPage() {
     validateStatus.mutate({ id: selectedId, data: { status: status as any } }, {
       onSuccess: () => {
         invalidateLists();
-        toast({ title: `Status diubah ke: ${STATUS_LABELS[status] ?? status}` });
+        toast({ title: t.common.success, description: STATUS_LABELS[status] ?? status });
       },
-      onError: () => toast({ title: "Gagal mengubah status", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -405,9 +407,9 @@ export default function EmailInboxPage() {
     syncImap.mutate(undefined, {
       onSuccess: (result) => {
         invalidateLists();
-        toast({ title: result.message ?? `${result.synced} email baru disinkronkan` });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Sinkronisasi email gagal", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -423,7 +425,7 @@ export default function EmailInboxPage() {
 
   function handleCreateLink() {
     if (!selectedId || !linkSelectedId) {
-      toast({ title: "Pilih transaksi terlebih dahulu", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     createLink.mutate({
@@ -438,9 +440,9 @@ export default function EmailInboxPage() {
       onSuccess: () => {
         invalidateLists();
         setLinkOpen(false);
-        toast({ title: `Email ditautkan ke: ${linkSelectedLabel}` });
+        toast({ title: t.common.success, description: linkSelectedLabel });
       },
-      onError: () => toast({ title: "Gagal menautkan", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -449,9 +451,9 @@ export default function EmailInboxPage() {
     validateLink.mutate({ id: selectedId, linkId: link.id, data: {} }, {
       onSuccess: () => {
         invalidateLists();
-        toast({ title: "Link divalidasi" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal memvalidasi link", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -460,9 +462,9 @@ export default function EmailInboxPage() {
     deleteLink.mutate({ id: selectedId, linkId: link.id }, {
       onSuccess: () => {
         invalidateLists();
-        toast({ title: "Link dihapus" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal menghapus link", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 

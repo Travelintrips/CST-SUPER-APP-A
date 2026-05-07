@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useListJournals, useCreateJournal, useUpdateJournal, useListAccounts,
   getListJournalsQueryKey, type AccountingJournal,
@@ -30,6 +31,7 @@ const TYPE_LABELS: Record<string, string> = {
 export default function JournalsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const { data: journals } = useListJournals();
   const { data: accounts } = useListAccounts();
   const createMut = useCreateJournal();
@@ -52,20 +54,20 @@ export default function JournalsPage() {
 
   const submit = async () => {
     if (!form.code.trim() || !form.name.trim()) {
-      toast({ title: "Kode & nama wajib diisi", variant: "destructive" }); return;
+      toast({ title: t.common.error, variant: "destructive" }); return;
     }
     try {
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: form });
-        toast({ title: "Jurnal diperbarui" });
+        toast({ title: t.common.success });
       } else {
         await createMut.mutateAsync({ data: form });
-        toast({ title: "Jurnal dibuat" });
+        toast({ title: t.common.success });
       }
       qc.invalidateQueries({ queryKey: getListJournalsQueryKey() });
       reset(); setOpen(false);
     } catch (e: any) {
-      toast({ title: "Gagal", description: e?.message ?? String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
     }
   };
 

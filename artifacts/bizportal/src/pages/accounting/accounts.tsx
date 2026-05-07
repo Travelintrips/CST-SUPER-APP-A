@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,6 +92,7 @@ function flattenTree(nodes: TreeNode[]): TreeNode[] {
 export default function AccountsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const { data: accounts = [] } = useListAccounts();
   const createMut = useCreateAccount();
   const updateMut = useUpdateAccount();
@@ -128,32 +130,32 @@ export default function AccountsPage() {
 
   const submit = async () => {
     if (!form.code.trim() || !form.name.trim()) {
-      toast({ title: "Kode & nama wajib diisi", variant: "destructive" }); return;
+      toast({ title: t.common.error, variant: "destructive" }); return;
     }
     try {
       const payload = { ...form, parentId: form.parentId ?? undefined };
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: payload });
-        toast({ title: "Akun diperbarui" });
+        toast({ title: t.common.success });
       } else {
         await createMut.mutateAsync({ data: payload });
-        toast({ title: "Akun dibuat" });
+        toast({ title: t.common.success });
       }
       qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
       reset(); setOpen(false);
     } catch (e: any) {
-      toast({ title: "Gagal", description: e?.message ?? String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
     }
   };
 
   const remove = async (a: Account) => {
-    if (!confirm(`Hapus akun ${a.code} - ${a.name}?`)) return;
+    if (!confirm(t.common.confirmDeleteDesc)) return;
     try {
       await deleteMut.mutateAsync({ id: a.id });
-      toast({ title: "Akun dihapus" });
+      toast({ title: t.common.success });
       qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
     } catch (e: any) {
-      toast({ title: "Gagal menghapus", description: e?.message ?? String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
     }
   };
 

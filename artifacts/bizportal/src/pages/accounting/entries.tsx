@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useListAccountingEntries, useCreateAccountingEntry, useListJournals, useListAccounts,
   getListAccountingEntriesQueryKey,
@@ -40,6 +41,7 @@ type LineForm = { accountId: number; debit: number; credit: number; description:
 export default function EntriesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [filter, setFilter] = useState<{ journalId?: number; from?: string; to?: string }>({});
   const params = useMemo(() => ({
     ...(filter.journalId ? { journalId: filter.journalId } : {}),
@@ -72,14 +74,14 @@ export default function EntriesPage() {
 
   const submit = async () => {
     if (!form.journalId || !form.date) {
-      toast({ title: "Jurnal & tanggal wajib", variant: "destructive" }); return;
+      toast({ title: t.common.error, variant: "destructive" }); return;
     }
     if (!balanced) {
-      toast({ title: "Tidak seimbang", description: `Debit ${idr(totalD)} ≠ Kredit ${idr(totalC)}`, variant: "destructive" }); return;
+      toast({ title: t.common.error, description: `Debit ${idr(totalD)} ≠ Kredit ${idr(totalC)}`, variant: "destructive" }); return;
     }
     const lines = form.lines.filter((l) => l.accountId && (Number(l.debit) || Number(l.credit)));
     if (lines.length < 2) {
-      toast({ title: "Minimal 2 baris", variant: "destructive" }); return;
+      toast({ title: t.common.error, variant: "destructive" }); return;
     }
     try {
       await createMut.mutateAsync({
@@ -89,11 +91,11 @@ export default function EntriesPage() {
           lines: lines.map((l) => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description || null })),
         },
       });
-      toast({ title: "Jurnal entry diposting" });
+      toast({ title: t.common.success });
       qc.invalidateQueries({ queryKey: getListAccountingEntriesQueryKey() });
       reset(); setOpen(false);
     } catch (e: any) {
-      toast({ title: "Gagal", description: e?.message ?? String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
     }
   };
 

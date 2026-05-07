@@ -3,6 +3,24 @@ export type Locale =
   | "ko-KR" | "ar-SA" | "fr-FR" | "de-DE" | "es-ES" | "pt-BR"
   | "ru-RU" | "hi-IN" | "ms-MY" | "th-TH" | "vi-VN";
 
+type DeepPartial<T> = { [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P] };
+
+function deepMerge<T>(base: T, override: DeepPartial<T>): T {
+  const result = { ...base } as Record<string, unknown>;
+  for (const key in override) {
+    const v = (override as Record<string, unknown>)[key];
+    const b = (base as Record<string, unknown>)[key];
+    if (v !== undefined) {
+      if (typeof v === "object" && v !== null && typeof b === "object" && b !== null) {
+        result[key] = deepMerge(b as Record<string, unknown>, v as Record<string, unknown>);
+      } else {
+        result[key] = v;
+      }
+    }
+  }
+  return result as T;
+}
+
 export interface Translations {
   nav: {
     modules: string;
@@ -100,6 +118,24 @@ export interface Translations {
     noRole: string;
     division: string;
     signOut: string;
+    refresh: string;
+    off: string;
+    seconds: string;
+    minute: string;
+    interval: string;
+    accessDenied: string;
+    adminOnly: string;
+    optional: string;
+    contactEmail: string;
+    confirmDeleteTitle: string;
+    confirmDeleteDesc: string;
+    viewAll: string;
+    new: string;
+    inProgress: string;
+    completed: string;
+    cancelled: string;
+    noResults2: string;
+    number: string;
   };
   welcome: {
     title: string;
@@ -120,6 +156,7 @@ export interface Translations {
   };
   dashboard: {
     title: string;
+    subtitle: string;
     totalRevenue: string;
     totalOrders: string;
     activeCustomers: string;
@@ -130,6 +167,24 @@ export interface Translations {
     newQuotation: string;
     newOrder: string;
     viewReports: string;
+    activeFreight: string;
+    awaitingQuote: string;
+    inTransit: string;
+    driverStatus: string;
+    available: string;
+    busy: string;
+    portalOrdersTitle: string;
+    systemHealth: string;
+    refreshInterval: string;
+    allOrders: string;
+    createSalesOrder: string;
+    statusUpdated: string;
+    updatedAt: string;
+    refreshIn: string;
+    loadedIn: string;
+    allPortalOrders: string;
+    noOrdersForStatus: string;
+    noActiveDrivers: string;
   };
   settings: {
     title: string;
@@ -149,6 +204,7 @@ export interface Translations {
   };
   pos: {
     title: string;
+    subtitle: string;
     products: string;
     cart: string;
     total: string;
@@ -158,9 +214,36 @@ export interface Translations {
     emptyCart: string;
     checkout: string;
     searchProduct: string;
+    cashierTab: string;
+    historyStats: string;
+    selectProduct: string;
+    searchProductSku: string;
+    noProducts: string;
+    paymentMethod: string;
+    cash: string;
+    qris: string;
+    debit: string;
+    credit: string;
+    transfer: string;
+    items: string;
+    todaySales: string;
+    txCount: string;
+    avgOrder: string;
+    historyTitle: string;
+    time: string;
+    product: string;
+    price: string;
+    document: string;
+    noTransactions: string;
+    qty: string;
+    monthSales: string;
+    monthTxCount: string;
+    isProcessing: string;
+    pay: string;
   };
   trading: {
     title: string;
+    subtitle: string;
     inventory: string;
     stock: string;
     sku: string;
@@ -168,9 +251,25 @@ export interface Translations {
     salePrice: string;
     hsCode: string;
     supplier: string;
+    stockInventory: string;
+    addStock: string;
+    addStockTitle: string;
+    addStockDesc: string;
+    editStockTitle: string;
+    addSupplierTitle: string;
+    editSupplierTitle: string;
+    productName: string;
+    quantity: string;
+    unit: string;
+    noStock: string;
+    noSuppliers: string;
+    supplierName: string;
+    country: string;
+    addSupplier: string;
   };
   logistics: {
     title: string;
+    subtitle: string;
     trackingNumber: string;
     origin: string;
     destination: string;
@@ -180,9 +279,35 @@ export interface Translations {
     vehicle: string;
     weight: string;
     dimensions: string;
+    newShipment: string;
+    statusDraft: string;
+    statusRfqSent: string;
+    statusConfirmed: string;
+    statusInTransit: string;
+    statusCompleted: string;
+    statusCancelled: string;
+    noShipments: string;
+    allStatus: string;
+    last7Days: string;
+    last30Days: string;
+    custom: string;
+    newest: string;
+    oldest: string;
+    filters: string;
+    clearFilters: string;
+    viewAll: string;
+    freightTitle: string;
+    freightSubtitle: string;
+    shipmentsTitle: string;
+    shipmentsSubtitle: string;
+    addShipment: string;
+    carrier: string;
+    sortBy: string;
+    dateRange: string;
   };
   sales: {
     title: string;
+    subtitle: string;
     quotation: string;
     order: string;
     invoice: string;
@@ -200,9 +325,17 @@ export interface Translations {
     newQuotation: string;
     newOrder: string;
     newInvoice: string;
+    toInvoice: string;
+    revenue: string;
+    recentDocuments: string;
+    noDocuments: string;
+    searchPlaceholder: string;
+    docNumber: string;
+    customerName: string;
   };
   purchase: {
     title: string;
+    subtitle: string;
     rfq: string;
     order: string;
     bill: string;
@@ -214,6 +347,26 @@ export interface Translations {
     newRFQ: string;
     newOrder: string;
     newBill: string;
+    toReceive: string;
+    toBill: string;
+    totalSpend: string;
+    recentDocuments: string;
+    noDocuments: string;
+  };
+  users: {
+    title: string;
+    subtitle: string;
+    editTitle: string;
+    editDesc: string;
+    role: string;
+    divisionOptional: string;
+    noUsers: string;
+    accessDenied: string;
+    adminOnly: string;
+  };
+  notFound: {
+    title: string;
+    subtitle: string;
   };
   accounting: {
     title: string;
@@ -332,6 +485,24 @@ const id: Translations = {
     noRole: "Belum Ada Role",
     division: "Divisi",
     signOut: "Keluar",
+    number: "No.",
+    refresh: "Refresh",
+    off: "Mati",
+    seconds: "detik",
+    minute: "menit",
+    interval: "Interval",
+    accessDenied: "Akses ditolak",
+    adminOnly: "Hanya admin yang dapat mengakses halaman ini.",
+    optional: "opsional",
+    contactEmail: "Email Kontak",
+    confirmDeleteTitle: "Konfirmasi Hapus",
+    confirmDeleteDesc: "Tindakan ini tidak dapat dibatalkan.",
+    viewAll: "Lihat Semua",
+    new: "Baru",
+    inProgress: "Sedang Diproses",
+    completed: "Selesai",
+    cancelled: "Dibatalkan",
+    noResults2: "Tidak ada hasil yang cocok.",
   },
   welcome: {
     title: "Selamat Datang di BizPortal",
@@ -352,6 +523,7 @@ const id: Translations = {
   },
   dashboard: {
     title: "Dashboard",
+    subtitle: "Ringkasan operasional dan KPI bisnis secara real-time.",
     totalRevenue: "Total Pendapatan",
     totalOrders: "Total Order",
     activeCustomers: "Pelanggan Aktif",
@@ -362,6 +534,24 @@ const id: Translations = {
     newQuotation: "Penawaran Baru",
     newOrder: "Order Baru",
     viewReports: "Lihat Laporan",
+    activeFreight: "Freight Aktif",
+    awaitingQuote: "Menunggu Penawaran",
+    inTransit: "Dalam Perjalanan",
+    driverStatus: "Status Pengemudi",
+    available: "Tersedia",
+    busy: "Sibuk",
+    portalOrdersTitle: "Pesanan Portal",
+    systemHealth: "Kesehatan Sistem",
+    refreshInterval: "Interval Refresh",
+    allOrders: "Semua",
+    createSalesOrder: "Buat Sales Order",
+    statusUpdated: "Status diperbarui",
+    updatedAt: "Diperbarui",
+    refreshIn: "Refresh dalam",
+    loadedIn: "Muat dalam",
+    allPortalOrders: "Semua Portal Order",
+    noOrdersForStatus: "Tidak ada pesanan untuk status ini",
+    noActiveDrivers: "Belum ada driver aktif",
   },
   settings: {
     title: "Pengaturan",
@@ -381,6 +571,7 @@ const id: Translations = {
   },
   pos: {
     title: "Point of Sale",
+    subtitle: "Kelola transaksi toko fisik dan ringkasan penjualan harian.",
     products: "Produk",
     cart: "Keranjang",
     total: "Total",
@@ -390,9 +581,36 @@ const id: Translations = {
     emptyCart: "Keranjang kosong",
     checkout: "Bayar",
     searchProduct: "Cari produk...",
+    cashierTab: "Kasir",
+    historyStats: "Riwayat & Statistik",
+    selectProduct: "Pilih Produk",
+    searchProductSku: "Cari produk / SKU...",
+    noProducts: "Belum ada produk. Tambahkan dari halaman E-Commerce.",
+    paymentMethod: "Metode Pembayaran",
+    cash: "Tunai",
+    qris: "QRIS",
+    debit: "Debit",
+    credit: "Kredit",
+    transfer: "Transfer",
+    items: "item",
+    todaySales: "Penjualan Hari Ini",
+    txCount: "Jumlah Transaksi",
+    avgOrder: "Rata-rata Order",
+    historyTitle: "Riwayat Transaksi",
+    time: "Waktu",
+    product: "Produk",
+    price: "Harga",
+    document: "Dokumen",
+    noTransactions: "Belum ada transaksi.",
+    qty: "Qty",
+    monthSales: "Penjualan Bulan Ini",
+    monthTxCount: "Transaksi Bulan Ini",
+    isProcessing: "Memproses...",
+    pay: "Bayar",
   },
   trading: {
-    title: "Trading",
+    title: "Trading & B2B",
+    subtitle: "Kelola inventory grosir, supplier, dan barang impor.",
     inventory: "Inventaris",
     stock: "Stok",
     sku: "SKU",
@@ -400,9 +618,25 @@ const id: Translations = {
     salePrice: "Harga Jual",
     hsCode: "HS Code",
     supplier: "Supplier",
+    stockInventory: "Stock Inventory",
+    addStock: "Tambah Stock",
+    addStockTitle: "Tambah Inventory",
+    addStockDesc: "Catat stok grosir baru ke gudang.",
+    editStockTitle: "Edit Stock",
+    addSupplierTitle: "Tambah Supplier",
+    editSupplierTitle: "Edit Supplier",
+    productName: "Nama Produk",
+    quantity: "Jumlah",
+    unit: "Satuan",
+    noStock: "Belum ada stock inventory.",
+    noSuppliers: "Belum ada supplier.",
+    supplierName: "Nama Supplier",
+    country: "Negara",
+    addSupplier: "Tambah Supplier",
   },
   logistics: {
     title: "Logistik",
+    subtitle: "Lacak pengiriman dan kelola operasi armada.",
     trackingNumber: "Nomor Resi",
     origin: "Asal",
     destination: "Tujuan",
@@ -412,9 +646,35 @@ const id: Translations = {
     vehicle: "Kendaraan",
     weight: "Berat",
     dimensions: "Dimensi",
+    newShipment: "Pengiriman Baru",
+    statusDraft: "Draft",
+    statusRfqSent: "RFQ Dikirim",
+    statusConfirmed: "Dikonfirmasi",
+    statusInTransit: "Dalam Perjalanan",
+    statusCompleted: "Selesai",
+    statusCancelled: "Dibatalkan",
+    noShipments: "Belum ada pengiriman.",
+    allStatus: "Semua Status",
+    last7Days: "7 Hari Terakhir",
+    last30Days: "30 Hari Terakhir",
+    custom: "Kustom",
+    newest: "Terbaru",
+    oldest: "Terlama",
+    filters: "Filter",
+    clearFilters: "Hapus Filter",
+    viewAll: "Lihat Semua",
+    freightTitle: "Freight Forwarding",
+    freightSubtitle: "Shipment internasional aktif.",
+    shipmentsTitle: "Pengiriman Lokal",
+    shipmentsSubtitle: "Daftar pengiriman armada lokal.",
+    addShipment: "Tambah Pengiriman",
+    carrier: "Carrier",
+    sortBy: "Urutkan",
+    dateRange: "Rentang Tanggal",
   },
   sales: {
     title: "Sales",
+    subtitle: "Ringkasan penjualan dan dokumen terbaru.",
     quotation: "Penawaran",
     order: "Order",
     invoice: "Invoice",
@@ -432,9 +692,17 @@ const id: Translations = {
     newQuotation: "Penawaran Baru",
     newOrder: "Order Baru",
     newInvoice: "Invoice Baru",
+    toInvoice: "Perlu Ditagih",
+    revenue: "Pendapatan",
+    recentDocuments: "Dokumen Terbaru",
+    noDocuments: "Belum ada dokumen.",
+    searchPlaceholder: "Cari dokumen...",
+    docNumber: "No. Dokumen",
+    customerName: "Nama Pelanggan",
   },
   purchase: {
     title: "Pembelian",
+    subtitle: "Ringkasan pembelian dan dokumen terbaru.",
     rfq: "RFQ",
     order: "Purchase Order",
     bill: "Tagihan",
@@ -446,6 +714,26 @@ const id: Translations = {
     newRFQ: "RFQ Baru",
     newOrder: "PO Baru",
     newBill: "Tagihan Baru",
+    toReceive: "Perlu Diterima",
+    toBill: "Perlu Ditagih",
+    totalSpend: "Total Belanja",
+    recentDocuments: "Dokumen Terbaru",
+    noDocuments: "Belum ada dokumen.",
+  },
+  users: {
+    title: "Manajemen Pengguna",
+    subtitle: "Atur peran dan divisi setiap pengguna sistem.",
+    editTitle: "Edit Pengguna",
+    editDesc: "Ubah peran dan divisi pengguna.",
+    role: "Peran",
+    divisionOptional: "Divisi (opsional)",
+    noUsers: "Belum ada pengguna terdaftar.",
+    accessDenied: "Akses Ditolak",
+    adminOnly: "Hanya admin yang dapat membuka halaman ini.",
+  },
+  notFound: {
+    title: "404 Halaman Tidak Ditemukan",
+    subtitle: "Halaman yang Anda cari tidak ditemukan.",
   },
   accounting: {
     title: "Akunting",
@@ -564,6 +852,24 @@ const en: Translations = {
     noRole: "No Role",
     division: "Division",
     signOut: "Sign Out",
+    refresh: "Refresh",
+    off: "Off",
+    seconds: "sec",
+    minute: "min",
+    interval: "Interval",
+    accessDenied: "Access Denied",
+    adminOnly: "Only admins can access this page.",
+    optional: "optional",
+    contactEmail: "Contact Email",
+    confirmDeleteTitle: "Confirm Delete",
+    confirmDeleteDesc: "This action cannot be undone.",
+    viewAll: "View All",
+    new: "New",
+    inProgress: "In Progress",
+    completed: "Completed",
+    cancelled: "Cancelled",
+    noResults2: "No matching results.",
+    number: "No.",
   },
   welcome: {
     title: "Welcome to BizPortal",
@@ -584,6 +890,7 @@ const en: Translations = {
   },
   dashboard: {
     title: "Dashboard",
+    subtitle: "Real-time operational summary and business KPIs.",
     totalRevenue: "Total Revenue",
     totalOrders: "Total Orders",
     activeCustomers: "Active Customers",
@@ -594,6 +901,24 @@ const en: Translations = {
     newQuotation: "New Quotation",
     newOrder: "New Order",
     viewReports: "View Reports",
+    activeFreight: "Active Freight",
+    awaitingQuote: "Awaiting Quote",
+    inTransit: "In Transit",
+    driverStatus: "Driver Status",
+    available: "Available",
+    busy: "Busy",
+    portalOrdersTitle: "Portal Orders",
+    systemHealth: "System Health",
+    refreshInterval: "Refresh Interval",
+    allOrders: "All",
+    createSalesOrder: "Create Sales Order",
+    statusUpdated: "Status updated",
+    updatedAt: "Updated",
+    refreshIn: "Refresh in",
+    loadedIn: "Loaded in",
+    allPortalOrders: "All Portal Orders",
+    noOrdersForStatus: "No orders for this status",
+    noActiveDrivers: "No active drivers",
   },
   settings: {
     title: "Settings",
@@ -613,6 +938,7 @@ const en: Translations = {
   },
   pos: {
     title: "Point of Sale",
+    subtitle: "Manage physical store transactions and daily sales summary.",
     products: "Products",
     cart: "Cart",
     total: "Total",
@@ -622,9 +948,36 @@ const en: Translations = {
     emptyCart: "Cart is empty",
     checkout: "Checkout",
     searchProduct: "Search product...",
+    cashierTab: "Cashier",
+    historyStats: "History & Statistics",
+    selectProduct: "Select Product",
+    searchProductSku: "Search product / SKU...",
+    noProducts: "No products yet. Add them from the E-Commerce page.",
+    paymentMethod: "Payment Method",
+    cash: "Cash",
+    qris: "QRIS",
+    debit: "Debit Card",
+    credit: "Credit Card",
+    transfer: "Bank Transfer",
+    items: "item(s)",
+    todaySales: "Today's Sales",
+    txCount: "Transaction Count",
+    avgOrder: "Average Order",
+    historyTitle: "Transaction History",
+    time: "Time",
+    product: "Product",
+    price: "Price",
+    document: "Document",
+    noTransactions: "No transactions yet.",
+    qty: "Qty",
+    monthSales: "This Month's Sales",
+    monthTxCount: "This Month's Transactions",
+    isProcessing: "Processing...",
+    pay: "Pay",
   },
   trading: {
-    title: "Trading",
+    title: "Trading & B2B",
+    subtitle: "Manage wholesale inventory, suppliers, and imported goods.",
     inventory: "Inventory",
     stock: "Stock",
     sku: "SKU",
@@ -632,9 +985,25 @@ const en: Translations = {
     salePrice: "Sale Price",
     hsCode: "HS Code",
     supplier: "Supplier",
+    stockInventory: "Stock Inventory",
+    addStock: "Add Stock",
+    addStockTitle: "Add Inventory",
+    addStockDesc: "Record new wholesale stock to the warehouse.",
+    editStockTitle: "Edit Stock",
+    addSupplierTitle: "Add Supplier",
+    editSupplierTitle: "Edit Supplier",
+    productName: "Product Name",
+    quantity: "Quantity",
+    unit: "Unit",
+    noStock: "No inventory stock yet.",
+    noSuppliers: "No suppliers yet.",
+    supplierName: "Supplier Name",
+    country: "Country",
+    addSupplier: "Add Supplier",
   },
   logistics: {
     title: "Logistics",
+    subtitle: "Track shipments and manage fleet operations.",
     trackingNumber: "Tracking Number",
     origin: "Origin",
     destination: "Destination",
@@ -644,9 +1013,35 @@ const en: Translations = {
     vehicle: "Vehicle",
     weight: "Weight",
     dimensions: "Dimensions",
+    newShipment: "New Shipment",
+    statusDraft: "Draft",
+    statusRfqSent: "RFQ Sent",
+    statusConfirmed: "Confirmed",
+    statusInTransit: "In Transit",
+    statusCompleted: "Completed",
+    statusCancelled: "Cancelled",
+    noShipments: "No shipments yet.",
+    allStatus: "All Statuses",
+    last7Days: "Last 7 Days",
+    last30Days: "Last 30 Days",
+    custom: "Custom",
+    newest: "Newest",
+    oldest: "Oldest",
+    filters: "Filters",
+    clearFilters: "Clear Filters",
+    viewAll: "View All",
+    freightTitle: "Freight Forwarding",
+    freightSubtitle: "Active international shipments.",
+    shipmentsTitle: "Local Shipments",
+    shipmentsSubtitle: "Local fleet shipment list.",
+    addShipment: "Add Shipment",
+    carrier: "Carrier",
+    sortBy: "Sort By",
+    dateRange: "Date Range",
   },
   sales: {
     title: "Sales",
+    subtitle: "Sales summary and recent documents.",
     quotation: "Quotation",
     order: "Order",
     invoice: "Invoice",
@@ -664,9 +1059,17 @@ const en: Translations = {
     newQuotation: "New Quotation",
     newOrder: "New Order",
     newInvoice: "New Invoice",
+    toInvoice: "To Invoice",
+    revenue: "Revenue",
+    recentDocuments: "Recent Documents",
+    noDocuments: "No documents yet.",
+    searchPlaceholder: "Search documents...",
+    docNumber: "Doc Number",
+    customerName: "Customer Name",
   },
   purchase: {
     title: "Purchase",
+    subtitle: "Purchase summary and recent documents.",
     rfq: "RFQ",
     order: "Purchase Order",
     bill: "Bill",
@@ -678,6 +1081,26 @@ const en: Translations = {
     newRFQ: "New RFQ",
     newOrder: "New PO",
     newBill: "New Bill",
+    toReceive: "To Receive",
+    toBill: "To Bill",
+    totalSpend: "Total Spend",
+    recentDocuments: "Recent Documents",
+    noDocuments: "No documents yet.",
+  },
+  users: {
+    title: "User Management",
+    subtitle: "Manage roles and divisions for each system user.",
+    editTitle: "Edit User",
+    editDesc: "Change user role and division.",
+    role: "Role",
+    divisionOptional: "Division (optional)",
+    noUsers: "No users registered yet.",
+    accessDenied: "Access Denied",
+    adminOnly: "Only admins can access this page.",
+  },
+  notFound: {
+    title: "404 Page Not Found",
+    subtitle: "The page you are looking for does not exist.",
   },
   accounting: {
     title: "Accounting",
@@ -1006,7 +1429,7 @@ const vi: Translations = {
   accounting: { title: "Kế toán", account: "Tài khoản", debit: "Nợ", credit: "Có", balance: "Số dư", journal: "Sổ nhật ký", entry: "Bút toán", payment: "Thanh toán", tax: "Thuế", period: "Kỳ", openingBalance: "Số dư đầu kỳ", closingBalance: "Số dư cuối kỳ", netIncome: "Lợi nhuận ròng", totalAssets: "Tổng tài sản", totalLiabilities: "Tổng nợ phải trả", equity: "Vốn chủ sở hữu" },
 };
 
-export const translationMap: Record<Locale, Translations> = {
+export const translationMap: Record<Locale, DeepPartial<Translations>> = {
   "id-ID": id,
   "en-US": en,
   "en-GB": en,
@@ -1027,5 +1450,5 @@ export const translationMap: Record<Locale, Translations> = {
 };
 
 export function getTranslations(locale: Locale): Translations {
-  return translationMap[locale] ?? translationMap["en-US"];
+  return deepMerge(en as Translations, translationMap[locale] ?? {});
 }

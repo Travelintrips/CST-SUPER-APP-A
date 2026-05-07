@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -90,6 +91,7 @@ function getStoredInterval(): IntervalValue {
 }
 
 export default function DashboardPage() {
+  const { t } = useLanguage();
   const [intervalValue, setIntervalValue] = useState<IntervalValue>(getStoredInterval);
 
   const refetchInterval = intervalValue === "off" ? false : Number(intervalValue);
@@ -227,11 +229,11 @@ export default function DashboardPage() {
       { id, data: { status } },
       {
         onSuccess: () => {
-          toast({ title: `Status diperbarui: ${status}` });
+          toast({ title: t.common.success });
           queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
           void refetchPortal();
         },
-        onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
         onSettled: () => setUpdatingId(null),
       },
     );
@@ -266,10 +268,10 @@ export default function DashboardPage() {
       },
       {
         onSuccess: (doc) => {
-          toast({ title: "Sales Order berhasil dibuat!", description: doc.docNumber });
+          toast({ title: t.common.success, description: doc.docNumber });
           setSoDialog(null);
         },
-        onError: () => toast({ title: "Gagal membuat Sales Order", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       },
     );
   }
@@ -305,8 +307,8 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin Overview</h1>
-            <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Aggregated business metrics across all divisions.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.dashboard.subtitle}</p>
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
             <div className="flex items-center gap-2">
@@ -334,27 +336,27 @@ export default function DashboardPage() {
                 className="gap-1.5 h-8"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-                {isFetching ? "Memuat..." : "Refresh"}
+                {isFetching ? t.common.loading : t.common.refresh}
               </Button>
             </div>
             {!isLoading && lastUpdated && (
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <span>Diperbarui: {formatLastUpdated(lastUpdated)}</span>
+                <span>{t.dashboard.updatedAt}: {formatLastUpdated(lastUpdated)}</span>
                 {secondsLeft !== null && (
                   <>
                     <span className="text-muted-foreground/40">·</span>
                     <span className="flex items-center gap-0.5">
                       <Clock className="h-3 w-3" />
-                      Refresh dalam {formatCountdown(secondsLeft)}
+                      {t.dashboard.refreshIn} {formatCountdown(secondsLeft)}
                     </span>
                   </>
                 )}
                 {responseTime && (
                   <>
                     <span className="text-muted-foreground/40">·</span>
-                    <span className={`flex items-center gap-0.5 ${responseTimeColor}`} title="Waktu respons server">
+                    <span className={`flex items-center gap-0.5 ${responseTimeColor}`}>
                       <Activity className="h-3 w-3" />
-                      Muat dalam {responseTime}
+                      {t.dashboard.loadedIn} {responseTime}
                     </span>
                   </>
                 )}
@@ -369,34 +371,34 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <PackageOpen className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base">Portal Orders</CardTitle>
+                <CardTitle className="text-base">{t.dashboard.portalOrdersTitle}</CardTitle>
                 {portalNew > 0 && (
                   <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs">
-                    {portalNew} baru
+                    {portalNew} {t.common.new}
                   </Badge>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => void refetchPortal()}>
-                  <RefreshCw className="h-3 w-3" /> Refresh
+                  <RefreshCw className="h-3 w-3" /> {t.common.refresh}
                 </Button>
                 <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
                   <Link href="/logistics/portal-orders">
-                    Lihat Semua <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                    {t.logistics.viewAll} <ArrowRight className="ml-1 h-3.5 w-3.5" />
                   </Link>
                 </Button>
               </div>
             </div>
-            <CardDescription>Pesanan masuk dari customer portal — klik kartu untuk melihat detail</CardDescription>
+            <CardDescription>{t.dashboard.portalOrdersTitle}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* 4 clickable stat cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { key: "all",         label: "Total",       value: portalOrders.length,  color: "text-slate-900",     bg: "bg-slate-50 hover:bg-slate-100",         ring: "ring-slate-300"  },
-                { key: "New Order",   label: "New Order",   value: portalNew,             color: "text-yellow-700",    bg: "bg-yellow-50 hover:bg-yellow-100",       ring: "ring-yellow-400" },
-                { key: "In Progress", label: "In Progress", value: portalInProgress,      color: "text-orange-700",    bg: "bg-orange-50 hover:bg-orange-100",       ring: "ring-orange-400" },
-                { key: "Completed",   label: "Completed",   value: portalCompleted,       color: "text-green-700",     bg: "bg-green-50 hover:bg-green-100",         ring: "ring-green-500"  },
+                { key: "all",         label: t.common.all,          value: portalOrders.length,  color: "text-slate-900",     bg: "bg-slate-50 hover:bg-slate-100",         ring: "ring-slate-300"  },
+                { key: "New Order",   label: t.common.new,          value: portalNew,             color: "text-yellow-700",    bg: "bg-yellow-50 hover:bg-yellow-100",       ring: "ring-yellow-400" },
+                { key: "In Progress", label: t.common.inProgress,   value: portalInProgress,      color: "text-orange-700",    bg: "bg-orange-50 hover:bg-orange-100",       ring: "ring-orange-400" },
+                { key: "Completed",   label: t.common.completed,    value: portalCompleted,       color: "text-green-700",     bg: "bg-green-50 hover:bg-green-100",         ring: "ring-green-500"  },
               ].map((s) => {
                 const isSelected = selectedPortalStatus === s.key;
                 return (
@@ -414,8 +416,8 @@ export default function DashboardPage() {
                     }
                     <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-0.5">
                       {isSelected
-                        ? <><ChevronUp className="h-3 w-3" /> Sembunyikan</>
-                        : <><ChevronDown className="h-3 w-3" /> Lihat detail</>
+                        ? <><ChevronUp className="h-3 w-3" /> {t.common.close}</>
+                        : <><ChevronDown className="h-3 w-3" /> {t.common.view}</>
                       }
                     </p>
                   </button>
@@ -428,8 +430,8 @@ export default function DashboardPage() {
               <div className="rounded-xl border border-border overflow-hidden bg-background">
                 <div className="px-4 py-2.5 border-b border-border bg-muted/40 flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold">
-                    {selectedPortalStatus === "all" ? "Semua Portal Order" : `Status: ${selectedPortalStatus}`}
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">({portalDetailOrders.length} pesanan)</span>
+                    {selectedPortalStatus === "all" ? t.dashboard.allPortalOrders : `${t.logistics.deliveryStatus}: ${selectedPortalStatus}`}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">({portalDetailOrders.length} {t.dashboard.totalOrders})</span>
                   </p>
                   <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSelectedPortalStatus(null)}>
                     <X className="h-3.5 w-3.5" />
@@ -442,7 +444,7 @@ export default function DashboardPage() {
                   </div>
                 ) : portalDetailOrders.length === 0 ? (
                   <div className="py-8 text-center text-sm text-muted-foreground">
-                    Tidak ada pesanan untuk status ini
+                    {t.dashboard.noOrdersForStatus}
                   </div>
                 ) : (
                   <div className="divide-y divide-border/60">
@@ -495,7 +497,7 @@ export default function DashboardPage() {
                             onClick={() => setSoDialog(o)}
                             disabled={o.status === "Cancelled"}
                           >
-                            <FilePlus className="h-3.5 w-3.5" /> Buat SO
+                            <FilePlus className="h-3.5 w-3.5" /> {t.dashboard.createSalesOrder}
                           </Button>
                         </div>
                       </div>
@@ -513,33 +515,33 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base">Manajemen Driver</CardTitle>
+                <CardTitle className="text-base">{t.dashboard.driverStatus}</CardTitle>
                 {driversBusy > 0 && (
                   <Badge className="bg-orange-100 text-orange-800 border border-orange-200 text-xs">
-                    {driversBusy} aktif
+                    {driversBusy} {t.common.inProgress}
                   </Badge>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => void refetchDrivers()}>
-                  <RefreshCw className="h-3 w-3" /> Refresh
+                  <RefreshCw className="h-3 w-3" /> {t.common.refresh}
                 </Button>
                 <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
                   <Link href="/logistics/drivers">
-                    Kelola Driver <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                    {t.dashboard.driverStatus} <ArrowRight className="ml-1 h-3.5 w-3.5" />
                   </Link>
                 </Button>
               </div>
             </div>
-            <CardDescription>Status driver aktif dan pekerjaan yang sedang berjalan</CardDescription>
+            <CardDescription>{t.dashboard.driverStatus}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Summary chips */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: "Total Driver", value: dashDrivers.length, icon: <Users className="h-4 w-4 text-slate-500" />, color: "text-slate-900", bg: "bg-slate-50" },
-                { label: "Tersedia", value: driversAvail, icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />, color: "text-emerald-700", bg: "bg-emerald-50" },
-                { label: "Sedang Bertugas", value: driversBusy, icon: <CircleDot className="h-4 w-4 text-orange-500" />, color: "text-orange-700", bg: "bg-orange-50" },
+                { label: t.dashboard.driverStatus, value: dashDrivers.length, icon: <Users className="h-4 w-4 text-slate-500" />, color: "text-slate-900", bg: "bg-slate-50" },
+                { label: t.dashboard.available, value: driversAvail, icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />, color: "text-emerald-700", bg: "bg-emerald-50" },
+                { label: t.dashboard.busy, value: driversBusy, icon: <CircleDot className="h-4 w-4 text-orange-500" />, color: "text-orange-700", bg: "bg-orange-50" },
               ].map((s) => (
                 <div key={s.label} className={`rounded-xl border border-border p-4 ${s.bg}`}>
                   <div className="flex items-center gap-1.5 mb-1">
@@ -560,7 +562,7 @@ export default function DashboardPage() {
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full bg-muted" />)}
               </div>
             ) : activeDrivers.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Belum ada driver aktif</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">{t.dashboard.noActiveDrivers}</p>
             ) : (
               <div className="rounded-xl border border-border overflow-hidden divide-y divide-border/60">
                 {activeDrivers.map((d) => {
@@ -572,16 +574,16 @@ export default function DashboardPage() {
                           <span className="font-medium text-sm truncate">{d.name}</span>
                           {job ? (
                             <Badge className="text-[10px] px-1.5 py-0 border bg-orange-100 text-orange-800 border-orange-200 shrink-0">
-                              Bertugas
+                              {t.dashboard.busy}
                             </Badge>
                           ) : (
                             <Badge className="text-[10px] px-1.5 py-0 border bg-emerald-100 text-emerald-800 border-emerald-200 shrink-0">
-                              Tersedia
+                              {t.dashboard.available}
                             </Badge>
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground truncate">
-                          {[d.vehicleType, d.vehiclePlate].filter(Boolean).join(" · ") || "Kendaraan belum diisi"}
+                          {[d.vehicleType, d.vehiclePlate].filter(Boolean).join(" · ") || t.logistics.vehicle}
                           {d.phone ? ` · ${d.phone}` : ""}
                         </p>
                       </div>
@@ -601,7 +603,7 @@ export default function DashboardPage() {
 
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
           <StatCard
-            title="Total Revenue"
+            title={t.dashboard.totalRevenue}
             href="/ecommerce?tab=orders"
             icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
             isLoading={isLoading}
@@ -610,7 +612,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Total Orders"
+            title={t.dashboard.totalOrders}
             href="/ecommerce?tab=orders"
             icon={<ShoppingCart className="h-4 w-4 text-blue-500" />}
             isLoading={isLoading}
@@ -619,7 +621,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Total Shipments"
+            title={t.dashboard.pendingShipments}
             href="/logistics"
             icon={<Truck className="h-4 w-4 text-indigo-500" />}
             isLoading={isLoading}
@@ -628,7 +630,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Stock Value"
+            title={t.trading.stock}
             href="/trading"
             icon={<Package className="h-4 w-4 text-violet-500" />}
             isLoading={isLoading}
@@ -637,7 +639,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Today's Transactions"
+            title={t.pos.txCount}
             href="/pos"
             icon={<Activity className="h-4 w-4 text-amber-500" />}
             isLoading={isLoading}
@@ -646,7 +648,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Low Stock Alerts"
+            title={t.dashboard.activeCustomers}
             href="/trading"
             icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
             isLoading={isLoading}
@@ -663,15 +665,15 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Ship className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base">Freight Forwarding</CardTitle>
+                <CardTitle className="text-base">{t.logistics.freightTitle}</CardTitle>
               </div>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/logistics/freight">
-                  Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  {t.logistics.viewAll} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             </div>
-            <CardDescription>Ringkasan pengiriman freight internasional aktif</CardDescription>
+            <CardDescription>{t.logistics.freightSubtitle}</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -688,7 +690,7 @@ export default function DashboardPage() {
                 <Link href="/logistics/freight?status=active" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <div className="space-y-1">
                     <p className="text-2xl font-bold">{activeFreightCount}</p>
-                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Shipment Aktif</p>
+                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">{t.dashboard.activeFreight}</p>
                   </div>
                 </Link>
                 <Link href="/logistics/freight?status=rfq_sent" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -699,13 +701,13 @@ export default function DashboardPage() {
                         <Clock className="h-4 w-4 text-amber-500 shrink-0" />
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Menunggu Persetujuan Quote</p>
+                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">{t.dashboard.awaitingQuote}</p>
                   </div>
                 </Link>
                 <Link href="/logistics/freight?status=in_transit" className="group block rounded-lg p-2 -m-2 transition-colors hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <div className="space-y-1">
                     <p className="text-2xl font-bold text-indigo-500">{inTransitCount}</p>
-                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Dalam Perjalanan</p>
+                    <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">{t.logistics.statusInTransit}</p>
                   </div>
                 </Link>
               </div>
@@ -726,29 +728,26 @@ export default function DashboardPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FilePlus className="h-5 w-5" /> Buat Sales Order
+              <FilePlus className="h-5 w-5" /> {t.dashboard.createSalesOrder}
             </DialogTitle>
-            <DialogDescription>
-              Sales Order akan dibuat dari portal order berikut.
-            </DialogDescription>
           </DialogHeader>
           {soDialog && (
             <div className="space-y-3 py-2">
               <div className="rounded-lg border bg-muted/40 p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">No. Order</span>
+                  <span className="text-muted-foreground">{t.common.number} Order</span>
                   <span className="font-mono font-medium">{soDialog.orderNumber}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Pelanggan</span>
+                  <span className="text-muted-foreground">{t.common.name}</span>
                   <span className="font-medium">{soDialog.customerName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Perusahaan</span>
+                  <span className="text-muted-foreground">{t.common.category}</span>
                   <span>{soDialog.companyName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rute</span>
+                  <span className="text-muted-foreground">{t.logistics.origin} → {t.logistics.destination}</span>
                   <span>{soDialog.origin} → {soDialog.destination}</span>
                 </div>
                 <div className="flex justify-between border-t pt-2 mt-1">
@@ -759,15 +758,15 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Sales Order akan dibuat dengan status <strong>Draft</strong>. Anda bisa mengubah detail di halaman Sales setelah dibuat.
+                {t.dashboard.createSalesOrder} — status <strong>Draft</strong>.
               </p>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSoDialog(null)}>Batal</Button>
+            <Button variant="outline" onClick={() => setSoDialog(null)}>{t.common.cancel}</Button>
             <Button onClick={handleCreateSalesOrder} disabled={createSalesDoc.isPending} className="gap-2">
               <FilePlus className="h-4 w-4" />
-              {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
+              {createSalesDoc.isPending ? t.common.saving : t.dashboard.createSalesOrder}
             </Button>
           </DialogFooter>
         </DialogContent>

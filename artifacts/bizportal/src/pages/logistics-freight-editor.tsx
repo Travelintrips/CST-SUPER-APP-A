@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Save, Loader2, ScanLine, ChevronsUpDown, Check, Plus, Pencil, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { FreightScanDialog, type FreightFormFields } from "@/components/freight/FreightScanDialog";
 import {
   Popover,
@@ -149,6 +150,7 @@ export default function LogisticsFreightEditorPage() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const { data: existing, isLoading: loadingExisting } = useGetFreightShipment(id ?? 0, {
     query: { enabled: isEdit, queryKey: getGetFreightShipmentQueryKey(id ?? 0) },
@@ -531,7 +533,7 @@ export default function LogisticsFreightEditorPage() {
 
   const handleSaveEditVendor = () => {
     if (!editVendorForm.name || !editVendorForm.country) {
-      toast({ title: "Nama dan negara vendor wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     if (!selectedVendorId) return;
@@ -551,16 +553,16 @@ export default function LogisticsFreightEditorPage() {
             shipperName: shipperVendorNameFilled ? updated.name : f.shipperName,
             shipperAddress: shipperVendorAddressFilled ? (updated.address ?? "") : f.shipperAddress,
           }));
-          toast({ title: `Vendor "${updated.name}" berhasil diperbarui` });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal memperbarui vendor", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
 
   const handleSaveNewVendor = () => {
     if (!newVendorForm.name || !newVendorForm.country) {
-      toast({ title: "Nama dan negara vendor wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     createSupplier.mutate(
@@ -574,9 +576,9 @@ export default function LogisticsFreightEditorPage() {
           setAddVendorDialogOpen(false);
           setVendorSearchQuery("");
           handleSelectVendorByData(newSupplier);
-          toast({ title: `Vendor "${newSupplier.name}" berhasil ditambahkan` });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal menambahkan vendor", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
@@ -613,11 +615,11 @@ export default function LogisticsFreightEditorPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isEdit && !salesDocId) {
-      toast({ title: "Sales Order wajib dipilih sebelum membuat shipment.", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     if (!form.shipperName || !form.consigneeName || !form.commodity || !form.origin || !form.destination) {
-      toast({ title: "Harap isi semua field wajib", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const payload = {
@@ -655,10 +657,10 @@ export default function LogisticsFreightEditorPage() {
         {
           onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: getListFreightShipmentsQueryKey() });
-            toast({ title: "Shipment berhasil diperbarui" });
+            toast({ title: t.common.success });
             navigate(`/logistics/freight/${res.id}`);
           },
-          onError: () => toast({ title: "Gagal memperbarui", variant: "destructive" }),
+          onError: () => toast({ title: t.common.error, variant: "destructive" }),
         }
       );
     } else {
@@ -667,10 +669,10 @@ export default function LogisticsFreightEditorPage() {
         {
           onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: getListFreightShipmentsQueryKey() });
-            toast({ title: `Shipment ${res.shipmentNumber} berhasil dibuat` });
+            toast({ title: t.common.success });
             navigate(`/logistics/freight/${res.id}`);
           },
-          onError: () => toast({ title: "Gagal membuat shipment", variant: "destructive" }),
+          onError: () => toast({ title: t.common.error, variant: "destructive" }),
         }
       );
     }
@@ -695,7 +697,7 @@ export default function LogisticsFreightEditorPage() {
     if ((fields as any).transportMode !== undefined && (fields as any).transportMode !== null) newlyScanned.add("transportMode");
     setScannedFields((prev) => new Set([...prev, ...newlyScanned]));
     setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)) }));
-    toast({ title: "Data berhasil diisi dari scan" });
+    toast({ title: t.common.success });
   };
 
   return (

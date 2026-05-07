@@ -30,6 +30,7 @@ import { FreightAttachmentsPanel } from "@/components/freight/FreightAttachments
 import { FreightCustomsPanel } from "@/components/freight/FreightCustomsPanel";
 import { DriverAssignmentPanel } from "@/components/freight/DriverAssignmentPanel";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useGetFreightShipment,
   useGetSalesDocument,
@@ -96,6 +97,7 @@ export default function LogisticsFreightDetailPage() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
   const typedShipment = shipment as FreightShipmentDetail | undefined;
@@ -189,8 +191,8 @@ export default function LogisticsFreightDetailPage() {
     upsertStage.mutate(
       { shipmentId: id, data: { stageType, vendorName: f.vendorName || null, date: f.date || null, status: f.status as "pending" | "in_progress" | "done" | "cancelled", notes: f.notes || null } },
       {
-        onSuccess: () => { invalidate(); toast({ title: `Tahap ${stageType} disimpan` }); },
-        onError: () => toast({ title: "Gagal menyimpan tahap", variant: "destructive" }),
+        onSuccess: () => { invalidate(); toast({ title: t.common.success }); },
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
@@ -204,9 +206,9 @@ export default function LogisticsFreightDetailPage() {
           setShowRfqDialog(false);
           setRfqVendors("");
           setRfqNotes("");
-          toast({ title: "RFQ berhasil dibuat" });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal membuat RFQ", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
@@ -219,7 +221,7 @@ export default function LogisticsFreightDetailPage() {
 
   const handleCreateQuote = () => {
     if (!quoteRfqId || !quoteForm.vendorName) {
-      toast({ title: "Nama vendor wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     createQuote.mutate(
@@ -239,9 +241,9 @@ export default function LogisticsFreightDetailPage() {
         onSuccess: () => {
           invalidate();
           setShowQuoteDialog(false);
-          toast({ title: "Quote berhasil ditambahkan" });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal menambah quote", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
@@ -253,16 +255,16 @@ export default function LogisticsFreightDetailPage() {
       {
         onSuccess: () => {
           invalidate();
-          toast({ title: "Quote disetujui" });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal menyetujui", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
 
   const handleMarkInTransit = () => {
     if (!inTransitForm.departureDate) {
-      toast({ title: "Tanggal keberangkatan wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     updateShipment.mutate(
@@ -285,16 +287,16 @@ export default function LogisticsFreightDetailPage() {
           invalidate();
           setShowInTransitDialog(false);
           setInTransitForm({ departureDate: "", trackingNumber: "", awbNumber: "" });
-          toast({ title: "Status diperbarui: Dalam Perjalanan" });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal mengubah status", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
 
   const handleMarkCompleted = () => {
     if (!completedForm.arrivalDate) {
-      toast({ title: "Tanggal tiba wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     updateShipment.mutate(
@@ -316,9 +318,9 @@ export default function LogisticsFreightDetailPage() {
           invalidate();
           setShowCompletedDialog(false);
           setCompletedForm({ arrivalDate: "", actualCost: "" });
-          toast({ title: "Status diperbarui: Selesai" });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal mengubah status", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
@@ -355,9 +357,9 @@ export default function LogisticsFreightDetailPage() {
         onSuccess: () => {
           invalidate();
           setShowEditAktualDialog(false);
-          toast({ title: "Info aktual berhasil disimpan" });
+          toast({ title: t.common.success });
         },
-        onError: () => toast({ title: "Gagal menyimpan info aktual", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   };
@@ -1155,7 +1157,7 @@ export default function LogisticsFreightDetailPage() {
               shipmentId={id}
               onBarcodeScanned={(value) => {
                 toast({
-                  title: "Barcode / QR berhasil discan",
+                  title: t.common.success,
                   description: value,
                 });
               }}

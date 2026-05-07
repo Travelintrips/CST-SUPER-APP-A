@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ import { Check, ChevronsUpDown, Pencil, Plus, Receipt } from "lucide-react";
 export default function TaxesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const { data: taxes } = useListTaxes();
   const { data: accounts } = useListAccounts();
   const createMut = useCreateTax();
@@ -51,20 +53,20 @@ export default function TaxesPage() {
 
   const submit = async () => {
     if (!form.name.trim() || !form.accountId) {
-      toast({ title: "Nama & akun wajib diisi", variant: "destructive" }); return;
+      toast({ title: t.common.error, variant: "destructive" }); return;
     }
     try {
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: form });
-        toast({ title: "Pajak diperbarui" });
+        toast({ title: t.common.success });
       } else {
         await createMut.mutateAsync({ data: form });
-        toast({ title: "Pajak dibuat" });
+        toast({ title: t.common.success });
       }
       qc.invalidateQueries({ queryKey: getListTaxesQueryKey() });
       reset(); setOpen(false);
     } catch (e: any) {
-      toast({ title: "Gagal", description: e?.message ?? String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
     }
   };
 

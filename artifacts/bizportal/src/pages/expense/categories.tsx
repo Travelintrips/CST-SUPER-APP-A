@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useListExpenseCategories,
   useCreateExpenseCategory,
@@ -45,6 +46,7 @@ const EMPTY_FORM = {
 export default function ExpenseCategoriesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const { data: cats = [] } = useListExpenseCategories();
   const { data: accounts = [] } = useListAccounts();
   const createMut = useCreateExpenseCategory();
@@ -74,7 +76,7 @@ export default function ExpenseCategoriesPage() {
 
   const submit = async () => {
     if (!form.name.trim() || !form.code.trim()) {
-      toast({ title: "Nama dan kode wajib diisi", variant: "destructive" }); return;
+      toast({ title: t.common.error, variant: "destructive" }); return;
     }
     try {
       const body = {
@@ -87,15 +89,15 @@ export default function ExpenseCategoriesPage() {
       };
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: body });
-        toast({ title: "Kategori diperbarui" });
+        toast({ title: t.common.success });
       } else {
         await createMut.mutateAsync({ data: body });
-        toast({ title: "Kategori dibuat" });
+        toast({ title: t.common.success });
       }
       qc.invalidateQueries({ queryKey: getListExpenseCategoriesQueryKey() });
       reset(); setOpen(false);
     } catch (e: any) {
-      toast({ title: e?.message ?? "Gagal menyimpan", variant: "destructive" });
+      toast({ title: e?.message ?? t.common.error, variant: "destructive" });
     }
   };
 
@@ -103,9 +105,9 @@ export default function ExpenseCategoriesPage() {
     try {
       const res = await seedMut.mutateAsync();
       qc.invalidateQueries({ queryKey: getListExpenseCategoriesQueryKey() });
-      toast({ title: `${res.seeded} kategori diseed` });
+      toast({ title: t.common.success });
     } catch (e: any) {
-      toast({ title: e?.message ?? "Gagal seed", variant: "destructive" });
+      toast({ title: e?.message ?? t.common.error, variant: "destructive" });
     }
   };
 
@@ -114,9 +116,9 @@ export default function ExpenseCategoriesPage() {
     try {
       await deleteMut.mutateAsync({ id: deleteId });
       qc.invalidateQueries({ queryKey: getListExpenseCategoriesQueryKey() });
-      toast({ title: "Kategori dihapus" });
+      toast({ title: t.common.success });
     } catch (e: any) {
-      toast({ title: e?.message ?? "Gagal hapus", variant: "destructive" });
+      toast({ title: e?.message ?? t.common.error, variant: "destructive" });
     } finally { setDeleteId(null); }
   };
 

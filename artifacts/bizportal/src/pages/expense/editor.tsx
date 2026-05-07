@@ -26,6 +26,7 @@ import {
 import { useUpload } from "@workspace/object-storage-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, Save, Send, CheckCircle, XCircle, FileText, Banknote,
   RotateCcw, Info, Paperclip, Upload, Trash2, Loader2, AlertTriangle, X,
@@ -398,7 +399,7 @@ export default function ExpenseEditorPage() {
 
   const { uploadFile } = useUpload({
     onError: (err) => {
-      toast({ title: `Upload gagal: ${err.message}`, variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       setUploading(false);
     },
   });
@@ -488,7 +489,7 @@ export default function ExpenseEditorPage() {
   const { data: shipments = [] } = useListFreightShipments();
 
   const save = async () => {
-    if (!form.date) { toast({ title: "Tanggal wajib diisi", variant: "destructive" }); return; }
+    if (!form.date) { toast({ title: t.common.error, variant: "destructive" }); return; }
     const body = {
       date: form.date,
       vendorEmployee: form.vendorEmployee || undefined,
@@ -512,15 +513,15 @@ export default function ExpenseEditorPage() {
         sessionStorage.removeItem("expense_new_salesDocId");
         sessionStorage.removeItem("expense_new_shipmentId");
         qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
-        toast({ title: "Expense dibuat" });
+        toast({ title: t.common.success });
         navigate(`/expense/${created.id}`);
       } else {
         await updateMut.mutateAsync({ id: Number(id), data: body });
         qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
-        toast({ title: "Expense diperbarui" });
+        toast({ title: t.common.success });
       }
     } catch (e: any) {
-      toast({ title: e?.message ?? "Gagal menyimpan", variant: "destructive" });
+      toast({ title: e?.message ?? t.common.error, variant: "destructive" });
     }
   };
 
@@ -531,9 +532,9 @@ export default function ExpenseEditorPage() {
         data: { action: action as any, reason },
       });
       qc.invalidateQueries({ queryKey: getListExpensesQueryKey() });
-      toast({ title: `Expense di-${action}` });
+      toast({ title: t.common.success });
     } catch (e: any) {
-      toast({ title: e?.message ?? "Gagal", variant: "destructive" });
+      toast({ title: e?.message ?? t.common.error, variant: "destructive" });
     }
   };
 
@@ -553,13 +554,13 @@ export default function ExpenseEditorPage() {
       },
       {
         onSuccess: () => {
-          toast({ title: "Lampiran berhasil diunggah" });
+          toast({ title: t.common.success });
           setPendingFile(null);
           setUploading(false);
           qc.invalidateQueries({ queryKey: getGetExpenseQueryKey(expId) });
         },
         onError: (e: unknown) => {
-          toast({ title: errMsg(e, "Gagal menyimpan lampiran"), variant: "destructive" });
+          toast({ title: errMsg(e, t.common.error), variant: "destructive" });
           setUploading(false);
         },
       },
@@ -572,11 +573,11 @@ export default function ExpenseEditorPage() {
       { id: expId, attId },
       {
         onSuccess: () => {
-          toast({ title: "Lampiran dihapus" });
+          toast({ title: t.common.success });
           qc.invalidateQueries({ queryKey: getGetExpenseQueryKey(expId) });
         },
         onError: (e: unknown) => {
-          toast({ title: errMsg(e, "Gagal hapus lampiran"), variant: "destructive" });
+          toast({ title: errMsg(e, t.common.error), variant: "destructive" });
         },
         onSettled: () => setDeletingAttId(null),
       },

@@ -45,6 +45,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Pencil, Plus, Store, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const SERVICE_TYPES = [
   "Air Freight", "Sea Freight", "Domestic Freight",
@@ -112,6 +113,7 @@ const emptyForm = (): FormState => ({
 export default function VendorsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const { data: vendors } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
   const { data: taxes } = useListTaxes();
   const createMut = useCreateSupplier();
@@ -129,7 +131,7 @@ export default function VendorsPage() {
 
   const { uploadFile } = useUpload({
     onError: (err) => {
-      toast({ title: `Upload logo gagal: ${err.message}`, variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       setLogoUploading(false);
     },
   });
@@ -140,7 +142,7 @@ export default function VendorsPage() {
       const result = await uploadFile(file);
       if (result?.objectPath) {
         set("logo", result.objectPath);
-        toast({ title: "Logo berhasil diunggah" });
+        toast({ title: t.common.success });
       }
     } finally {
       setLogoUploading(false);
@@ -193,7 +195,7 @@ export default function VendorsPage() {
 
   const submit = async () => {
     if (!form.name.trim()) {
-      toast({ title: "Nama vendor wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const body = {
@@ -220,19 +222,19 @@ export default function VendorsPage() {
           old ? old.map((s) => (s.id === updated.id ? updated : s)) : [updated]
         );
         qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
-        toast({ title: "Vendor diperbarui" });
+        toast({ title: t.common.success });
       } else {
         const created = await createMut.mutateAsync({ data: body });
         qc.setQueryData<Supplier[]>(getListSuppliersQueryKey(), (old) =>
           old ? [...old, created] : [created]
         );
         qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
-        toast({ title: "Vendor dibuat" });
+        toast({ title: t.common.success });
       }
       reset();
       setOpen(false);
     } catch (e) {
-      toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 
@@ -241,9 +243,9 @@ export default function VendorsPage() {
     try {
       await deleteMut.mutateAsync({ id });
       qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
-      toast({ title: "Vendor dihapus" });
+      toast({ title: t.common.success });
     } catch (e) {
-      toast({ title: "Gagal menghapus", description: String(e), variant: "destructive" });
+      toast({ title: t.common.error, description: String(e), variant: "destructive" });
     }
   };
 

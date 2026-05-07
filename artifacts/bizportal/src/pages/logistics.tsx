@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Link, useLocation, useSearch } from "wouter";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -50,6 +51,7 @@ function refetchIntervalMs(value: FreightRefreshValue): number | false {
 }
 
 export default function LogisticsPage() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [location, navigate] = useLocation();
@@ -286,9 +288,9 @@ export default function LogisticsPage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListShipmentsQueryKey() });
         setIsDialogOpen(false);
-        toast({ title: "Shipment berhasil dibuat" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal membuat shipment", variant: "destructive" })
+      onError: () => toast({ title: t.common.error, variant: "destructive" })
     });
   };
 
@@ -296,9 +298,9 @@ export default function LogisticsPage() {
     updateStatus.mutate({ id, data: { status } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListShipmentsQueryKey() });
-        toast({ title: "Status berhasil diperbarui" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" })
+      onError: () => toast({ title: t.common.error, variant: "destructive" })
     });
   };
 
@@ -310,8 +312,8 @@ export default function LogisticsPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Logistik</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Lacak pengiriman dan kelola operasi armada.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.logistics.title}</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.logistics.subtitle}</p>
         </div>
 
         {/* Freight Forwarding Summary Card */}
@@ -320,15 +322,15 @@ export default function LogisticsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Ship className="h-5 w-5 text-primary" />
-                <CardTitle className="text-base">Freight Forwarding</CardTitle>
+                <CardTitle className="text-base">{t.logistics.freightTitle}</CardTitle>
               </div>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/logistics/freight">
-                  Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  {t.logistics.viewAll} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             </div>
-            <CardDescription>Ringkasan pengiriman freight internasional aktif</CardDescription>
+            <CardDescription>{t.logistics.freightSubtitle}</CardDescription>
           </CardHeader>
           <CardContent>
             {freightLoading ? (
@@ -349,7 +351,7 @@ export default function LogisticsPage() {
                   title="Tampilkan semua shipment aktif"
                 >
                   <p className="text-2xl font-bold">{activeFreight.length}</p>
-                  <p className="text-xs text-muted-foreground">Shipment Aktif</p>
+                  <p className="text-xs text-muted-foreground">{t.dashboard.activeFreight}</p>
                 </button>
                 <button
                   type="button"
@@ -368,7 +370,7 @@ export default function LogisticsPage() {
                       <Clock className="h-4 w-4 text-amber-500 shrink-0" />
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">Menunggu Persetujuan Quote</p>
+                  <p className="text-xs text-muted-foreground">{t.dashboard.awaitingQuote}</p>
                 </button>
                 <button
                   type="button"
@@ -387,7 +389,7 @@ export default function LogisticsPage() {
                       <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0" />
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">Dikonfirmasi</p>
+                  <p className="text-xs text-muted-foreground">{t.logistics.statusConfirmed}</p>
                 </button>
                 <button
                   type="button"
@@ -401,7 +403,7 @@ export default function LogisticsPage() {
                     </span>
                   )}
                   <p className="text-2xl font-bold text-indigo-500">{inTransit.length}</p>
-                  <p className="text-xs text-muted-foreground">Dalam Perjalanan</p>
+                  <p className="text-xs text-muted-foreground">{t.logistics.statusInTransit}</p>
                 </button>
               </div>
             )}
@@ -412,7 +414,7 @@ export default function LogisticsPage() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-base shrink-0">Shipment Freight Terbaru</CardTitle>
+              <CardTitle className="text-base shrink-0">{t.logistics.freightTitle}</CardTitle>
               <div className="flex items-center gap-1 shrink-0">
                 <Select value={freightRefreshInterval} onValueChange={handleRefreshIntervalChange}>
                   <SelectTrigger className="h-7 text-xs w-auto min-w-[110px] gap-1" aria-label="Interval refresh">
@@ -440,20 +442,20 @@ export default function LogisticsPage() {
                 </Button>
                 <Button variant="ghost" size="sm" asChild>
                   <Link href="/logistics/freight">
-                    Lihat Semua <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    {t.logistics.viewAll} <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                   </Link>
                 </Button>
               </div>
             </div>
             {lastRefreshed && (
               <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                <span>Diperbarui: {lastRefreshed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                <span>{t.dashboard.updatedAt}: {lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                 {freightSecondsLeft !== null && (
                   <>
                     <span className="text-muted-foreground/40">·</span>
                     <span className="flex items-center gap-0.5">
                       <Clock className="h-3 w-3" />
-                      Refresh dalam {formatFreightCountdown(freightSecondsLeft)}
+                      {t.dashboard.refreshIn} {formatFreightCountdown(freightSecondsLeft)}
                     </span>
                   </>
                 )}
@@ -462,7 +464,7 @@ export default function LogisticsPage() {
             {isFreightFiltered && (
               <div className="flex items-center gap-2 rounded-md border border-primary/25 bg-primary/5 px-3 py-1.5 text-sm w-fit max-w-full flex-wrap">
                 <Filter className="h-3.5 w-3.5 text-primary shrink-0" />
-                <span className="text-foreground font-medium">Filter aktif:</span>
+                <span className="text-foreground font-medium">{t.logistics.filters}:</span>
                 <span className="text-muted-foreground">{activeFreightFilterParts.join(" · ")}</span>
                 <span className="text-primary font-semibold">· {recentFreight.length} shipment</span>
                 <Button
@@ -473,7 +475,7 @@ export default function LogisticsPage() {
                   aria-label="Hapus semua filter"
                 >
                   <X className="h-3.5 w-3.5" />
-                  Hapus filter
+                  {t.logistics.clearFilters}
                 </Button>
               </div>
             )}
@@ -483,11 +485,11 @@ export default function LogisticsPage() {
                   <SelectValue placeholder="Semua Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua Status ({activeFreight.length})</SelectItem>
-                  <SelectItem value="draft">Draft ({freightStatusCounts.draft})</SelectItem>
-                  <SelectItem value="rfq_sent">RFQ Dikirim ({freightStatusCounts.rfq_sent})</SelectItem>
-                  <SelectItem value="confirmed">Dikonfirmasi ({freightStatusCounts.confirmed})</SelectItem>
-                  <SelectItem value="in_transit">Dalam Perjalanan ({freightStatusCounts.in_transit})</SelectItem>
+                  <SelectItem value="all">{t.logistics.allStatus} ({activeFreight.length})</SelectItem>
+                  <SelectItem value="draft">{t.logistics.statusDraft} ({freightStatusCounts.draft})</SelectItem>
+                  <SelectItem value="rfq_sent">{t.logistics.statusRfqSent} ({freightStatusCounts.rfq_sent})</SelectItem>
+                  <SelectItem value="confirmed">{t.logistics.statusConfirmed} ({freightStatusCounts.confirmed})</SelectItem>
+                  <SelectItem value="in_transit">{t.logistics.statusInTransit} ({freightStatusCounts.in_transit})</SelectItem>
                 </SelectContent>
               </Select>
               <Select
@@ -505,10 +507,10 @@ export default function LogisticsPage() {
                   <SelectValue placeholder="Semua Waktu" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua Waktu</SelectItem>
-                  <SelectItem value="7days">7 Hari Terakhir</SelectItem>
-                  <SelectItem value="30days">30 Hari Terakhir</SelectItem>
-                  <SelectItem value="custom">Kustom</SelectItem>
+                  <SelectItem value="all">{t.logistics.allStatus}</SelectItem>
+                  <SelectItem value="7days">{t.logistics.last7Days}</SelectItem>
+                  <SelectItem value="30days">{t.logistics.last30Days}</SelectItem>
+                  <SelectItem value="custom">{t.logistics.custom}</SelectItem>
                 </SelectContent>
               </Select>
               {freightDateFilter === "custom" && (
@@ -529,7 +531,7 @@ export default function LogisticsPage() {
                     aria-label="Sampai tanggal"
                   />
                   {isCustomRangeInvalid && (
-                    <span className="text-xs text-destructive">Tanggal awal harus sebelum tanggal akhir</span>
+                    <span className="text-xs text-destructive">{t.logistics.invalidDateRange}</span>
                   )}
                 </>
               )}
@@ -540,7 +542,7 @@ export default function LogisticsPage() {
                 onClick={() => setFreightSortOrder((prev) => prev === "newest" ? "oldest" : "newest")}
               >
                 <ArrowUpDown className="h-3 w-3" />
-                {freightSortOrder === "newest" ? "Terbaru" : "Terlama"}
+                {freightSortOrder === "newest" ? t.logistics.newest : t.logistics.oldest}
               </Button>
               {isAnyFilterActive && (
                 <Button
@@ -550,7 +552,7 @@ export default function LogisticsPage() {
                   onClick={clearFreightFilters}
                 >
                   <X className="h-3 w-3" />
-                  Hapus Filter
+                  {t.logistics.clearFilters}
                 </Button>
               )}
             </div>
@@ -571,22 +573,22 @@ export default function LogisticsPage() {
                 <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto object-contain opacity-50" />
                 <p className="text-sm">
                   {freightStatusFilter !== "all" && freightDateFilter !== "all"
-                    ? `Tidak ada shipment dengan status "${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter}" pada rentang waktu yang dipilih.`
+                    ? `${t.logistics.noShipments} (${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter})`
                     : freightStatusFilter !== "all"
-                    ? `Tidak ada shipment dengan status "${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter}".`
+                    ? `${t.logistics.noShipments} (${FREIGHT_STATUS_LABELS[freightStatusFilter] ?? freightStatusFilter})`
                     : freightDateFilter !== "all"
-                    ? "Tidak ada shipment pada rentang waktu yang dipilih."
-                    : "Tidak ada shipment freight aktif."}
+                    ? t.logistics.noShipments
+                    : t.logistics.noShipments}
                 </p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>No. Shipment</TableHead>
-                    <TableHead className="hidden sm:table-cell">Rute</TableHead>
-                    <TableHead className="hidden md:table-cell whitespace-nowrap">Tgl. Dibuat</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t.common.number}</TableHead>
+                    <TableHead className="hidden sm:table-cell">{t.logistics.origin} → {t.logistics.destination}</TableHead>
+                    <TableHead className="hidden md:table-cell whitespace-nowrap">{t.common.date}</TableHead>
+                    <TableHead>{t.logistics.deliveryStatus}</TableHead>
                     <TableHead className="text-right"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -636,34 +638,33 @@ export default function LogisticsPage() {
         </Card>
 
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-          <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Daftar Pengiriman</h2>
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight">{t.logistics.shipmentsTitle}</h2>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button><Plus className="mr-2 h-4 w-4" /> Buat Pengiriman</Button>
+              <Button><Plus className="mr-2 h-4 w-4" /> {t.logistics.newShipment}</Button>
             </DialogTrigger>
             <DialogContent>
               <form onSubmit={handleCreateShipment}>
                 <DialogHeader>
-                  <DialogTitle>Pengiriman Baru</DialogTitle>
-                  <DialogDescription>Daftarkan pengiriman baru untuk dilacak.</DialogDescription>
+                  <DialogTitle>{t.logistics.newShipment}</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="carrier">Carrier / Ekspedisi</Label>
+                    <Label htmlFor="carrier">{t.logistics.carrier}</Label>
                     <Input id="carrier" name="carrier" required placeholder="JNE, TIKI, SiCepat..." />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="origin">Asal</Label>
+                    <Label htmlFor="origin">{t.logistics.origin}</Label>
                     <Input id="origin" name="origin" required placeholder="Jakarta" />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="destination">Tujuan</Label>
+                    <Label htmlFor="destination">{t.logistics.destination}</Label>
                     <Input id="destination" name="destination" required placeholder="Surabaya" />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createShipment.isPending}>
-                    {createShipment.isPending ? "Membuat..." : "Buat"}
+                    {createShipment.isPending ? t.common.saving : t.common.save}
                   </Button>
                 </DialogFooter>
               </form>
@@ -676,11 +677,11 @@ export default function LogisticsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>No. Resi</TableHead>
-                  <TableHead className="hidden sm:table-cell">Carrier</TableHead>
-                  <TableHead className="hidden sm:table-cell">Rute</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
+                  <TableHead>{t.logistics.trackingNumber}</TableHead>
+                  <TableHead className="hidden sm:table-cell">{t.logistics.carrier}</TableHead>
+                  <TableHead className="hidden sm:table-cell">{t.logistics.origin} → {t.logistics.destination}</TableHead>
+                  <TableHead>{t.logistics.deliveryStatus}</TableHead>
+                  <TableHead className="text-right">{t.common.actions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -699,7 +700,7 @@ export default function LogisticsPage() {
                     <TableCell colSpan={5} className="h-32 text-center">
                       <div className="flex flex-col items-center justify-center text-muted-foreground">
                         <Navigation2 className="h-8 w-8 mb-2 opacity-50" />
-                        <p>Belum ada pengiriman aktif.</p>
+                        <p>{t.logistics.noShipments}</p>
                       </div>
                     </TableCell>
                   </TableRow>

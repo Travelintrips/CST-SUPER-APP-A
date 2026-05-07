@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Bot, Save, Loader2, RotateCcw, Info, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@clerk/react";
 
@@ -36,6 +37,7 @@ Harga dikonfirmasi tim setelah order masuk (tergantung volume, rute, pasar).`;
 export default function AiChatbotSettingsPage() {
   const { getToken } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const [prompt, setPrompt] = useState("");
   const [saved, setSaved] = useState("");
@@ -58,7 +60,7 @@ export default function AiChatbotSettingsPage() {
       setPrompt(data.systemPrompt);
       setSaved(data.systemPrompt);
     } catch {
-      toast({ title: "Gagal memuat pengaturan", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -78,9 +80,9 @@ export default function AiChatbotSettingsPage() {
       });
       if (!res.ok) throw new Error();
       setSaved(prompt);
-      toast({ title: "Pengaturan tersimpan", description: "Chatbot akan menggunakan instruksi baru untuk percakapan berikutnya." });
+      toast({ title: t.common.success });
     } catch {
-      toast({ title: "Gagal menyimpan", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     } finally {
       setSaving(false);
     }

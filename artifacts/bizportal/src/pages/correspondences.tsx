@@ -33,6 +33,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { useUpload } from "@workspace/object-storage-web";
 import {
   Plus, Search, Mail, MessageCircle, FileText, MoreHorizontal,
@@ -167,6 +168,7 @@ const emptyForm = (): FormState => ({
 export default function CorrespondencesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [, navigate] = useLocation();
 
   const [searchQ, setSearchQ] = useState("");
@@ -217,7 +219,7 @@ export default function CorrespondencesPage() {
   const [linkDocId, setLinkDocId] = useState("");
 
   const { uploadFile: uploadScannedFile } = useUpload({
-    onError: () => toast({ title: "Gagal mengunggah lampiran scan", variant: "destructive" }),
+    onError: () => toast({ title: t.common.error, variant: "destructive" }),
   });
 
   const uploader = useUpload({
@@ -229,13 +231,13 @@ export default function CorrespondencesPage() {
       }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
-          toast({ title: "Lampiran berhasil ditambahkan" });
+          toast({ title: t.common.success });
           refreshDetail(viewingDetail.id);
         },
-        onError: () => toast({ title: "Gagal menyimpan lampiran", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       });
     },
-    onError: () => toast({ title: "Gagal mengunggah file", variant: "destructive" }),
+    onError: () => toast({ title: t.common.error, variant: "destructive" }),
   });
 
   async function refreshDetail(id: number) {
@@ -347,7 +349,7 @@ export default function CorrespondencesPage() {
       });
       setSaveScannedAsAttachment(true);
     } catch (err: unknown) {
-      toast({ title: err instanceof Error ? err.message : "Gagal memproses dokumen", variant: "destructive" });
+      toast({ title: err instanceof Error ? err.message : t.common.error, variant: "destructive" });
     } finally {
       setScanLoading(false);
     }
@@ -389,7 +391,7 @@ export default function CorrespondencesPage() {
           queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
           setIsFormOpen(false);
           setScannedFile(null);
-          toast({ title: "Korespondensi berhasil diperbarui" });
+          toast({ title: t.common.success });
           refreshDetail(currentEditingId);
           if (fileToAttach) {
             const uploadRes = await uploadScannedFile(fileToAttach);
@@ -406,12 +408,12 @@ export default function CorrespondencesPage() {
                   queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
                   refreshDetail(currentEditingId);
                 },
-                onError: () => toast({ title: "Gagal menyimpan lampiran scan", variant: "destructive" }),
+                onError: () => toast({ title: t.common.error, variant: "destructive" }),
               });
             }
           }
         },
-        onError: () => toast({ title: "Gagal memperbarui", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       });
     } else {
       const fileToAttach = saveScannedAsAttachment && scannedFile ? scannedFile : null;
@@ -420,7 +422,7 @@ export default function CorrespondencesPage() {
           queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
           setIsFormOpen(false);
           setScannedFile(null);
-          toast({ title: "Korespondensi berhasil disimpan" });
+          toast({ title: t.common.success });
           if (fileToAttach) {
             const uploadRes = await uploadScannedFile(fileToAttach);
             if (uploadRes) {
@@ -435,12 +437,12 @@ export default function CorrespondencesPage() {
                 onSuccess: () => {
                   queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
                 },
-                onError: () => toast({ title: "Gagal menyimpan lampiran scan", variant: "destructive" }),
+                onError: () => toast({ title: t.common.error, variant: "destructive" }),
               });
             }
           }
         },
-        onError: () => toast({ title: "Gagal menyimpan", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       });
     }
   }
@@ -451,9 +453,9 @@ export default function CorrespondencesPage() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
         setDeletingId(null);
-        toast({ title: "Korespondensi berhasil dihapus" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal menghapus", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -461,11 +463,11 @@ export default function CorrespondencesPage() {
     if (!viewingDetail) return;
     deleteAttachment.mutate({ id: viewingDetail.id, attId: att.id }, {
       onSuccess: () => {
-        toast({ title: "Lampiran dihapus" });
+        toast({ title: t.common.success });
         refreshDetail(viewingDetail.id);
         queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
       },
-      onError: () => toast({ title: "Gagal menghapus lampiran", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -476,9 +478,9 @@ export default function CorrespondencesPage() {
       onSuccess: () => {
         refreshDetail(id);
         queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
-        toast({ title: "Korespondensi divalidasi" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal memvalidasi", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -489,9 +491,9 @@ export default function CorrespondencesPage() {
       onSuccess: () => {
         refreshDetail(id);
         queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
-        toast({ title: "Korespondensi ditolak" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal menolak", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -502,9 +504,9 @@ export default function CorrespondencesPage() {
       onSuccess: () => {
         refreshDetail(id);
         queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
-        toast({ title: "Korespondensi diarsipkan" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal mengarsipkan", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -512,7 +514,7 @@ export default function CorrespondencesPage() {
     if (!viewingDetail) return;
     const docId = parseInt(linkDocId);
     if (!linkDocType || isNaN(docId) || docId <= 0) {
-      toast({ title: "Tipe dan ID dokumen harus diisi dengan benar", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const id = viewingDetail.id;
@@ -522,9 +524,9 @@ export default function CorrespondencesPage() {
         queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
         setLinkOpen(false);
         setLinkDocId("");
-        toast({ title: "Korespondensi berhasil ditautkan" });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Gagal menautkan", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 
@@ -532,9 +534,9 @@ export default function CorrespondencesPage() {
     syncImap.mutate(undefined, {
       onSuccess: (result) => {
         queryClient.invalidateQueries({ queryKey: getListCorrespondencesQueryKey() });
-        toast({ title: result.message ?? `${result.synced} email baru disinkronkan` });
+        toast({ title: t.common.success });
       },
-      onError: () => toast({ title: "Sinkronisasi email gagal", variant: "destructive" }),
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   }
 

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
   RefreshCw, MessageCircle,
@@ -91,6 +92,7 @@ export default function LogisticsPortalOrderDetailPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const [rfqDialog, setRfqDialog] = useState(false);
   const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
@@ -162,12 +164,12 @@ export default function LogisticsPortalOrderDetailPage() {
       if (res.ok) {
         setAdminReply("");
         await refetchChat();
-        toast({ title: "Balasan terkirim" });
+        toast({ title: t.common.success });
       } else {
-        toast({ title: "Gagal mengirim balasan", variant: "destructive" });
+        toast({ title: t.common.error, variant: "destructive" });
       }
     } catch {
-      toast({ title: "Gagal mengirim balasan", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     } finally {
       setSendingReply(false);
     }
@@ -188,20 +190,20 @@ export default function LogisticsPortalOrderDetailPage() {
 
   function handleSendRfq() {
     if (selectedVendors.length === 0) {
-      toast({ title: "Pilih minimal satu vendor", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     createRfq.mutate(
       { id: orderId, data: { vendorIds: selectedVendors, notes: rfqNotes || undefined } },
       {
         onSuccess: (rfq) => {
-          toast({ title: `RFQ ${rfq.rfqNumber} berhasil dikirim ke ${selectedVendors.length} vendor!` });
+          toast({ title: t.common.success });
           setRfqDialog(false);
           setSelectedVendors([]);
           setRfqNotes("");
           invalidateAll();
         },
-        onError: () => toast({ title: "Gagal mengirim RFQ", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   }
@@ -210,7 +212,7 @@ export default function LogisticsPortalOrderDetailPage() {
     if (!quoteDialog) return;
     const vp = parseFloat(quoteForm.vendorPrice.replace(/[.,]/g, ""));
     if (!quoteForm.vendorId || isNaN(vp) || vp <= 0) {
-      toast({ title: "Vendor dan harga wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const mp = parseFloat(quoteForm.markupPercentage) || 0;
@@ -233,12 +235,12 @@ export default function LogisticsPortalOrderDetailPage() {
       },
       {
         onSuccess: () => {
-          toast({ title: "Quote berhasil ditambahkan" });
+          toast({ title: t.common.success });
           setQuoteDialog(null);
           setQuoteForm({ vendorId: "", vendorPrice: "", estimatedPickup: "", estimatedDelivery: "", estimatedDays: "", vendorNotes: "", markupType: "percentage", markupPercentage: "0", fixedSellingPrice: "" });
           invalidateAll();
         },
-        onError: () => toast({ title: "Gagal menyimpan quote", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   }
@@ -261,7 +263,7 @@ export default function LogisticsPortalOrderDetailPage() {
     if (!editDialog) return;
     const vp = parseFloat(editForm.vendorPrice);
     if (isNaN(vp) || vp <= 0) {
-      toast({ title: "Harga vendor tidak valid", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     updateQuote.mutate(
@@ -280,12 +282,12 @@ export default function LogisticsPortalOrderDetailPage() {
       },
       {
         onSuccess: () => {
-          toast({ title: "Quote berhasil diperbarui" });
+          toast({ title: t.common.success });
           setEditDialog(null);
           invalidateAll();
           refetchQuotes();
         },
-        onError: () => toast({ title: "Gagal memperbarui quote", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   }
@@ -296,11 +298,11 @@ export default function LogisticsPortalOrderDetailPage() {
       { id: orderId, data: { quoteId: approveDialog.id } },
       {
         onSuccess: () => {
-          toast({ title: "Quote diapprove & penawaran dikirim ke customer via WhatsApp!" });
+          toast({ title: t.common.success });
           setApproveDialog(null);
           invalidateAll();
         },
-        onError: () => toast({ title: "Gagal approve quote", variant: "destructive" }),
+        onError: () => toast({ title: t.common.error, variant: "destructive" }),
       }
     );
   }

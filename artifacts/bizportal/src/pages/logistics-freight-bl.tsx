@@ -6,6 +6,7 @@ import { Printer, ArrowLeft, Download, Loader2 } from "lucide-react";
 import { useGetFreightShipment, useCreateFreightAttachment, useGetAccountingSettings } from "@workspace/api-client-react";
 import { useUpload } from "@workspace/object-storage-web";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const BL_ALLOWED_STATUSES = ["confirmed", "in_transit", "completed"];
 
@@ -40,13 +41,14 @@ export default function LogisticsFreightBLPage() {
   const blRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
   const { data: accountingSettings } = useGetAccountingSettings();
   const createAttachment = useCreateFreightAttachment();
   const { uploadFile } = useUpload({
     onError: (err) => {
-      toast({ title: `Gagal mengunggah BL: ${err.message}`, variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     },
   });
   const [isSavingAttachment, setIsSavingAttachment] = useState(false);
@@ -113,11 +115,11 @@ export default function LogisticsFreightBLPage() {
               },
               {
                 onSuccess: () => {
-                  toast({ title: "BL disimpan sebagai lampiran", description: "File tersedia di tab Lampiran pada detail pengiriman." });
+                  toast({ title: t.common.success });
                   resolve();
                 },
                 onError: () => {
-                  toast({ title: "Gagal menyimpan lampiran BL", variant: "destructive" });
+                  toast({ title: t.common.error, variant: "destructive" });
                   reject(new Error("attachment save failed"));
                 },
               }
@@ -131,7 +133,7 @@ export default function LogisticsFreightBLPage() {
       }
       return;
     } catch {
-      toast({ title: "Gagal membuat PDF", description: "Terjadi kesalahan saat membuat file PDF. Silakan coba lagi.", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
     } finally {
       setIsGeneratingPDF(false);
       setIsSavingAttachment(false);

@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, RefreshCw, Ship, Trash2, Eye, Filter, X, Clock, ShoppingCart, TrendingUp, TrendingDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useListFreightShipments,
   useDeleteFreightShipment,
@@ -180,6 +181,7 @@ function parseParamsFromSearch(search: string) {
 export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [location, navigate] = useLocation();
   const [refreshInterval, setRefreshInterval] = useState<FreightRefreshValue>(getInitialRefreshInterval);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -372,10 +374,10 @@ export default function LogisticsFreightPage() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListFreightShipmentsQueryKey() });
-          toast({ title: "Berhasil dihapus" });
+          toast({ title: t.common.success });
         },
         onError: () => {
-          toast({ title: "Gagal menghapus", variant: "destructive" });
+          toast({ title: t.common.error, variant: "destructive" });
         },
       }
     );

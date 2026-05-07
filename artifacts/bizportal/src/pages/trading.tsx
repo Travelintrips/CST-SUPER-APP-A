@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useListStocks,
   useListSuppliers,
@@ -33,6 +34,7 @@ import {
 } from "@workspace/api-client-react";
 
 export default function TradingPage() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -73,8 +75,8 @@ export default function TradingPage() {
         supplierId: supplierRaw && supplierRaw !== "none" ? Number(supplierRaw) : undefined,
       },
     }, {
-      onSuccess: () => { refetchStocks(); setIsStockDialogOpen(false); toast({ title: "Stock item berhasil ditambahkan" }); },
-      onError: () => toast({ title: "Gagal menambahkan stock", variant: "destructive" }),
+      onSuccess: () => { refetchStocks(); setIsStockDialogOpen(false); toast({ title: t.common.success }); },
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -95,16 +97,16 @@ export default function TradingPage() {
         supplierId: supplierRaw && supplierRaw !== "none" ? Number(supplierRaw) : undefined,
       },
     }, {
-      onSuccess: () => { refetchStocks(); setEditStock(null); toast({ title: "Stock berhasil diperbarui" }); },
-      onError: () => toast({ title: "Gagal memperbarui stock", variant: "destructive" }),
+      onSuccess: () => { refetchStocks(); setEditStock(null); toast({ title: t.common.success }); },
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
   const handleDeleteStock = () => {
     if (!confirmDeleteStock) return;
     deleteStock.mutate({ id: confirmDeleteStock.id }, {
-      onSuccess: () => { refetchStocks(); setConfirmDeleteStock(null); toast({ title: "Stock dihapus" }); },
-      onError: () => toast({ title: "Gagal menghapus stock", variant: "destructive" }),
+      onSuccess: () => { refetchStocks(); setConfirmDeleteStock(null); toast({ title: t.common.success }); },
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -119,8 +121,8 @@ export default function TradingPage() {
         phone: (fd.get("phone") as string) || undefined,
       },
     }, {
-      onSuccess: () => { refetchSuppliers(); setIsSupplierDialogOpen(false); toast({ title: "Supplier berhasil ditambahkan" }); },
-      onError: () => toast({ title: "Gagal menambahkan supplier", variant: "destructive" }),
+      onSuccess: () => { refetchSuppliers(); setIsSupplierDialogOpen(false); toast({ title: t.common.success }); },
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -137,16 +139,16 @@ export default function TradingPage() {
         phone: (fd.get("phone") as string) || undefined,
       },
     }, {
-      onSuccess: () => { refetchSuppliers(); setEditSupplier(null); toast({ title: "Supplier berhasil diperbarui" }); },
-      onError: () => toast({ title: "Gagal memperbarui supplier", variant: "destructive" }),
+      onSuccess: () => { refetchSuppliers(); setEditSupplier(null); toast({ title: t.common.success }); },
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
   const handleDeleteSupplier = () => {
     if (!confirmDeleteSupplier) return;
     deleteSupplier.mutate({ id: confirmDeleteSupplier.id }, {
-      onSuccess: () => { refetchSuppliers(); setConfirmDeleteSupplier(null); toast({ title: "Supplier dihapus" }); },
-      onError: () => toast({ title: "Gagal menghapus supplier", variant: "destructive" }),
+      onSuccess: () => { refetchSuppliers(); setConfirmDeleteSupplier(null); toast({ title: t.common.success }); },
+      onError: () => toast({ title: t.common.error, variant: "destructive" }),
     });
   };
 
@@ -154,34 +156,34 @@ export default function TradingPage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Trading & B2B</h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">Kelola inventory grosir, supplier, dan barang impor.</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.trading.title}</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.trading.subtitle}</p>
         </div>
 
         <Tabs defaultValue="inventory" className="space-y-4">
           <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="inventory" className="flex-1 sm:flex-none">Inventory</TabsTrigger>
-            <TabsTrigger value="suppliers" className="flex-1 sm:flex-none">Suppliers</TabsTrigger>
+            <TabsTrigger value="inventory" className="flex-1 sm:flex-none">{t.trading.inventory}</TabsTrigger>
+            <TabsTrigger value="suppliers" className="flex-1 sm:flex-none">{t.trading.supplier}</TabsTrigger>
           </TabsList>
 
           {/* INVENTORY TAB */}
           <TabsContent value="inventory" className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Stock Inventory</h2>
+              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">{t.trading.stockInventory}</h2>
               <Dialog open={isStockDialogOpen} onOpenChange={setIsStockDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button data-testid="button-add-stock"><Plus className="mr-2 h-4 w-4" /> Tambah Stock</Button>
+                  <Button data-testid="button-add-stock"><Plus className="mr-2 h-4 w-4" /> {t.trading.addStock}</Button>
                 </DialogTrigger>
                 <DialogContent>
                   <form onSubmit={handleCreateStock}>
                     <DialogHeader>
-                      <DialogTitle>Tambah Inventory</DialogTitle>
-                      <DialogDescription>Catat stok grosir baru ke gudang.</DialogDescription>
+                      <DialogTitle>{t.trading.addStockTitle}</DialogTitle>
+                      <DialogDescription>{t.trading.addStockDesc}</DialogDescription>
                     </DialogHeader>
                     <StockFormFields suppliers={suppliers ?? []} />
                     <DialogFooter>
                       <Button type="submit" disabled={createStock.isPending}>
-                        {createStock.isPending ? "Menyimpan..." : "Simpan"}
+                        {createStock.isPending ? t.common.saving : t.common.save}
                       </Button>
                     </DialogFooter>
                   </form>
@@ -194,12 +196,12 @@ export default function TradingPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product / SKU</TableHead>
-                      <TableHead>HS Code</TableHead>
-                      <TableHead>Supplier</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
-                      <TableHead className="text-right">Cost Price</TableHead>
-                      <TableHead className="text-right w-[100px]">Aksi</TableHead>
+                      <TableHead>{t.trading.productName} / SKU</TableHead>
+                      <TableHead>{t.trading.hsCode}</TableHead>
+                      <TableHead>{t.trading.supplier}</TableHead>
+                      <TableHead className="text-right">{t.trading.quantity}</TableHead>
+                      <TableHead className="text-right">{t.trading.costPrice}</TableHead>
+                      <TableHead className="text-right w-[100px]">{t.common.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -219,7 +221,7 @@ export default function TradingPage() {
                         <TableCell colSpan={6} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto mb-2 object-contain opacity-50 mx-auto" />
-                            <p>Belum ada stock inventory.</p>
+                            <p>{t.trading.noStock}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -231,7 +233,7 @@ export default function TradingPage() {
                             <div className="text-xs text-muted-foreground">{item.sku}</div>
                           </TableCell>
                           <TableCell>{item.hsCode || '-'}</TableCell>
-                          <TableCell>{item.supplierName || 'Unknown'}</TableCell>
+                          <TableCell>{item.supplierName || '-'}</TableCell>
                           <TableCell className="text-right font-medium">{item.quantity} {item.unit}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{formatIDR(item.costPrice)}</TableCell>
                           <TableCell className="text-right">
@@ -259,7 +261,7 @@ export default function TradingPage() {
               ) : !stocks || stocks.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <img src="/images/logo.png" alt="CST Logistics" className="h-8 w-auto mb-2 object-contain opacity-50 mx-auto" />
-                  <p className="text-sm text-muted-foreground">Belum ada stock inventory.</p>
+                  <p className="text-sm text-muted-foreground">{t.trading.noStock}</p>
                 </CardContent></Card>
               ) : (
                 stocks.map((item) => (
@@ -271,23 +273,23 @@ export default function TradingPage() {
                       </div>
                       {item.hsCode && <Badge variant="outline" className="shrink-0 text-xs">HS {item.hsCode}</Badge>}
                     </div>
-                    <p className="text-xs text-muted-foreground">Supplier: <span className="text-foreground">{item.supplierName || 'Unknown'}</span></p>
+                    <p className="text-xs text-muted-foreground">{t.trading.supplier}: <span className="text-foreground">{item.supplierName || '-'}</span></p>
                     <div className="flex justify-between items-end pt-1 border-t border-border">
                       <div>
-                        <p className="text-xs text-muted-foreground">Qty</p>
+                        <p className="text-xs text-muted-foreground">{t.trading.quantity}</p>
                         <p className="text-sm font-medium">{item.quantity} {item.unit}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Cost</p>
+                        <p className="text-xs text-muted-foreground">{t.trading.costPrice}</p>
                         <p className="text-sm font-medium">{formatIDR(item.costPrice)}</p>
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditStock(item)} data-testid={`button-edit-stock-mobile-${item.id}`}>
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
                       </Button>
                       <Button size="sm" variant="outline" className="flex-1 text-destructive hover:text-destructive" onClick={() => setConfirmDeleteStock(item)} data-testid={`button-delete-stock-mobile-${item.id}`}>
-                        <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Hapus
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" /> {t.common.delete}
                       </Button>
                     </div>
                   </CardContent></Card>
@@ -299,21 +301,20 @@ export default function TradingPage() {
           {/* SUPPLIERS TAB */}
           <TabsContent value="suppliers" className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">Suppliers Directory</h2>
+              <h2 className="text-lg sm:text-xl font-semibold tracking-tight">{t.trading.supplierName}</h2>
               <Dialog open={isSupplierDialogOpen} onOpenChange={setIsSupplierDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button data-testid="button-add-supplier"><Plus className="mr-2 h-4 w-4" /> Tambah Supplier</Button>
+                  <Button data-testid="button-add-supplier"><Plus className="mr-2 h-4 w-4" /> {t.trading.addSupplier}</Button>
                 </DialogTrigger>
                 <DialogContent>
                   <form onSubmit={handleCreateSupplier}>
                     <DialogHeader>
-                      <DialogTitle>Daftar Supplier</DialogTitle>
-                      <DialogDescription>Tambah vendor atau partner ke direktori.</DialogDescription>
+                      <DialogTitle>{t.trading.addSupplierTitle}</DialogTitle>
                     </DialogHeader>
                     <SupplierFormFields />
                     <DialogFooter>
                       <Button type="submit" disabled={createSupplier.isPending}>
-                        {createSupplier.isPending ? "Menyimpan..." : "Simpan"}
+                        {createSupplier.isPending ? t.common.saving : t.common.save}
                       </Button>
                     </DialogFooter>
                   </form>
@@ -326,11 +327,11 @@ export default function TradingPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Company Name</TableHead>
-                      <TableHead>Country</TableHead>
-                      <TableHead>Contact Email</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead className="text-right w-[100px]">Aksi</TableHead>
+                      <TableHead>{t.trading.supplierName}</TableHead>
+                      <TableHead>{t.trading.country}</TableHead>
+                      <TableHead>{t.common.email}</TableHead>
+                      <TableHead>{t.common.phone}</TableHead>
+                      <TableHead className="text-right w-[100px]">{t.common.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -349,7 +350,7 @@ export default function TradingPage() {
                         <TableCell colSpan={5} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <Building className="h-8 w-8 mb-2 opacity-50" />
-                            <p>Belum ada supplier terdaftar.</p>
+                            <p>{t.trading.noSuppliers}</p>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -385,7 +386,7 @@ export default function TradingPage() {
               ) : !suppliers || suppliers.length === 0 ? (
                 <Card><CardContent className="p-8 text-center">
                   <Building className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Belum ada supplier terdaftar.</p>
+                  <p className="text-sm text-muted-foreground">{t.trading.noSuppliers}</p>
                 </CardContent></Card>
               ) : (
                 suppliers.map((s) => (
@@ -398,10 +399,10 @@ export default function TradingPage() {
                     {s.phone && <p className="text-xs">{s.phone}</p>}
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditSupplier(s)} data-testid={`button-edit-supplier-mobile-${s.id}`}>
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
                       </Button>
                       <Button size="sm" variant="outline" className="flex-1 text-destructive hover:text-destructive" onClick={() => setConfirmDeleteSupplier(s)} data-testid={`button-delete-supplier-mobile-${s.id}`}>
-                        <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Hapus
+                        <Trash2 className="h-3.5 w-3.5 mr-1.5" /> {t.common.delete}
                       </Button>
                     </div>
                   </CardContent></Card>
@@ -418,14 +419,13 @@ export default function TradingPage() {
           {editStock && (
             <form onSubmit={handleEditStock}>
               <DialogHeader>
-                <DialogTitle>Edit Stock</DialogTitle>
-                <DialogDescription>Ubah detail stock inventory.</DialogDescription>
+                <DialogTitle>{t.trading.editStockTitle}</DialogTitle>
               </DialogHeader>
               <StockFormFields defaults={editStock} suppliers={suppliers ?? []} />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setEditStock(null)}>Batal</Button>
+                <Button type="button" variant="outline" onClick={() => setEditStock(null)}>{t.common.cancel}</Button>
                 <Button type="submit" disabled={updateStock.isPending} data-testid="button-save-stock">
-                  {updateStock.isPending ? "Menyimpan..." : "Simpan"}
+                  {updateStock.isPending ? t.common.saving : t.common.save}
                 </Button>
               </DialogFooter>
             </form>
@@ -437,14 +437,14 @@ export default function TradingPage() {
       <AlertDialog open={!!confirmDeleteStock} onOpenChange={(o) => !o && setConfirmDeleteStock(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hapus stock?</AlertDialogTitle>
+            <AlertDialogTitle>{t.common.confirmDelete}</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmDeleteStock && `"${confirmDeleteStock.productName}" akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.`}
+              {confirmDeleteStock && `"${confirmDeleteStock.productName}" ${t.common.confirmDeleteDesc}`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteStock} className="bg-destructive hover:bg-destructive/90" data-testid="button-confirm-delete-stock">Hapus</AlertDialogAction>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteStock} className="bg-destructive hover:bg-destructive/90" data-testid="button-confirm-delete-stock">{t.common.delete}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -455,14 +455,13 @@ export default function TradingPage() {
           {editSupplier && (
             <form onSubmit={handleEditSupplier}>
               <DialogHeader>
-                <DialogTitle>Edit Supplier</DialogTitle>
-                <DialogDescription>Ubah detail supplier.</DialogDescription>
+                <DialogTitle>{t.trading.editSupplierTitle}</DialogTitle>
               </DialogHeader>
               <SupplierFormFields defaults={editSupplier} />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setEditSupplier(null)}>Batal</Button>
+                <Button type="button" variant="outline" onClick={() => setEditSupplier(null)}>{t.common.cancel}</Button>
                 <Button type="submit" disabled={updateSupplier.isPending} data-testid="button-save-supplier">
-                  {updateSupplier.isPending ? "Menyimpan..." : "Simpan"}
+                  {updateSupplier.isPending ? t.common.saving : t.common.save}
                 </Button>
               </DialogFooter>
             </form>
@@ -474,14 +473,14 @@ export default function TradingPage() {
       <AlertDialog open={!!confirmDeleteSupplier} onOpenChange={(o) => !o && setConfirmDeleteSupplier(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hapus supplier?</AlertDialogTitle>
+            <AlertDialogTitle>{t.common.confirmDelete}</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmDeleteSupplier && `"${confirmDeleteSupplier.name}" akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.`}
+              {confirmDeleteSupplier && `"${confirmDeleteSupplier.name}" ${t.common.confirmDeleteDesc}`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteSupplier} className="bg-destructive hover:bg-destructive/90" data-testid="button-confirm-delete-supplier">Hapus</AlertDialogAction>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteSupplier} className="bg-destructive hover:bg-destructive/90" data-testid="button-confirm-delete-supplier">{t.common.delete}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -490,49 +489,50 @@ export default function TradingPage() {
 }
 
 function StockFormFields({ defaults, suppliers }: { defaults?: StockItem; suppliers: Supplier[] }) {
+  const { t } = useLanguage();
   const [supplierId, setSupplierId] = useState<string>(
     defaults?.supplierId != null ? String(defaults.supplierId) : "none"
   );
   return (
     <div className="grid gap-4 py-4">
       <div className="grid gap-2">
-        <Label htmlFor="productName">Product Name</Label>
+        <Label htmlFor="productName">{t.trading.productName}</Label>
         <Input id="productName" name="productName" defaultValue={defaults?.productName ?? ""} required />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label htmlFor="sku">SKU</Label>
+          <Label htmlFor="sku">{t.trading.sku}</Label>
           <Input id="sku" name="sku" defaultValue={defaults?.sku ?? ""} required />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="hsCode">HS Code</Label>
-          <Input id="hsCode" name="hsCode" defaultValue={defaults?.hsCode ?? ""} placeholder="Optional" />
+          <Label htmlFor="hsCode">{t.trading.hsCode}</Label>
+          <Input id="hsCode" name="hsCode" defaultValue={defaults?.hsCode ?? ""} placeholder={t.common.optional} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label htmlFor="quantity">Quantity</Label>
+          <Label htmlFor="quantity">{t.trading.quantity}</Label>
           <Input id="quantity" name="quantity" type="number" min="0" defaultValue={defaults?.quantity ?? 0} required />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="unit">Unit (Pallet, Box, ...)</Label>
+          <Label htmlFor="unit">{t.trading.unit}</Label>
           <Input id="unit" name="unit" defaultValue={defaults?.unit ?? ""} required />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label htmlFor="costPrice">Cost Price (IDR)</Label>
+          <Label htmlFor="costPrice">{t.trading.costPrice}</Label>
           <Input id="costPrice" name="costPrice" type="number" min="0" defaultValue={defaults?.costPrice ?? 0} required />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="supplierId">Supplier</Label>
+          <Label htmlFor="supplierId">{t.trading.supplier}</Label>
           <input type="hidden" name="supplierId" value={supplierId} />
           <Select value={supplierId} onValueChange={setSupplierId}>
             <SelectTrigger id="supplierId" data-testid="select-supplier">
-              <SelectValue placeholder="(opsional)" />
+              <SelectValue placeholder={`(${t.common.optional})`} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">— Tanpa supplier —</SelectItem>
+              <SelectItem value="none">— {t.trading.noSuppliers} —</SelectItem>
               {suppliers.map(s => (
                 <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
               ))}
@@ -545,22 +545,23 @@ function StockFormFields({ defaults, suppliers }: { defaults?: StockItem; suppli
 }
 
 function SupplierFormFields({ defaults }: { defaults?: Supplier }) {
+  const { t } = useLanguage();
   return (
     <div className="grid gap-4 py-4">
       <div className="grid gap-2">
-        <Label htmlFor="name">Company Name</Label>
+        <Label htmlFor="name">{t.trading.supplierName}</Label>
         <Input id="name" name="name" defaultValue={defaults?.name ?? ""} required />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="country">Country</Label>
+        <Label htmlFor="country">{t.trading.country}</Label>
         <Input id="country" name="country" defaultValue={defaults?.country ?? ""} required />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="contactEmail">Contact Email</Label>
+        <Label htmlFor="contactEmail">{t.common.contactEmail}</Label>
         <Input id="contactEmail" name="contactEmail" type="email" defaultValue={defaults?.contactEmail ?? ""} required />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="phone">Phone Number</Label>
+        <Label htmlFor="phone">{t.common.phone}</Label>
         <Input id="phone" name="phone" defaultValue={defaults?.phone ?? ""} />
       </div>
     </div>

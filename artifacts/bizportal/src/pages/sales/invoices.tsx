@@ -39,6 +39,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { CreditCard, MessageSquare, ShoppingCart } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -60,6 +61,7 @@ function PaymentStatusBadge({ status }: { status: string }) {
 export default function SalesInvoicesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [filter, setFilter] = useState<"all" | "to_invoice" | "invoiced">("all");
   const { data: docs } = useListSalesDocuments({ kind: "order" });
   const { data: journals = [] } = useListJournals();
@@ -99,12 +101,12 @@ export default function SalesInvoicesPage() {
 
   const submitPayment = async () => {
     if (!payDoc || !payForm.journalId || !payForm.date || !payForm.amount) {
-      toast({ title: "Jurnal, tanggal & jumlah wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const amt = Number(payForm.amount);
     if (Number.isNaN(amt) || amt <= 0) {
-      toast({ title: "Jumlah harus angka positif", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -121,12 +123,12 @@ export default function SalesInvoicesPage() {
           sourceDocId: payDoc.id,
         },
       });
-      toast({ title: "Pembayaran berhasil dicatat", description: `Pembayaran untuk ${payDoc.docNumber} dicatat.` });
+      toast({ title: t.common.success, description: payDoc.docNumber });
       await qc.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
       closePayDialog();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
-      toast({ title: "Gagal mencatat pembayaran", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 

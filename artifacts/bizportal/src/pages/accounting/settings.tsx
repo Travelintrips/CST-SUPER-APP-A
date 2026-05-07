@@ -9,6 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useGetAccountingSettings, useUpdateAccountingSettings, useListAccounts, useListJournals, useListTaxes,
   getGetAccountingSettingsQueryKey,
@@ -39,6 +40,7 @@ function getLogoServeUrl(objectPath: string) {
 export default function AccountingSettingsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const { data: settings, isLoading } = useGetAccountingSettings();
   const { data: accounts } = useListAccounts();
   const { data: journals } = useListJournals();
@@ -49,7 +51,7 @@ export default function AccountingSettingsPage() {
 
   const { uploadFile } = useUpload({
     onError: (err) => {
-      toast({ title: `Upload logo gagal: ${err.message}`, variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       setLogoUploading(false);
     },
   });
@@ -89,7 +91,7 @@ export default function AccountingSettingsPage() {
       const result = await uploadFile(file);
       if (result?.objectPath) {
         setForm((prev) => ({ ...prev, companyLogoUrl: result.objectPath }));
-        toast({ title: "Logo berhasil diunggah" });
+        toast({ title: t.common.success });
       }
     } finally {
       setLogoUploading(false);
@@ -99,11 +101,11 @@ export default function AccountingSettingsPage() {
   const submit = async () => {
     try {
       await updateMut.mutateAsync({ data: form });
-      toast({ title: "Pengaturan disimpan" });
+      toast({ title: t.common.success });
       qc.invalidateQueries({ queryKey: getGetAccountingSettingsQueryKey() });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast({ title: "Gagal", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 

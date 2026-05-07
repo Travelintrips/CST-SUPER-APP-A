@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare, ShoppingCart, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
@@ -70,18 +71,19 @@ function VoidDialog({ payment, onVoided }: { payment: AccountingPayment; onVoide
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const { toast } = useToast();
+  const { t } = useLanguage();
   const voidMut = useVoidAccountingPayment();
 
   const handleVoid = async () => {
     try {
       await voidMut.mutateAsync({ id: payment.id, data: { reason: reason.trim() || undefined } });
-      toast({ title: "Pembayaran dibatalkan", description: "Jurnal pembalik otomatis telah dibuat." });
+      toast({ title: t.common.success });
       setOpen(false);
       setReason("");
       onVoided();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
-      toast({ title: "Gagal membatalkan", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 
@@ -276,12 +278,12 @@ export default function PaymentsPage() {
 
   const submit = async () => {
     if (!form.paymentType || !form.amount || !form.journalId || !form.date) {
-      toast({ title: "Tipe, jumlah, jurnal & tanggal wajib diisi", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     const amt = Number(form.amount);
     if (Number.isNaN(amt) || amt <= 0) {
-      toast({ title: "Jumlah harus angka positif", variant: "destructive" });
+      toast({ title: t.common.error, variant: "destructive" });
       return;
     }
     try {
@@ -298,7 +300,7 @@ export default function PaymentsPage() {
           sourceDocId: form.sourceDocId || undefined,
         },
       });
-      toast({ title: "Pembayaran berhasil dicatat", description: "Jurnal otomatis dibuat." });
+      toast({ title: t.common.success });
       await Promise.all([
         qc.invalidateQueries({ queryKey: getListAccountingPaymentsQueryKey() }),
         qc.invalidateQueries({ queryKey: getGetPartnerBalancesQueryKey() }),
@@ -307,7 +309,7 @@ export default function PaymentsPage() {
       reset();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(err);
-      toast({ title: "Gagal mencatat", description: msg, variant: "destructive" });
+      toast({ title: t.common.error, description: msg, variant: "destructive" });
     }
   };
 

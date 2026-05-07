@@ -8,11 +8,13 @@ import {
   useListSalesDocuments,
 } from "@workspace/api-client-react";
 import { FileText, ShoppingBag, Receipt, TrendingUp, Plus } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 export default function SalesDashboardPage() {
+  const { t } = useLanguage();
   const { data: summary } = useGetSalesSummary();
   const { data: recentDocs } = useListSalesDocuments();
 
@@ -23,18 +25,18 @@ export default function SalesDashboardPage() {
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Sales</h1>
-            <p className="text-sm text-muted-foreground">Ringkasan penjualan dan dokumen terbaru.</p>
+            <h1 className="text-2xl font-bold">{t.sales.title}</h1>
+            <p className="text-sm text-muted-foreground">{t.sales.subtitle}</p>
           </div>
           <div className="flex gap-2">
             <Link href="/sales/quotations">
               <Button variant="outline" data-testid="link-go-quotations">
-                <FileText className="mr-2 h-4 w-4" /> Quotations
+                <FileText className="mr-2 h-4 w-4" /> {t.sales.quotation}
               </Button>
             </Link>
             <Link href="/sales/quotations">
               <Button data-testid="button-new-quote">
-                <Plus className="mr-2 h-4 w-4" /> New Quotation
+                <Plus className="mr-2 h-4 w-4" /> {t.sales.newQuotation}
               </Button>
             </Link>
           </div>
@@ -44,7 +46,7 @@ export default function SalesDashboardPage() {
           <Link href="/sales/quotations" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Quotations</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.sales.quotation}</CardTitle>
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -55,7 +57,7 @@ export default function SalesDashboardPage() {
           <Link href="/sales/orders" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Sales Orders</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.sales.order}</CardTitle>
                 <ShoppingBag className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -66,7 +68,7 @@ export default function SalesDashboardPage() {
           <Link href="/sales/invoices" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">To Invoice</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.sales.toInvoice}</CardTitle>
                 <Receipt className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -77,7 +79,7 @@ export default function SalesDashboardPage() {
           <Link href="/sales/customers" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
             <Card className="bg-card border-border transition-all hover:border-primary/50 hover:shadow-md group-hover:bg-accent/40 cursor-pointer h-full">
               <CardHeader className="flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Revenue</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.sales.revenue}</CardTitle>
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -92,11 +94,11 @@ export default function SalesDashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Dokumen Terbaru</CardTitle>
+            <CardTitle>{t.sales.recentDocuments}</CardTitle>
           </CardHeader>
           <CardContent>
             {recent.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Belum ada dokumen.</p>
+              <p className="text-sm text-muted-foreground">{t.sales.noDocuments}</p>
             ) : (
               <div className="space-y-2">
                 {recent.map((d) => (

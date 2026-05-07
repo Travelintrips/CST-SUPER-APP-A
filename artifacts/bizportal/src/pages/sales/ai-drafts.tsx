@@ -37,6 +37,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList, X, Search } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -125,6 +126,7 @@ function IntakeStatusBadge({ entry }: { entry: AiIntakeLogEntry }) {
 export default function AiDraftsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const { data: drafts = [], isLoading, refetch } = useListAiDraftQuotations();
   const { data: intakeLog = [], isLoading: isLogLoading, refetch: refetchLog } = useListAiIntakeLog({
@@ -252,13 +254,10 @@ export default function AiDraftsPage() {
         onSuccess: (data) => {
           setForwardResults(data.results ?? []);
           queryClient.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
-          toast({
-            title: "Diteruskan ke vendor",
-            description: `${data.waCount} WA + ${data.emailCount} email ke ${data.vendorCount} vendor.`,
-          });
+          toast({ title: t.common.success });
         },
         onError: () => {
-          toast({ title: "Gagal", description: "Tidak dapat meneruskan ke vendor.", variant: "destructive" });
+          toast({ title: t.common.error, variant: "destructive" });
         },
       },
     );
@@ -270,13 +269,13 @@ export default function AiDraftsPage() {
       { id: discardDoc.id, data: { action: "cancel" } },
       {
         onSuccess: () => {
-          toast({ title: "Draft dibatalkan", description: discardDoc.docNumber });
+          toast({ title: t.common.success, description: discardDoc.docNumber });
           setDiscardDoc(null);
           queryClient.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
           queryClient.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
         },
         onError: () => {
-          toast({ title: "Gagal", description: "Tidak dapat membatalkan draft.", variant: "destructive" });
+          toast({ title: t.common.error, variant: "destructive" });
         },
       },
     );
