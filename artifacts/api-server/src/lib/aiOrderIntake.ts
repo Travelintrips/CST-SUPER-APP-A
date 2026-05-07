@@ -4,6 +4,7 @@ import {
   salesDocumentsTable,
   salesDocumentLinesTable,
   emailCorrespondencesTable,
+  waAiIntakeLogTable,
   portalContentTable,
 } from "@workspace/db";
 import { eq, sql, and, gt } from "drizzle-orm";
@@ -254,7 +255,21 @@ export async function processEmailForAiIntake(
 
   const content = `Subject: ${subject}\nFrom: ${fromEmail ?? "unknown"}\n\n${body ?? ""}`;
   const extracted = await extractOrderFromText(content);
-  if (!extracted || !extracted.isOrderInquiry) {
+  if (!extracted) {
+    // AI extraction failed (network / parse error) — mark processed so it appears in log
+    await db
+      .update(emailCorrespondencesTable)
+      .set({ aiProcessed: true, aiSkipReason: "ai_error" })
+      .where(eq(emailCorrespondencesTable.id, emailCorrespondenceId));
+    logger.warn({ emailCorrespondenceId }, "AI intake: email extraction failed — marked as error");
+    return null;
+  }
+  if (!extracted.isOrderInquiry) {
+    // AI decided not an order inquiry — mark processed so it appears in log as skipped
+    await db
+      .update(emailCorrespondencesTable)
+      .set({ aiProcessed: true, aiSkipReason: "not_order_inquiry" })
+      .where(eq(emailCorrespondencesTable.id, emailCorrespondenceId));
     logger.debug({ emailCorrespondenceId }, "AI intake: email not classified as order inquiry");
     return null;
   }
@@ -306,7 +321,25 @@ export async function processWaForAiIntake(
 
   const content = `From: ${senderName ?? phone}\nPhone: ${phone}\n\n${message}`;
   const extracted = await extractOrderFromText(content);
-  if (!extracted || !extracted.isOrderInquiry) {
+  if (!extracted) {
+    // AI extraction failed — write a skip/error event so it appears in the intake log
+    await db.insert(waAiIntakeLogTable).values({
+      phone,
+      senderName: senderName ?? null,
+      status: "error",
+      skipReason: "ai_error",
+    });
+    logger.warn({ phone }, "AI intake: WA extraction failed — logged as error");
+    return null;
+  }
+  if (!extracted.isOrderInquiry) {
+    // AI decided not an order inquiry — write a skipped event for the log
+    await db.insert(waAiIntakeLogTable).values({
+      phone,
+      senderName: senderName ?? null,
+      status: "skipped",
+      skipReason: "not_order_inquiry",
+    });
     logger.debug({ phone }, "AI intake: WA message not classified as order inquiry");
     return null;
   }

@@ -8,6 +8,7 @@ import {
   freightShipmentsTable,
   suppliersTable,
   emailCorrespondencesTable,
+  waAiIntakeLogTable,
 } from "@workspace/db";
 import { eq, sql, desc, and, count, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
@@ -575,48 +576,64 @@ router.get("/ai-drafts", async (_req, res) => {
 
 // GET /api/sales/ai-intake-log — audit log of AI-processed messages
 router.get("/ai-intake-log", async (_req, res) => {
-  // Email-sourced entries: correspondences that were AI-processed
-  const emailRows = await db
-    .select({
-      corrId: emailCorrespondencesTable.id,
-      fromEmail: emailCorrespondencesTable.fromEmail,
-      subject: emailCorrespondencesTable.subject,
-      receivedAt: emailCorrespondencesTable.receivedAt,
-      linkedSalesDocId: emailCorrespondencesTable.linkedSalesDocId,
-      docNumber: salesDocumentsTable.docNumber,
-      docStatus: salesDocumentsTable.status,
-    })
-    .from(emailCorrespondencesTable)
-    .leftJoin(
-      salesDocumentsTable,
-      eq(emailCorrespondencesTable.linkedSalesDocId, salesDocumentsTable.id),
-    )
-    .where(eq(emailCorrespondencesTable.aiProcessed, true))
-    .orderBy(desc(emailCorrespondencesTable.receivedAt))
-    .limit(100);
+  const [emailRows, waCreatedRows, waSkipRows] = await Promise.all([
+    // Email-sourced entries: correspondences that were AI-processed
+    db
+      .select({
+        corrId: emailCorrespondencesTable.id,
+        fromEmail: emailCorrespondencesTable.fromEmail,
+        subject: emailCorrespondencesTable.subject,
+        receivedAt: emailCorrespondencesTable.receivedAt,
+        linkedSalesDocId: emailCorrespondencesTable.linkedSalesDocId,
+        aiSkipReason: emailCorrespondencesTable.aiSkipReason,
+        docNumber: salesDocumentsTable.docNumber,
+        docStatus: salesDocumentsTable.status,
+      })
+      .from(emailCorrespondencesTable)
+      .leftJoin(
+        salesDocumentsTable,
+        eq(emailCorrespondencesTable.linkedSalesDocId, salesDocumentsTable.id),
+      )
+      .where(eq(emailCorrespondencesTable.aiProcessed, true))
+      .orderBy(desc(emailCorrespondencesTable.receivedAt))
+      .limit(100),
 
-  // WA-sourced entries: AI-generated docs with a WA source phone
-  const waRows = await db
-    .select()
-    .from(salesDocumentsTable)
-    .where(and(eq(salesDocumentsTable.aiGenerated, true), sql`${salesDocumentsTable.aiSourceWaPhone} is not null`))
-    .orderBy(desc(salesDocumentsTable.createdAt))
-    .limit(100);
+    // WA-sourced entries: AI-generated docs with a WA source phone (status = created)
+    db
+      .select()
+      .from(salesDocumentsTable)
+      .where(and(eq(salesDocumentsTable.aiGenerated, true), sql`${salesDocumentsTable.aiSourceWaPhone} is not null`))
+      .orderBy(desc(salesDocumentsTable.createdAt))
+      .limit(100),
 
-  const emailEntries = emailRows.map((r) => ({
-    id: `email-${r.corrId}`,
-    source: "email" as const,
-    sender: r.fromEmail ?? null,
-    subject: r.subject,
-    timestamp: r.receivedAt.toISOString(),
-    status: (r.linkedSalesDocId != null ? "created" : "skipped") as "created" | "skipped",
-    docId: r.linkedSalesDocId ?? null,
-    docNumber: r.docNumber ?? null,
-    docStatus: r.docStatus ?? null,
-  }));
+    // WA skipped/error entries from the dedicated log table
+    db
+      .select()
+      .from(waAiIntakeLogTable)
+      .orderBy(desc(waAiIntakeLogTable.processedAt))
+      .limit(100),
+  ]);
 
-  const waEntries = waRows.map((r) => ({
-    id: `wa-${r.id}`,
+  const emailEntries = emailRows.map((r) => {
+    let status: "created" | "skipped" | "error";
+    if (r.linkedSalesDocId != null) status = "created";
+    else if (r.aiSkipReason === "ai_error") status = "error";
+    else status = "skipped";
+    return {
+      id: `email-${r.corrId}`,
+      source: "email" as const,
+      sender: r.fromEmail ?? null,
+      subject: r.subject,
+      timestamp: r.receivedAt.toISOString(),
+      status,
+      docId: r.linkedSalesDocId ?? null,
+      docNumber: r.docNumber ?? null,
+      docStatus: r.docStatus ?? null,
+    };
+  });
+
+  const waCreatedEntries = waCreatedRows.map((r) => ({
+    id: `wa-doc-${r.id}`,
     source: "wa" as const,
     sender: r.aiSourceWaPhone ?? null,
     subject: null,
@@ -627,7 +644,19 @@ router.get("/ai-intake-log", async (_req, res) => {
     docStatus: r.status,
   }));
 
-  const all = [...emailEntries, ...waEntries].sort(
+  const waSkipEntries = waSkipRows.map((r) => ({
+    id: `wa-skip-${r.id}`,
+    source: "wa" as const,
+    sender: r.phone,
+    subject: r.senderName ?? null,
+    timestamp: r.processedAt.toISOString(),
+    status: r.status as "skipped" | "error",
+    docId: null,
+    docNumber: null,
+    docStatus: null,
+  }));
+
+  const all = [...emailEntries, ...waCreatedEntries, ...waSkipEntries].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   );
 

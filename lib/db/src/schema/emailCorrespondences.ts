@@ -13,6 +13,7 @@ export const emailCorrespondencesTable = pgTable("email_correspondences", {
   validatedBy: text("validated_by"),
   validatedAt: timestamp("validated_at"),
   aiProcessed: boolean("ai_processed").notNull().default(false),
+  aiSkipReason: text("ai_skip_reason"),
   linkedSalesDocId: integer("linked_sales_doc_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
