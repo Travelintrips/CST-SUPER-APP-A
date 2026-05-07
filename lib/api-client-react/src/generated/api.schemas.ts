@@ -2119,6 +2119,8 @@ export interface LogisticOrder {
   notes?: string | null;
   paymentType?: string | null;
   paymentMethod?: string | null;
+  namaPenerima?: string | null;
+  nomorPenerima?: string | null;
   subtotal: number;
   tax: number;
   grandTotal: number;
@@ -2175,6 +2177,8 @@ export interface CreateLogisticOrderBody {
   notes?: string | null;
   paymentType?: string | null;
   paymentMethod?: string | null;
+  namaPenerima?: string | null;
+  nomorPenerima?: string | null;
   subtotal: number;
   tax: number;
   grandTotal: number;

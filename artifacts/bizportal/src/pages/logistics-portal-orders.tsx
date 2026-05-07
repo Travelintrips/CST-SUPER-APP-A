@@ -5,6 +5,7 @@ import {
   useUpdateLogisticOrderStatus,
   useCreateSalesDocument,
   getListLogisticOrdersQueryKey,
+  useGetLogisticOrder,
 } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { PackageOpen, Search, RefreshCw, FilePlus, X, ExternalLink } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X, ExternalLink, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STATUS_OPTIONS = ["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"];
@@ -39,6 +40,17 @@ const STATUS_COLORS: Record<string, string> = {
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
+const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+function formatTanggal(iso: string) {
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, "0");
+  const mon = BULAN_ID[d.getMonth()];
+  const year = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${day}-${mon}-${year}, ${hh}:${mm}`;
+}
+
 export default function LogisticsPortalOrdersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -48,6 +60,17 @@ export default function LogisticsPortalOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
+  const [viewPhoto, setViewPhoto] = useState<string | null>(null);
+
+  const { data: soDetail } = useGetLogisticOrder(
+    soDialog?.id ?? 0,
+    { query: { enabled: !!soDialog?.id, queryKey: [`/api/logistic/orders/${soDialog?.id ?? 0}`] } },
+  );
+  const cargoPhotos: string[] = (() => {
+    const truckingItem = soDetail?.items?.find((it) => it.calculatorType === "trucking");
+    const urls = (truckingItem?.inputData as Record<string, unknown> | undefined)?.cargo_photo_urls;
+    return Array.isArray(urls) ? (urls as string[]) : [];
+  })();
 
   const { data: orders = [], isLoading, refetch } = useListLogisticOrders(
     statusFilter !== "all" ? { status: statusFilter } : undefined,
@@ -312,8 +335,8 @@ export default function LogisticsPortalOrdersPage() {
       </div>
 
       {/* Create Sales Order Dialog */}
-      <Dialog open={!!soDialog} onOpenChange={(open) => { if (!open) setSoDialog(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog open={!!soDialog} onOpenChange={(open) => { if (!open) { setSoDialog(null); setViewPhoto(null); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FilePlus className="h-5 w-5" /> Buat Sales Order
@@ -325,26 +348,96 @@ export default function LogisticsPortalOrdersPage() {
           {soDialog && (
             <div className="space-y-3 py-2">
               <div className="rounded-lg border bg-muted/40 p-4 space-y-2 text-sm">
+                {/* No. Order */}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">No. Order</span>
                   <span className="font-mono font-medium">{soDialog.orderNumber}</span>
                 </div>
+                {/* Pelanggan */}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Pelanggan</span>
                   <span className="font-medium">{soDialog.customerName}</span>
                 </div>
+                {/* Telepon Pengirim */}
+                {soDialog.phone && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Telepon Pengirim</span>
+                    <span>{soDialog.phone}</span>
+                  </div>
+                )}
+                {/* Perusahaan */}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Perusahaan</span>
                   <span>{soDialog.companyName}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rute</span>
-                  <span>{soDialog.origin} → {soDialog.destination}</span>
-                </div>
+                {/* Tipe */}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Tipe</span>
                   <Badge variant="outline" className="text-xs">{soDialog.shipmentType}</Badge>
                 </div>
+                {/* Rute */}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Rute</span>
+                  <span className="text-right max-w-[60%]">{soDialog.origin} → {soDialog.destination}</span>
+                </div>
+
+                {/* Kategori Barang */}
+                {soDialog.commodity && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Kategori Barang</span>
+                    <span>{soDialog.commodity}</span>
+                  </div>
+                )}
+                {/* Total Volume */}
+                {soDialog.volumeCbm != null && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Volume</span>
+                    <span>{soDialog.volumeCbm} m³</span>
+                  </div>
+                )}
+                {/* Tanggal Order */}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tanggal Order</span>
+                  <span>{formatTanggal(soDialog.createdAt)}</span>
+                </div>
+                {/* Nama Penerima */}
+                {soDialog.namaPenerima && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Nama Penerima</span>
+                    <span>{soDialog.namaPenerima}</span>
+                  </div>
+                )}
+                {/* No. Telepon Penerima */}
+                {soDialog.nomorPenerima && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">No. Telepon Penerima</span>
+                    <span>{soDialog.nomorPenerima}</span>
+                  </div>
+                )}
+
+                {/* Foto Barang */}
+                {cargoPhotos.length > 0 && (
+                  <div className="pt-1">
+                    <span className="text-muted-foreground block mb-2">Foto Barang ({cargoPhotos.length})</span>
+                    <div className="flex flex-wrap gap-2">
+                      {cargoPhotos.map((url, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setViewPhoto(url)}
+                          className="relative group rounded-md overflow-hidden border w-16 h-16 bg-muted hover:opacity-90 transition-opacity"
+                        >
+                          <img src={url} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <Eye className="h-4 w-4 text-white" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Total */}
                 <div className="flex justify-between border-t pt-2 mt-2">
                   <span className="text-muted-foreground font-medium">Total</span>
                   <span className="font-bold text-base">{idr(soDialog.grandTotal)}</span>
@@ -369,6 +462,15 @@ export default function LogisticsPortalOrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Photo lightbox */}
+      {viewPhoto && (
+        <Dialog open={!!viewPhoto} onOpenChange={() => setViewPhoto(null)}>
+          <DialogContent className="max-w-2xl p-2">
+            <img src={viewPhoto} alt="Foto Barang" className="w-full rounded-md object-contain max-h-[80vh]" />
+          </DialogContent>
+        </Dialog>
+      )}
     </AppShell>
   );
 }

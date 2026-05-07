@@ -400,6 +400,7 @@ export default function BookPage() {
     origin: "", destination: "", commodity: "", cargoDescription: "",
     grossWeight: "", volumeCbm: "", jumlahKoli: "", requiredDate: "", notes: "",
     quantity: "", unit: "",
+    namaPenerima: "", nomorPenerima: "",
   });
   const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "">("");
   const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
@@ -450,13 +451,17 @@ export default function BookPage() {
     const deriveGrossWeight  = truckingData?.gross_weight_kg  ? String(truckingData.gross_weight_kg)  : "";
     const deriveVolumeCbm    = truckingData?.total_volume_m3  ? String(truckingData.total_volume_m3)  : "";
     const deriveJumlahKoli   = truckingData?.koli_qty         ? String(truckingData.koli_qty)         : "";
+    const deriveNamaPenerima  = truckingData?.receiver_name  ? String(truckingData.receiver_name)  : "";
+    const deriveNomorPenerima = truckingData?.receiver_phone ? String(truckingData.receiver_phone) : "";
     setCustomerForm((prev) => ({
       ...prev,
-      origin:       prev.origin       || deriveOrigin,
-      destination:  prev.destination  || deriveDestination,
-      grossWeight:  prev.grossWeight  || deriveGrossWeight,
-      volumeCbm:    prev.volumeCbm    || deriveVolumeCbm,
-      jumlahKoli:   prev.jumlahKoli   || deriveJumlahKoli,
+      origin:         prev.origin         || deriveOrigin,
+      destination:    prev.destination    || deriveDestination,
+      grossWeight:    prev.grossWeight    || deriveGrossWeight,
+      volumeCbm:      prev.volumeCbm      || deriveVolumeCbm,
+      jumlahKoli:     prev.jumlahKoli     || deriveJumlahKoli,
+      namaPenerima:   prev.namaPenerima   || deriveNamaPenerima,
+      nomorPenerima:  prev.nomorPenerima  || deriveNomorPenerima,
     }));
 
     // Parse payment_type from trucking cart inputData and populate payment state
@@ -581,6 +586,8 @@ export default function BookPage() {
         str(truckingInputData.notes),
         customerForm.notes,
       ].filter(Boolean).join(" | ") || null,
+      namaPenerima: customerForm.namaPenerima || null,
+      nomorPenerima: customerForm.nomorPenerima || null,
       paymentMethod: paymentType === "gateway"
         ? "payment_gateway"
         : paymentType === "transfer"

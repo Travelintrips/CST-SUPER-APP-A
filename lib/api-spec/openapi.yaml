@@ -5335,6 +5335,8 @@ components:
         notes: { type: string, nullable: true }
         paymentType: { type: string, nullable: true }
         paymentMethod: { type: string, nullable: true }
+        namaPenerima: { type: string, nullable: true }
+        nomorPenerima: { type: string, nullable: true }
         subtotal: { type: number }
         tax: { type: number }
         grandTotal: { type: number }
@@ -5403,6 +5405,8 @@ components:
         notes: { type: string, nullable: true }
         paymentType: { type: string, nullable: true }
         paymentMethod: { type: string, nullable: true }
+        namaPenerima: { type: string, nullable: true }
+        nomorPenerima: { type: string, nullable: true }
         subtotal: { type: number }
         tax: { type: number }
         grandTotal: { type: number }

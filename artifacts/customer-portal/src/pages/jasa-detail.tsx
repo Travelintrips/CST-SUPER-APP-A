@@ -633,6 +633,7 @@ export default function JasaDetail() {
           dimensions: JSON.stringify(dimensions),
           total_volume_m3: calcTotalVolumeM3(dimensions).toFixed(4),
           cargo_photos: String(cargoPhotoUrls.length),
+          cargo_photo_urls: cargoPhotoUrls,
           payment_type: truckingPayment === "gateway"
             ? "payment_gateway"
             : truckingPayment === "transfer"
