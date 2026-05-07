@@ -47,6 +47,7 @@ interface ItemForm {
   unit: string;
   unitOptions: string[];
   price: string;
+  stock: string;
   defaultSalesTaxId: string;
   defaultPurchaseTaxId: string;
   isActive: boolean;
@@ -62,6 +63,7 @@ const emptyForm = (): ItemForm => ({
   unit: "pcs",
   unitOptions: [],
   price: "0",
+  stock: "0",
   defaultSalesTaxId: "",
   defaultPurchaseTaxId: "",
   isActive: true,
@@ -80,6 +82,7 @@ function formFromProduct(p: Product): ItemForm {
       ? ((p as unknown as { unitOptions?: string[] }).unitOptions ?? [])
       : [],
     price: String(p.price),
+    stock: String((p as unknown as { stock?: number }).stock ?? 0),
     defaultSalesTaxId: p.defaultSalesTaxId ? String(p.defaultSalesTaxId) : "",
     defaultPurchaseTaxId: p.defaultPurchaseTaxId ? String(p.defaultPurchaseTaxId) : "",
     isActive: p.isActive,
@@ -166,7 +169,7 @@ export default function SalesItemsPage() {
       name: form.name.trim(),
       sku: form.sku.trim(),
       price: Number(form.price) || 0,
-      stock: 0,
+      stock: Number(form.stock) || 0,
       categories: form.categories.length > 0 ? form.categories : (form.subcategory ? [form.subcategory] : []),
       description: form.description || null,
       itemType: form.itemType,
@@ -327,6 +330,7 @@ export default function SalesItemsPage() {
                       <TableHead className="text-slate-400">Jenis</TableHead>
                       <TableHead className="text-slate-400">Sub-kategori</TableHead>
                       <TableHead className="text-slate-400">Satuan</TableHead>
+                      <TableHead className="text-slate-400 text-right">Stok</TableHead>
                       <TableHead className="text-slate-400 text-right">Harga Jual</TableHead>
                       <TableHead className="text-slate-400">Pajak Jual</TableHead>
                       <TableHead className="text-slate-400">Status</TableHead>
@@ -367,6 +371,14 @@ export default function SalesItemsPage() {
                               ))
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-slate-300">
+                          {p.itemType === "barang"
+                            ? <span className={((p as unknown as { stock?: number }).stock ?? 0) === 0 ? "text-red-400" : ""}>
+                                {(p as unknown as { stock?: number }).stock ?? 0}
+                              </span>
+                            : <span className="text-slate-500 text-xs">—</span>
+                          }
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-slate-300">
                           {p.price > 0 ? idr(p.price) : <span className="text-slate-500 text-xs">—</span>}
@@ -476,19 +488,6 @@ export default function SalesItemsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-slate-300">Satuan Default *</Label>
-                <Select value={form.unit} onValueChange={(v) => setF("unit", v)}>
-                  <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    {UNITS.map((u) => (
-                      <SelectItem key={u} value={u}>{u}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
                 <Label className="text-slate-300">Harga Jual Default</Label>
                 <Input
                   type="number"
@@ -498,6 +497,33 @@ export default function SalesItemsPage() {
                   className="bg-slate-800 border-slate-600 text-slate-200"
                 />
               </div>
+              {form.itemType === "barang" && (
+                <div className="space-y-1.5">
+                  <Label className="text-slate-300">Stok</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.stock}
+                    onChange={(e) => setF("stock", e.target.value)}
+                    placeholder="0"
+                    className="bg-slate-800 border-slate-600 text-slate-200"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-slate-300">Satuan Default *</Label>
+              <Select value={form.unit} onValueChange={(v) => setF("unit", v)}>
+                <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  {UNITS.map((u) => (
+                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Unit Options — multi-pilih untuk customer portal */}
