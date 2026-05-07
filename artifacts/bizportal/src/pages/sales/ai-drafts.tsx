@@ -85,6 +85,20 @@ function IntakeSourceBadge({ entry }: { entry: AiIntakeLogEntry }) {
   );
 }
 
+function HighlightText({ text, query }: { text: string | null; query: string }) {
+  if (!text) return null;
+  if (!query) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-300/70 text-inherit rounded-[2px] px-0">{text.slice(idx, idx + query.length)}</mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 function IntakeStatusBadge({ entry }: { entry: AiIntakeLogEntry }) {
   if (entry.status === "created")
     return (
@@ -533,10 +547,14 @@ export default function AiDraftsPage() {
                               <IntakeSourceBadge entry={entry} />
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={entry.sender ?? undefined}>
-                              {entry.sender ?? "—"}
+                              {entry.sender
+                                ? <HighlightText text={entry.sender} query={logSearch.trim()} />
+                                : "—"}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate" title={entry.subject ?? undefined}>
-                              {entry.subject ?? <span className="italic text-muted-foreground/60">Pesan WhatsApp</span>}
+                              {entry.subject
+                                ? <HighlightText text={entry.subject} query={logSearch.trim()} />
+                                : <span className="italic text-muted-foreground/60">Pesan WhatsApp</span>}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                               {new Date(entry.timestamp).toLocaleDateString("id-ID", {
