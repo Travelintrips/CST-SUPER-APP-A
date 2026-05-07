@@ -36,6 +36,8 @@ tags:
     description: Customer portal — public website, customer auth, and order lookup
   - name: logistic-orders
     description: Export Import & Logistic Ordering System — public booking and admin dashboard
+  - name: ai-agent
+    description: AI chat agent — conversational order creation and chat history
 
 paths:
   /healthz:
@@ -3088,6 +3090,98 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /ai-agent/chat:
+    post:
+      operationId: aiAgentChat
+      tags: [ai-agent]
+      summary: Send a message to the AI logistics agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionToken: { type: string, nullable: true }
+                message: { type: string }
+              required: [message]
+      responses:
+        "200":
+          description: AI response
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiChatResponse" }
+
+  /ai-agent/session/{token}:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    get:
+      operationId: getAiChatSession
+      tags: [ai-agent]
+      summary: Get AI chat session and message history by session token
+      responses:
+        "200":
+          description: Session with messages
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiChatSessionWithMessages" }
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /ai-agent/session/{token}/admin-reply:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: aiAgentAdminReply
+      tags: [ai-agent]
+      summary: Send an admin reply to the customer (via WhatsApp)
+      security:
+        - clerkAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }
+              required: [message]
+      responses:
+        "201":
+          description: Reply saved and sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiChatMessage" }
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /ai-agent/session/by-order/{orderId}:
+    parameters:
+      - { name: orderId, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getAiChatSessionByOrder
+      tags: [ai-agent]
+      summary: Get AI chat session and messages for a given logistic order (admin)
+      security:
+        - clerkAuth: []
+      responses:
+        "200":
+          description: Session with messages
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiChatSessionWithMessages" }
+        "404":
+          description: No AI session for this order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
 components:
   schemas:
     HealthStatus:
@@ -5538,3 +5632,50 @@ components:
       properties:
         quoteId: { type: integer }
       required: [quoteId]
+
+    AiChatMessage:
+      type: object
+      properties:
+        id: { type: integer }
+        role: { type: string, description: "user | assistant | admin" }
+        content: { type: string }
+        createdAt: { type: string }
+      required: [id, role, content, createdAt]
+
+    AiChatSession:
+      type: object
+      properties:
+        id: { type: integer }
+        sessionToken: { type: string }
+        logisticOrderId: { type: integer, nullable: true }
+        createdAt: { type: string }
+      required: [id, sessionToken, createdAt]
+
+    AiChatSessionWithMessages:
+      type: object
+      properties:
+        session:
+          $ref: "#/components/schemas/AiChatSession"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiChatMessage"
+      required: [session, messages]
+
+    AiChatOrderCreated:
+      type: object
+      properties:
+        orderNumber: { type: string }
+        orderId: { type: integer }
+      required: [orderNumber, orderId]
+
+    AiChatResponse:
+      type: object
+      properties:
+        sessionToken: { type: string }
+        message: { type: string }
+        orderCreated:
+          oneOf:
+            - $ref: "#/components/schemas/AiChatOrderCreated"
+            - type: "null"
+      required: [sessionToken, message]

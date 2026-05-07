@@ -2285,6 +2285,37 @@ export interface ApproveLogisticQuoteBody {
   quoteId: number;
 }
 
+export interface AiChatMessage {
+  id: number;
+  /** user | assistant | admin */
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface AiChatSession {
+  id: number;
+  sessionToken: string;
+  logisticOrderId?: number | null;
+  createdAt: string;
+}
+
+export interface AiChatSessionWithMessages {
+  session: AiChatSession;
+  messages: AiChatMessage[];
+}
+
+export interface AiChatOrderCreated {
+  orderNumber: string;
+  orderId: number;
+}
+
+export interface AiChatResponse {
+  sessionToken: string;
+  message: string;
+  orderCreated?: AiChatOrderCreated | null;
+}
+
 export type ListProductsParams = {
   search?: string;
   itemType?: string;
@@ -2596,4 +2627,13 @@ export type ListLogisticOrdersParams = {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+};
+
+export type AiAgentChatBody = {
+  sessionToken?: string | null;
+  message: string;
+};
+
+export type AiAgentAdminReplyBody = {
+  message: string;
 };

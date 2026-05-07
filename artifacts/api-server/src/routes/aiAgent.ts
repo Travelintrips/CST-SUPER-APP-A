@@ -6,7 +6,7 @@ import {
   aiChatMessagesTable,
   logisticOrdersTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -224,7 +224,8 @@ async function runAiChat(
   const existingMessages = await db
     .select()
     .from(aiChatMessagesTable)
-    .where(eq(aiChatMessagesTable.sessionId, sessionId));
+    .where(eq(aiChatMessagesTable.sessionId, sessionId))
+    .orderBy(asc(aiChatMessagesTable.createdAt));
 
   await db.insert(aiChatMessagesTable).values({
     sessionId,
@@ -360,7 +361,8 @@ aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
   const messages = await db
     .select()
     .from(aiChatMessagesTable)
-    .where(eq(aiChatMessagesTable.sessionId, session.id));
+    .where(eq(aiChatMessagesTable.sessionId, session.id))
+    .orderBy(asc(aiChatMessagesTable.createdAt));
 
   return res.json({
     session: {
@@ -394,7 +396,8 @@ aiAgentRouter.get("/session/by-order/:orderId", async (req: Request, res: Respon
   const messages = await db
     .select()
     .from(aiChatMessagesTable)
-    .where(eq(aiChatMessagesTable.sessionId, session.id));
+    .where(eq(aiChatMessagesTable.sessionId, session.id))
+    .orderBy(asc(aiChatMessagesTable.createdAt));
 
   return res.json({
     session: {

@@ -27,6 +27,11 @@ import type {
   AccountingSettings,
   AccountingTax,
   AgingReport,
+  AiAgentAdminReplyBody,
+  AiAgentChatBody,
+  AiChatMessage,
+  AiChatResponse,
+  AiChatSessionWithMessages,
   ApproveLogisticQuoteBody,
   BalanceSheetReport,
   Correspondence,
@@ -14827,3 +14832,355 @@ export const useUpdateLogisticOrderStatus = <
 > => {
   return useMutation(getUpdateLogisticOrderStatusMutationOptions(options));
 };
+
+/**
+ * @summary Send a message to the AI logistics agent
+ */
+export const getAiAgentChatUrl = () => {
+  return `/api/ai-agent/chat`;
+};
+
+export const aiAgentChat = async (
+  aiAgentChatBody: AiAgentChatBody,
+  options?: RequestInit,
+): Promise<AiChatResponse> => {
+  return customFetch<AiChatResponse>(getAiAgentChatUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiAgentChatBody),
+  });
+};
+
+export const getAiAgentChatMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiAgentChat>>,
+    TError,
+    { data: BodyType<AiAgentChatBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof aiAgentChat>>,
+  TError,
+  { data: BodyType<AiAgentChatBody> },
+  TContext
+> => {
+  const mutationKey = ["aiAgentChat"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof aiAgentChat>>,
+    { data: BodyType<AiAgentChatBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return aiAgentChat(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AiAgentChatMutationResult = NonNullable<
+  Awaited<ReturnType<typeof aiAgentChat>>
+>;
+export type AiAgentChatMutationBody = BodyType<AiAgentChatBody>;
+export type AiAgentChatMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Send a message to the AI logistics agent
+ */
+export const useAiAgentChat = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiAgentChat>>,
+    TError,
+    { data: BodyType<AiAgentChatBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof aiAgentChat>>,
+  TError,
+  { data: BodyType<AiAgentChatBody> },
+  TContext
+> => {
+  return useMutation(getAiAgentChatMutationOptions(options));
+};
+
+/**
+ * @summary Get AI chat session and message history by session token
+ */
+export const getGetAiChatSessionUrl = (token: string) => {
+  return `/api/ai-agent/session/${token}`;
+};
+
+export const getAiChatSession = async (
+  token: string,
+  options?: RequestInit,
+): Promise<AiChatSessionWithMessages> => {
+  return customFetch<AiChatSessionWithMessages>(getGetAiChatSessionUrl(token), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAiChatSessionQueryKey = (token: string) => {
+  return [`/api/ai-agent/session/${token}`] as const;
+};
+
+export const getGetAiChatSessionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAiChatSession>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiChatSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAiChatSessionQueryKey(token);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAiChatSession>>
+  > = ({ signal }) => getAiChatSession(token, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!token,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAiChatSession>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAiChatSessionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAiChatSession>>
+>;
+export type GetAiChatSessionQueryError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Get AI chat session and message history by session token
+ */
+
+export function useGetAiChatSession<
+  TData = Awaited<ReturnType<typeof getAiChatSession>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiChatSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAiChatSessionQueryOptions(token, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Send an admin reply to the customer (via WhatsApp)
+ */
+export const getAiAgentAdminReplyUrl = (token: string) => {
+  return `/api/ai-agent/session/${token}/admin-reply`;
+};
+
+export const aiAgentAdminReply = async (
+  token: string,
+  aiAgentAdminReplyBody: AiAgentAdminReplyBody,
+  options?: RequestInit,
+): Promise<AiChatMessage> => {
+  return customFetch<AiChatMessage>(getAiAgentAdminReplyUrl(token), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiAgentAdminReplyBody),
+  });
+};
+
+export const getAiAgentAdminReplyMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiAgentAdminReply>>,
+    TError,
+    { token: string; data: BodyType<AiAgentAdminReplyBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof aiAgentAdminReply>>,
+  TError,
+  { token: string; data: BodyType<AiAgentAdminReplyBody> },
+  TContext
+> => {
+  const mutationKey = ["aiAgentAdminReply"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof aiAgentAdminReply>>,
+    { token: string; data: BodyType<AiAgentAdminReplyBody> }
+  > = (props) => {
+    const { token, data } = props ?? {};
+
+    return aiAgentAdminReply(token, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AiAgentAdminReplyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof aiAgentAdminReply>>
+>;
+export type AiAgentAdminReplyMutationBody = BodyType<AiAgentAdminReplyBody>;
+export type AiAgentAdminReplyMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Send an admin reply to the customer (via WhatsApp)
+ */
+export const useAiAgentAdminReply = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiAgentAdminReply>>,
+    TError,
+    { token: string; data: BodyType<AiAgentAdminReplyBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof aiAgentAdminReply>>,
+  TError,
+  { token: string; data: BodyType<AiAgentAdminReplyBody> },
+  TContext
+> => {
+  return useMutation(getAiAgentAdminReplyMutationOptions(options));
+};
+
+/**
+ * @summary Get AI chat session and messages for a given logistic order (admin)
+ */
+export const getGetAiChatSessionByOrderUrl = (orderId: number) => {
+  return `/api/ai-agent/session/by-order/${orderId}`;
+};
+
+export const getAiChatSessionByOrder = async (
+  orderId: number,
+  options?: RequestInit,
+): Promise<AiChatSessionWithMessages> => {
+  return customFetch<AiChatSessionWithMessages>(
+    getGetAiChatSessionByOrderUrl(orderId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAiChatSessionByOrderQueryKey = (orderId: number) => {
+  return [`/api/ai-agent/session/by-order/${orderId}`] as const;
+};
+
+export const getGetAiChatSessionByOrderQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAiChatSessionByOrder>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  orderId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiChatSessionByOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAiChatSessionByOrderQueryKey(orderId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAiChatSessionByOrder>>
+  > = ({ signal }) =>
+    getAiChatSessionByOrder(orderId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!orderId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAiChatSessionByOrder>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAiChatSessionByOrderQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAiChatSessionByOrder>>
+>;
+export type GetAiChatSessionByOrderQueryError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Get AI chat session and messages for a given logistic order (admin)
+ */
+
+export function useGetAiChatSessionByOrder<
+  TData = Awaited<ReturnType<typeof getAiChatSessionByOrder>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  orderId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiChatSessionByOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAiChatSessionByOrderQueryOptions(orderId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

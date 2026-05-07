@@ -4764,3 +4764,84 @@ export const UpdateLogisticOrderStatusResponse = zod.object({
   quotationSentAt: zod.string().nullish(),
   createdAt: zod.string(),
 });
+
+/**
+ * @summary Send a message to the AI logistics agent
+ */
+export const AiAgentChatBody = zod.object({
+  sessionToken: zod.string().nullish(),
+  message: zod.string(),
+});
+
+export const AiAgentChatResponse = zod.object({
+  sessionToken: zod.string(),
+  message: zod.string(),
+  orderCreated: zod
+    .union([
+      zod.object({
+        orderNumber: zod.string(),
+        orderId: zod.number(),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+});
+
+/**
+ * @summary Get AI chat session and message history by session token
+ */
+export const GetAiChatSessionParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const GetAiChatSessionResponse = zod.object({
+  session: zod.object({
+    id: zod.number(),
+    sessionToken: zod.string(),
+    logisticOrderId: zod.number().nullish(),
+    createdAt: zod.string(),
+  }),
+  messages: zod.array(
+    zod.object({
+      id: zod.number(),
+      role: zod.string().describe("user | assistant | admin"),
+      content: zod.string(),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Send an admin reply to the customer (via WhatsApp)
+ */
+export const AiAgentAdminReplyParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const AiAgentAdminReplyBody = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Get AI chat session and messages for a given logistic order (admin)
+ */
+export const GetAiChatSessionByOrderParams = zod.object({
+  orderId: zod.coerce.number(),
+});
+
+export const GetAiChatSessionByOrderResponse = zod.object({
+  session: zod.object({
+    id: zod.number(),
+    sessionToken: zod.string(),
+    logisticOrderId: zod.number().nullish(),
+    createdAt: zod.string(),
+  }),
+  messages: zod.array(
+    zod.object({
+      id: zod.number(),
+      role: zod.string().describe("user | assistant | admin"),
+      content: zod.string(),
+      createdAt: zod.string(),
+    }),
+  ),
+});
