@@ -458,6 +458,25 @@ export default function BookPage() {
       volumeCbm:    prev.volumeCbm    || deriveVolumeCbm,
       jumlahKoli:   prev.jumlahKoli   || deriveJumlahKoli,
     }));
+
+    // Parse payment_type from trucking cart inputData and populate payment state
+    const rawPayment = truckingData?.payment_type ? String(truckingData.payment_type) : "";
+    if (rawPayment && !paymentType) {
+      if (rawPayment === "payment_gateway") {
+        setPaymentType("gateway");
+      } else if (rawPayment.startsWith("transfer")) {
+        setPaymentType("transfer");
+        const parts = rawPayment.split(":");
+        // parts: ["transfer"] | ["transfer","full"] | ["transfer","termin","net7"] | ["transfer","dp","lunas-delivery"]
+        const term = parts[1] as "full" | "termin" | "dp" | undefined;
+        if (term) setTransferTerm(term);
+        if (term === "termin" && parts[2]) {
+          setPaymentTerm(parts[2] as "net7" | "net14" | "net30" | "net60");
+        } else if (term === "dp" && parts[2]) {
+          setDpNext(parts[2] as "lunas-delivery" | "lunas-net30" | "lunas-net60" | "cicil");
+        }
+      }
+    }
   }, [cartItems]);
 
   const itemsByCategory = useMemo(() =>
