@@ -58,10 +58,14 @@ function isFreightWithDimensions(shipmentType: string): boolean {
 
 function buildAdminWaMessage(order: LogisticOrderData): string {
   const orderUrl = getOrderUrl(order.id);
+  const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
+  const jam = order.createdAt ? formatJam(order.createdAt) : "";
   return (
     `🚢 *ORDER LOGISTIK BARU*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
     `No. Order       : \`${order.orderNumber}\`\n` +
+    (tgl ? `Tanggal         : ${tgl}\n` : ``) +
+    (jam ? `Jam             : ${jam}\n` : ``) +
     `Status          : Menunggu Konfirmasi\n` +
     `Customer        : ${order.customerName}${order.companyName ? ` (${order.companyName})` : ""}\n` +
     `Email           : ${order.email}\n` +
@@ -85,11 +89,15 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
 }
 
 function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): string {
+  const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
+  const jam = order.createdAt ? formatJam(order.createdAt) : "";
   return (
     `📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `Kepada Yth. *${vendorName}*,\n\n` +
     `No. Order       : *${order.orderNumber}*\n` +
+    (tgl ? `Tanggal         : ${tgl}\n` : ``) +
+    (jam ? `Jam             : ${jam}\n` : ``) +
     `Status          : Menunggu Konfirmasi\n` +
     `Jenis           : ${order.shipmentType}\n` +
     `Rute            : ${order.origin} → ${order.destination}\n` +
