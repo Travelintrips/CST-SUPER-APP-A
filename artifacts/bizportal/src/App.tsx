@@ -397,10 +397,12 @@ function App() {
       <ClerkProvider
         publishableKey={clerkPubKey}
         proxyUrl={clerkProxyUrl}
-        routerPush={(to) => setLocation(stripBase(to))}
-        routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+        routerPush={(to) => setLocation(to)}
+        routerReplace={(to) => setLocation(to, { replace: true })}
         signInUrl={`${basePath}/sign-in`}
         signUpUrl={`${basePath}/sign-up`}
+        afterSignInUrl={`${basePath}/`}
+        afterSignUpUrl={`${basePath}/`}
       >
         <ClerkQueryClientCacheInvalidator />
         <TooltipProvider>
