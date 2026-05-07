@@ -401,8 +401,9 @@ function App() {
         routerReplace={(to) => setLocation(to, { replace: true })}
         signInUrl={`${basePath}/sign-in`}
         signUpUrl={`${basePath}/sign-up`}
-        afterSignInUrl={`${basePath}/`}
-        afterSignUpUrl={`${basePath}/`}
+        signInFallbackRedirectUrl={`${basePath}/`}
+        signUpFallbackRedirectUrl={`${basePath}/`}
+        afterSignOutUrl={`${basePath}/sign-in`}
       >
         <ClerkQueryClientCacheInvalidator />
         <TooltipProvider>

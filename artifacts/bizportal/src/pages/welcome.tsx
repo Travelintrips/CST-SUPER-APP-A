@@ -70,7 +70,7 @@ export default function WelcomePage() {
         </div>
         
         <div className="flex justify-center pt-8">
-          <Button variant="outline" onClick={() => signOut()} className="min-w-[200px] border-border text-foreground hover:bg-accent">
+          <Button variant="outline" onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL.replace(/\/$/, "") + "/sign-in" })} className="min-w-[200px] border-border text-foreground hover:bg-accent">
             Sign Out
           </Button>
         </div>

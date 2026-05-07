@@ -333,7 +333,7 @@ export function AppShell({ children }: AppShellProps) {
                     {dbUser?.role} Division
                   </Badge>
                 </div>
-                <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10">
+                <DropdownMenuItem onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL.replace(/\/$/, "") + "/sign-in" })} className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10">
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
                 </DropdownMenuItem>
