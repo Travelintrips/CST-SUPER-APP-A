@@ -722,40 +722,41 @@ export function ChatWidget() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-gray-50">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                {msg.role !== "user" && (
-                  <div className="w-7 h-7 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
-                    {msg.role === "admin" ? (
-                      <User className="h-3.5 w-3.5 text-sky-700" />
-                    ) : (
-                      <Bot className="h-3.5 w-3.5 text-sky-600" />
-                    )}
-                  </div>
-                )}
-                <div className={`flex flex-col max-w-[78%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                  <div
-                    className={`rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                      msg.role === "user"
-                        ? "bg-sky-600 text-white rounded-tr-sm"
-                        : msg.role === "admin"
-                        ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
-                        : "bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm"
-                    }`}
-                  >
-                    {msg.role === "admin" && (
-                      <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
-                    )}
-                    {msg.content}
-                  </div>
-                  {formatMsgTime(msg.createdAt) && (
-                    <p className="text-[10px] text-gray-400 mt-0.5 px-1">
-                      {formatMsgTime(msg.createdAt)}
-                    </p>
+            {messages.map((msg) => {
+              const msgTime = formatMsgTime(msg.createdAt);
+              return (
+                <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  {msg.role !== "user" && (
+                    <div className="w-7 h-7 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
+                      {msg.role === "admin" ? (
+                        <User className="h-3.5 w-3.5 text-sky-700" />
+                      ) : (
+                        <Bot className="h-3.5 w-3.5 text-sky-600" />
+                      )}
+                    </div>
                   )}
+                  <div className={`flex flex-col max-w-[78%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                    <div
+                      className={`rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                        msg.role === "user"
+                          ? "bg-sky-600 text-white rounded-tr-sm"
+                          : msg.role === "admin"
+                          ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
+                          : "bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm"
+                      }`}
+                    >
+                      {msg.role === "admin" && (
+                        <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
+                      )}
+                      {msg.content}
+                    </div>
+                    {msgTime && (
+                      <p className="text-[10px] text-gray-400 mt-0.5 px-1">{msgTime}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Live streaming bubble — replaces the old bouncing dots */}
             {isStreaming && (
