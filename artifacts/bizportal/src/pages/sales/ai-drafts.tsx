@@ -131,9 +131,13 @@ export default function AiDraftsPage() {
   const LS_DATE_FROM = "ai-intake-log:dateFrom";
   const LS_DATE_TO = "ai-intake-log:dateTo";
 
-  const [logSource, _setLogSource] = useState<"all" | "email" | "wa">(
-    () => (localStorage.getItem(LS_SOURCE) as "all" | "email" | "wa") ?? "all",
-  );
+  const VALID_SOURCES = ["all", "email", "wa"] as const;
+  const [logSource, _setLogSource] = useState<"all" | "email" | "wa">(() => {
+    const stored = localStorage.getItem(LS_SOURCE);
+    return (VALID_SOURCES as readonly string[]).includes(stored ?? "")
+      ? (stored as "all" | "email" | "wa")
+      : "all";
+  });
   const [logDateFrom, _setLogDateFrom] = useState(
     () => localStorage.getItem(LS_DATE_FROM) ?? "",
   );
