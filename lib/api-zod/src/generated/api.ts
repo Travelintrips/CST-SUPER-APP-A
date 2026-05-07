@@ -1869,6 +1869,14 @@ export const ForwardSalesDocumentToVendorsResponse = zod.object({
   vendorCount: zod.number(),
   waCount: zod.number(),
   emailCount: zod.number(),
+  results: zod.array(
+    zod.object({
+      vendorId: zod.number(),
+      vendorName: zod.string(),
+      waStatus: zod.enum(["sent", "failed", "skipped"]).nullish(),
+      emailStatus: zod.enum(["sent", "failed", "skipped"]).nullish(),
+    }),
+  ),
 });
 
 /**

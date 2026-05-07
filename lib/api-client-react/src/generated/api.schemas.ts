@@ -2288,11 +2288,39 @@ export interface ApproveLogisticQuoteBody {
   quoteId: number;
 }
 
+export type VendorSendResultWaStatus =
+  | (typeof VendorSendResultWaStatus)[keyof typeof VendorSendResultWaStatus]
+  | null;
+
+export const VendorSendResultWaStatus = {
+  sent: "sent",
+  failed: "failed",
+  skipped: "skipped",
+} as const;
+
+export type VendorSendResultEmailStatus =
+  | (typeof VendorSendResultEmailStatus)[keyof typeof VendorSendResultEmailStatus]
+  | null;
+
+export const VendorSendResultEmailStatus = {
+  sent: "sent",
+  failed: "failed",
+  skipped: "skipped",
+} as const;
+
+export interface VendorSendResult {
+  vendorId: number;
+  vendorName: string;
+  waStatus?: VendorSendResultWaStatus;
+  emailStatus?: VendorSendResultEmailStatus;
+}
+
 export interface ForwardToVendorsResponse {
   message: string;
   vendorCount: number;
   waCount: number;
   emailCount: number;
+  results: VendorSendResult[];
 }
 
 export type ForwardToVendorsBodyChannelsItem =

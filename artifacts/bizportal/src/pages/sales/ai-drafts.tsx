@@ -29,6 +29,7 @@ import {
   getListSalesDocumentsQueryKey,
   type SalesDocument,
   type ForwardToVendorsBodyChannelsItem,
+  type VendorSendResult,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -73,6 +74,7 @@ export default function AiDraftsPage() {
 
   const [forwardDoc, setForwardDoc] = useState<SalesDocument | null>(null);
   const [discardDoc, setDiscardDoc] = useState<SalesDocument | null>(null);
+  const [forwardResults, setForwardResults] = useState<VendorSendResult[] | null>(null);
 
   const [selectedVendorIds, setSelectedVendorIds] = useState<number[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>(["wa", "email"]);
@@ -85,6 +87,7 @@ export default function AiDraftsPage() {
   function handleForward(doc: SalesDocument) {
     setSelectedVendorIds([]);
     setSelectedChannels(["wa", "email"]);
+    setForwardResults(null);
     setForwardDoc(doc);
   }
 
@@ -116,12 +119,12 @@ export default function AiDraftsPage() {
       },
       {
         onSuccess: (data) => {
+          setForwardResults(data.results ?? []);
+          queryClient.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
           toast({
             title: "Diteruskan ke vendor",
-            description: `${data.waCount} WA + ${data.emailCount} email dikirim ke ${data.vendorCount} vendor.`,
+            description: `${data.waCount} WA + ${data.emailCount} email ke ${data.vendorCount} vendor.`,
           });
-          setForwardDoc(null);
-          queryClient.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
         },
         onError: () => {
           toast({ title: "Gagal", description: "Tidak dapat meneruskan ke vendor.", variant: "destructive" });
@@ -275,6 +278,31 @@ export default function AiDraftsPage() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-1 text-sm">
+              {forwardResults ? (
+                <div className="space-y-2">
+                  <p className="font-medium text-green-400">✓ Selesai dikirim</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                    {forwardResults.map((r) => (
+                      <div key={r.vendorId} className="flex items-center justify-between rounded border border-border px-3 py-1.5 bg-muted/20">
+                        <span className="font-medium flex-1">{r.vendorName}</span>
+                        <div className="flex gap-2 text-xs">
+                          {r.waStatus && (
+                            <span className={r.waStatus === "sent" ? "text-green-400" : r.waStatus === "failed" ? "text-red-400" : "text-muted-foreground"}>
+                              WA: {r.waStatus}
+                            </span>
+                          )}
+                          {r.emailStatus && (
+                            <span className={r.emailStatus === "sent" ? "text-green-400" : r.emailStatus === "failed" ? "text-red-400" : "text-muted-foreground"}>
+                              Email: {r.emailStatus}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
               {forwardDoc && (
                 <div className="rounded-md border border-border p-3 space-y-1 bg-muted/30">
                   <div className="flex justify-between">
@@ -346,16 +374,24 @@ export default function AiDraftsPage() {
                   </div>
                 )}
               </div>
+            </>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setForwardDoc(null)}>Batal</Button>
-              <Button
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-                onClick={confirmForward}
-                disabled={forwardMut.isPending || selectedChannels.length === 0}
-              >
-                {forwardMut.isPending ? "Mengirim..." : "Forward ke Vendor"}
-              </Button>
+              {forwardResults ? (
+                <Button variant="outline" onClick={() => { setForwardDoc(null); setForwardResults(null); }}>Tutup</Button>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => setForwardDoc(null)}>Batal</Button>
+                  <Button
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                    onClick={confirmForward}
+                    disabled={forwardMut.isPending || selectedChannels.length === 0}
+                  >
+                    {forwardMut.isPending ? "Mengirim..." : "Forward ke Vendor"}
+                  </Button>
+                </>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

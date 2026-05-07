@@ -671,7 +671,7 @@ export function ChatWidget() {
         lineBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
+          if (!line.startsWith(" ")) continue;
           let event: SseEvent;
           try { event = JSON.parse(line.slice(6)) as SseEvent; } catch { continue; }
 
@@ -908,7 +908,7 @@ export function ChatWidget() {
             animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
-          {/* Header - RESPONSIVE CENTERED LAYOUT */}
+          {/* Header - DENGAN LOGO CST */}
           <div
             className="flex items-center justify-between px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
             style={{
@@ -917,9 +917,17 @@ export function ChatWidget() {
               WebkitBackdropFilter: "blur(10px)",
             }}
           >
-            {/* Left: Icon */}
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-              <Bot className="h-5 w-5 text-white" />
+            {/* Left: Logo CST */}
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0 overflow-hidden">
+              <img 
+                src="https://i.ibb.co/v631Kq5F/logo.png" 
+                alt="CST Logistic" 
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback jika gambar gagal load
+                  (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚢%3C/text%3E%3C/svg%3E";
+                }}
+              />
             </div>
 
             {/* Center: Title & Status */}

@@ -612,8 +612,9 @@ router.post("/documents/:id/forward-to-vendors", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
-  const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
-  if (!doc) return res.status(404).json({ message: "Document not found" });
+  const detail = await loadDocWithLines(id);
+  if (!detail) return res.status(404).json({ message: "Document not found" });
+  const { lines, ...doc } = detail;
 
   const body = req.body as { vendorIds?: number[]; channels?: string[] };
   const useWa = !body.channels || body.channels.includes("wa");
@@ -650,36 +651,94 @@ router.post("/documents/:id/forward-to-vendors", async (req, res) => {
   const routeLabel = [doc.origin, doc.destination].filter(Boolean).join(" → ") || "N/A";
   const transportLabel = doc.transportMode ?? "Freight";
 
+  // Build item/cargo summary lines (columns: name, description, quantity, unitPrice)
+  const itemSummaryText = lines.length > 0
+    ? lines.map((l, i) => `  ${i + 1}. ${l.name}${l.description ? ` (${l.description})` : ""} — ${l.quantity} pcs @ ${Number(l.unitPrice).toLocaleString("id-ID")}`).join("\n")
+    : "  (tidak ada item)";
+
+  const itemSummaryHtml = lines.length > 0
+    ? `<ol>${lines.map((l) => `<li><strong>${l.name}</strong>${l.description ? ` — ${l.description}` : ""} — ${l.quantity} pcs @ ${Number(l.unitPrice).toLocaleString("id-ID")}</li>`).join("")}</ol>`
+    : "<p><em>Tidak ada item.</em></p>";
+
+  type VendorSendResult = { vendorId: number; vendorName: string; waStatus: "sent" | "failed" | "skipped" | null; emailStatus: "sent" | "failed" | "skipped" | null };
+  const results: VendorSendResult[] = [];
+
   for (const vendor of eligible) {
-    if (useWa && vendor.phone) {
-      const msg =
-        `📋 *PERMINTAAN PENAWARAN — CST LOGISTICS*\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `Kepada Yth. *${vendor.name}*,\n\n` +
-        `No. Draft   : *${doc.docNumber}*\n` +
-        `Customer    : ${doc.customerName}\n` +
-        `Jenis       : ${transportLabel}\n` +
-        `Rute        : ${routeLabel}\n` +
-        (doc.notes ? `Catatan     :\n${doc.notes}\n` : "") +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `💬 Mohon berikan penawaran harga Anda.\n` +
-        `Terima kasih 🙏`;
-      sendWhatsApp(vendor.phone, msg).catch(() => undefined);
-      waCount++;
+    const result: VendorSendResult = { vendorId: vendor.id, vendorName: vendor.name, waStatus: null, emailStatus: null };
+
+    if (useWa) {
+      if (vendor.phone) {
+        const msg =
+          `📋 *PERMINTAAN PENAWARAN — CST LOGISTICS*\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Kepada Yth. *${vendor.name}*,\n\n` +
+          `No. Draft   : *${doc.docNumber}*\n` +
+          `Customer    : ${doc.customerName}\n` +
+          `Jenis       : ${transportLabel}\n` +
+          `Rute        : ${routeLabel}\n` +
+          (doc.notes ? `Catatan     :\n${doc.notes}\n` : "") +
+          `\n📦 *DAFTAR BARANG/KARGO:*\n` +
+          itemSummaryText + "\n" +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `💬 Mohon berikan penawaran harga Anda.\n` +
+          `Terima kasih 🙏`;
+        try {
+          await sendWhatsApp(vendor.phone, msg);
+          result.waStatus = "sent";
+          waCount++;
+        } catch {
+          result.waStatus = "failed";
+        }
+      } else {
+        result.waStatus = "skipped";
+      }
     }
 
-    if (useEmail && vendor.contactEmail && isSmtpConfigured()) {
-      sendMail({
-        to: vendor.contactEmail,
-        subject: `[Permintaan Penawaran] ${doc.docNumber} — ${transportLabel}`,
-        text: `Kepada ${vendor.name},\n\nMohon berikan penawaran untuk:\nNo. Draft: ${doc.docNumber}\nCustomer: ${doc.customerName}\nJenis: ${transportLabel}\nRute: ${routeLabel}\n${doc.notes ? `\nCatatan:\n${doc.notes}` : ""}\n\nTerima kasih,\nCST Logistics`,
-        html: `<p>Kepada <strong>${vendor.name}</strong>,</p><p>Mohon berikan penawaran untuk:</p><ul><li>No. Draft: <strong>${doc.docNumber}</strong></li><li>Customer: ${doc.customerName}</li><li>Jenis: ${transportLabel}</li><li>Rute: ${routeLabel}</li></ul>${doc.notes ? `<p>Catatan:<br>${doc.notes.replace(/\n/g, "<br>")}</p>` : ""}<p>Terima kasih,<br>CST Logistics</p>`,
-      }).catch(() => undefined);
-      emailCount++;
+    if (useEmail) {
+      if (vendor.contactEmail && isSmtpConfigured()) {
+        try {
+          await sendMail({
+            to: vendor.contactEmail,
+            subject: `[Permintaan Penawaran] ${doc.docNumber} — ${transportLabel}`,
+            text:
+              `Kepada ${vendor.name},\n\n` +
+              `Mohon berikan penawaran untuk:\n` +
+              `No. Draft: ${doc.docNumber}\n` +
+              `Customer: ${doc.customerName}\n` +
+              `Jenis: ${transportLabel}\n` +
+              `Rute: ${routeLabel}\n` +
+              (doc.notes ? `\nCatatan:\n${doc.notes}\n` : "") +
+              `\nDaftar Barang/Kargo:\n` +
+              itemSummaryText +
+              `\n\nTerima kasih,\nCST Logistics`,
+            html:
+              `<p>Kepada <strong>${vendor.name}</strong>,</p>` +
+              `<p>Mohon berikan penawaran untuk:</p>` +
+              `<ul>` +
+              `<li>No. Draft: <strong>${doc.docNumber}</strong></li>` +
+              `<li>Customer: ${doc.customerName}</li>` +
+              `<li>Jenis: ${transportLabel}</li>` +
+              `<li>Rute: ${routeLabel}</li>` +
+              `</ul>` +
+              (doc.notes ? `<p>Catatan:<br>${String(doc.notes).replace(/\n/g, "<br>")}</p>` : "") +
+              `<p><strong>Daftar Barang/Kargo:</strong></p>` +
+              itemSummaryHtml +
+              `<p>Terima kasih,<br>CST Logistics</p>`,
+          });
+          result.emailStatus = "sent";
+          emailCount++;
+        } catch {
+          result.emailStatus = "failed";
+        }
+      } else {
+        result.emailStatus = "skipped";
+      }
     }
+
+    results.push(result);
   }
 
-  return res.json({ message: "Forwarded to vendors", vendorCount: eligible.length, waCount, emailCount });
+  return res.json({ message: "Forwarded to vendors", vendorCount: eligible.length, waCount, emailCount, results });
 });
 
 export default router;

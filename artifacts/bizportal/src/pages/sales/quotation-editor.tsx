@@ -54,6 +54,7 @@ import {
   useListEligibleVendorsForDoc,
   getListEligibleVendorsForDocQueryKey,
   type ForwardToVendorsBodyChannelsItem,
+  type VendorSendResult,
   getListExpensesQueryKey,
   getGetSalesDocumentQueryKey,
   getListSalesDocumentsQueryKey,
@@ -308,6 +309,7 @@ export default function SalesDocumentEditorPage() {
   const [forwardOpen, setForwardOpen] = useState(false);
   const [fwdVendorIds, setFwdVendorIds] = useState<number[]>([]);
   const [fwdChannels, setFwdChannels] = useState<string[]>(["wa", "email"]);
+  const [fwdResults, setFwdResults] = useState<VendorSendResult[] | null>(null);
 
   const forwardMut = useForwardSalesDocumentToVendors();
   const { data: eligibleVendors = [] } = useListEligibleVendorsForDoc(
@@ -1327,7 +1329,7 @@ export default function SalesDocumentEditorPage() {
       </Dialog>
 
       {/* Forward ke Vendor Dialog */}
-      <Dialog open={forwardOpen} onOpenChange={(o) => { if (!o) { setForwardOpen(false); setFwdVendorIds([]); setFwdChannels(["wa", "email"]); } }}>
+      <Dialog open={forwardOpen} onOpenChange={(o) => { if (!o) { setForwardOpen(false); setFwdVendorIds([]); setFwdChannels(["wa", "email"]); setFwdResults(null); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1336,90 +1338,121 @@ export default function SalesDocumentEditorPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-1 text-sm">
-            {doc && (
-              <div className="rounded-md border border-border p-3 space-y-1 bg-muted/30">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Dokumen</span>
-                  <span className="font-medium">{doc.docNumber}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Customer</span>
-                  <span className="font-medium">{doc.customerName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rute</span>
-                  <span>{[doc.origin, doc.destination].filter(Boolean).join(" → ") || "—"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Moda</span>
-                  <span className="capitalize">{doc.transportMode ?? "—"}</span>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <p className="font-medium mb-2">Channel Pengiriman</p>
-              <div className="flex gap-4">
-                {[
-                  { id: "wa", label: "WhatsApp", icon: <MessageSquare size={14} /> },
-                  { id: "email", label: "Email", icon: <Mail size={14} /> },
-                ].map((ch) => (
-                  <label key={ch.id} className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={fwdChannels.includes(ch.id)}
-                      onChange={() => toggleFwdChannel(ch.id)}
-                      className="accent-purple-600 h-4 w-4"
-                    />
-                    {ch.icon}
-                    {ch.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="font-medium mb-2">
-                Vendor {eligibleVendors.length > 0 ? `(${eligibleVendors.length} eligible)` : ""}
-              </p>
-              {eligibleVendors.length === 0 ? (
-                <p className="text-muted-foreground text-xs">Semua vendor aktif yang sesuai akan dihubungi.</p>
-              ) : (
-                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground mb-1 select-none">
-                    <input
-                      type="checkbox"
-                      checked={fwdVendorIds.length === 0}
-                      onChange={() => setFwdVendorIds([])}
-                      className="accent-purple-600 h-4 w-4"
-                    />
-                    <span>Semua vendor</span>
-                  </label>
-                  {eligibleVendors.map((v) => (
-                    <label key={v.id} className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={fwdVendorIds.includes(v.id)}
-                        onChange={() => toggleFwdVendor(v.id)}
-                        className="accent-purple-600 h-4 w-4"
-                      />
-                      <span className="flex-1">{v.name}</span>
-                      <span className="text-muted-foreground text-xs flex gap-1">
-                        {v.hasPhone && <MessageSquare size={11} />}
-                        {v.hasEmail && <Mail size={11} />}
-                      </span>
-                    </label>
+            {fwdResults ? (
+              <div className="space-y-2">
+                <p className="font-medium text-green-400">✓ Selesai dikirim</p>
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                  {fwdResults.map((r) => (
+                    <div key={r.vendorId} className="flex items-center justify-between rounded border border-border px-3 py-1.5 bg-muted/20">
+                      <span className="font-medium flex-1">{r.vendorName}</span>
+                      <div className="flex gap-2 text-xs">
+                        {r.waStatus && (
+                          <span className={r.waStatus === "sent" ? "text-green-400" : r.waStatus === "failed" ? "text-red-400" : "text-muted-foreground"}>
+                            WA: {r.waStatus}
+                          </span>
+                        )}
+                        {r.emailStatus && (
+                          <span className={r.emailStatus === "sent" ? "text-green-400" : r.emailStatus === "failed" ? "text-red-400" : "text-muted-foreground"}>
+                            Email: {r.emailStatus}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <>
+                {doc && (
+                  <div className="rounded-md border border-border p-3 space-y-1 bg-muted/30">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Dokumen</span>
+                      <span className="font-medium">{doc.docNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Customer</span>
+                      <span className="font-medium">{doc.customerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Rute</span>
+                      <span>{[doc.origin, doc.destination].filter(Boolean).join(" → ") || "—"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Moda</span>
+                      <span className="capitalize">{doc.transportMode ?? "—"}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="font-medium mb-2">Channel Pengiriman</p>
+                  <div className="flex gap-4">
+                    {[
+                      { id: "wa", label: "WhatsApp", icon: <MessageSquare size={14} /> },
+                      { id: "email", label: "Email", icon: <Mail size={14} /> },
+                    ].map((ch) => (
+                      <label key={ch.id} className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={fwdChannels.includes(ch.id)}
+                          onChange={() => toggleFwdChannel(ch.id)}
+                          className="accent-purple-600 h-4 w-4"
+                        />
+                        {ch.icon}
+                        {ch.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="font-medium mb-2">
+                    Vendor {eligibleVendors.length > 0 ? `(${eligibleVendors.length} eligible)` : ""}
+                  </p>
+                  {eligibleVendors.length === 0 ? (
+                    <p className="text-muted-foreground text-xs">Semua vendor aktif yang sesuai akan dihubungi.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground mb-1 select-none">
+                        <input
+                          type="checkbox"
+                          checked={fwdVendorIds.length === 0}
+                          onChange={() => setFwdVendorIds([])}
+                          className="accent-purple-600 h-4 w-4"
+                        />
+                        <span>Semua vendor</span>
+                      </label>
+                      {eligibleVendors.map((v) => (
+                        <label key={v.id} className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={fwdVendorIds.includes(v.id)}
+                            onChange={() => toggleFwdVendor(v.id)}
+                            className="accent-purple-600 h-4 w-4"
+                          />
+                          <span className="flex-1">{v.name}</span>
+                          <span className="text-muted-foreground text-xs flex gap-1">
+                            {v.hasPhone && <MessageSquare size={11} />}
+                            {v.hasEmail && <Mail size={11} />}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setForwardOpen(false)}>Batal</Button>
-            <Button
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-              disabled={forwardMut.isPending || fwdChannels.length === 0}
-              onClick={() => {
+            {fwdResults ? (
+              <Button variant="outline" onClick={() => { setForwardOpen(false); setFwdResults(null); setFwdVendorIds([]); setFwdChannels(["wa", "email"]); }}>Tutup</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setForwardOpen(false)}>Batal</Button>
+                <Button
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  disabled={forwardMut.isPending || fwdChannels.length === 0}
+                  onClick={() => {
                 if (!id) return;
                 forwardMut.mutate(
                   {
@@ -1431,15 +1464,13 @@ export default function SalesDocumentEditorPage() {
                   },
                   {
                     onSuccess: (data) => {
+                      setFwdResults(data.results ?? []);
+                      qc.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
+                      qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
                       toast({
                         title: "Diteruskan ke vendor",
                         description: `${data.waCount} WA + ${data.emailCount} email ke ${data.vendorCount} vendor.`,
                       });
-                      setForwardOpen(false);
-                      setFwdVendorIds([]);
-                      setFwdChannels(["wa", "email"]);
-                      qc.invalidateQueries({ queryKey: getListAiDraftQuotationsQueryKey() });
-                      qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
                     },
                     onError: () => {
                       toast({ title: "Gagal", description: "Tidak dapat meneruskan ke vendor.", variant: "destructive" });
@@ -1447,9 +1478,11 @@ export default function SalesDocumentEditorPage() {
                   },
                 );
               }}
-            >
-              {forwardMut.isPending ? "Mengirim..." : "Forward ke Vendor"}
-            </Button>
+                >
+                  {forwardMut.isPending ? "Mengirim..." : "Forward ke Vendor"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

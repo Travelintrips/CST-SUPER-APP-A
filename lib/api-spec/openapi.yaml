@@ -5740,6 +5740,21 @@ components:
         quoteId: { type: integer }
       required: [quoteId]
 
+    VendorSendResult:
+      type: object
+      properties:
+        vendorId: { type: integer }
+        vendorName: { type: string }
+        waStatus:
+          type: string
+          enum: [sent, failed, skipped]
+          nullable: true
+        emailStatus:
+          type: string
+          enum: [sent, failed, skipped]
+          nullable: true
+      required: [vendorId, vendorName]
+
     ForwardToVendorsResponse:
       type: object
       properties:
@@ -5747,7 +5762,11 @@ components:
         vendorCount: { type: integer }
         waCount: { type: integer }
         emailCount: { type: integer }
-      required: [message, vendorCount, waCount, emailCount]
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorSendResult"
+      required: [message, vendorCount, waCount, emailCount, results]
 
     ForwardToVendorsBody:
       type: object
