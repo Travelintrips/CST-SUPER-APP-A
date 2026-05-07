@@ -33,6 +33,7 @@ type SseEvent =
   | { type: "order"; orderNumber: string; orderId: number }
   | { type: "status"; orders: OrderStatusEntry[] }
   | { type: "form"; service: string }
+  | { type: "product_form"; productId: number; productName: string; unitPrice: number; unit: string }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -254,6 +255,150 @@ function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormPro
   );
 }
 
+interface ProductOrderFormProps {
+  productId: number;
+  productName: string;
+  unitPrice: number;
+  unit: string;
+  sessionToken: string | null;
+  onSuccess: (orderNumber: string, orderId: number, token: string) => void;
+  onDismiss: () => void;
+}
+
+function ProductOrderForm({ productId, productName, unitPrice, unit, sessionToken, onSuccess, onDismiss }: ProductOrderFormProps) {
+  const [form, setForm] = useState({ customerName: "", phone: "", email: "", qty: "1", notes: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  function field(key: keyof typeof form) {
+    return {
+      value: form[key],
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+        setForm((prev) => ({ ...prev, [key]: e.target.value })),
+    };
+  }
+
+  const totalPrice = unitPrice * (parseInt(form.qty) || 0);
+  const fmtPrice = (n: number) => n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const qtyNum = parseInt(form.qty);
+    if (!form.customerName.trim() || !form.phone.trim() || !qtyNum || qtyNum <= 0) {
+      setError("Isi semua field bertanda *");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/ai-agent/quick-product-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionToken,
+          customerName: form.customerName,
+          phone: form.phone,
+          email: form.email,
+          productId,
+          productName,
+          qty: qtyNum,
+          unitPrice,
+          notes: form.notes,
+        }),
+      });
+      const data = await res.json() as { success?: boolean; orderNumber?: string; orderId?: number; sessionToken?: string; error?: string };
+      if (!res.ok || !data.success) {
+        setError(data.error ?? "Gagal membuat order, coba lagi.");
+        return;
+      }
+      onSuccess(data.orderNumber!, data.orderId!, data.sessionToken ?? sessionToken ?? "");
+    } catch {
+      setError("Gagal koneksi, coba lagi.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const inp = "w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-sky-400 bg-white";
+  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5 block";
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white border border-emerald-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border-b border-emerald-100">
+        <Package className="h-4 w-4 text-emerald-600 shrink-0" />
+        <p className="text-xs font-semibold text-emerald-800 flex-1">Pesan Produk</p>
+        <button type="button" onClick={onDismiss} className="text-gray-400 hover:text-gray-600">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="px-3 py-2 bg-emerald-50/50 border-b border-emerald-100">
+        <p className="text-xs font-semibold text-gray-800 truncate">{productName}</p>
+        <p className="text-[11px] text-gray-500">{fmtPrice(unitPrice)} / {unit}</p>
+      </div>
+
+      <div className="px-3 py-2.5 space-y-2">
+        <div>
+          <label className={lbl}>Nama Lengkap *</label>
+          <input className={inp} placeholder="Budi Santoso" {...field("customerName")} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={lbl}>No. WhatsApp *</label>
+            <input className={inp} placeholder="081234..." type="tel" {...field("phone")} />
+          </div>
+          <div>
+            <label className={lbl}>Email</label>
+            <input className={inp} placeholder="email@..." type="email" {...field("email")} />
+          </div>
+        </div>
+
+        <div>
+          <label className={lbl}>Jumlah ({unit}) *</label>
+          <input className={inp} type="number" min="1" placeholder="1" {...field("qty")} />
+        </div>
+
+        {totalPrice > 0 && (
+          <div className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+            Total: {fmtPrice(totalPrice)}
+          </div>
+        )}
+
+        <div>
+          <label className={lbl}>Catatan</label>
+          <textarea
+            className={`${inp} resize-none`}
+            rows={2}
+            placeholder="Alamat pengiriman, catatan khusus..."
+            value={form.notes}
+            onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+          />
+        </div>
+
+        {error && <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-2 py-1">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="flex-1 text-xs py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Tutup
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex-1 text-xs py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? "Mengirim…" : "Pesan Sekarang →"}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -270,6 +415,8 @@ export function ChatWidget() {
   const [unread, setUnread] = useState(0);
   /** Inline quick-order form triggered by AI or user */
   const [showForm, setShowForm] = useState<{ service: string } | null>(null);
+  /** Inline product order form triggered by AI */
+  const [showProductForm, setShowProductForm] = useState<{ productId: number; productName: string; unitPrice: number; unit: string } | null>(null);
   /** Voice input state */
   const [isListening, setIsListening] = useState(false);
   /** TTS output: auto-speak AI responses when enabled */
@@ -424,11 +571,12 @@ export function ChatWidget() {
     const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text.trim(), createdAt: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Reset streaming state, stale status cards, inline form, and stop any TTS
+    // Reset streaming state, stale status cards, inline forms, and stop any TTS
     streamBufferRef.current = "";
     setStreamingContent("");
     setOrderStatuses([]);
     setShowForm(null);
+    setShowProductForm(null);
     stopSpeaking();
 
     const controller = new AbortController();
@@ -503,6 +651,10 @@ export function ChatWidget() {
 
             case "form":
               setShowForm({ service: event.service });
+              break;
+
+            case "product_form":
+              setShowProductForm({ productId: event.productId, productName: event.productName, unitPrice: event.unitPrice, unit: event.unit });
               break;
 
             case "done": {
@@ -824,6 +976,34 @@ export function ChatWidget() {
                   ]);
                 }}
                 onDismiss={() => setShowForm(null)}
+              />
+            )}
+
+            {showProductForm && (
+              <ProductOrderForm
+                productId={showProductForm.productId}
+                productName={showProductForm.productName}
+                unitPrice={showProductForm.unitPrice}
+                unit={showProductForm.unit}
+                sessionToken={sessionToken}
+                onSuccess={(orderNumber, orderId, token) => {
+                  setShowProductForm(null);
+                  setOrderCreated({ orderNumber, orderId });
+                  if (token && token !== sessionToken) {
+                    setSessionToken(token);
+                    saveSession(token);
+                  }
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: (Date.now() + 11).toString(),
+                      role: "assistant",
+                      content: `✅ Pesanan **${showProductForm.productName}** berhasil dibuat! No. Order: **${orderNumber}**\nTim kami akan segera menghubungi Anda untuk konfirmasi dan pengiriman.`,
+                      createdAt: new Date().toISOString(),
+                    },
+                  ]);
+                }}
+                onDismiss={() => setShowProductForm(null)}
               />
             )}
 

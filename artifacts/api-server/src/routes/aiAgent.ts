@@ -31,17 +31,15 @@ Tugasmu:
 3. MEMBUAT ORDER LOGISTIK: Ketika pelanggan ingin membuat order atau booking pengiriman — LANGSUNG panggil show_order_form. JANGAN tanya satu per satu. Form akan tampil di chat.
 4. CEK STATUS: Ketika pelanggan bertanya status/tracking/posisi paket — LANGSUNG panggil get_order_status.
 5. CARI PRODUK: Ketika pelanggan menanyakan produk, stok, atau harga produk — panggil search_products terlebih dahulu, lalu tampilkan hasilnya.
-6. PESAN PRODUK: Setelah pelanggan memilih produk dan konfirmasi qty + data diri — panggil create_product_order.
+6. PESAN PRODUK: Ketika pelanggan ingin memesan produk — panggil search_products dulu untuk cari produk, lalu LANGSUNG panggil show_product_order_form. Form akan tampil di chat. JANGAN tanya satu per satu.
 
 Aturan:
 - Gunakan Bahasa Indonesia yang sopan dan singkat
 - WAJIB show_order_form: kata kunci "mau kirim", "booking", "order pengiriman", "pesan kirim", menyebut nama layanan + niat kirim
 - WAJIB get_order_status: kata kunci "status", "cek order", "tracking", "mana paket", "sudah sampai", "posisi"
-- WAJIB search_products: kata kunci "cari produk", "ada produk", "jual apa", "harga produk", nama produk spesifik
-- WAJIB create_product_order: setelah pelanggan konfirmasi beli produk dengan qty dan data diri lengkap
-- Setelah get_order_status/search_products: SELALU tulis ringkasan hasil — jangan biarkan respons kosong
-- Jika search_products tidak menemukan produk: beritahu dan tawarkan bantuan lain
-- Sebelum create_product_order: pastikan sudah tahu nama, email/WA, dan daftar produk + qty
+- WAJIB search_products LALU show_product_order_form: kata kunci "pesan produk", "beli", "mau beli", nama produk spesifik + niat beli
+- WAJIB search_products (tanpa show_product_order_form): kata kunci "cari produk", "ada produk", "jual apa", "harga produk", hanya bertanya tentang produk
+- show_product_order_form: panggil SEGERA setelah search_products menemukan produk yang pelanggan inginkan — ISI productId, productName, unitPrice, unit dari hasil search
 - TOLAK SOPAN pertanyaan di luar layanan CST Logistics
 
 Layanan yang tersedia:
@@ -119,6 +117,23 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
           itemType: { type: "string", enum: ["barang", "jasa"], description: "Filter tipe item (opsional)" },
         },
         required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "show_product_order_form",
+      description: "Tampilkan form pemesanan produk langsung di chat widget. WAJIB dipanggil segera setelah search_products menemukan produk yang diminati pelanggan — JANGAN tanya satu per satu.",
+      parameters: {
+        type: "object",
+        properties: {
+          productId: { type: "number", description: "ID produk dari hasil search_products" },
+          productName: { type: "string", description: "Nama produk" },
+          unitPrice: { type: "number", description: "Harga satuan produk" },
+          unit: { type: "string", description: "Satuan produk (pcs, kg, dll)" },
+        },
+        required: ["productId", "productName", "unitPrice", "unit"],
       },
     },
   },
@@ -301,6 +316,13 @@ async function handleToolCall(
   if (toolName === "show_order_form") {
     const { service } = args as { service?: string };
     return JSON.stringify({ shown: true, service: service ?? "" });
+  }
+
+  if (toolName === "show_product_order_form") {
+    const { productId, productName, unitPrice, unit } = args as {
+      productId: number; productName: string; unitPrice: number; unit: string;
+    };
+    return JSON.stringify({ shown: true, productId, productName, unitPrice, unit });
   }
 
   if (toolName === "create_logistic_order") {
@@ -647,6 +669,15 @@ async function streamAiChat(
         } catch { /* empty */ }
       }
 
+      if (tc.name === "show_product_order_form") {
+        try {
+          const parsed = JSON.parse(result) as { shown?: boolean; productId?: number; productName?: string; unitPrice?: number; unit?: string };
+          if (parsed.shown) {
+            sendEvent({ type: "product_form", productId: parsed.productId ?? 0, productName: parsed.productName ?? "", unitPrice: parsed.unitPrice ?? 0, unit: parsed.unit ?? "pcs" });
+          }
+        } catch { /* empty */ }
+      }
+
       toolResults.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
     chatMessages.push(...toolResults);
@@ -767,6 +798,75 @@ aiAgentRouter.post("/quick-order", async (req: Request, res: Response) => {
     });
   } catch (err) {
     logger.error({ err }, "quick-order failed");
+    return res.status(500).json({ error: "Gagal membuat order. Silakan coba lagi." });
+  }
+});
+
+// ── POST /api/ai-agent/quick-product-order  (direct product form submission) ──
+aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) => {
+  const {
+    sessionToken: incomingToken,
+    customerName, phone, email,
+    productId, productName, qty, unitPrice,
+    notes,
+  } = req.body as {
+    sessionToken?: string;
+    customerName?: string; phone?: string; email?: string;
+    productId?: number; productName?: string; qty?: number; unitPrice?: number;
+    notes?: string;
+  };
+
+  if (!customerName || !phone || !productId || !productName || !qty || qty <= 0) {
+    return res.status(400).json({ error: "Field wajib belum lengkap (nama, HP, produk, jumlah)" });
+  }
+
+  try {
+    let session: typeof aiChatSessionsTable.$inferSelect | undefined;
+    if (incomingToken) {
+      const [found] = await db
+        .select()
+        .from(aiChatSessionsTable)
+        .where(eq(aiChatSessionsTable.sessionToken, incomingToken));
+      session = found;
+    }
+    if (!session) {
+      const token = generateSessionToken();
+      const [created] = await db.insert(aiChatSessionsTable).values({ sessionToken: token }).returning();
+      session = created;
+    }
+
+    const priceNum = unitPrice ?? 0;
+    const totalAmount = qty * priceNum;
+    const itemsSummary = `${productName} x${qty}`;
+
+    const [order] = await db.insert(ordersTable).values({
+      customerName,
+      customerEmail: email || `${phone}@wa.cstlogistics.id`,
+      customerPhone: phone,
+      status: "pending",
+      totalAmount: String(totalAmount),
+      taxAmount: "0",
+      grandTotal: String(totalAmount),
+      items: itemsSummary,
+      lineItems: [{ name: productName, qty, unitPrice: priceNum }],
+    }).returning();
+
+    if (notes) {
+      await db.insert(aiChatMessagesTable).values({
+        sessionId: session.id,
+        role: "user",
+        content: `Order produk: ${itemsSummary}. Catatan: ${notes}`,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      orderNumber: `PRD/${order.id}`,
+      orderId: order.id,
+      sessionToken: session.sessionToken,
+    });
+  } catch (err) {
+    logger.error({ err }, "quick-product-order failed");
     return res.status(500).json({ error: "Gagal membuat order. Silakan coba lagi." });
   }
 });
