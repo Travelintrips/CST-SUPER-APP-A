@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useListPortalOrders, useListPortalLogisticOrders, useCancelPortalOrder, useCancelPortalLogisticOrder } from "@workspace/api-client-react";
 import { getAuthToken, getAuthHeaders } from "@/lib/auth";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -27,11 +27,12 @@ const LOGISTIC_STATUS_MAP: Record<string, string> = {
 
 export default function Orders() {
   const [, setLocation] = useLocation();
+  const searchStr = useSearch();
   const token = getAuthToken();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>(
-    () => new URLSearchParams(window.location.search).get("status") ?? ""
-  );
+  // Derive statusFilter reactively from URL — Back/Forward and setLocation all
+  // update useSearch(), so the filter is always in sync with the address bar.
+  const statusFilter = new URLSearchParams(searchStr).get("status") ?? "";
   const [cancellingKey, setCancellingKey] = useState<string | null>(null);
   const { t } = useLanguage();
 
@@ -40,7 +41,6 @@ export default function Orders() {
   }, [token, setLocation]);
 
   function clearStatusFilter() {
-    setStatusFilter("");
     setLocation("/orders");
   }
 
