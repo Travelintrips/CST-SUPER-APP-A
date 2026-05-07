@@ -109,6 +109,7 @@ type FreightRefreshValue = "30" | "60" | "300" | "off";
 const FREIGHT_REFRESH_LS_KEY = "freight-refresh-interval";
 const FREIGHT_DATE_LS_KEY = "freight-date-filter";
 const FREIGHT_STATUS_LS_KEY = "freight-status-filter";
+const FREIGHT_BL_LS_KEY = "freight_blReadyFilter";
 
 function getInitialRefreshInterval(): FreightRefreshValue {
   try {
@@ -247,9 +248,14 @@ export default function LogisticsFreightPage() {
         if (saved) status = saved;
       } catch {}
     }
-    if (urlHasDate) return { ...fromUrl, status };
+    const urlHasBl = urlSearch.has("bl");
+    let bl = fromUrl.bl;
+    if (!urlHasBl) {
+      try { bl = localStorage.getItem(FREIGHT_BL_LS_KEY) === "1"; } catch {}
+    }
+    if (urlHasDate) return { ...fromUrl, status, bl };
     const stored = loadDateFromStorage();
-    return { status, bl: fromUrl.bl, preset: stored.preset, from: stored.from, to: stored.to };
+    return { status, bl, preset: stored.preset, from: stored.from, to: stored.to };
   })();
 
   const [statusFilter, setStatusFilterState] = useState<string | null>(initial.status);
@@ -297,6 +303,11 @@ export default function LogisticsFreightPage() {
         from: datePreset === "custom" ? customDateFrom : "",
         to: datePreset === "custom" ? customDateTo : "",
       }));
+      if (blReadyFilter) {
+        localStorage.setItem(FREIGHT_BL_LS_KEY, "1");
+      } else {
+        localStorage.removeItem(FREIGHT_BL_LS_KEY);
+      }
     } catch {}
   }, [statusFilter, blReadyFilter, datePreset, customDateFrom, customDateTo]);
 
@@ -376,6 +387,7 @@ export default function LogisticsFreightPage() {
     setStatusFilterState(null);
     setBlReadyFilter(false);
     setDatePreset("all");
+    try { localStorage.removeItem(FREIGHT_BL_LS_KEY); } catch {}
   };
 
   const activeFilterParts: string[] = [];
