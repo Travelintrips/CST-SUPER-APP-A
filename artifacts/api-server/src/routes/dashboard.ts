@@ -59,9 +59,9 @@ router.get("/response-times", async (req, res) => {
 });
 
 // GET /api/dashboard/response-time-stats?path=<fragment>&window=<24h|7d|30d>
-// Returns per-path aggregate stats (count, min, max, avg, p95) from persisted history.
-// Optional ?path filter narrows rows to paths containing the fragment (LIKE %fragment%).
-// Optional ?window limits rows to the last 24h / 7d / 30d (default: 24h).
+// Returns per-path aggregate stats (count, min, max, avg, p95) computed in the DB.
+// ?window limits results to the last 24h / 7d / 30d (default: 24h; returns 400 for
+// unknown values so the client can catch misconfiguration early).
 const WINDOW_INTERVALS: Record<string, string> = {
   "24h": "24 hours",
   "7d":  "7 days",
@@ -70,36 +70,57 @@ const WINDOW_INTERVALS: Record<string, string> = {
 
 router.get("/response-time-stats", async (req, res) => {
   try {
-    const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
     const windowParam = typeof req.query["window"] === "string" ? req.query["window"] : "24h";
-    const interval = WINDOW_INTERVALS[windowParam] ?? WINDOW_INTERVALS["24h"]!;
-    const timeCondition = sql`timestamp >= NOW() - INTERVAL ${sql.raw(`'${interval}'`)}`;
-    const pathCondition = pathFilter ? sql`path LIKE ${"%" + pathFilter + "%"}` : undefined;
-    const whereClause = pathCondition ? sql`${timeCondition} AND ${pathCondition}` : timeCondition;
-    const rows = await db
-      .select()
-      .from(apiResponseTimesTable)
-      .where(whereClause)
-      .orderBy(sql`id DESC`)
-      .limit(10000);
-
-    const byPath: Record<string, number[]> = {};
-    for (const row of rows) {
-      if (!byPath[row.path]) byPath[row.path] = [];
-      byPath[row.path]!.push(row.durationMs);
+    if (!(windowParam in WINDOW_INTERVALS)) {
+      return res.status(400).json({ error: "Invalid window. Allowed: 24h, 7d, 30d" });
     }
+    const intervalStr = WINDOW_INTERVALS[windowParam]!;
+    const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
 
-    const stats = Object.entries(byPath).map(([path, durations]) => {
-      const sorted = [...durations].sort((a, b) => a - b);
-      const count = sorted.length;
-      const minMs = sorted[0]!;
-      const maxMs = sorted[count - 1]!;
-      const avgMs = Math.round(sorted.reduce((s, v) => s + v, 0) / count);
-      const p95Ms = sorted[Math.min(Math.ceil(count * 0.95) - 1, count - 1)]!;
-      return { path, count, minMs, maxMs, avgMs, p95Ms };
-    });
+    // Aggregate in the DB — no row-cap issue, parameterised interval (no sql.raw)
+    const result = await db.execute<{
+      path: string;
+      count: string;
+      min_ms: string;
+      max_ms: string;
+      avg_ms: string;
+      p95_ms: string;
+    }>(
+      pathFilter
+        ? sql`
+            SELECT path,
+                   COUNT(*)                                                        AS count,
+                   MIN(duration_ms)                                               AS min_ms,
+                   MAX(duration_ms)                                               AS max_ms,
+                   ROUND(AVG(duration_ms))                                        AS avg_ms,
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms)     AS p95_ms
+            FROM api_response_times
+            WHERE timestamp >= NOW() - ${intervalStr}::interval
+              AND path LIKE ${`%${pathFilter}%`}
+            GROUP BY path
+            ORDER BY count DESC`
+        : sql`
+            SELECT path,
+                   COUNT(*)                                                        AS count,
+                   MIN(duration_ms)                                               AS min_ms,
+                   MAX(duration_ms)                                               AS max_ms,
+                   ROUND(AVG(duration_ms))                                        AS avg_ms,
+                   PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms)     AS p95_ms
+            FROM api_response_times
+            WHERE timestamp >= NOW() - ${intervalStr}::interval
+            GROUP BY path
+            ORDER BY count DESC`,
+    );
 
-    stats.sort((a, b) => b.count - a.count);
+    const stats = result.rows.map((row) => ({
+      path: row.path,
+      count: Number(row.count),
+      minMs: Number(row.min_ms),
+      maxMs: Number(row.max_ms),
+      avgMs: Number(row.avg_ms),
+      p95Ms: Math.round(Number(row.p95_ms)),
+    }));
+
     return res.json({ stats });
   } catch {
     return res.json({ stats: [] });
