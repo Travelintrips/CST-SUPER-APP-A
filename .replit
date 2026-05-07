@@ -35,7 +35,7 @@ SMTP_PORT = "587"
 SMTP_USER = "8a96b8001@smtp-brevo.com"
 SMTP_PASS = "xsmtpsib-ccee60eca66c4da65908d6a8a8deb075a41b54c7784a0cb94ebfa7929fe74d13-4V33DEBIIV8nHLuT"
 SMTP_FROM = "CST Logistics <info@cstlogistic.co.id>"
-CLERK_PUBLISHABLE_KEY = "pk_test_bGlrZWQtd29tYmF0LTE2LmNsZXJrLmFjY291bnRzLmRldiQ"
+CLERK_PUBLISHABLE_KEY = "pk_test_Z2xvd2luZy1jaG93LTg1LmNsZXJrLmFjY291bnRzLmRldiQ"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
