@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Search, Ship, Plane, Package, Warehouse, Truck, FileCheck,
-  Shield, FileText, ArrowRight, ChevronRight, Scale, Calculator,
+  Search, Ship, Plane, Package, Warehouse, Truck, Stamp,
+  Shield, FileText, ArrowRight, ChevronRight, Gavel, Calculator,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -20,7 +20,7 @@ const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
   "Laut": Ship,
   "Trucking": Truck,
   "Container": Package,
-  "Pabean": FileCheck,
+  "Pabean": Stamp,
   "Handling": Package,
   "Storage": Warehouse,
   "Document": FileText,
@@ -385,7 +385,7 @@ export default function Jasa() {
                     boxShadow: "0 0 0 6px rgba(234,88,12,0.06), 0 2px 8px rgba(234,88,12,0.16)",
                   }}
                 >
-                  <FileCheck className="h-5 w-5 text-orange-700" />
+                  <Stamp className="h-5 w-5 text-orange-700" />
                 </div>
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center"
@@ -394,7 +394,7 @@ export default function Jasa() {
                     boxShadow: "0 0 0 6px rgba(217,119,6,0.06), 0 2px 8px rgba(217,119,6,0.16)",
                   }}
                 >
-                  <Scale className="h-5 w-5 text-amber-700" />
+                  <Gavel className="h-5 w-5 text-amber-700" />
                 </div>
               </div>
               <div className="min-w-0">
