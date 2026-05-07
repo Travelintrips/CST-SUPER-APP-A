@@ -74,6 +74,17 @@ function formatMsgTime(iso: string): string {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }) + " " + hhmm;
 }
 
+function formatDateLabel(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "Hari ini";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Kemarin";
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
 export default function LogisticsPortalOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const orderId = parseInt(id ?? "0", 10);
@@ -635,32 +646,52 @@ export default function LogisticsPortalOrderDetailPage() {
                     ) : chatData.messages.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">Tidak ada pesan</p>
                     ) : (
-                      chatData.messages.map((msg) => (
-                        <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5 ${
-                            msg.role === "user" ? "bg-sky-100 text-sky-700" :
-                            msg.role === "admin" ? "bg-amber-100 text-amber-700" :
-                            "bg-violet-100 text-violet-700"
-                          }`}>
-                            {msg.role === "user" ? "C" : msg.role === "admin" ? "A" : "AI"}
-                          </div>
-                          <div className={`max-w-[75%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                            msg.role === "user"
-                              ? "bg-sky-600 text-white rounded-tr-sm"
-                              : msg.role === "admin"
-                              ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
-                              : "bg-white border border-gray-200 text-gray-800 shadow-sm rounded-tl-sm"
-                          }`}>
-                            {msg.role === "admin" && (
-                              <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin (via WA)</p>
-                            )}
-                            {msg.content}
-                            <p className="text-[10px] mt-1 opacity-50">
-                              {formatMsgTime(msg.createdAt)}
-                            </p>
-                          </div>
-                        </div>
-                      ))
+                      chatData.messages.reduce<{ lastDateStr: string | null; els: React.ReactNode[] }>(
+                        (acc, msg) => {
+                          const dateStr = msg.createdAt ? new Date(msg.createdAt).toDateString() : null;
+                          if (dateStr && dateStr !== acc.lastDateStr) {
+                            const label = formatDateLabel(msg.createdAt);
+                            if (label) {
+                              acc.els.push(
+                                <div key={`sep-${msg.id}`} className="flex items-center gap-2 py-1">
+                                  <div className="flex-1 h-px bg-gray-200" />
+                                  <span className="text-[10px] text-gray-400 font-medium px-2 shrink-0">{label}</span>
+                                  <div className="flex-1 h-px bg-gray-200" />
+                                </div>
+                              );
+                            }
+                            acc.lastDateStr = dateStr;
+                          }
+                          acc.els.push(
+                            <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                              <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5 ${
+                                msg.role === "user" ? "bg-sky-100 text-sky-700" :
+                                msg.role === "admin" ? "bg-amber-100 text-amber-700" :
+                                "bg-violet-100 text-violet-700"
+                              }`}>
+                                {msg.role === "user" ? "C" : msg.role === "admin" ? "A" : "AI"}
+                              </div>
+                              <div className={`max-w-[75%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                                msg.role === "user"
+                                  ? "bg-sky-600 text-white rounded-tr-sm"
+                                  : msg.role === "admin"
+                                  ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm"
+                                  : "bg-white border border-gray-200 text-gray-800 shadow-sm rounded-tl-sm"
+                              }`}>
+                                {msg.role === "admin" && (
+                                  <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin (via WA)</p>
+                                )}
+                                {msg.content}
+                                <p className="text-[10px] mt-1 opacity-50">
+                                  {formatMsgTime(msg.createdAt)}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                          return acc;
+                        },
+                        { lastDateStr: null, els: [] },
+                      ).els
                     )}
                     <div ref={chatEndRef} />
                   </div>

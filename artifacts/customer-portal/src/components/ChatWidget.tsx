@@ -50,6 +50,18 @@ function formatMsgTime(iso: string | undefined): string | null {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }) + " " + hhmm;
 }
 
+function formatDateLabel(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "Hari ini";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Kemarin";
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
 const SESSION_KEY = "cst_ai_chat_session";
 const MESSAGES_KEY = "cst_ai_chat_messages";
 const LAST_SEEN_KEY = "cst_ai_chat_last_seen";
@@ -1001,45 +1013,63 @@ export function ChatWidget() {
             className="flex-1 overflow-y-auto px-4 sm:px-3 py-4 sm:py-3 space-y-3 bg-gray-50"
             style={{ WebkitOverflowScrolling: "touch", scrollBehavior: "smooth" }}
           >
-            {messages.map((msg) => {
-              const msgTime = formatMsgTime(msg.createdAt);
-              return (
-                <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                  {msg.role !== "user" && (
-                    <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
-                      {msg.role === "admin" ? (
-                        <User className="h-4 w-4 text-sky-700" />
-                      ) : (
-                        <Bot className="h-4 w-4 text-sky-600" />
-                      )}
-                    </div>
-                  )}
-                  <div className={`flex flex-col max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                    <div
-                      className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                        msg.role === "user"
-                          ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm"
-                          : msg.role === "admin"
-                          ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-2xl rounded-tl-sm"
-                          : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm"
-                      }`}
-                      style={{
-                        boxShadow: msg.role === "user" ? "0 2px 8px rgba(14,165,233,0.22)" : "0 2px 8px rgba(0,0,0,0.06)",
-                        transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
-                      }}
-                    >
-                      {msg.role === "admin" && (
-                        <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
-                      )}
-                      {msg.content}
-                    </div>
-                    {msgTime && (
-                      <p className="text-[10px] text-gray-400 mt-1 px-1">{msgTime}</p>
+            {messages.reduce<{ lastDateStr: string | null; els: React.ReactNode[] }>(
+              (acc, msg) => {
+                const dateStr = msg.createdAt ? new Date(msg.createdAt).toDateString() : null;
+                if (dateStr && dateStr !== acc.lastDateStr) {
+                  const label = formatDateLabel(msg.createdAt);
+                  if (label) {
+                    acc.els.push(
+                      <div key={`sep-${msg.id}`} className="flex items-center gap-2 py-1">
+                        <div className="flex-1 h-px bg-gray-200" />
+                        <span className="text-[10px] text-gray-400 font-medium px-2 shrink-0">{label}</span>
+                        <div className="flex-1 h-px bg-gray-200" />
+                      </div>
+                    );
+                  }
+                  acc.lastDateStr = dateStr;
+                }
+                const msgTime = formatMsgTime(msg.createdAt);
+                acc.els.push(
+                  <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                    {msg.role !== "user" && (
+                      <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center shrink-0 mt-0.5">
+                        {msg.role === "admin" ? (
+                          <User className="h-4 w-4 text-sky-700" />
+                        ) : (
+                          <Bot className="h-4 w-4 text-sky-600" />
+                        )}
+                      </div>
                     )}
+                    <div className={`flex flex-col max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                      <div
+                        className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                          msg.role === "user"
+                            ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm"
+                            : msg.role === "admin"
+                            ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-2xl rounded-tl-sm"
+                            : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm"
+                        }`}
+                        style={{
+                          boxShadow: msg.role === "user" ? "0 2px 8px rgba(14,165,233,0.22)" : "0 2px 8px rgba(0,0,0,0.06)",
+                          transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
+                        }}
+                      >
+                        {msg.role === "admin" && (
+                          <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
+                        )}
+                        {msg.content}
+                      </div>
+                      {msgTime && (
+                        <p className="text-[10px] text-gray-400 mt-1 px-1">{msgTime}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+                return acc;
+              },
+              { lastDateStr: null, els: [] },
+            ).els}
 
             {/* Live streaming bubble — replaces the old bouncing dots */}
             {isStreaming && (
