@@ -118,9 +118,10 @@ export function ChatWidget() {
     const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Reset streaming state
+    // Reset streaming state and any stale status cards
     streamBufferRef.current = "";
     setStreamingContent("");
+    setOrderStatuses([]);
 
     const controller = new AbortController();
     abortRef.current = controller;

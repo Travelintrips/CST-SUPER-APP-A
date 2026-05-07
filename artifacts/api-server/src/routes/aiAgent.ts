@@ -6,7 +6,7 @@ import {
   aiChatMessagesTable,
   logisticOrdersTable,
 } from "@workspace/db";
-import { eq, asc, or } from "drizzle-orm";
+import { eq, asc, or, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
