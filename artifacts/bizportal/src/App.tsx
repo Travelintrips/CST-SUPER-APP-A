@@ -65,9 +65,7 @@ const queryClient = new QueryClient();
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-const clerkProxyUrl = import.meta.env.PROD
-  ? `${window.location.origin}/api/__clerk`
-  : undefined;
+const clerkProxyUrl = undefined;
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
