@@ -1358,17 +1358,46 @@ paths:
                 items:
                   $ref: "#/components/schemas/SalesDocument"
 
-  /sales/documents/{id}/forward-to-vendors:
-    post:
-      operationId: forwardSalesDocumentToVendors
+  /sales/documents/{id}/eligible-vendors:
+    get:
+      operationId: listEligibleVendorsForDoc
       tags: [sales]
-      summary: Forward a sales document (AI draft) to matching vendors via WA and email
+      summary: List eligible vendors to forward this document to
       parameters:
         - in: path
           name: id
           required: true
           schema:
             type: integer
+      responses:
+        "200":
+          description: Eligible vendors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EligibleVendor"
+        "404":
+          description: Not found
+
+  /sales/documents/{id}/forward-to-vendors:
+    post:
+      operationId: forwardSalesDocumentToVendors
+      tags: [sales]
+      summary: Forward a sales document (AI draft) to selected vendors via WA and/or email
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForwardToVendorsBody"
       responses:
         "200":
           description: Forward result
@@ -5719,6 +5748,32 @@ components:
         waCount: { type: integer }
         emailCount: { type: integer }
       required: [message, vendorCount, waCount, emailCount]
+
+    ForwardToVendorsBody:
+      type: object
+      properties:
+        vendorIds:
+          type: array
+          items:
+            type: integer
+          description: Specific vendor IDs to forward to. If omitted, all eligible vendors are used.
+        channels:
+          type: array
+          items:
+            type: string
+            enum: [wa, email]
+          description: Channels to use. Defaults to both [wa, email] if omitted.
+      required: []
+
+    EligibleVendor:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        hasPhone: { type: boolean }
+        hasEmail: { type: boolean }
+        serviceType: { type: string, nullable: true }
+      required: [id, name, hasPhone, hasEmail]
 
     AiIntakeSettings:
       type: object

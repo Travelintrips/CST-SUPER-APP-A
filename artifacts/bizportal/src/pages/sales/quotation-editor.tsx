@@ -51,6 +51,7 @@ import {
   useListExpenses,
   useListFreightShipments,
   useForwardSalesDocumentToVendors,
+  useListEligibleVendorsForDoc,
   getListExpensesQueryKey,
   getGetSalesDocumentQueryKey,
   getListSalesDocumentsQueryKey,

@@ -1827,10 +1827,41 @@ export const ListAiDraftQuotationsResponse = zod.array(
 );
 
 /**
- * @summary Forward a sales document (AI draft) to matching vendors via WA and email
+ * @summary List eligible vendors to forward this document to
+ */
+export const ListEligibleVendorsForDocParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListEligibleVendorsForDocResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  hasPhone: zod.boolean(),
+  hasEmail: zod.boolean(),
+  serviceType: zod.string().nullish(),
+});
+export const ListEligibleVendorsForDocResponse = zod.array(
+  ListEligibleVendorsForDocResponseItem,
+);
+
+/**
+ * @summary Forward a sales document (AI draft) to selected vendors via WA and/or email
  */
 export const ForwardSalesDocumentToVendorsParams = zod.object({
   id: zod.coerce.number(),
+});
+
+export const ForwardSalesDocumentToVendorsBody = zod.object({
+  vendorIds: zod
+    .array(zod.number())
+    .optional()
+    .describe(
+      "Specific vendor IDs to forward to. If omitted, all eligible vendors are used.",
+    ),
+  channels: zod
+    .array(zod.enum(["wa", "email"]))
+    .optional()
+    .describe("Channels to use. Defaults to both [wa, email] if omitted."),
 });
 
 export const ForwardSalesDocumentToVendorsResponse = zod.object({

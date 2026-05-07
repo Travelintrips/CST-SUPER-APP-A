@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.js";
+import { sendMail, isSmtpConfigured } from "./mailer.js";
 
 const AI_INTAKE_KEY = "ai_intake_enabled";
 const AI_INTAKE_REPLY_WA_KEY = "ai_intake_reply_wa";
@@ -16,6 +17,16 @@ const AI_INTAKE_REPLY_EMAIL_KEY = "ai_intake_reply_email";
 const DEFAULT_REPLY_WA = `✅ *Terima kasih!*\nPesan Anda telah kami terima dan sedang diproses oleh tim kami.\nDraft penawaran telah dibuat dan akan segera kami konfirmasi.\nNomor Draft: *{docNumber}*`;
 const DEFAULT_REPLY_EMAIL_SUBJECT = `[Draft Diterima] {docNumber} — Terima kasih`;
 const DEFAULT_REPLY_EMAIL_BODY = `Terima kasih telah menghubungi kami.\n\nPesan Anda telah kami terima dan sedang diproses oleh tim kami. Draft penawaran *{docNumber}* untuk kebutuhan Anda telah dibuat.\n\nTim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n\nSalam,\nCST Logistics`;
+
+const VALID_TRANSPORT_MODES = ["sea", "air", "land", "multimodal"] as const;
+type ValidTransportMode = (typeof VALID_TRANSPORT_MODES)[number];
+
+function toTransportMode(v: string | null | undefined): ValidTransportMode | null {
+  if (!v) return null;
+  return (VALID_TRANSPORT_MODES as ReadonlyArray<string>).includes(v)
+    ? (v as ValidTransportMode)
+    : null;
+}
 
 function buildOpenAi(): OpenAI {
   return new OpenAI({
@@ -182,7 +193,7 @@ async function createDraftQuotation(
       amountPaid: "0",
       origin: extracted.origin ?? null,
       destination: extracted.destination ?? null,
-      transportMode: (extracted.transportMode as any) ?? null,
+      transportMode: toTransportMode(extracted.transportMode),
       notes: notesParts.join("\n") || null,
       aiGenerated: true,
       aiSourceCorrespondenceId: opts.emailCorrespondenceId ?? null,
@@ -243,7 +254,26 @@ export async function processEmailForAiIntake(
     logger.debug({ emailCorrespondenceId }, "AI intake: email not classified as order inquiry");
     return null;
   }
-  return createDraftQuotation(extracted, { emailCorrespondenceId });
+  const result = await createDraftQuotation(extracted, { emailCorrespondenceId });
+  if (result && fromEmail) {
+    try {
+      const settings = await getAiIntakeSettings();
+      if (settings.replyEmailSubject && settings.replyEmailBody && isSmtpConfigured()) {
+        const replySubject = settings.replyEmailSubject.replace(/\{docNumber\}/g, result.docNumber);
+        const replyBody = settings.replyEmailBody.replace(/\{docNumber\}/g, result.docNumber);
+        await sendMail({
+          to: fromEmail,
+          subject: replySubject,
+          text: replyBody,
+          html: replyBody.replace(/\n/g, "<br>"),
+        });
+        logger.info({ docNumber: result.docNumber, to: fromEmail }, "AI intake: email auto-reply sent");
+      }
+    } catch (err) {
+      logger.warn({ err }, "AI intake: failed to send email auto-reply");
+    }
+  }
+  return result;
 }
 
 export async function processWaForAiIntake(

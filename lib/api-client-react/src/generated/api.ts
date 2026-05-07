@@ -69,6 +69,7 @@ import type {
   CreateVendorCatalogItemBody,
   Customer,
   DashboardSummary,
+  EligibleVendor,
   EmailCorrespondence,
   EmailCorrespondenceDetail,
   EmailLink,
@@ -78,6 +79,7 @@ import type {
   ExpenseCategory,
   ExpenseDetail,
   ExpenseSummary,
+  ForwardToVendorsBody,
   ForwardToVendorsResponse,
   FreightAttachment,
   FreightQuote,
@@ -6346,7 +6348,96 @@ export function useListAiDraftQuotations<
 }
 
 /**
- * @summary Forward a sales document (AI draft) to matching vendors via WA and email
+ * @summary List eligible vendors to forward this document to
+ */
+export const getListEligibleVendorsForDocUrl = (id: number) => {
+  return `/api/sales/documents/${id}/eligible-vendors`;
+};
+
+export const listEligibleVendorsForDoc = async (
+  id: number,
+  options?: RequestInit,
+): Promise<EligibleVendor[]> => {
+  return customFetch<EligibleVendor[]>(getListEligibleVendorsForDocUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListEligibleVendorsForDocQueryKey = (id: number) => {
+  return [`/api/sales/documents/${id}/eligible-vendors`] as const;
+};
+
+export const getListEligibleVendorsForDocQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEligibleVendorsForDoc>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEligibleVendorsForDoc>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEligibleVendorsForDocQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEligibleVendorsForDoc>>
+  > = ({ signal }) =>
+    listEligibleVendorsForDoc(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEligibleVendorsForDoc>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEligibleVendorsForDocQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEligibleVendorsForDoc>>
+>;
+export type ListEligibleVendorsForDocQueryError = ErrorType<void>;
+
+/**
+ * @summary List eligible vendors to forward this document to
+ */
+
+export function useListEligibleVendorsForDoc<
+  TData = Awaited<ReturnType<typeof listEligibleVendorsForDoc>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEligibleVendorsForDoc>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEligibleVendorsForDocQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Forward a sales document (AI draft) to selected vendors via WA and/or email
  */
 export const getForwardSalesDocumentToVendorsUrl = (id: number) => {
   return `/api/sales/documents/${id}/forward-to-vendors`;
@@ -6354,6 +6445,7 @@ export const getForwardSalesDocumentToVendorsUrl = (id: number) => {
 
 export const forwardSalesDocumentToVendors = async (
   id: number,
+  forwardToVendorsBody: ForwardToVendorsBody,
   options?: RequestInit,
 ): Promise<ForwardToVendorsResponse> => {
   return customFetch<ForwardToVendorsResponse>(
@@ -6361,6 +6453,8 @@ export const forwardSalesDocumentToVendors = async (
     {
       ...options,
       method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(forwardToVendorsBody),
     },
   );
 };
@@ -6372,14 +6466,14 @@ export const getForwardSalesDocumentToVendorsMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<ForwardToVendorsBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<ForwardToVendorsBody> },
   TContext
 > => {
   const mutationKey = ["forwardSalesDocumentToVendors"];
@@ -6393,11 +6487,11 @@ export const getForwardSalesDocumentToVendorsMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
-    { id: number }
+    { id: number; data: BodyType<ForwardToVendorsBody> }
   > = (props) => {
-    const { id } = props ?? {};
+    const { id, data } = props ?? {};
 
-    return forwardSalesDocumentToVendors(id, requestOptions);
+    return forwardSalesDocumentToVendors(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -6406,12 +6500,13 @@ export const getForwardSalesDocumentToVendorsMutationOptions = <
 export type ForwardSalesDocumentToVendorsMutationResult = NonNullable<
   Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>
 >;
-
+export type ForwardSalesDocumentToVendorsMutationBody =
+  BodyType<ForwardToVendorsBody>;
 export type ForwardSalesDocumentToVendorsMutationError =
   ErrorType<MessageResponse>;
 
 /**
- * @summary Forward a sales document (AI draft) to matching vendors via WA and email
+ * @summary Forward a sales document (AI draft) to selected vendors via WA and/or email
  */
 export const useForwardSalesDocumentToVendors = <
   TError = ErrorType<MessageResponse>,
@@ -6420,14 +6515,14 @@ export const useForwardSalesDocumentToVendors = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<ForwardToVendorsBody> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof forwardSalesDocumentToVendors>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<ForwardToVendorsBody> },
   TContext
 > => {
   return useMutation(getForwardSalesDocumentToVendorsMutationOptions(options));

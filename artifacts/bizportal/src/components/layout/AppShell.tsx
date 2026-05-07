@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
-import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
 
@@ -198,6 +198,14 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", title: "Settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
   ];
 
+  const { data: aiDrafts = [] } = useListAiDraftQuotations({
+    query: {
+      enabled: dbUser?.role === "admin",
+      refetchInterval: 60_000,
+    },
+  });
+  const aiDraftCount = aiDrafts.length;
+
   const filteredNav = navItems.filter((item) => dbUser?.role && item.roles.includes(dbUser.role));
 
   const isGroupActive = (g: GroupItem) =>
@@ -282,7 +290,12 @@ export function AppShell({ children }: AppShellProps) {
                                 <SidebarMenuSubButton asChild isActive={isChildActive(c.href)}>
                                   <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.title.toLowerCase().replace(/\s+/g, "-")}`}>
                                     <c.icon size={14} />
-                                    <span>{c.title}</span>
+                                    <span className="flex-1">{c.title}</span>
+                                    {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
+                                      <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                                        {aiDraftCount}
+                                      </span>
+                                    )}
                                   </Link>
                                 </SidebarMenuSubButton>
                               </SidebarMenuSubItem>

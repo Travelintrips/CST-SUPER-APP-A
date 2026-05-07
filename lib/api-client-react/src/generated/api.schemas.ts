@@ -2295,6 +2295,29 @@ export interface ForwardToVendorsResponse {
   emailCount: number;
 }
 
+export type ForwardToVendorsBodyChannelsItem =
+  (typeof ForwardToVendorsBodyChannelsItem)[keyof typeof ForwardToVendorsBodyChannelsItem];
+
+export const ForwardToVendorsBodyChannelsItem = {
+  wa: "wa",
+  email: "email",
+} as const;
+
+export interface ForwardToVendorsBody {
+  /** Specific vendor IDs to forward to. If omitted, all eligible vendors are used. */
+  vendorIds?: number[];
+  /** Channels to use. Defaults to both [wa, email] if omitted. */
+  channels?: ForwardToVendorsBodyChannelsItem[];
+}
+
+export interface EligibleVendor {
+  id: number;
+  name: string;
+  hasPhone: boolean;
+  hasEmail: boolean;
+  serviceType?: string | null;
+}
+
 export interface AiIntakeSettings {
   enabled: boolean;
   replyWaTemplate: string;

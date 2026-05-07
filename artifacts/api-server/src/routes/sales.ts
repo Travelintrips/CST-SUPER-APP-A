@@ -571,15 +571,14 @@ router.get("/ai-drafts", async (_req, res) => {
   return res.json(rows.map((r) => serializeDoc(r)));
 });
 
-// POST /api/sales/documents/:id/forward-to-vendors — forward AI draft to matching vendors via WA/email
-router.post("/documents/:id/forward-to-vendors", async (req, res) => {
+// GET /api/sales/documents/:id/eligible-vendors — list eligible vendors for forwarding
+router.get("/documents/:id/eligible-vendors", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
   const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
   if (!doc) return res.status(404).json({ message: "Document not found" });
 
-  // Find eligible vendors by transportMode or all active logistics vendors
   const tmToService: Record<string, string[]> = {
     sea: ["laut", "sea", "fcl", "lcl"],
     air: ["udara", "air"],
@@ -590,16 +589,60 @@ router.post("/documents/:id/forward-to-vendors", async (req, res) => {
     ? (tmToService[doc.transportMode] ?? [])
     : ["freight", "laut", "udara", "darat", "forwarding"];
 
-  const allActive = await db
-    .select()
-    .from(suppliersTable)
-    .where(eq(suppliersTable.isActive, true));
-
+  const allActive = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
   const eligible = allActive.filter((v) => {
     if (!v.serviceType) return false;
     const st = v.serviceType.toLowerCase();
     return serviceKeywords.some((kw) => st.includes(kw));
   });
+
+  return res.json(
+    eligible.map((v) => ({
+      id: v.id,
+      name: v.name,
+      hasPhone: !!v.phone,
+      hasEmail: !!v.contactEmail,
+      serviceType: v.serviceType,
+    })),
+  );
+});
+
+// POST /api/sales/documents/:id/forward-to-vendors — forward draft to selected vendors via chosen channels
+router.post("/documents/:id/forward-to-vendors", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
+  if (!doc) return res.status(404).json({ message: "Document not found" });
+
+  const body = req.body as { vendorIds?: number[]; channels?: string[] };
+  const useWa = !body.channels || body.channels.includes("wa");
+  const useEmail = !body.channels || body.channels.includes("email");
+
+  // Determine eligible vendors
+  const tmToService: Record<string, string[]> = {
+    sea: ["laut", "sea", "fcl", "lcl"],
+    air: ["udara", "air"],
+    land: ["darat", "land", "trucking"],
+    multimodal: ["freight", "forwarding"],
+  };
+  const serviceKeywords = doc.transportMode
+    ? (tmToService[doc.transportMode] ?? [])
+    : ["freight", "laut", "udara", "darat", "forwarding"];
+
+  const allActive = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
+
+  let eligible = allActive.filter((v) => {
+    if (!v.serviceType) return false;
+    const st = v.serviceType.toLowerCase();
+    return serviceKeywords.some((kw) => st.includes(kw));
+  });
+
+  // If caller specified vendorIds, filter to only those
+  if (body.vendorIds && body.vendorIds.length > 0) {
+    const idSet = new Set(body.vendorIds);
+    eligible = eligible.filter((v) => idSet.has(v.id));
+  }
 
   let waCount = 0;
   let emailCount = 0;
@@ -608,7 +651,7 @@ router.post("/documents/:id/forward-to-vendors", async (req, res) => {
   const transportLabel = doc.transportMode ?? "Freight";
 
   for (const vendor of eligible) {
-    if (vendor.phone) {
+    if (useWa && vendor.phone) {
       const msg =
         `📋 *PERMINTAAN PENAWARAN — CST LOGISTICS*\n` +
         `━━━━━━━━━━━━━━━━━━\n` +
@@ -625,7 +668,7 @@ router.post("/documents/:id/forward-to-vendors", async (req, res) => {
       waCount++;
     }
 
-    if (vendor.contactEmail && isSmtpConfigured()) {
+    if (useEmail && vendor.contactEmail && isSmtpConfigured()) {
       sendMail({
         to: vendor.contactEmail,
         subject: `[Permintaan Penawaran] ${doc.docNumber} — ${transportLabel}`,
