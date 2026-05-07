@@ -37,9 +37,10 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList } from "lucide-react";
+import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", {
@@ -124,6 +125,35 @@ export default function AiDraftsPage() {
 
   const [selectedVendorIds, setSelectedVendorIds] = useState<number[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>(["wa", "email"]);
+
+  // Intake log filters (client-side)
+  const [logSource, setLogSource] = useState<"all" | "email" | "wa">("all");
+  const [logDateFrom, setLogDateFrom] = useState("");
+  const [logDateTo, setLogDateTo] = useState("");
+
+  const filteredLog = intakeLog.filter((entry) => {
+    if (logSource !== "all" && entry.source !== logSource) return false;
+    if (logDateFrom) {
+      const ts = new Date(entry.timestamp);
+      const from = new Date(logDateFrom);
+      if (ts < from) return false;
+    }
+    if (logDateTo) {
+      const ts = new Date(entry.timestamp);
+      const to = new Date(logDateTo);
+      to.setHours(23, 59, 59, 999);
+      if (ts > to) return false;
+    }
+    return true;
+  });
+
+  const hasLogFilters = logSource !== "all" || logDateFrom !== "" || logDateTo !== "";
+
+  function resetLogFilters() {
+    setLogSource("all");
+    setLogDateFrom("");
+    setLogDateTo("");
+  }
 
   const { data: eligibleVendors = [] } = useListEligibleVendorsForDoc(
     forwardDoc?.id ?? 0,
@@ -335,12 +365,65 @@ export default function AiDraftsPage() {
           {/* ── Tab 2: Intake log ── */}
           <TabsContent value="log" className="mt-4">
             <Card className="border-border bg-card">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <ClipboardList size={16} className="text-purple-500" />
-                  Riwayat Pemrosesan AI
-                  <span className="text-xs font-normal text-muted-foreground">— email & WhatsApp yang diproses sistem AI</span>
-                </CardTitle>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <CardTitle className="text-base font-medium flex items-center gap-2">
+                    <ClipboardList size={16} className="text-purple-500" />
+                    Riwayat Pemrosesan AI
+                    <span className="text-xs font-normal text-muted-foreground">— email & WhatsApp yang diproses sistem AI</span>
+                  </CardTitle>
+                  {hasLogFilters && (
+                    <Button variant="ghost" size="sm" onClick={resetLogFilters} className="text-xs text-muted-foreground h-7 px-2 gap-1">
+                      <X size={12} />
+                      Reset filter
+                    </Button>
+                  )}
+                </div>
+
+                {/* Filter toolbar */}
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  {/* Source chips */}
+                  <div className="flex items-center gap-1">
+                    {(["all", "email", "wa"] as const).map((src) => (
+                      <button
+                        key={src}
+                        onClick={() => setLogSource(src)}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          logSource === src
+                            ? "bg-purple-600 border-purple-600 text-white"
+                            : "border-border text-muted-foreground hover:border-purple-400 hover:text-foreground"
+                        }`}
+                      >
+                        {src === "email" && <Mail size={10} />}
+                        {src === "wa" && <MessageSquare size={10} />}
+                        {src === "all" ? "Semua" : src === "email" ? "Email" : "WhatsApp"}
+                        {src !== "all" && (
+                          <span className="opacity-60 ml-0.5">
+                            ({intakeLog.filter((e) => e.source === src).length})
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Date range */}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <span className="text-xs text-muted-foreground">Dari</span>
+                    <Input
+                      type="date"
+                      value={logDateFrom}
+                      onChange={(e) => setLogDateFrom(e.target.value)}
+                      className="h-7 text-xs w-32 px-2"
+                    />
+                    <span className="text-xs text-muted-foreground">s/d</span>
+                    <Input
+                      type="date"
+                      value={logDateTo}
+                      onChange={(e) => setLogDateTo(e.target.value)}
+                      className="h-7 text-xs w-32 px-2"
+                    />
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {isLogLoading ? (
@@ -353,59 +436,75 @@ export default function AiDraftsPage() {
                       Log akan muncul setelah AI memproses email atau pesan WhatsApp pertama
                     </p>
                   </div>
+                ) : filteredLog.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <ClipboardList size={32} className="mx-auto mb-2 opacity-20" />
+                    <p className="text-sm font-medium">Tidak ada hasil</p>
+                    <p className="text-xs mt-1">Coba ubah atau reset filter</p>
+                    <Button variant="outline" size="sm" onClick={resetLogFilters} className="mt-3 text-xs">
+                      Reset filter
+                    </Button>
+                  </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Sumber</TableHead>
-                        <TableHead>Pengirim</TableHead>
-                        <TableHead>Subjek / Info</TableHead>
-                        <TableHead>Waktu</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Draft Terkait</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {intakeLog.map((entry) => (
-                        <TableRow key={entry.id}>
-                          <TableCell>
-                            <IntakeSourceBadge entry={entry} />
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={entry.sender ?? undefined}>
-                            {entry.sender ?? "—"}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate" title={entry.subject ?? undefined}>
-                            {entry.subject ?? <span className="italic text-muted-foreground/60">Pesan WhatsApp</span>}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                            {new Date(entry.timestamp).toLocaleDateString("id-ID", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </TableCell>
-                          <TableCell>
-                            <IntakeStatusBadge entry={entry} />
-                          </TableCell>
-                          <TableCell>
-                            {entry.docId && entry.docNumber ? (
-                              <Link
-                                href={`/sales/quotations/${entry.docId}`}
-                                className="font-mono text-xs text-primary hover:underline flex items-center gap-1"
-                              >
-                                {entry.docNumber}
-                                <ExternalLink size={10} />
-                              </Link>
-                            ) : (
-                              <span className="text-xs text-muted-foreground/50">—</span>
-                            )}
-                          </TableCell>
+                  <>
+                    {hasLogFilters && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Menampilkan {filteredLog.length} dari {intakeLog.length} entri
+                      </p>
+                    )}
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Sumber</TableHead>
+                          <TableHead>Pengirim</TableHead>
+                          <TableHead>Subjek / Info</TableHead>
+                          <TableHead>Waktu</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Draft Terkait</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredLog.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell>
+                              <IntakeSourceBadge entry={entry} />
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate" title={entry.sender ?? undefined}>
+                              {entry.sender ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate" title={entry.subject ?? undefined}>
+                              {entry.subject ?? <span className="italic text-muted-foreground/60">Pesan WhatsApp</span>}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(entry.timestamp).toLocaleDateString("id-ID", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </TableCell>
+                            <TableCell>
+                              <IntakeStatusBadge entry={entry} />
+                            </TableCell>
+                            <TableCell>
+                              {entry.docId && entry.docNumber ? (
+                                <Link
+                                  href={`/sales/quotations/${entry.docId}`}
+                                  className="font-mono text-xs text-primary hover:underline flex items-center gap-1"
+                                >
+                                  {entry.docNumber}
+                                  <ExternalLink size={10} />
+                                </Link>
+                              ) : (
+                                <span className="text-xs text-muted-foreground/50">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </>
                 )}
               </CardContent>
             </Card>
