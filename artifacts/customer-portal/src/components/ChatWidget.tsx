@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight, Mic, MicOff, ClipboardList } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight, Mic, MicOff, ClipboardList, Volume2, VolumeX } from "lucide-react";
 import { Link } from "wouter";
 
 interface ChatMessage {
@@ -258,6 +258,12 @@ export function ChatWidget() {
   const [showForm, setShowForm] = useState<{ service: string } | null>(null);
   /** Voice input state */
   const [isListening, setIsListening] = useState(false);
+  /** TTS output: auto-speak AI responses when enabled */
+  const [voiceOutput, setVoiceOutput] = useState<boolean>(() => {
+    try { return localStorage.getItem("cst_ai_voice_output") === "1"; } catch { return false; }
+  });
+  /** True while speechSynthesis is reading aloud */
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -341,10 +347,59 @@ export function ChatWidget() {
     if (!isStreaming) saveMessages(messages);
   }, [messages, isStreaming]);
 
-  // Cancel any inflight stream on unmount
+  // Cancel any inflight stream on unmount; also stop any TTS
   useEffect(() => {
-    return () => { abortRef.current?.abort(); };
+    return () => {
+      abortRef.current?.abort();
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+    };
   }, []);
+
+  /** Strip markdown symbols so TTS sounds natural */
+  function stripMarkdown(text: string): string {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/\*(.*?)\*/g, "$1")
+      .replace(/#{1,6}\s*/g, "")
+      .replace(/`{1,3}[^`]*`{1,3}/g, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/^\s*[-•]\s*/gm, "")
+      .trim();
+  }
+
+  /** Speak text aloud using Web Speech API */
+  function speak(text: string) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const clean = stripMarkdown(text);
+    if (!clean) return;
+    const utt = new SpeechSynthesisUtterance(clean);
+    utt.lang = "id-ID";
+    utt.rate = 1.05;
+    utt.pitch = 1;
+    // Prefer Indonesian voice, fall back to any available
+    const voices = window.speechSynthesis.getVoices();
+    const idVoice = voices.find((v) => v.lang.startsWith("id")) ?? voices[0];
+    if (idVoice) utt.voice = idVoice;
+    utt.onstart = () => setIsSpeaking(true);
+    utt.onend = () => setIsSpeaking(false);
+    utt.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utt);
+  }
+
+  function stopSpeaking() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }
+
+  function toggleVoiceOutput() {
+    setVoiceOutput((v) => {
+      const next = !v;
+      try { localStorage.setItem("cst_ai_voice_output", next ? "1" : "0"); } catch { /* empty */ }
+      if (!next) stopSpeaking();
+      return next;
+    });
+  }
 
   async function sendMessage() {
     const text = input.trim();
@@ -354,11 +409,12 @@ export function ChatWidget() {
     const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Reset streaming state, stale status cards, and inline form
+    // Reset streaming state, stale status cards, inline form, and stop any TTS
     streamBufferRef.current = "";
     setStreamingContent("");
     setOrderStatuses([]);
     setShowForm(null);
+    stopSpeaking();
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -449,6 +505,8 @@ export function ChatWidget() {
                 };
                 setMessages((prev) => [...prev, aiMsg]);
                 if (!open) setUnread((n) => n + 1);
+                // Auto-speak if voice output mode is on
+                if (voiceOutput) speak(finalText);
               }
               if (pendingOrder) setOrderCreated(pendingOrder);
               break;
@@ -549,6 +607,7 @@ export function ChatWidget() {
   function resetChat() {
     abortRef.current?.abort();
     recognitionRef.current?.stop();
+    stopSpeaking();
     try {
       localStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(MESSAGES_KEY);
@@ -578,10 +637,31 @@ export function ChatWidget() {
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm leading-tight">CST Logistics Assistant</p>
               <p className="text-xs text-sky-200 flex items-center gap-1">
-                <span className={`w-1.5 h-1.5 rounded-full inline-block ${isStreaming ? "bg-yellow-400 animate-pulse" : "bg-green-400"}`} />
-                {isStreaming ? "Mengetik…" : "Online"}
+                {isSpeaking ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full inline-block bg-purple-300 animate-pulse" />
+                    <span className="animate-pulse">Berbicara…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className={`w-1.5 h-1.5 rounded-full inline-block ${isStreaming ? "bg-yellow-400 animate-pulse" : "bg-green-400"}`} />
+                    {isStreaming ? "Mengetik…" : "Online"}
+                  </>
+                )}
               </p>
             </div>
+            {/* Voice output toggle */}
+            <button
+              onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
+              title={isSpeaking ? "Berhenti bicara" : voiceOutput ? "Matikan suara AI" : "Aktifkan suara AI"}
+              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors mr-0.5 ${
+                voiceOutput || isSpeaking
+                  ? "bg-white/25 text-white"
+                  : "bg-white/10 text-white/50 hover:text-white hover:bg-white/20"
+              }`}
+            >
+              {voiceOutput || isSpeaking ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+            </button>
             <button
               onClick={resetChat}
               className="text-white/60 hover:text-white text-xs mr-1 transition-colors"
