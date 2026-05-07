@@ -181,38 +181,47 @@ async function handleToolCall(
         });
       }
 
-      // For each order, get the latest admin reply via the linked ai_chat_session
-      const enriched = await Promise.all(
-        orders.map(async (order) => {
-          const [session] = await db
-            .select({ id: aiChatSessionsTable.id })
-            .from(aiChatSessionsTable)
-            .where(eq(aiChatSessionsTable.logisticOrderId, order.id));
+      // Batch: fetch all sessions for these orders in one query
+      const orderIds = orders.map((o) => o.id);
+      const sessions = await db
+        .select({ id: aiChatSessionsTable.id, logisticOrderId: aiChatSessionsTable.logisticOrderId })
+        .from(aiChatSessionsTable)
+        .where(inArray(aiChatSessionsTable.logisticOrderId, orderIds));
 
-          let latestAdminReply: string | null = null;
-          if (session) {
-            const allMsgs = await db
-              .select({ role: aiChatMessagesTable.role, content: aiChatMessagesTable.content })
-              .from(aiChatMessagesTable)
-              .where(eq(aiChatMessagesTable.sessionId, session.id))
-              .orderBy(asc(aiChatMessagesTable.createdAt));
-            const lastAdminMsg = [...allMsgs].reverse().find((m) => m.role === "admin");
-            latestAdminReply = lastAdminMsg?.content ?? null;
-          }
+      // Batch: fetch latest admin reply per session in one query using DISTINCT ON
+      const sessionIds = sessions.map((s) => s.id);
+      const latestRepliesMap: Record<number, string> = {};
+      if (sessionIds.length > 0) {
+        const rows = await db.execute<{ session_id: number; content: string }>(sql`
+          SELECT DISTINCT ON (session_id) session_id, content
+          FROM ${aiChatMessagesTable}
+          WHERE session_id = ANY(ARRAY[${sql.join(sessionIds.map((id) => sql`${id}`), sql`, `)}]::int[])
+            AND role = 'admin'
+          ORDER BY session_id, created_at DESC
+        `);
+        for (const row of rows.rows) {
+          latestRepliesMap[row.session_id] = row.content;
+        }
+      }
 
-          return {
-            orderNumber: order.orderNumber,
-            status: order.status,
-            shipmentType: order.shipmentType,
-            origin: order.origin,
-            destination: order.destination,
-            customerName: order.customerName,
-            requiredDate: order.requiredDate ?? null,
-            createdAt: order.createdAt.toISOString(),
-            latestAdminReply,
-          };
-        })
-      );
+      // Build session → order lookup
+      const sessionByOrderId = Object.fromEntries(sessions.map((s) => [s.logisticOrderId, s.id]));
+
+      const enriched = orders.map((order) => {
+        const sessionId = sessionByOrderId[order.id];
+        const latestAdminReply = sessionId != null ? (latestRepliesMap[sessionId] ?? null) : null;
+        return {
+          orderNumber: order.orderNumber,
+          status: order.status,
+          shipmentType: order.shipmentType,
+          origin: order.origin,
+          destination: order.destination,
+          customerName: order.customerName,
+          requiredDate: order.requiredDate ?? null,
+          createdAt: order.createdAt.toISOString(),
+          latestAdminReply,
+        };
+      });
 
       return JSON.stringify({ found: true, orders: enriched });
     } catch (err) {
@@ -443,6 +452,9 @@ async function streamAiChat(
           };
           if (parsed.found && parsed.orders && parsed.orders.length > 0) {
             sendEvent({ type: "status", orders: parsed.orders });
+          } else if (!parsed.found) {
+            // Clear any stale status cards in the frontend
+            sendEvent({ type: "status", orders: [] });
           }
         } catch { /* empty */ }
       }
