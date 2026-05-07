@@ -62,6 +62,18 @@ interface VendorRow {
   eta: string;
 }
 
+function formatMsgTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const hhmm = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return hhmm;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Kemarin ${hhmm}`;
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }) + " " + hhmm;
+}
+
 export default function LogisticsPortalOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const orderId = parseInt(id ?? "0", 10);
@@ -644,7 +656,7 @@ export default function LogisticsPortalOrderDetailPage() {
                             )}
                             {msg.content}
                             <p className="text-[10px] mt-1 opacity-50">
-                              {new Date(msg.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                              {formatMsgTime(msg.createdAt)}
                             </p>
                           </div>
                         </div>
