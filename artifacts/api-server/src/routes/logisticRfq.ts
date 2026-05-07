@@ -51,13 +51,25 @@ function isFreightWithDimensions(shipmentType: string): boolean {
   return t.includes("air") || t.includes("sea") || t.includes("laut") || t.includes("udara");
 }
 
+const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+function formatTanggal(dt: Date | string): string {
+  const d = new Date(dt);
+  return `${String(d.getDate()).padStart(2,"0")} ${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+function formatJam(dt: Date | string): string {
+  const d = new Date(dt);
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
 function buildRfqWaMessage(order: {
   orderNumber: string; origin: string; destination: string;
   shipmentType: string; commodity?: string | null; cargoDescription?: string | null;
   grossWeight?: number | null; volumeCbm?: number | null; requiredDate?: string | null;
-  notes?: string | null;
+  notes?: string | null; createdAt?: Date | string | null;
 }, rfqNumber: string, vendorName: string): string {
   const isFreight = isFreightWithDimensions(order.shipmentType);
+  const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
+  const jam = order.createdAt ? formatJam(order.createdAt) : "";
 
   const freightHint = isFreight
     ? (
@@ -75,7 +87,8 @@ function buildRfqWaMessage(order: {
     `Kami memohon penawaran harga untuk order berikut:\n\n` +
     `No. RFQ       : *${rfqNumber}*\n` +
     `No. Order     : ${order.orderNumber}\n` +
-    `Jenis         : ${order.shipmentType}\n` +
+    (tgl ? `Tanggal       : ${tgl}\n` : ``) +
+    (jam ? `Jam           : ${jam}\n` : ``) +
     `Rute          : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `Komoditi      : ${order.commodity}\n` : "") +
     (order.cargoDescription ? `Deskripsi     : ${order.cargoDescription}\n` : "") +
@@ -187,6 +200,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
     requiredDate: order.requiredDate,
     notes: notes ?? order.notes,
+    createdAt: order.createdAt,
   };
 
   for (const vendor of vendors) {
