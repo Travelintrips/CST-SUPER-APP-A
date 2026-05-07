@@ -126,6 +126,7 @@ async function listByType(type: string) {
       name: p.name,
       description: p.description ?? null,
       price: Number(p.price),
+      stock: p.stock ?? 0,
       unit: p.unit,
       unitOptions,
       imageUrl: p.imageUrl ?? null,
@@ -715,11 +716,12 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
 router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
+  const { name, description, price, stock, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
+  if (stock !== undefined) updates.stock = Math.max(0, parseInt(String(stock), 10) || 0);
   if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
   if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(mediaItems);
   if (unit !== undefined) updates.unit = String(unit).trim() || "pcs";

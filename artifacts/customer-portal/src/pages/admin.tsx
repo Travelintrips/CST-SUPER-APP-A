@@ -183,6 +183,7 @@ type Product = {
   name: string;
   description: string | null;
   price: number;
+  stock: number;
   imageUrl: string | null;
   mediaItems: MediaItem[];
   unit: string;
@@ -517,6 +518,7 @@ function ItemEditCard({
   const [unitOptionsRaw, setUnitOptionsRaw] = useState(
     type === "products" ? ((item as Product).unitOptions ?? []).join(", ") : ""
   );
+  const [stock, setStock] = useState(type === "products" ? String((item as Product).stock ?? 0) : "0");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -538,6 +540,7 @@ function ItemEditCard({
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
+        payload.stock = Math.max(0, parseInt(stock, 10) || 0);
       }
       await onSave(item.id, payload);
       setSaved(true);
@@ -581,6 +584,16 @@ function ItemEditCard({
             </div>
             {type === "products" && (
               <>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Stok</Label>
+                  <Input
+                    type="number"
+                    value={stock}
+                    onChange={(e) => setStock(e.target.value)}
+                    placeholder="0"
+                    min="0"
+                  />
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-sm">Satuan Utama</Label>
                   <Input
