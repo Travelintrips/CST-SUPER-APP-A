@@ -589,7 +589,7 @@ export function ChatWidget() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const SR: (new () => { lang: string; interimResults: boolean; maxAlternatives: number; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start(): void; stop(): void }) | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    const SR: (new () => { lang: string; continuous: boolean; interimResults: boolean; maxAlternatives: number; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: ((e: any) => void) | null; start(): void; stop(): void }) | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!SR) {
       alert("Browser Anda belum mendukung input suara. Coba Chrome atau Edge.");
       return;
@@ -597,6 +597,7 @@ export function ChatWidget() {
     pendingTranscriptRef.current = "";
     const recognition = new SR();
     recognition.lang = "id-ID";
+    recognition.continuous = false;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -610,20 +611,28 @@ export function ChatWidget() {
       pendingTranscriptRef.current = "";
       if (transcript) void doSend(transcript);
     };
-    recognition.onerror = () => {
-      setIsListening(false);
-      pendingTranscriptRef.current = "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      if ((e as { error?: string }).error !== "no-speech") {
+        setIsListening(false);
+        pendingTranscriptRef.current = "";
+      }
+      // "no-speech" is handled by onend naturally
     };
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
-  }
 
-  /** Push-to-talk: call on mouseup/touchend — stops recording, onend fires → auto-send */
-  function stopListening() {
-    if (!isListening) return;
-    recognitionRef.current?.stop();
-    // isListening + auto-send handled in recognition.onend
+    // Use document-level release listeners so recording doesn't stop if the
+    // pointer drifts off the button while the user is still holding it.
+    const release = () => {
+      recognitionRef.current?.stop();
+      document.removeEventListener("mouseup", release);
+      document.removeEventListener("touchend", release);
+    };
+    document.addEventListener("mouseup", release, { once: true });
+    document.addEventListener("touchend", release, { once: true });
   }
 
   function resetChat() {
@@ -857,10 +866,7 @@ export function ChatWidget() {
               <button
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); startListening(); }}
-                onMouseUp={stopListening}
-                onMouseLeave={stopListening}
                 onTouchStart={(e) => { e.preventDefault(); startListening(); }}
-                onTouchEnd={stopListening}
                 disabled={isStreaming}
                 title="Tahan untuk merekam suara, lepas untuk kirim"
                 className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-40 select-none ${
