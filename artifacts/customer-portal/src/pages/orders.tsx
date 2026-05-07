@@ -29,10 +29,11 @@ export default function Orders() {
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const token = getAuthToken();
-  const [search, setSearch] = useState("");
-  // Derive statusFilter reactively from URL — Back/Forward and setLocation all
-  // update useSearch(), so the filter is always in sync with the address bar.
-  const statusFilter = new URLSearchParams(searchStr).get("status") ?? "";
+  // Both `search` and `statusFilter` are derived from the URL — fully reactive
+  // to Back/Forward and any setLocation call.
+  const params = new URLSearchParams(searchStr);
+  const search = params.get("q") ?? "";
+  const statusFilter = params.get("status") ?? "";
   const [cancellingKey, setCancellingKey] = useState<string | null>(null);
   const { t } = useLanguage();
 
@@ -40,8 +41,22 @@ export default function Orders() {
     if (!token) setLocation("/login");
   }, [token, setLocation]);
 
+  /** Build a URL preserving both filters, then navigate. */
+  function buildOrdersUrl(q: string, status: string): string {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (status) p.set("status", status);
+    const qs = p.toString();
+    return qs ? `/orders?${qs}` : "/orders";
+  }
+
+  /** Update the text search without adding a new back-stack entry. */
+  function setSearch(q: string) {
+    setLocation(buildOrdersUrl(q, statusFilter), { replace: true } as Parameters<typeof setLocation>[1]);
+  }
+
   function clearStatusFilter() {
-    setLocation("/orders");
+    setLocation(buildOrdersUrl(search, ""));
   }
 
   const headers = getAuthHeaders() as Record<string, string>;
