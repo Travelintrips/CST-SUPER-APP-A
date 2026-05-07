@@ -48,6 +48,18 @@ uri = "file://artifacts/customer-portal/public/images/air-freight.png"
 type = "image"
 title = "air freight cargo aircraft"
 
+[[generated]]
+id = "kvlfJ6Jky4EZz_Xp5R1ER"
+uri = "file://artifacts/customer-portal/public/images/customs-gavel.png"
+type = "image"
+title = "customs gavel premium"
+
+[[generated]]
+id = "9NL1ZcDdbGhK6qVH0RIMo"
+uri = "file://artifacts/customer-portal/public/images/customs-document.png"
+type = "image"
+title = "customs official document"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
@@ -83,3 +95,15 @@ id = "ot7y2ZA1zJzOAHJPYDpXY"
 uri = "file://attached_assets/stock_images/freight-cargo_2.jpg"
 type = "image"
 title = "freight forwarding cargo shipping containers warehouse corporate"
+
+[[outputs]]
+id = "uMBVHAQ3gbzFi4aexfOti"
+uri = "file://artifacts/customer-portal/public/images/customs-gavel.png"
+type = "image"
+title = "Palu Hakim"
+
+[[outputs]]
+id = "awoYH-VDmxYEAbjXh3Sew"
+uri = "file://artifacts/customer-portal/public/images/customs-document.png"
+type = "image"
+title = "Dokumen Resmi"

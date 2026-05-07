@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, Ship, Plane, Package, Warehouse, Truck, Stamp,
-  Shield, FileText, ArrowRight, ChevronRight, Gavel, Calculator,
+  Shield, FileText, ArrowRight, ChevronRight, Calculator,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -379,22 +379,42 @@ export default function Jasa() {
             <div className="flex items-start gap-4 flex-1 min-w-0">
               <div className="flex gap-2 shrink-0">
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{
-                    background: "rgba(234,88,12,0.13)",
-                    boxShadow: "0 0 0 6px rgba(234,88,12,0.06), 0 2px 8px rgba(234,88,12,0.16)",
-                  }}
+                  className="w-11 h-11 rounded-xl overflow-hidden"
+                  style={{ boxShadow: "0 0 0 3px rgba(234,88,12,0.18), 0 2px 8px rgba(234,88,12,0.22)" }}
                 >
-                  <Stamp className="h-5 w-5 text-orange-700" />
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/customs-document.png`}
+                    alt="Dokumen Resmi"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      const parent = el.parentElement as HTMLElement | null;
+                      if (parent) {
+                        parent.style.background = "rgba(234,88,12,0.13)";
+                        parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 m-auto" fill="none" viewBox="0 0 24 24" stroke="#c2410c"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
+                      }
+                    }}
+                  />
                 </div>
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{
-                    background: "rgba(217,119,6,0.13)",
-                    boxShadow: "0 0 0 6px rgba(217,119,6,0.06), 0 2px 8px rgba(217,119,6,0.16)",
-                  }}
+                  className="w-11 h-11 rounded-xl overflow-hidden"
+                  style={{ boxShadow: "0 0 0 3px rgba(217,119,6,0.18), 0 2px 8px rgba(217,119,6,0.22)" }}
                 >
-                  <Gavel className="h-5 w-5 text-amber-700" />
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/customs-gavel.png`}
+                    alt="Palu Hakim"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      const parent = el.parentElement as HTMLElement | null;
+                      if (parent) {
+                        parent.style.background = "rgba(217,119,6,0.13)";
+                        parent.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 m-auto" fill="none" viewBox="0 0 24 24" stroke="#b45309"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>';
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <div className="min-w-0">
