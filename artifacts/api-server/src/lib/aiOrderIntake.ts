@@ -13,6 +13,10 @@ import { sendMail, isSmtpConfigured } from "./mailer.js";
 const AI_INTAKE_KEY = "ai_intake_enabled";
 const AI_INTAKE_REPLY_WA_KEY = "ai_intake_reply_wa";
 const AI_INTAKE_REPLY_EMAIL_KEY = "ai_intake_reply_email";
+const AI_INTAKE_VENDOR_FILTER_KEY = "ai_intake_vendor_filter";
+
+export type VendorFilterMode = "all" | "by-service-type";
+const DEFAULT_VENDOR_FILTER: VendorFilterMode = "by-service-type";
 
 const DEFAULT_REPLY_WA = `✅ *Terima kasih!*\nPesan Anda telah kami terima dan sedang diproses oleh tim kami.\nDraft penawaran telah dibuat dan akan segera kami konfirmasi.\nNomor Draft: *{docNumber}*`;
 const DEFAULT_REPLY_EMAIL_SUBJECT = `[Draft Diterima] {docNumber} — Terima kasih`;
@@ -314,19 +318,29 @@ export async function getAiIntakeSettings(): Promise<{
   replyWaTemplate: string;
   replyEmailSubject: string;
   replyEmailBody: string;
+  vendorFilterMode: VendorFilterMode;
 }> {
-  const [enabled, replyWa, replyEmailSubj, replyEmailBody] = await Promise.all([
+  const [enabled, replyWa, replyEmailSubj, replyEmailBody, vendorFilter] = await Promise.all([
     getSettingValue(AI_INTAKE_KEY),
     getSettingValue(AI_INTAKE_REPLY_WA_KEY),
     getSettingValue(AI_INTAKE_REPLY_EMAIL_KEY + "_subject"),
     getSettingValue(AI_INTAKE_REPLY_EMAIL_KEY + "_body"),
+    getSettingValue(AI_INTAKE_VENDOR_FILTER_KEY),
   ]);
   return {
     enabled: enabled === null ? true : enabled !== "false",
     replyWaTemplate: replyWa ?? DEFAULT_REPLY_WA,
     replyEmailSubject: replyEmailSubj ?? DEFAULT_REPLY_EMAIL_SUBJECT,
     replyEmailBody: replyEmailBody ?? DEFAULT_REPLY_EMAIL_BODY,
+    vendorFilterMode: (vendorFilter === "all" || vendorFilter === "by-service-type")
+      ? vendorFilter
+      : DEFAULT_VENDOR_FILTER,
   };
+}
+
+export async function getVendorFilterMode(): Promise<VendorFilterMode> {
+  const val = await getSettingValue(AI_INTAKE_VENDOR_FILTER_KEY);
+  return (val === "all" || val === "by-service-type") ? val : DEFAULT_VENDOR_FILTER;
 }
 
 export async function saveAiIntakeSettings(settings: {
@@ -334,6 +348,7 @@ export async function saveAiIntakeSettings(settings: {
   replyWaTemplate?: string;
   replyEmailSubject?: string;
   replyEmailBody?: string;
+  vendorFilterMode?: VendorFilterMode;
 }): Promise<void> {
   const upsert = async (key: string, value: string) => {
     await db
@@ -351,6 +366,8 @@ export async function saveAiIntakeSettings(settings: {
     await upsert(AI_INTAKE_REPLY_EMAIL_KEY + "_subject", settings.replyEmailSubject);
   if (settings.replyEmailBody !== undefined)
     await upsert(AI_INTAKE_REPLY_EMAIL_KEY + "_body", settings.replyEmailBody);
+  if (settings.vendorFilterMode !== undefined)
+    await upsert(AI_INTAKE_VENDOR_FILTER_KEY, settings.vendorFilterMode);
 }
 
 export function buildAiReplyWa(template: string, docNumber: string): string {

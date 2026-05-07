@@ -16,6 +16,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -571,6 +572,36 @@ router.get("/ai-drafts", async (_req, res) => {
   return res.json(rows.map((r) => serializeDoc(r)));
 });
 
+// Shared helper: map transportMode → service keywords for filtering
+const TM_TO_SERVICE: Record<string, string[]> = {
+  sea: ["laut", "sea", "fcl", "lcl"],
+  air: ["udara", "air"],
+  land: ["darat", "land", "trucking"],
+  multimodal: ["freight", "forwarding"],
+};
+
+function getServiceKeywords(transportMode: string | null | undefined): string[] {
+  return transportMode
+    ? (TM_TO_SERVICE[transportMode] ?? [])
+    : ["freight", "laut", "udara", "darat", "forwarding"];
+}
+
+type ActiveSupplier = typeof suppliersTable.$inferSelect;
+
+async function filterEligibleVendors(
+  allActive: ActiveSupplier[],
+  transportMode: string | null | undefined,
+): Promise<ActiveSupplier[]> {
+  const filterMode = await getVendorFilterMode();
+  if (filterMode === "all") return allActive;
+  const keywords = getServiceKeywords(transportMode);
+  return allActive.filter((v) => {
+    if (!v.serviceType) return false;
+    const st = v.serviceType.toLowerCase();
+    return keywords.some((kw) => st.includes(kw));
+  });
+}
+
 // GET /api/sales/documents/:id/eligible-vendors — list eligible vendors for forwarding
 router.get("/documents/:id/eligible-vendors", async (req, res) => {
   const id = Number(req.params.id);
@@ -579,22 +610,8 @@ router.get("/documents/:id/eligible-vendors", async (req, res) => {
   const [doc] = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.id, id));
   if (!doc) return res.status(404).json({ message: "Document not found" });
 
-  const tmToService: Record<string, string[]> = {
-    sea: ["laut", "sea", "fcl", "lcl"],
-    air: ["udara", "air"],
-    land: ["darat", "land", "trucking"],
-    multimodal: ["freight", "forwarding"],
-  };
-  const serviceKeywords = doc.transportMode
-    ? (tmToService[doc.transportMode] ?? [])
-    : ["freight", "laut", "udara", "darat", "forwarding"];
-
   const allActive = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
-  const eligible = allActive.filter((v) => {
-    if (!v.serviceType) return false;
-    const st = v.serviceType.toLowerCase();
-    return serviceKeywords.some((kw) => st.includes(kw));
-  });
+  const eligible = await filterEligibleVendors(allActive, doc.transportMode);
 
   return res.json(
     eligible.map((v) => ({
@@ -620,29 +637,17 @@ router.post("/documents/:id/forward-to-vendors", async (req, res) => {
   const useWa = !body.channels || body.channels.includes("wa");
   const useEmail = !body.channels || body.channels.includes("email");
 
-  // Determine eligible vendors
-  const tmToService: Record<string, string[]> = {
-    sea: ["laut", "sea", "fcl", "lcl"],
-    air: ["udara", "air"],
-    land: ["darat", "land", "trucking"],
-    multimodal: ["freight", "forwarding"],
-  };
-  const serviceKeywords = doc.transportMode
-    ? (tmToService[doc.transportMode] ?? [])
-    : ["freight", "laut", "udara", "darat", "forwarding"];
-
+  // Determine eligible vendors (respects vendorFilterMode setting unless vendorIds override given)
   const allActive = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
 
-  let eligible = allActive.filter((v) => {
-    if (!v.serviceType) return false;
-    const st = v.serviceType.toLowerCase();
-    return serviceKeywords.some((kw) => st.includes(kw));
-  });
-
-  // If caller specified vendorIds, filter to only those
+  let eligible: ActiveSupplier[];
   if (body.vendorIds && body.vendorIds.length > 0) {
+    // Explicit override — use exactly the requested vendor IDs
     const idSet = new Set(body.vendorIds);
-    eligible = eligible.filter((v) => idSet.has(v.id));
+    eligible = allActive.filter((v) => idSet.has(v.id));
+  } else {
+    // Use configured vendor filter (all / by-service-type)
+    eligible = await filterEligibleVendors(allActive, doc.transportMode);
   }
 
   let waCount = 0;

@@ -3,7 +3,7 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 import { getAdminWa, setAdminWa } from "../lib/adminWa.js";
 import { db, portalContentTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getAiIntakeSettings, saveAiIntakeSettings } from "../lib/aiOrderIntake.js";
+import { getAiIntakeSettings, saveAiIntakeSettings, type VendorFilterMode } from "../lib/aiOrderIntake.js";
 
 const router = Router();
 
@@ -106,15 +106,20 @@ router.get("/ai-intake", async (req: Request, res: Response) => {
 // PUT /api/settings/ai-intake — update AI intake settings (admin)
 router.put("/ai-intake", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const { enabled, replyWaTemplate, replyEmailSubject, replyEmailBody } = req.body ?? {};
+  const { enabled, replyWaTemplate, replyEmailSubject, replyEmailBody, vendorFilterMode } = req.body ?? {};
   if (enabled !== undefined && typeof enabled !== "boolean") {
     return res.status(400).json({ message: "enabled harus boolean" });
+  }
+  const validFilterModes: VendorFilterMode[] = ["all", "by-service-type"];
+  if (vendorFilterMode !== undefined && !validFilterModes.includes(vendorFilterMode as VendorFilterMode)) {
+    return res.status(400).json({ message: "vendorFilterMode harus 'all' atau 'by-service-type'" });
   }
   await saveAiIntakeSettings({
     enabled: enabled ?? true,
     replyWaTemplate: typeof replyWaTemplate === "string" ? replyWaTemplate : undefined,
     replyEmailSubject: typeof replyEmailSubject === "string" ? replyEmailSubject : undefined,
     replyEmailBody: typeof replyEmailBody === "string" ? replyEmailBody : undefined,
+    vendorFilterMode: vendorFilterMode as VendorFilterMode | undefined,
   });
   return res.json({ message: "Pengaturan AI intake disimpan." });
 });

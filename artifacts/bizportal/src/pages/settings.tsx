@@ -322,11 +322,14 @@ function CargoTypesCard() {
   );
 }
 
+type VendorFilterMode = "all" | "by-service-type";
+
 interface AiIntakeSettingsData {
   enabled: boolean;
   replyWaTemplate: string;
   replyEmailSubject: string;
   replyEmailBody: string;
+  vendorFilterMode: VendorFilterMode;
 }
 
 function AiIntakeSettingsCard() {
@@ -337,6 +340,7 @@ function AiIntakeSettingsCard() {
     replyWaTemplate: "",
     replyEmailSubject: "",
     replyEmailBody: "",
+    vendorFilterMode: "by-service-type",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -406,6 +410,47 @@ function AiIntakeSettingsCard() {
                 checked={data.enabled}
                 onCheckedChange={(v) => setData((d) => ({ ...d, enabled: v }))}
               />
+            </div>
+
+            <div className="rounded-lg border border-border p-4 space-y-3">
+              <div>
+                <p className="font-medium text-sm">Filter Vendor Default</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Menentukan vendor mana yang menerima RFQ saat forward-to-vendor dilakukan tanpa pemilihan manual
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="vendorFilterMode"
+                    value="by-service-type"
+                    checked={data.vendorFilterMode === "by-service-type"}
+                    onChange={() => setData((d) => ({ ...d, vendorFilterMode: "by-service-type" }))}
+                    className="mt-0.5"
+                    disabled={!data.enabled}
+                  />
+                  <span>
+                    <span className="text-sm font-medium">Cocokkan dengan moda transportasi</span>
+                    <span className="block text-xs text-muted-foreground">Hanya kirim ke vendor dengan serviceType yang sesuai (misal: air freight untuk moda udara)</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="vendorFilterMode"
+                    value="all"
+                    checked={data.vendorFilterMode === "all"}
+                    onChange={() => setData((d) => ({ ...d, vendorFilterMode: "all" }))}
+                    className="mt-0.5"
+                    disabled={!data.enabled}
+                  />
+                  <span>
+                    <span className="text-sm font-medium">Semua vendor aktif</span>
+                    <span className="block text-xs text-muted-foreground">Kirim ke seluruh vendor/supplier yang aktif tanpa filter serviceType</span>
+                  </span>
+                </label>
+              </div>
             </div>
 
             <div className="space-y-2">

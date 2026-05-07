@@ -2346,11 +2346,24 @@ export interface EligibleVendor {
   serviceType?: string | null;
 }
 
+/**
+ * all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen
+ */
+export type AiIntakeSettingsVendorFilterMode =
+  (typeof AiIntakeSettingsVendorFilterMode)[keyof typeof AiIntakeSettingsVendorFilterMode];
+
+export const AiIntakeSettingsVendorFilterMode = {
+  all: "all",
+  "by-service-type": "by-service-type",
+} as const;
+
 export interface AiIntakeSettings {
   enabled: boolean;
   replyWaTemplate: string;
   replyEmailSubject: string;
   replyEmailBody: string;
+  /** all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen */
+  vendorFilterMode: AiIntakeSettingsVendorFilterMode;
 }
 
 export interface AiChatMessage {

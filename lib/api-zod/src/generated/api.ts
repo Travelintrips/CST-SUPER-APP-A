@@ -3040,6 +3040,11 @@ export const GetAiIntakeSettingsResponse = zod.object({
   replyWaTemplate: zod.string(),
   replyEmailSubject: zod.string(),
   replyEmailBody: zod.string(),
+  vendorFilterMode: zod
+    .enum(["all", "by-service-type"])
+    .describe(
+      "all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen",
+    ),
 });
 
 /**
@@ -3050,6 +3055,11 @@ export const UpdateAiIntakeSettingsBody = zod.object({
   replyWaTemplate: zod.string(),
   replyEmailSubject: zod.string(),
   replyEmailBody: zod.string(),
+  vendorFilterMode: zod
+    .enum(["all", "by-service-type"])
+    .describe(
+      "all = semua vendor aktif; by-service-type = cocokkan serviceType dengan transportMode dokumen",
+    ),
 });
 
 export const UpdateAiIntakeSettingsResponse = zod.object({
