@@ -131,18 +131,19 @@ export default function AiDraftsPage() {
   const [logDateFrom, setLogDateFrom] = useState("");
   const [logDateTo, setLogDateTo] = useState("");
 
+  // Parse YYYY-MM-DD as local midnight (not UTC) to avoid timezone boundary shift
+  const fromDate = logDateFrom ? new Date(logDateFrom + "T00:00:00") : null;
+  const toDate = logDateTo ? new Date(logDateTo + "T23:59:59.999") : null;
+  // Ignore invalid ranges (from after to) — show all rather than silent zero
+  const rangeValid = !fromDate || !toDate || fromDate <= toDate;
+
   const filteredLog = intakeLog.filter((entry) => {
     if (logSource !== "all" && entry.source !== logSource) return false;
-    if (logDateFrom) {
-      const ts = new Date(entry.timestamp);
-      const from = new Date(logDateFrom);
-      if (ts < from) return false;
+    if (rangeValid && fromDate) {
+      if (new Date(entry.timestamp) < fromDate) return false;
     }
-    if (logDateTo) {
-      const ts = new Date(entry.timestamp);
-      const to = new Date(logDateTo);
-      to.setHours(23, 59, 59, 999);
-      if (ts > to) return false;
+    if (rangeValid && toDate) {
+      if (new Date(entry.timestamp) > toDate) return false;
     }
     return true;
   });
@@ -407,21 +408,24 @@ export default function AiDraftsPage() {
                   </div>
 
                   {/* Date range */}
-                  <div className="flex items-center gap-1.5 ml-auto">
+                  <div className="flex flex-wrap items-center gap-1.5 ml-auto">
                     <span className="text-xs text-muted-foreground">Dari</span>
                     <Input
                       type="date"
                       value={logDateFrom}
                       onChange={(e) => setLogDateFrom(e.target.value)}
-                      className="h-7 text-xs w-32 px-2"
+                      className={`h-7 text-xs w-32 px-2 ${!rangeValid ? "border-red-500" : ""}`}
                     />
                     <span className="text-xs text-muted-foreground">s/d</span>
                     <Input
                       type="date"
                       value={logDateTo}
                       onChange={(e) => setLogDateTo(e.target.value)}
-                      className="h-7 text-xs w-32 px-2"
+                      className={`h-7 text-xs w-32 px-2 ${!rangeValid ? "border-red-500" : ""}`}
                     />
+                    {!rangeValid && (
+                      <span className="text-xs text-red-500">Tanggal tidak valid</span>
+                    )}
                   </div>
                 </div>
               </CardHeader>
