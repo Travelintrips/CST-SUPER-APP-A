@@ -4,6 +4,7 @@ import { db } from "@workspace/db";
 import {
   aiChatSessionsTable,
   aiChatMessagesTable,
+  aiAgentSettingsTable,
   logisticOrdersTable,
 } from "@workspace/db";
 import { eq, asc, or, inArray, sql, and, gt } from "drizzle-orm";
@@ -20,7 +21,7 @@ const openai = new OpenAI({
 
 export const aiAgentRouter = Router();
 
-const SYSTEM_PROMPT = `Kamu adalah asisten logistik virtual dari CST Logistics — perusahaan jasa pengiriman dan kepabeanan terkemuka di Indonesia.
+const DEFAULT_SYSTEM_PROMPT = `Kamu adalah asisten logistik virtual dari CST Logistics — perusahaan jasa pengiriman dan kepabeanan terkemuka di Indonesia.
 
 Tugasmu:
 1. Menyapa pelanggan dengan ramah dan memperkenalkan layanan CST Logistics
@@ -45,6 +46,19 @@ Layanan yang tersedia:
 - Packing & Crating: pengemasan profesional
 
 Harga dikonfirmasi tim setelah order masuk (tergantung volume, rute, pasar).`;
+
+/** Load the active system prompt from DB, fall back to the hardcoded default */
+async function getSystemPrompt(): Promise<string> {
+  try {
+    const [row] = await db
+      .select()
+      .from(aiAgentSettingsTable)
+      .where(eq(aiAgentSettingsTable.key, "system_prompt"));
+    return row?.value ?? DEFAULT_SYSTEM_PROMPT;
+  } catch {
+    return DEFAULT_SYSTEM_PROMPT;
+  }
+}
 
 const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -348,8 +362,10 @@ async function streamAiChat(
 
   const visibleMessages = existingMessages.filter((m) => m.role === "user" || m.role === "assistant");
 
+  const systemPrompt = await getSystemPrompt();
+
   const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...visibleMessages.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -731,6 +747,33 @@ aiAgentRouter.get("/session/by-order/:orderId", async (req: Request, res: Respon
       createdAt: m.createdAt.toISOString(),
     })),
   });
+});
+
+// ── GET /api/ai-agent/settings ───────────────────────────────────────────────
+aiAgentRouter.get("/settings", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const [row] = await db
+    .select()
+    .from(aiAgentSettingsTable)
+    .where(eq(aiAgentSettingsTable.key, "system_prompt"));
+  return res.json({ systemPrompt: row?.value ?? DEFAULT_SYSTEM_PROMPT });
+});
+
+// ── PUT /api/ai-agent/settings ────────────────────────────────────────────────
+aiAgentRouter.put("/settings", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { systemPrompt } = req.body as { systemPrompt?: string };
+  if (typeof systemPrompt !== "string" || !systemPrompt.trim()) {
+    return res.status(400).json({ message: "systemPrompt tidak boleh kosong" });
+  }
+  await db
+    .insert(aiAgentSettingsTable)
+    .values({ key: "system_prompt", value: systemPrompt.trim() })
+    .onConflictDoUpdate({
+      target: aiAgentSettingsTable.key,
+      set: { value: systemPrompt.trim(), updatedAt: new Date() },
+    });
+  return res.json({ ok: true });
 });
 
 // ── POST /api/ai-agent/session/:token/admin-reply ────────────────────────────

@@ -33,6 +33,7 @@ import {
   PackageOpen,
   List,
   GitMerge,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -192,6 +193,7 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", title: "Korespondensi", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", title: "Kotak Masuk Email", href: "/email-inbox", icon: Mail, roles: ["admin"] },
     { type: "flat", title: "Pengguna", href: "/users", icon: Users, roles: ["admin"] },
+    { type: "flat", title: "AI Chatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin"] },
     { type: "flat", title: "Settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
   ];
 

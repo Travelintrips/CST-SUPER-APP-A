@@ -21,6 +21,7 @@ import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
+import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
@@ -221,6 +222,9 @@ function Router() {
       </Route>
       <Route path="/pos">
         <ProtectedRoute component={PosPage} />
+      </Route>
+      <Route path="/settings/ai-chatbot">
+        <ProtectedRoute component={AiChatbotSettingsPage} />
       </Route>
       <Route path="/settings">
         <ProtectedRoute component={SettingsPage} />
