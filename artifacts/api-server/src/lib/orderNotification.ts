@@ -29,15 +29,19 @@ export interface LogisticOrderData {
 }
 
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
+const TZ = "Asia/Jakarta";
 
 function formatTanggal(dt: Date | string): string {
   const d = new Date(dt);
-  return `${String(d.getDate()).padStart(2,"0")} ${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
+  const parts = new Intl.DateTimeFormat("id-ID", { timeZone: TZ, day: "2-digit", month: "long", year: "numeric" }).formatToParts(d);
+  const day  = parts.find(p => p.type === "day")?.value ?? "";
+  const mon  = parts.find(p => p.type === "month")?.value ?? "";
+  const year = parts.find(p => p.type === "year")?.value ?? "";
+  return `${day} ${mon} ${year}`;
 }
 
 function formatJam(dt: Date | string): string {
-  const d = new Date(dt);
-  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return new Intl.DateTimeFormat("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(dt));
 }
 
 function getOrderUrl(orderId: number): string {
