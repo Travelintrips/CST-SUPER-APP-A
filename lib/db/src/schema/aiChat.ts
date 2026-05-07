@@ -1,6 +1,13 @@
 import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
 import { logisticOrdersTable } from "./logisticOrders";
 
+export const aiAgentSettingsTable = pgTable("ai_agent_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const aiChatSessionsTable = pgTable("ai_chat_sessions", {
   id: serial("id").primaryKey(),
   sessionToken: text("session_token").notNull().unique(),
