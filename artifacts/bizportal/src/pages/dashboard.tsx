@@ -40,8 +40,15 @@ async function fetchResponseTimeTrend(): Promise<ResponseTimeEntry[]> {
   return data.entries;
 }
 
-async function fetchResponseTimeStats(): Promise<PathStat[]> {
-  const res = await fetch("/api/dashboard/response-time-stats");
+const RT_WINDOWS = [
+  { label: "24 jam", value: "24h" },
+  { label: "7 hari", value: "7d" },
+  { label: "30 hari", value: "30d" },
+] as const;
+type RtWindow = typeof RT_WINDOWS[number]["value"];
+
+async function fetchResponseTimeStats(window: RtWindow): Promise<PathStat[]> {
+  const res = await fetch(`/api/dashboard/response-time-stats?window=${window}`);
   if (!res.ok) return [];
   const data = (await res.json()) as { stats: PathStat[] };
   return data.stats;
@@ -150,9 +157,11 @@ export default function DashboardPage() {
     queryFn: fetchResponseTimeTrend,
   });
 
+  const [rtWindow, setRtWindow] = useState<RtWindow>("24h");
+
   const { data: rtStats = [], refetch: refetchStats } = useQuery({
-    queryKey: ["dashboard-response-time-stats"],
-    queryFn: fetchResponseTimeStats,
+    queryKey: ["dashboard-response-time-stats", rtWindow],
+    queryFn: () => fetchResponseTimeStats(rtWindow),
   });
 
   useEffect(() => {
@@ -708,7 +717,7 @@ export default function DashboardPage() {
           <ResponseTimeTrendCard entries={rtEntries} />
         )}
         {rtStats.length > 0 && (
-          <ResponseTimeStatsCard stats={rtStats} />
+          <ResponseTimeStatsCard stats={rtStats} window={rtWindow} onWindowChange={setRtWindow} />
         )}
       </div>
 
@@ -801,16 +810,42 @@ function StatCard({ title, href, icon, isLoading, value, valueClassName, titleCl
   );
 }
 
-function ResponseTimeStatsCard({ stats }: { stats: PathStat[] }) {
+function ResponseTimeStatsCard({
+  stats,
+  window,
+  onWindowChange,
+}: {
+  stats: PathStat[];
+  window: RtWindow;
+  onWindowChange: (w: RtWindow) => void;
+}) {
   if (!stats.length) return null;
+  const windowLabel = RT_WINDOWS.find((w) => w.value === window)?.label ?? window;
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-muted-foreground" />
-          <CardTitle className="text-sm font-medium">Statistik Performa per Endpoint</CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Statistik Performa per Endpoint</CardTitle>
+          </div>
+          <div className="flex items-center gap-1 rounded-md border border-border/60 p-0.5 bg-muted/30">
+            {RT_WINDOWS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onWindowChange(opt.value)}
+                className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                  window === opt.value
+                    ? "bg-background shadow-sm font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <CardDescription className="text-xs">Min / Avg / p95 / Max dari histori terakhir</CardDescription>
+        <CardDescription className="text-xs">Min / Avg / p95 / Max · {windowLabel} terakhir</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">

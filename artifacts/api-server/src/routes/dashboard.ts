@@ -58,24 +58,30 @@ router.get("/response-times", async (req, res) => {
   return res.json({ entries });
 });
 
-// GET /api/dashboard/response-time-stats?path=<path-fragment>
+// GET /api/dashboard/response-time-stats?path=<fragment>&window=<24h|7d|30d>
 // Returns per-path aggregate stats (count, min, max, avg, p95) from persisted history.
 // Optional ?path filter narrows rows to paths containing the fragment (LIKE %fragment%).
+// Optional ?window limits rows to the last 24h / 7d / 30d (default: 24h).
+const WINDOW_INTERVALS: Record<string, string> = {
+  "24h": "24 hours",
+  "7d":  "7 days",
+  "30d": "30 days",
+};
+
 router.get("/response-time-stats", async (req, res) => {
   try {
     const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
-    const rows = pathFilter
-      ? await db
-          .select()
-          .from(apiResponseTimesTable)
-          .where(sql`path LIKE ${"%" + pathFilter + "%"}`)
-          .orderBy(sql`id DESC`)
-          .limit(2000)
-      : await db
-          .select()
-          .from(apiResponseTimesTable)
-          .orderBy(sql`id DESC`)
-          .limit(2000);
+    const windowParam = typeof req.query["window"] === "string" ? req.query["window"] : "24h";
+    const interval = WINDOW_INTERVALS[windowParam] ?? WINDOW_INTERVALS["24h"]!;
+    const timeCondition = sql`timestamp >= NOW() - INTERVAL ${sql.raw(`'${interval}'`)}`;
+    const pathCondition = pathFilter ? sql`path LIKE ${"%" + pathFilter + "%"}` : undefined;
+    const whereClause = pathCondition ? sql`${timeCondition} AND ${pathCondition}` : timeCondition;
+    const rows = await db
+      .select()
+      .from(apiResponseTimesTable)
+      .where(whereClause)
+      .orderBy(sql`id DESC`)
+      .limit(10000);
 
     const byPath: Record<string, number[]> = {};
     for (const row of rows) {
