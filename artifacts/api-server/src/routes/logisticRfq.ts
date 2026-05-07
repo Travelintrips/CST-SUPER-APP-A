@@ -68,11 +68,11 @@ function buildRfqWaMessage(order: {
   orderNumber: string; origin: string; destination: string;
   shipmentType: string; commodity?: string | null; cargoDescription?: string | null;
   grossWeight?: number | null; volumeCbm?: number | null; requiredDate?: string | null;
-  notes?: string | null; createdAt?: Date | string | null;
+  notes?: string | null; jamOrder?: string | null; createdAt?: Date | string | null;
 }, rfqNumber: string, vendorName: string): string {
   const isFreight = isFreightWithDimensions(order.shipmentType);
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
-  const jam = order.createdAt ? formatJam(order.createdAt) : "";
+  const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
 
   const freightHint = isFreight
     ? (
@@ -203,6 +203,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
     requiredDate: order.requiredDate,
     notes: notes ?? order.notes,
+    jamOrder: order.jamOrder ?? null,
     createdAt: order.createdAt,
   };
 

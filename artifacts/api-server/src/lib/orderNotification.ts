@@ -25,6 +25,7 @@ export interface LogisticOrderData {
   serviceList: string;
   requiredDate?: string | null;
   notes?: string | null;
+  jamOrder?: string | null;
   createdAt?: Date | string | null;
 }
 
@@ -63,7 +64,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
 function buildAdminWaMessage(order: LogisticOrderData): string {
   const orderUrl = getOrderUrl(order.id);
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
-  const jam = order.createdAt ? formatJam(order.createdAt) : "";
+  const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
     `🚢 *ORDER LOGISTIK BARU*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
@@ -94,7 +95,7 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
 
 function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
-  const jam = order.createdAt ? formatJam(order.createdAt) : "";
+  const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
     `📦 *PERMINTAAN ORDER BARU — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -129,7 +130,7 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
 
 function buildCustomerWaMessage(order: LogisticOrderData): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
-  const jam = order.createdAt ? formatJam(order.createdAt) : "";
+  const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
     `✅ *PESANAN ANDA DITERIMA*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +

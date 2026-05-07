@@ -51,6 +51,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     paymentMethod: row.paymentMethod ?? null,
     namaPenerima: row.namaPenerima ?? null,
     nomorPenerima: row.nomorPenerima ?? null,
+    jamOrder: row.jamOrder ?? null,
     subtotal: parseFloat(row.subtotal),
     tax: parseFloat(row.tax),
     grandTotal: parseFloat(row.grandTotal),
@@ -112,6 +113,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       paymentMethod: body.paymentMethod ?? null,
       namaPenerima: body.namaPenerima ?? null,
       nomorPenerima: body.nomorPenerima ?? null,
+      jamOrder: body.jamOrder ?? null,
       subtotal: String(body.subtotal),
       tax: String(body.tax),
       grandTotal: String(body.grandTotal),
@@ -155,6 +157,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     serviceList,
     requiredDate: body.requiredDate ?? null,
     notes: body.notes ?? null,
+    jamOrder: body.jamOrder ?? null,
     createdAt: order.createdAt,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");

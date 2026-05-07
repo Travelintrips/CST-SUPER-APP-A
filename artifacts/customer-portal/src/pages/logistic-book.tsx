@@ -588,6 +588,7 @@ export default function BookPage() {
       ].filter(Boolean).join(" | ") || null,
       namaPenerima: customerForm.namaPenerima || null,
       nomorPenerima: customerForm.nomorPenerima || null,
+      jamOrder: str(truckingInputData.pickupTime) || null,
       paymentMethod: paymentType === "gateway"
         ? "payment_gateway"
         : paymentType === "transfer"
