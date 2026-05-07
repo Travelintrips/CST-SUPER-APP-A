@@ -37,7 +37,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList, X } from "lucide-react";
+import { Bot, ExternalLink, SendHorizonal, Trash2, RefreshCw, MessageSquare, Mail, CheckCircle2, MinusCircle, ClipboardList, X, Search } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -161,11 +161,15 @@ export default function AiDraftsPage() {
     else localStorage.setItem(LS_DATE_TO, v);
   }
 
+  const [logSearch, setLogSearch] = useState("");
+
   // Parse YYYY-MM-DD as local midnight (not UTC) to avoid timezone boundary shift
   const fromDate = logDateFrom ? new Date(logDateFrom + "T00:00:00") : null;
   const toDate = logDateTo ? new Date(logDateTo + "T23:59:59.999") : null;
   // Ignore invalid ranges (from after to) — show all rather than silent zero
   const rangeValid = !fromDate || !toDate || fromDate <= toDate;
+
+  const logSearchLower = logSearch.trim().toLowerCase();
 
   const filteredLog = intakeLog.filter((entry) => {
     if (logSource !== "all" && entry.source !== logSource) return false;
@@ -175,15 +179,21 @@ export default function AiDraftsPage() {
     if (rangeValid && toDate) {
       if (new Date(entry.timestamp) > toDate) return false;
     }
+    if (logSearchLower) {
+      const senderMatch = entry.sender?.toLowerCase().includes(logSearchLower) ?? false;
+      const subjectMatch = entry.subject?.toLowerCase().includes(logSearchLower) ?? false;
+      if (!senderMatch && !subjectMatch) return false;
+    }
     return true;
   });
 
-  const hasLogFilters = logSource !== "all" || logDateFrom !== "" || logDateTo !== "";
+  const hasLogFilters = logSource !== "all" || logDateFrom !== "" || logDateTo !== "" || logSearch !== "";
 
   function resetLogFilters() {
     setLogSource("all");
     setLogDateFrom("");
     setLogDateTo("");
+    setLogSearch("");
   }
 
   const { data: eligibleVendors = [] } = useListEligibleVendorsForDoc(
@@ -411,8 +421,27 @@ export default function AiDraftsPage() {
                   )}
                 </div>
 
+                {/* Search box */}
+                <div className="relative pt-2">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 mt-1 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Cari pengirim / subjek..."
+                    value={logSearch}
+                    onChange={(e) => setLogSearch(e.target.value)}
+                    className="h-8 pl-8 pr-8 text-xs"
+                  />
+                  {logSearch && (
+                    <button
+                      onClick={() => setLogSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 mt-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
                 {/* Filter toolbar */}
-                <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex flex-wrap items-center gap-3 pt-1.5">
                   {/* Source chips */}
                   <div className="flex items-center gap-1">
                     {(["all", "email", "wa"] as const).map((src) => (
