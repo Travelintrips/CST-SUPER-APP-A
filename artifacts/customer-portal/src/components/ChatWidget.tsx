@@ -36,6 +36,7 @@ type SseEvent =
 
 const SESSION_KEY = "cst_ai_chat_session";
 const MESSAGES_KEY = "cst_ai_chat_messages";
+const LAST_SEEN_KEY = "cst_ai_chat_last_seen";
 
 function loadSession(): string | null {
   try { return localStorage.getItem(SESSION_KEY); } catch { return null; }
@@ -87,15 +88,70 @@ export function ChatWidget() {
   const streamBufferRef = useRef<string>("");
   /** AbortController so we can cancel inflight stream on unmount */
   const abortRef = useRef<AbortController | null>(null);
+  /** ISO timestamp of when the user last viewed the widget — used for admin-reply polling */
+  const lastSeenAtRef = useRef<string>(
+    (() => { try { return localStorage.getItem(LAST_SEEN_KEY) ?? ""; } catch { return ""; } })()
+  );
+  /** Admin messages received while widget was closed — flushed to state on next open */
+  const pendingAdminRef = useRef<ChatMessage[]>([]);
 
   const isStreaming = streamingContent !== null;
 
+  // On open: flush pending admin messages into chat, clear unread, update lastSeenAt
   useEffect(() => {
     if (open) {
       setUnread(0);
+      if (pendingAdminRef.current.length > 0) {
+        const pending = pendingAdminRef.current;
+        pendingAdminRef.current = [];
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const toAdd = pending.filter((m) => !existingIds.has(m.id));
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
+      }
+      const now = new Date().toISOString();
+      lastSeenAtRef.current = now;
+      try { localStorage.setItem(LAST_SEEN_KEY, now); } catch { /* empty */ }
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [open]);
+
+  // Poll for new admin replies every 30 s while widget is closed
+  useEffect(() => {
+    if (!sessionToken || open) return;
+
+    async function pollAdminReplies() {
+      if (!sessionToken) return;
+      try {
+        const since = lastSeenAtRef.current || new Date(0).toISOString();
+        const res = await fetch(
+          `/api/ai-agent/session/${sessionToken}?since=${encodeURIComponent(since)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json() as {
+          messages: Array<{ id: number; role: string; content: string; createdAt: string }>;
+        };
+        const adminMsgs = data.messages.filter((m) => m.role === "admin");
+        if (adminMsgs.length === 0) return;
+
+        const existingIds = new Set(pendingAdminRef.current.map((m) => m.id));
+        const toAdd = adminMsgs
+          .map((m) => ({ id: String(m.id), role: "admin" as const, content: m.content }))
+          .filter((m) => !existingIds.has(m.id));
+
+        if (toAdd.length > 0) {
+          pendingAdminRef.current = [...pendingAdminRef.current, ...toAdd];
+          setUnread((n) => n + toAdd.length);
+        }
+      } catch { /* network errors are silently ignored */ }
+    }
+
+    // Run once immediately on start, then every 30 s
+    void pollAdminReplies();
+    const id = setInterval(() => void pollAdminReplies(), 30_000);
+    return () => clearInterval(id);
+  }, [sessionToken, open]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

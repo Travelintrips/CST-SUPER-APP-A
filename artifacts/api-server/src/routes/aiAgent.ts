@@ -6,7 +6,7 @@ import {
   aiChatMessagesTable,
   logisticOrdersTable,
 } from "@workspace/db";
-import { eq, asc, or, inArray, sql } from "drizzle-orm";
+import { eq, asc, or, inArray, sql, and, gt } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -533,8 +533,11 @@ aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
 });
 
 // ── GET /api/ai-agent/session/:token ─────────────────────────────────────────
+// Optional ?since=ISO — only returns messages created strictly after that timestamp.
+// Used by ChatWidget to poll for new admin replies efficiently.
 aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
   const { token } = req.params;
+  const sinceParam = req.query.since as string | undefined;
 
   const [session] = await db
     .select()
@@ -543,10 +546,17 @@ aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
 
   if (!session) return res.status(404).json({ message: "Sesi tidak ditemukan" });
 
+  const sinceDate = sinceParam ? new Date(sinceParam) : null;
+  const validSince = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null;
+
   const messages = await db
     .select()
     .from(aiChatMessagesTable)
-    .where(eq(aiChatMessagesTable.sessionId, session.id))
+    .where(
+      validSince
+        ? and(eq(aiChatMessagesTable.sessionId, session.id), gt(aiChatMessagesTable.createdAt, validSince))
+        : eq(aiChatMessagesTable.sessionId, session.id)
+    )
     .orderBy(asc(aiChatMessagesTable.createdAt));
 
   return res.json({
