@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Package, Truck, CheckCircle2, Clock, XCircle, ArrowRight, Mic, MicOff, ClipboardList } from "lucide-react";
 import { Link } from "wouter";
 
 interface ChatMessage {
@@ -31,6 +31,7 @@ type SseEvent =
   | { type: "token"; text: string }
   | { type: "order"; orderNumber: string; orderId: number }
   | { type: "status"; orders: OrderStatusEntry[] }
+  | { type: "form"; service: string }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -59,13 +60,185 @@ const GREETING: ChatMessage = {
   id: "greeting",
   role: "assistant",
   content:
-    "Halo! 👋 Selamat datang di CST Logistics. Saya asisten virtual Anda.\n\n" +
-    "Saya bisa membantu Anda:\n" +
-    "• Informasi layanan pengiriman (Sea/Air/Trucking)\n" +
-    "• Estimasi biaya dan waktu pengiriman\n" +
-    "• **Membuat order logistik** secara langsung\n\n" +
+    "Halo! 👋 Selamat datang di CST Logistics.\n\n" +
+    "Saya siap membantu Anda:\n" +
+    "• Informasi layanan (Sea/Air/Trucking/Customs)\n" +
+    "• **Buat order cepat** — ketik 'mau kirim' atau 'trucking', form langsung muncul!\n" +
+    "• Cek status order Anda\n\n" +
     "Ada yang bisa saya bantu?",
 };
+
+interface OrderFormProps {
+  service: string;
+  sessionToken: string | null;
+  onSuccess: (orderNumber: string, orderId: number, token: string) => void;
+  onDismiss: () => void;
+}
+
+const SERVICE_OPTIONS = ["Trucking", "Sea Freight", "Air Freight", "Customs", "Packing & Crating"];
+
+function OrderForm({ service, sessionToken, onSuccess, onDismiss }: OrderFormProps) {
+  const [form, setForm] = useState({
+    customerName: "",
+    phone: "",
+    email: "",
+    companyName: "",
+    shipmentType: service || "Trucking",
+    origin: "",
+    destination: "",
+    commodity: "",
+    grossWeight: "",
+    volumeCbm: "",
+    requiredDate: "",
+    notes: "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  function field(key: keyof typeof form) {
+    return {
+      value: form[key],
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+        setForm((prev) => ({ ...prev, [key]: e.target.value })),
+    };
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.customerName.trim() || !form.phone.trim() || !form.origin.trim() || !form.destination.trim()) {
+      setError("Isi semua field bertanda *");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/ai-agent/quick-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, sessionToken }),
+      });
+      const data = await res.json() as { success?: boolean; orderNumber?: string; orderId?: number; sessionToken?: string; error?: string };
+      if (!res.ok || !data.success) {
+        setError(data.error ?? "Gagal membuat order, coba lagi.");
+        return;
+      }
+      onSuccess(data.orderNumber!, data.orderId!, data.sessionToken ?? sessionToken ?? "");
+    } catch {
+      setError("Gagal koneksi, coba lagi.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const inp = "w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-sky-400 bg-white";
+  const lbl = "text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5 block";
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white border border-sky-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 bg-sky-50 border-b border-sky-100">
+        <ClipboardList className="h-4 w-4 text-sky-600 shrink-0" />
+        <p className="text-xs font-semibold text-sky-800 flex-1">Form Order Cepat</p>
+        <button type="button" onClick={onDismiss} className="text-gray-400 hover:text-gray-600">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="px-3 py-2.5 space-y-2">
+        <div>
+          <label className={lbl}>Nama Lengkap *</label>
+          <input className={inp} placeholder="Budi Santoso" {...field("customerName")} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={lbl}>No. WhatsApp *</label>
+            <input className={inp} placeholder="081234..." type="tel" {...field("phone")} />
+          </div>
+          <div>
+            <label className={lbl}>Email</label>
+            <input className={inp} placeholder="email@..." type="email" {...field("email")} />
+          </div>
+        </div>
+
+        <div>
+          <label className={lbl}>Nama Perusahaan</label>
+          <input className={inp} placeholder="PT Contoh / individu" {...field("companyName")} />
+        </div>
+
+        <div>
+          <label className={lbl}>Jenis Pengiriman *</label>
+          <select className={inp} {...field("shipmentType")}>
+            {SERVICE_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={lbl}>Kota Asal *</label>
+            <input className={inp} placeholder="Surabaya" {...field("origin")} />
+          </div>
+          <div>
+            <label className={lbl}>Kota Tujuan *</label>
+            <input className={inp} placeholder="Jakarta" {...field("destination")} />
+          </div>
+        </div>
+
+        <div>
+          <label className={lbl}>Komoditi / Jenis Barang</label>
+          <input className={inp} placeholder="Elektronik, Tekstil, dll" {...field("commodity")} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={lbl}>Berat (kg)</label>
+            <input className={inp} placeholder="500" type="number" min="0" {...field("grossWeight")} />
+          </div>
+          <div>
+            <label className={lbl}>Volume (CBM)</label>
+            <input className={inp} placeholder="2.5" type="number" min="0" step="0.1" {...field("volumeCbm")} />
+          </div>
+        </div>
+
+        <div>
+          <label className={lbl}>Tanggal Pengiriman</label>
+          <input className={inp} type="date" {...field("requiredDate")} />
+        </div>
+
+        <div>
+          <label className={lbl}>Catatan</label>
+          <textarea
+            className={`${inp} resize-none`}
+            rows={2}
+            placeholder="Info tambahan..."
+            value={form.notes}
+            onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+          />
+        </div>
+
+        {error && <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-2 py-1">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="flex-1 text-xs py-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Tutup
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex-1 text-xs py-2 rounded-xl bg-sky-600 text-white font-semibold hover:bg-sky-500 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? "Mengirim…" : "Buat Order →"}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
 
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
@@ -81,6 +254,10 @@ export function ChatWidget() {
   /** Latest order status results shown as a compact card */
   const [orderStatuses, setOrderStatuses] = useState<OrderStatusEntry[]>([]);
   const [unread, setUnread] = useState(0);
+  /** Inline quick-order form triggered by AI or user */
+  const [showForm, setShowForm] = useState<{ service: string } | null>(null);
+  /** Voice input state */
+  const [isListening, setIsListening] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +265,9 @@ export function ChatWidget() {
   const streamBufferRef = useRef<string>("");
   /** AbortController so we can cancel inflight stream on unmount */
   const abortRef = useRef<AbortController | null>(null);
+  /** SpeechRecognition instance */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   /** ISO timestamp of when the user last viewed the widget — used for admin-reply polling */
   const lastSeenAtRef = useRef<string>(
     (() => { try { return localStorage.getItem(LAST_SEEN_KEY) ?? ""; } catch { return ""; } })()
@@ -174,10 +354,11 @@ export function ChatWidget() {
     const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Reset streaming state and any stale status cards
+    // Reset streaming state, stale status cards, and inline form
     streamBufferRef.current = "";
     setStreamingContent("");
     setOrderStatuses([]);
+    setShowForm(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -247,6 +428,10 @@ export function ChatWidget() {
 
             case "status":
               setOrderStatuses(event.orders);
+              break;
+
+            case "form":
+              setShowForm({ service: event.service });
               break;
 
             case "done": {
@@ -331,8 +516,39 @@ export function ChatWidget() {
     }
   }
 
+  function toggleVoice() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const SR: (new () => { lang: string; interimResults: boolean; maxAlternatives: number; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start(): void; stop(): void }) | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) {
+      alert("Browser Anda belum mendukung input suara. Coba Chrome atau Edge.");
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const recognition = new SR();
+    recognition.lang = "id-ID";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const transcript = String(e.results[0][0].transcript);
+      setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }
+
   function resetChat() {
     abortRef.current?.abort();
+    recognitionRef.current?.stop();
     try {
       localStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(MESSAGES_KEY);
@@ -341,6 +557,8 @@ export function ChatWidget() {
     setMessages([GREETING]);
     setOrderCreated(null);
     setOrderStatuses([]);
+    setShowForm(null);
+    setIsListening(false);
     streamBufferRef.current = "";
     setStreamingContent(null);
   }
@@ -350,7 +568,7 @@ export function ChatWidget() {
       {open && (
         <div
           className="flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
-          style={{ width: 360, height: 520 }}
+          style={{ width: 368, maxHeight: "80vh", height: 560 }}
         >
           {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-sky-600 to-blue-700 text-white">
@@ -450,6 +668,30 @@ export function ChatWidget() {
               </div>
             )}
 
+            {showForm && (
+              <OrderForm
+                service={showForm.service}
+                sessionToken={sessionToken}
+                onSuccess={(orderNumber, orderId, token) => {
+                  setShowForm(null);
+                  setOrderCreated({ orderNumber, orderId });
+                  if (token && token !== sessionToken) {
+                    setSessionToken(token);
+                    saveSession(token);
+                  }
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: (Date.now() + 10).toString(),
+                      role: "assistant",
+                      content: `✅ Order berhasil dibuat! No. Order: **${orderNumber}**\nTim kami akan segera menghubungi Anda untuk konfirmasi harga.`,
+                    },
+                  ]);
+                }}
+                onDismiss={() => setShowForm(null)}
+              />
+            )}
+
             {orderStatuses.length > 0 && (
               <div className="space-y-2">
                 {orderStatuses.map((ord) => {
@@ -494,15 +736,34 @@ export function ChatWidget() {
           </div>
 
           {/* Input */}
-          <div className="px-3 py-3 bg-white border-t border-gray-100">
-            <div className="flex gap-2 items-center">
+          <div className="px-3 py-2.5 bg-white border-t border-gray-100">
+            {isListening && (
+              <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium mb-1.5 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                Mendengarkan… (bicara sekarang)
+              </div>
+            )}
+            <div className="flex gap-1.5 items-center">
+              <button
+                type="button"
+                onClick={toggleVoice}
+                disabled={isStreaming}
+                title={isListening ? "Berhenti merekam" : "Input suara (Bahasa Indonesia)"}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-40 ${
+                  isListening
+                    ? "bg-red-500 text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+              >
+                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
               <input
                 ref={inputRef}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder={isStreaming ? "Menunggu balasan…" : "Ketik pesan..."}
+                placeholder={isStreaming ? "Menunggu balasan…" : isListening ? "Bicara sekarang…" : "Ketik atau bicara…"}
                 className="flex-1 text-sm rounded-xl border border-gray-200 px-3 py-2 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-100 bg-gray-50"
                 disabled={isStreaming}
               />
@@ -514,6 +775,14 @@ export function ChatWidget() {
                 <Send className="h-4 w-4" />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowForm({ service: "" })}
+              className="w-full mt-1.5 text-[11px] text-sky-600 hover:text-sky-700 flex items-center justify-center gap-1 py-1 rounded-lg hover:bg-sky-50 transition-colors"
+            >
+              <ClipboardList className="h-3.5 w-3.5" />
+              Buka form order langsung
+            </button>
           </div>
         </div>
       )}

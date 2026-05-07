@@ -232,6 +232,11 @@ async function handleToolCall(
     }
   }
 
+  if (toolName === "show_order_form") {
+    const { service } = args as { service?: string };
+    return JSON.stringify({ shown: true, service: service ?? "" });
+  }
+
   if (toolName === "create_logistic_order") {
     try {
       const {
@@ -461,6 +466,15 @@ async function streamAiChat(
         } catch { /* empty */ }
       }
 
+      if (tc.name === "show_order_form") {
+        try {
+          const parsed = JSON.parse(result) as { shown?: boolean; service?: string };
+          if (parsed.shown) {
+            sendEvent({ type: "form", service: parsed.service ?? "" });
+          }
+        } catch { /* empty */ }
+      }
+
       toolResults.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
     chatMessages.push(...toolResults);
@@ -478,6 +492,112 @@ async function streamAiChat(
 
   sendEvent({ type: "done" });
 }
+
+// ── POST /api/ai-agent/quick-order  (direct form submission, no AI round-trip) ─
+aiAgentRouter.post("/quick-order", async (req: Request, res: Response) => {
+  const {
+    sessionToken: incomingToken,
+    customerName, phone, email, companyName, shipmentType,
+    origin, destination, commodity, cargoDescription,
+    grossWeight, volumeCbm, requiredDate, notes,
+  } = req.body as {
+    sessionToken?: string;
+    customerName?: string; phone?: string; email?: string; companyName?: string;
+    shipmentType?: string; origin?: string; destination?: string;
+    commodity?: string; cargoDescription?: string; grossWeight?: string;
+    volumeCbm?: string; requiredDate?: string; notes?: string;
+  };
+
+  if (!customerName || !phone || !shipmentType || !origin || !destination) {
+    return res.status(400).json({ error: "Field wajib belum lengkap (nama, HP, jenis, asal, tujuan)" });
+  }
+
+  try {
+    // Resolve or create session
+    let session: typeof aiChatSessionsTable.$inferSelect | undefined;
+    if (incomingToken) {
+      const [found] = await db
+        .select()
+        .from(aiChatSessionsTable)
+        .where(eq(aiChatSessionsTable.sessionToken, incomingToken));
+      session = found;
+    }
+    if (!session) {
+      const token = generateSessionToken();
+      const [created] = await db.insert(aiChatSessionsTable).values({ sessionToken: token }).returning();
+      session = created;
+    }
+
+    const orderNumber = generateOrderNumber();
+    const now = new Date();
+    const jamOrder = new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(now);
+
+    const gwNum = grossWeight ? parseFloat(grossWeight) : undefined;
+    const volNum = volumeCbm ? parseFloat(volumeCbm) : undefined;
+
+    const [order] = await db.insert(logisticOrdersTable).values({
+      orderNumber,
+      companyName: companyName || "-",
+      customerName,
+      email: email || `${phone}@wa.cstlogistics.id`,
+      phone,
+      shipmentType,
+      origin,
+      destination,
+      commodity: commodity ?? null,
+      cargoDescription: cargoDescription ?? null,
+      grossWeight: gwNum != null ? String(gwNum) : null,
+      volumeCbm: volNum != null ? String(volNum) : null,
+      requiredDate: requiredDate ?? null,
+      notes: notes ?? null,
+      jamOrder,
+      subtotal: "0",
+      tax: "0",
+      grandTotal: "0",
+      status: "New Order",
+      source: "ai_agent",
+      aiSessionToken: session.sessionToken,
+    }).returning();
+
+    await db.update(aiChatSessionsTable)
+      .set({ logisticOrderId: order.id })
+      .where(eq(aiChatSessionsTable.id, session.id));
+
+    sendLogisticOrderNotification({
+      id: order.id,
+      orderNumber,
+      customerName,
+      companyName: companyName || "-",
+      email: email || `${phone}@wa.cstlogistics.id`,
+      phone,
+      shipmentType,
+      origin,
+      destination,
+      commodity: commodity ?? null,
+      cargoDescription: cargoDescription ?? null,
+      grossWeight: gwNum ?? null,
+      volumeCbm: volNum ?? null,
+      grandTotal: 0,
+      serviceList: `• ${shipmentType}`,
+      requiredDate: requiredDate ?? null,
+      notes: notes ?? null,
+      jamOrder,
+      createdAt: order.createdAt,
+    }).catch((err: unknown) => logger.error({ err }, "quick-order sendLogisticOrderNotification failed"));
+
+    return res.status(201).json({
+      success: true,
+      orderNumber,
+      orderId: order.id,
+      sessionToken: session.sessionToken,
+    });
+  } catch (err) {
+    logger.error({ err }, "quick-order failed");
+    return res.status(500).json({ error: "Gagal membuat order. Silakan coba lagi." });
+  }
+});
 
 // ── POST /api/ai-agent/chat  (SSE streaming) ──────────────────────────────────
 aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
