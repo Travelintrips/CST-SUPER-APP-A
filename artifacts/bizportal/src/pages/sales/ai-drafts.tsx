@@ -187,7 +187,7 @@ export default function AiDraftsPage() {
     return true;
   });
 
-  const hasLogFilters = logSource !== "all" || logDateFrom !== "" || logDateTo !== "" || logSearch !== "";
+  const hasLogFilters = logSource !== "all" || logDateFrom !== "" || logDateTo !== "" || logSearchLower !== "";
 
   function resetLogFilters() {
     setLogSource("all");
