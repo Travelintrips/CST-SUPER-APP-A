@@ -274,6 +274,8 @@ export function ChatWidget() {
   /** SpeechRecognition instance */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  /** Stores the transcript captured during a push-to-talk session */
+  const pendingTranscriptRef = useRef<string>("");
   /** ISO timestamp of when the user last viewed the widget — used for admin-reply polling */
   const lastSeenAtRef = useRef<string>(
     (() => { try { return localStorage.getItem(LAST_SEEN_KEY) ?? ""; } catch { return ""; } })()
@@ -401,12 +403,11 @@ export function ChatWidget() {
     });
   }
 
-  async function sendMessage() {
-    const text = input.trim();
-    if (!text || isStreaming) return;
-    setInput("");
+  /** Core send logic — accepts text directly so push-to-talk and keyboard can share it */
+  async function doSend(text: string) {
+    if (!text.trim() || isStreaming) return;
 
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text };
+    const userMsg: ChatMessage = { id: Date.now().toString(), role: "user", content: text.trim() };
     setMessages((prev) => [...prev, userMsg]);
 
     // Reset streaming state, stale status cards, inline form, and stop any TTS
@@ -423,7 +424,7 @@ export function ChatWidget() {
       const res = await fetch("/api/ai-agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionToken, message: text }),
+        body: JSON.stringify({ sessionToken, message: text.trim() }),
         signal: controller.signal,
       });
 
@@ -552,6 +553,14 @@ export function ChatWidget() {
     }
   }
 
+  /** Thin wrapper so the text input and Enter key still work */
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+    await doSend(text);
+  }
+
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -574,7 +583,9 @@ export function ChatWidget() {
     }
   }
 
-  function toggleVoice() {
+  /** Push-to-talk: call on mousedown/touchstart */
+  function startListening() {
+    if (isStreaming || isListening) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -583,10 +594,7 @@ export function ChatWidget() {
       alert("Browser Anda belum mendukung input suara. Coba Chrome atau Edge.");
       return;
     }
-    if (isListening) {
-      recognitionRef.current?.stop();
-      return;
-    }
+    pendingTranscriptRef.current = "";
     const recognition = new SR();
     recognition.lang = "id-ID";
     recognition.interimResults = false;
@@ -594,14 +602,28 @@ export function ChatWidget() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (e: any) => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const transcript = String(e.results[0][0].transcript);
-      setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      pendingTranscriptRef.current = String(e.results[0][0].transcript);
     };
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      const transcript = pendingTranscriptRef.current.trim();
+      pendingTranscriptRef.current = "";
+      if (transcript) void doSend(transcript);
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      pendingTranscriptRef.current = "";
+    };
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
+  }
+
+  /** Push-to-talk: call on mouseup/touchend — stops recording, onend fires → auto-send */
+  function stopListening() {
+    if (!isListening) return;
+    recognitionRef.current?.stop();
+    // isListening + auto-send handled in recognition.onend
   }
 
   function resetChat() {
@@ -818,21 +840,33 @@ export function ChatWidget() {
           {/* Input */}
           <div className="px-3 py-2.5 bg-white border-t border-gray-100">
             {isListening && (
-              <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium mb-1.5 animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                Mendengarkan… (bicara sekarang)
+              <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium mb-1.5">
+                <span className="flex gap-0.5 items-center">
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="w-1 rounded-full bg-red-500 inline-block animate-bounce"
+                      style={{ height: `${6 + i * 3}px`, animationDelay: `${i * 0.1}s` }}
+                    />
+                  ))}
+                </span>
+                Merekam… lepas tombol untuk kirim
               </div>
             )}
             <div className="flex gap-1.5 items-center">
               <button
                 type="button"
-                onClick={toggleVoice}
+                onMouseDown={(e) => { e.preventDefault(); startListening(); }}
+                onMouseUp={stopListening}
+                onMouseLeave={stopListening}
+                onTouchStart={(e) => { e.preventDefault(); startListening(); }}
+                onTouchEnd={stopListening}
                 disabled={isStreaming}
-                title={isListening ? "Berhenti merekam" : "Input suara (Bahasa Indonesia)"}
-                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-40 ${
+                title="Tahan untuk merekam suara, lepas untuk kirim"
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors shrink-0 disabled:opacity-40 select-none ${
                   isListening
-                    ? "bg-red-500 text-white"
-                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    ? "bg-red-500 text-white scale-110 shadow-lg"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-red-100 active:text-red-500"
                 }`}
               >
                 {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
