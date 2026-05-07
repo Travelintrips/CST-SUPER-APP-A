@@ -4,7 +4,6 @@ import { useClerk, useUser } from "@clerk/react";
 import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations, getListAiDraftQuotationsQueryKey } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
-
   Package,
   Truck,
   Calculator,
@@ -57,6 +56,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface AppShellProps {
   children: ReactNode;
@@ -64,7 +64,7 @@ interface AppShellProps {
 
 interface FlatItem {
   type: "flat";
-  title: string;
+  titleKey: string;
   href: string;
   icon: LucideIcon;
   roles: string[];
@@ -72,11 +72,11 @@ interface FlatItem {
 
 interface GroupItem {
   type: "group";
-  title: string;
+  titleKey: string;
   basePath: string;
   icon: LucideIcon;
   roles: string[];
-  children: { title: string; href: string; icon: LucideIcon }[];
+  children: { titleKey: string; href: string; icon: LucideIcon }[];
 }
 
 type NavItem = FlatItem | GroupItem;
@@ -85,6 +85,7 @@ export function AppShell({ children }: AppShellProps) {
   const [location] = useLocation();
   const { signOut } = useClerk();
   const { user } = useUser();
+  const { t } = useLanguage();
   const { data: dbUser } = useGetCurrentUser({
     query: {
       enabled: !!user,
@@ -99,104 +100,108 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const navItems: NavItem[] = [
-    { type: "flat", title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin"] },
+    { type: "flat", titleKey: "dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin"] },
     {
       type: "group",
-      title: "Sales",
+      titleKey: "sales",
       basePath: "/sales",
       icon: TrendingUp,
       roles: ["admin"],
       children: [
-        { title: "Dashboard", href: "/sales", icon: LayoutDashboard },
-        { title: "Master Item", href: "/sales/items", icon: Boxes },
-        { title: "Quotations", href: "/sales/quotations", icon: FileText },
-        { title: "Sales Orders", href: "/sales/orders", icon: ShoppingBag },
-        { title: "AI Drafts", href: "/sales/ai-drafts", icon: Bot },
-        { title: "Customers", href: "/sales/customers", icon: UserCircle },
-        { title: "Invoices", href: "/sales/invoices", icon: Receipt },
+        { titleKey: "salesDashboard", href: "/sales", icon: LayoutDashboard },
+        { titleKey: "masterItem", href: "/sales/items", icon: Boxes },
+        { titleKey: "quotations", href: "/sales/quotations", icon: FileText },
+        { titleKey: "salesOrders", href: "/sales/orders", icon: ShoppingBag },
+        { titleKey: "aiDrafts", href: "/sales/ai-drafts", icon: Bot },
+        { titleKey: "customers", href: "/sales/customers", icon: UserCircle },
+        { titleKey: "invoices", href: "/sales/invoices", icon: Receipt },
       ],
     },
     {
       type: "group",
-      title: "Purchase",
+      titleKey: "purchase",
       basePath: "/purchase",
       icon: ClipboardList,
       roles: ["admin"],
       children: [
-        { title: "Dashboard", href: "/purchase", icon: LayoutDashboard },
-        { title: "RFQ", href: "/purchase/rfq", icon: ClipboardList },
-        { title: "Purchase Orders", href: "/purchase/orders", icon: ShoppingBag },
-        { title: "Vendors", href: "/purchase/vendors", icon: UserCircle },
-        { title: "Vendor Layanan", href: "/logistics/vendors", icon: Truck },
-        { title: "Bills", href: "/purchase/bills", icon: FileText },
+        { titleKey: "purchaseDashboard", href: "/purchase", icon: LayoutDashboard },
+        { titleKey: "rfq", href: "/purchase/rfq", icon: ClipboardList },
+        { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
+        { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "vendorService", href: "/logistics/vendors", icon: Truck },
+        { titleKey: "bills", href: "/purchase/bills", icon: FileText },
       ],
     },
     {
       type: "group",
-      title: "Laporan",
+      titleKey: "reports",
       basePath: "/reports",
       icon: TrendingUp,
       roles: ["admin"],
       children: [
-        { title: "Penjualan", href: "/reports/sales", icon: TrendingUp },
-        { title: "Pembelian", href: "/reports/purchase", icon: ShoppingBag },
-        { title: "Piutang (AR)", href: "/reports/ar-aging", icon: Receipt },
-        { title: "Hutang (AP)", href: "/reports/ap-aging", icon: FileText },
+        { titleKey: "salesReport", href: "/reports/sales", icon: TrendingUp },
+        { titleKey: "purchaseReport", href: "/reports/purchase", icon: ShoppingBag },
+        { titleKey: "arAging", href: "/reports/ar-aging", icon: Receipt },
+        { titleKey: "apAging", href: "/reports/ap-aging", icon: FileText },
       ],
     },
     {
       type: "group",
-      title: "Akunting",
+      titleKey: "accounting",
       basePath: "/accounting",
       icon: BookOpen,
       roles: ["admin"],
       children: [
-        { title: "Bagan Akun", href: "/accounting/accounts", icon: Landmark },
-        { title: "Jurnal", href: "/accounting/journals", icon: BookOpen },
-        { title: "Jurnal Entry", href: "/accounting/entries", icon: FileText },
-        { title: "Jurnal Items", href: "/accounting/journal-items", icon: List },
-        { title: "Pembayaran", href: "/accounting/payments", icon: Wallet },
-        { title: "Pajak", href: "/accounting/taxes", icon: Receipt },
-        { title: "Neraca Saldo", href: "/accounting/reports/trial-balance", icon: FileSpreadsheet },
-        { title: "Buku Besar", href: "/accounting/reports/general-ledger", icon: BookOpen },
-        { title: "Laba Rugi", href: "/accounting/reports/profit-loss", icon: TrendingUp },
-        { title: "Neraca", href: "/accounting/reports/balance-sheet", icon: Wallet },
-        { title: "Rekonsiliasi", href: "/accounting/reconciliation", icon: GitMerge },
-        { title: "Pengaturan", href: "/accounting/settings", icon: Settings },
+        { titleKey: "chartOfAccounts", href: "/accounting/accounts", icon: Landmark },
+        { titleKey: "journals", href: "/accounting/journals", icon: BookOpen },
+        { titleKey: "journalEntry", href: "/accounting/entries", icon: FileText },
+        { titleKey: "journalItems", href: "/accounting/journal-items", icon: List },
+        { titleKey: "payments", href: "/accounting/payments", icon: Wallet },
+        { titleKey: "taxes", href: "/accounting/taxes", icon: Receipt },
+        { titleKey: "trialBalance", href: "/accounting/reports/trial-balance", icon: FileSpreadsheet },
+        { titleKey: "generalLedger", href: "/accounting/reports/general-ledger", icon: BookOpen },
+        { titleKey: "profitLoss", href: "/accounting/reports/profit-loss", icon: TrendingUp },
+        { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
+        { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
+        { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
       ],
     },
-    { type: "flat", title: "Trading", href: "/trading", icon: Package, roles: ["admin", "trading"] },
+    { type: "flat", titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "trading"] },
     {
       type: "group",
-      title: "Logistics",
+      titleKey: "logistics",
       basePath: "/logistics",
       icon: Truck,
       roles: ["admin", "logistics"],
       children: [
-        { title: "Pengiriman", href: "/logistics", icon: Truck },
-        { title: "Freight Forwarding", href: "/logistics/freight", icon: Ship },
-        { title: "Pesanan Portal", href: "/logistics/portal-orders", icon: ClipboardList },
+        { titleKey: "shipments", href: "/logistics", icon: Truck },
+        { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship },
+        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
       ],
     },
-    { type: "flat", title: "POS", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
+    { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
     {
       type: "group",
-      title: "Biaya Operasional",
+      titleKey: "expense",
       basePath: "/expense",
       icon: DollarSign,
       roles: ["admin"],
       children: [
-        { title: "Daftar Expense", href: "/expense", icon: Receipt },
-        { title: "Kategori Biaya", href: "/expense/categories", icon: Tags },
-        { title: "Laporan", href: "/expense/reports", icon: BarChart2 },
+        { titleKey: "expenseList", href: "/expense", icon: Receipt },
+        { titleKey: "expenseCategories", href: "/expense/categories", icon: Tags },
+        { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2 },
       ],
     },
-    { type: "flat", title: "Korespondensi", href: "/correspondences", icon: Mail, roles: ["admin"] },
-    { type: "flat", title: "Kotak Masuk Email", href: "/email-inbox", icon: Mail, roles: ["admin"] },
-    { type: "flat", title: "Pengguna", href: "/users", icon: Users, roles: ["admin"] },
-    { type: "flat", title: "AI Chatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin"] },
-    { type: "flat", title: "Settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
+    { type: "flat", titleKey: "correspondences", href: "/correspondences", icon: Mail, roles: ["admin"] },
+    { type: "flat", titleKey: "emailInbox", href: "/email-inbox", icon: Mail, roles: ["admin"] },
+    { type: "flat", titleKey: "users", href: "/users", icon: Users, roles: ["admin"] },
+    { type: "flat", titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin"] },
+    { type: "flat", titleKey: "settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
   ];
+
+  const getNavTitle = (key: string): string => {
+    return (t.nav as Record<string, string>)[key] ?? key;
+  };
 
   const { data: aiDrafts = [] } = useListAiDraftQuotations({
     query: {
@@ -227,7 +232,6 @@ export function AppShell({ children }: AppShellProps) {
 
   const isChildActive = (href: string) => {
     if (location === href) return true;
-    // Special-case: root pages should only match exact, not nested
     if (href === "/sales" || href === "/purchase" || href === "/logistics") return false;
     return location.startsWith(`${href}/`) || location === href;
   };
@@ -248,7 +252,7 @@ export function AppShell({ children }: AppShellProps) {
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupLabel className="text-muted-foreground px-4 py-2 text-xs font-medium uppercase tracking-wider">
-                Modules
+                {t.nav.modules}
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -259,11 +263,11 @@ export function AppShell({ children }: AppShellProps) {
                           <SidebarMenuButton
                             asChild
                             isActive={location === item.href || location.startsWith(`${item.href}/`)}
-                            tooltip={item.title}
+                            tooltip={getNavTitle(item.titleKey)}
                           >
-                            <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.title.toLowerCase()}`}>
+                            <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase()}`}>
                               <item.icon size={18} />
-                              <span>{item.title}</span>
+                              <span>{getNavTitle(item.titleKey)}</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -275,13 +279,13 @@ export function AppShell({ children }: AppShellProps) {
                       <SidebarMenuItem key={item.basePath}>
                         <SidebarMenuButton
                           isActive={active}
-                          tooltip={item.title}
+                          tooltip={getNavTitle(item.titleKey)}
                           onClick={() => toggleGroup(item.basePath)}
-                          data-testid={`nav-group-${item.title.toLowerCase()}`}
+                          data-testid={`nav-group-${item.titleKey.toLowerCase()}`}
                           className="flex items-center gap-3"
                         >
                           <item.icon size={18} />
-                          <span className="flex-1">{item.title}</span>
+                          <span className="flex-1">{getNavTitle(item.titleKey)}</span>
                           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </SidebarMenuButton>
                         {open && (
@@ -289,9 +293,9 @@ export function AppShell({ children }: AppShellProps) {
                             {item.children.map((c) => (
                               <SidebarMenuSubItem key={c.href}>
                                 <SidebarMenuSubButton asChild isActive={isChildActive(c.href)}>
-                                  <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                                  <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
                                     <c.icon size={14} />
-                                    <span className="flex-1">{c.title}</span>
+                                    <span className="flex-1">{getNavTitle(c.titleKey)}</span>
                                     {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
                                       <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
                                         {aiDraftCount}
@@ -329,7 +333,7 @@ export function AppShell({ children }: AppShellProps) {
                       {dbUser?.name || user?.fullName || "User"}
                     </span>
                     <span className="truncate text-xs text-muted-foreground mt-1">
-                      {dbUser?.role || "No Role"}
+                      {dbUser?.role || t.common.noRole}
                     </span>
                   </div>
                 </button>
@@ -347,12 +351,15 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
                 <div className="p-2 pt-0">
                   <Badge variant="secondary" className="w-full justify-center capitalize">
-                    {dbUser?.role} Division
+                    {dbUser?.role} {t.common.division}
                   </Badge>
                 </div>
-                <DropdownMenuItem onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL.replace(/\/$/, "") + "/sign-in" })} className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10">
+                <DropdownMenuItem
+                  onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL.replace(/\/$/, "") + "/sign-in" })}
+                  className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
+                  <span>{t.common.logOut}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

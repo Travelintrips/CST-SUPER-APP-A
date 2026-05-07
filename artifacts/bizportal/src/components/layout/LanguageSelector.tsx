@@ -1,46 +1,37 @@
-import { useState, useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Globe } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { type Locale } from "@/lib/translations";
 
-const STORAGE_KEY = "app_locale";
-
-const LANGUAGES = [
-  { code: "id-ID", flag: "🇮🇩", language: "Bahasa Indonesia", country: "Indonesia", label: "ID" },
-  { code: "en-US", flag: "🇺🇸", language: "English", country: "United States", label: "EN" },
-  { code: "en-GB", flag: "🇬🇧", language: "English", country: "United Kingdom", label: "EN" },
-  { code: "zh-CN", flag: "🇨🇳", language: "中文 (简体)", country: "China", label: "ZH" },
-  { code: "zh-TW", flag: "🇹🇼", language: "中文 (繁體)", country: "Taiwan", label: "ZH" },
-  { code: "ja-JP", flag: "🇯🇵", language: "日本語", country: "Japan", label: "JA" },
-  { code: "ko-KR", flag: "🇰🇷", language: "한국어", country: "South Korea", label: "KO" },
-  { code: "ar-SA", flag: "🇸🇦", language: "العربية", country: "Saudi Arabia", label: "AR" },
-  { code: "fr-FR", flag: "🇫🇷", language: "Français", country: "France", label: "FR" },
-  { code: "de-DE", flag: "🇩🇪", language: "Deutsch", country: "Germany", label: "DE" },
-  { code: "es-ES", flag: "🇪🇸", language: "Español", country: "Spain", label: "ES" },
-  { code: "pt-BR", flag: "🇧🇷", language: "Português", country: "Brazil", label: "PT" },
-  { code: "ru-RU", flag: "🇷🇺", language: "Русский", country: "Russia", label: "RU" },
-  { code: "hi-IN", flag: "🇮🇳", language: "हिन्दी", country: "India", label: "HI" },
-  { code: "ms-MY", flag: "🇲🇾", language: "Bahasa Melayu", country: "Malaysia", label: "MS" },
-  { code: "th-TH", flag: "🇹🇭", language: "ภาษาไทย", country: "Thailand", label: "TH" },
-  { code: "vi-VN", flag: "🇻🇳", language: "Tiếng Việt", country: "Vietnam", label: "VI" },
+const LANGUAGES: { code: Locale; flag: string; language: string; country: string }[] = [
+  { code: "id-ID", flag: "🇮🇩", language: "Bahasa Indonesia", country: "Indonesia" },
+  { code: "en-US", flag: "🇺🇸", language: "English", country: "United States" },
+  { code: "en-GB", flag: "🇬🇧", language: "English", country: "United Kingdom" },
+  { code: "zh-CN", flag: "🇨🇳", language: "中文 (简体)", country: "China" },
+  { code: "zh-TW", flag: "🇹🇼", language: "中文 (繁體)", country: "Taiwan" },
+  { code: "ja-JP", flag: "🇯🇵", language: "日本語", country: "Japan" },
+  { code: "ko-KR", flag: "🇰🇷", language: "한국어", country: "South Korea" },
+  { code: "ar-SA", flag: "🇸🇦", language: "العربية", country: "Saudi Arabia" },
+  { code: "fr-FR", flag: "🇫🇷", language: "Français", country: "France" },
+  { code: "de-DE", flag: "🇩🇪", language: "Deutsch", country: "Germany" },
+  { code: "es-ES", flag: "🇪🇸", language: "Español", country: "Spain" },
+  { code: "pt-BR", flag: "🇧🇷", language: "Português", country: "Brazil" },
+  { code: "ru-RU", flag: "🇷🇺", language: "Русский", country: "Russia" },
+  { code: "hi-IN", flag: "🇮🇳", language: "हिन्दी", country: "India" },
+  { code: "ms-MY", flag: "🇲🇾", language: "Bahasa Melayu", country: "Malaysia" },
+  { code: "th-TH", flag: "🇹🇭", language: "ภาษาไทย", country: "Thailand" },
+  { code: "vi-VN", flag: "🇻🇳", language: "Tiếng Việt", country: "Vietnam" },
 ];
 
-function getInitialLocale(): string {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && LANGUAGES.find((l) => l.code === stored)) return stored;
-  const browser = navigator.language;
-  const match = LANGUAGES.find((l) => l.code === browser || l.code.startsWith(browser.split("-")[0]));
-  return match?.code ?? "id-ID";
-}
-
 export function LanguageSelector() {
-  const [locale, setLocale] = useState(getInitialLocale);
+  const { locale, setLocale } = useLanguage();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const current = LANGUAGES.find((l) => l.code === locale) ?? LANGUAGES[0];
 
-  function selectLocale(code: string) {
+  function selectLocale(code: Locale) {
     setLocale(code);
-    localStorage.setItem(STORAGE_KEY, code);
     setOpen(false);
   }
 

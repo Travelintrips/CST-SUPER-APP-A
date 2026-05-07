@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/dashboard";
@@ -412,12 +413,14 @@ function App() {
         afterSignOutUrl={`${basePath}/sign-in`}
       >
         <ClerkQueryClientCacheInvalidator />
-        <TooltipProvider>
-          <WouterRouter base={basePath}>
-            <Router />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
+        <LanguageProvider>
+          <TooltipProvider>
+            <WouterRouter base={basePath}>
+              <Router />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+        </LanguageProvider>
       </ClerkProvider>
     </QueryClientProvider>
   );
