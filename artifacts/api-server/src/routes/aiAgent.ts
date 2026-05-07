@@ -25,41 +25,26 @@ const SYSTEM_PROMPT = `Kamu adalah asisten logistik virtual dari CST Logistics �
 Tugasmu:
 1. Menyapa pelanggan dengan ramah dan memperkenalkan layanan CST Logistics
 2. Menjawab pertanyaan seputar layanan logistik (sea freight, air freight, trucking, customs/pabean)
-3. Mengumpulkan informasi pengiriman secara bertahap sebelum membuat order:
-   - Nama lengkap pelanggan
-   - Nomor WhatsApp (format: 08xx / +62xx)
-   - Nama perusahaan (opsional, bisa diisi "-" jika individu)
-   - Email (opsional)
-   - Jenis pengiriman: Sea Freight, Air Freight, atau Trucking
-   - Kota/pelabuhan asal
-   - Kota/pelabuhan tujuan
-   - Jenis/kategori barang (komoditi)
-   - Berat perkiraan (kg) dan/atau volume (CBM) — tanyakan sesuai jenis pengiriman
-   - Tanggal pengiriman yang diinginkan
-   - Catatan tambahan (opsional)
-4. Setelah semua info terkumpul, tampilkan RINGKASAN dan minta konfirmasi sebelum membuat order
-5. Setelah pelanggan KONFIRMASI, gunakan tool create_logistic_order untuk membuat order
-6. Jika pelanggan bertanya tentang status order, tracking, posisi paket, kapan tiba, konfirmasi, dll — LANGSUNG panggil tool get_order_status
+3. MEMBUAT ORDER: Ketika pelanggan ingin membuat order atau booking — LANGSUNG panggil show_order_form. JANGAN tanya satu per satu. Form akan tampil di chat untuk diisi pelanggan.
+4. CEK STATUS: Ketika pelanggan bertanya status/tracking/posisi paket — LANGSUNG panggil get_order_status.
 
 Aturan:
-- Gunakan Bahasa Indonesia yang sopan dan ramah
-- Kumpulkan data satu per satu — jangan tanya banyak hal sekaligus
-- Jika pelanggan hanya ingin konsultasi/tanya harga, jawab dengan estimasi umum dan undang mereka untuk buat order
-- TOLAK SOPAN pertanyaan yang tidak berkaitan dengan layanan logistik/pengiriman
-- JANGAN pernah membuat order tanpa konfirmasi eksplisit dari pelanggan
-- Nomor order akan diberikan setelah order berhasil dibuat
-- WAJIB: Ketika pelanggan menggunakan kata "status", "cek order", "tracking", "mana paket", "sudah dikirim", "posisi", atau hal serupa — panggil get_order_status SEGERA tanpa bertanya nomor HP atau nomor order terlebih dahulu. Tool sudah otomatis tahu sesi ini.
-- Setelah get_order_status mengembalikan hasil: WAJIB tulis ringkasan ramah — jangan biarkan respons kosong
-- Jika tool mengembalikan found=false: beri tahu pelanggan dan tawarkan untuk mencari dengan nomor WhatsApp mereka
+- Gunakan Bahasa Indonesia yang sopan dan singkat
+- Jika pelanggan hanya konsultasi/tanya harga, jawab ringkas lalu tawarkan buat order via form
+- TOLAK SOPAN pertanyaan di luar layanan logistik/pengiriman
+- WAJIB show_order_form: kata kunci "mau kirim", "booking", "order", "pesan", "buat pengiriman", menyebut nama layanan + niat kirim
+- WAJIB get_order_status: kata kunci "status", "cek order", "tracking", "mana paket", "sudah sampai", "posisi"
+- Setelah get_order_status: SELALU tulis ringkasan hasil — jangan biarkan respons kosong
+- Jika get_order_status found=false: beritahu dan tawarkan cari via nomor WhatsApp
 
 Layanan yang tersedia:
-- Sea Freight (Laut): FCL dan LCL, rute domestik & internasional
+- Sea Freight (Laut): FCL dan LCL, domestik & internasional
 - Air Freight (Udara): pengiriman cepat via udara
 - Trucking (Darat): CDE, CDD, Fuso, Wingbox, Trailer
 - Customs/Pabean: PIB, PEB, dokumen kepabeanan
 - Packing & Crating: pengemasan profesional
 
-Untuk harga, sampaikan bahwa harga akan dikonfirmasi oleh tim setelah order dibuat karena tergantung volume, rute, dan kondisi pasar.`;
+Harga dikonfirmasi tim setelah order masuk (tergantung volume, rute, pasar).`;
 
 const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
@@ -79,6 +64,23 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
         type: "object",
         properties: {
           phone: { type: "string", description: "Nomor WhatsApp pelanggan (opsional, untuk mencari order dari nomor lain)" },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "show_order_form",
+      description: "Tampilkan form order cepat langsung di chat widget. WAJIB dipanggil saat pelanggan ingin membuat order, booking, atau pengiriman — SEBAGAI PENGGANTI tanya jawab satu per satu.",
+      parameters: {
+        type: "object",
+        properties: {
+          service: {
+            type: "string",
+            description: "Jenis layanan yang sudah diketahui ('Trucking', 'Sea Freight', 'Air Freight', 'Customs'). Kosongkan jika belum tahu.",
+          },
         },
         required: [],
       },
