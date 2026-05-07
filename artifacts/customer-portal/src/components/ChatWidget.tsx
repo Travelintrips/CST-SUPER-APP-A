@@ -969,7 +969,7 @@ export function ChatWidget() {
         lineBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (!line.startsWith(" ")) continue;
+          if (!line.startsWith("data: ")) continue;
           let event: SseEvent;
           try {
             event = JSON.parse(line.slice(6)) as SseEvent;
@@ -1287,58 +1287,55 @@ export function ChatWidget() {
             animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         >
-          {/* Header - DENGAN LOGO CST */}
+          {/* Header */}
           <div
-            className="flex items-center justify-between px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
+            className="flex items-center gap-2 px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
             style={{
               background: "linear-gradient(135deg, #0052D4 0%, #4364F7 100%)",
               backdropFilter: "blur(10px)",
               WebkitBackdropFilter: "blur(10px)",
             }}
           >
-            {/* Left: Logo CST */}
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0 overflow-hidden">
-              <img
-                src="https://i.ibb.co/v631Kq5F/logo.png"
-                alt="CST Logistic"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // Fallback jika gambar gagal load
-                  (e.target as HTMLImageElement).src =
-                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚢%3C/text%3E%3C/svg%3E";
-                }}
-              />
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <Bot className="h-5 w-5 text-white" />
             </div>
-
-            {/* Center: Title & Status */}
-            <div className="flex-1 flex flex-col items-center text-center px-2">
-              <h1
-                className="text-white font-bold whitespace-nowrap overflow-hidden text-ellipsis"
+            <div className="flex-1 min-w-0 pr-2">
+              <p
+                className="font-semibold text-white leading-snug text-right"
                 style={{
-                  fontSize: 16,
+                  fontSize: 15,
                   letterSpacing: "0.3px",
-                  textShadow: "0 2px 4px rgba(0,0,0,0.15)",
+                  textShadow: "0 1px 3px rgba(0,0,0,0.18)",
                   lineHeight: 1.2,
                 }}
               >
                 CST Logistics Assistant
-              </h1>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-[11px] text-sky-100 font-medium">
-                  Online
-                </span>
-              </div>
+              </p>
+              <p className="text-xs text-sky-200 flex items-center justify-end gap-1 mt-0.5">
+                {isSpeaking ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full inline-block bg-purple-300 animate-pulse" />
+                    <span className="animate-pulse">Berbicara…</span>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full inline-block ${isStreaming ? "bg-yellow-400 animate-pulse" : "bg-green-400"}`}
+                    />
+                    {isStreaming ? "Mengetik…" : "Online"}
+                  </>
+                )}
+              </p>
             </div>
-
-            {/* Right: Action Buttons */}
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {/* Icon button group — right-aligned */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
+              {/* Sound effects toggle */}
               <button
                 onClick={toggleSfx}
                 title={
                   sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"
                 }
-                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   sfxEnabled
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
@@ -1346,11 +1343,12 @@ export function ChatWidget() {
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
                 {sfxEnabled ? (
-                  <Bell className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                  <Bell className="h-[18px] w-[18px]" />
                 ) : (
-                  <BellOff className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                  <BellOff className="h-[18px] w-[18px]" />
                 )}
               </button>
+              {/* Voice output toggle */}
               <button
                 onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
                 title={
@@ -1360,7 +1358,7 @@ export function ChatWidget() {
                       ? "Matikan suara AI"
                       : "Aktifkan suara AI"
                 }
-                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   voiceOutput || isSpeaking
                     ? "bg-white/25 text-white"
                     : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
@@ -1368,14 +1366,14 @@ export function ChatWidget() {
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
                 {voiceOutput || isSpeaking ? (
-                  <Volume2 className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                  <Volume2 className="h-[18px] w-[18px]" />
                 ) : (
-                  <VolumeX className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                  <VolumeX className="h-[18px] w-[18px]" />
                 )}
               </button>
               <button
                 onClick={resetChat}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 text-white/70 hover:text-white text-[11px] font-semibold tracking-wide transition-all duration-300 rounded-xl hover:bg-white/15 hidden sm:block"
+                className="h-11 sm:h-9 px-2.5 text-white/65 hover:text-white text-[11px] font-semibold tracking-wide transition-all duration-300 rounded-xl hover:bg-white/15"
                 title="Reset percakapan"
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
@@ -1383,7 +1381,7 @@ export function ChatWidget() {
               </button>
               <button
                 onClick={() => setOpen(false)}
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/15 rounded-xl transition-all duration-300"
+                className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/15 rounded-xl transition-all duration-300"
                 style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
               >
                 <X className="h-5 w-5" />

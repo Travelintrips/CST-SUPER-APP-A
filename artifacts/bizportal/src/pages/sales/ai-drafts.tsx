@@ -92,6 +92,13 @@ function IntakeStatusBadge({ entry }: { entry: AiIntakeLogEntry }) {
         Draft dibuat
       </span>
     );
+  if (entry.status === "error")
+    return (
+      <span className="flex items-center gap-1 text-red-500 text-xs font-medium">
+        <MinusCircle size={13} />
+        Error
+      </span>
+    );
   return (
     <span className="flex items-center gap-1 text-muted-foreground text-xs">
       <MinusCircle size={13} />

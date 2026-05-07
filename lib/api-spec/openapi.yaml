@@ -5863,7 +5863,7 @@ components:
         timestamp: { type: string }
         status:
           type: string
-          enum: [created, skipped]
+          enum: [created, skipped, error]
         docId: { type: integer, nullable: true }
         docNumber: { type: string, nullable: true }
         docStatus: { type: string, nullable: true }

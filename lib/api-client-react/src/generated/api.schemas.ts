@@ -2400,6 +2400,7 @@ export type AiIntakeLogEntryStatus =
 export const AiIntakeLogEntryStatus = {
   created: "created",
   skipped: "skipped",
+  error: "error",
 } as const;
 
 export interface AiIntakeLogEntry {

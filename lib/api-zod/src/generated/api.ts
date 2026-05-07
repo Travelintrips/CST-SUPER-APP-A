@@ -1835,7 +1835,7 @@ export const ListAiIntakeLogResponseItem = zod.object({
   sender: zod.string().nullish(),
   subject: zod.string().nullish(),
   timestamp: zod.string(),
-  status: zod.enum(["created", "skipped"]),
+  status: zod.enum(["created", "skipped", "error"]),
   docId: zod.number().nullish(),
   docNumber: zod.string().nullish(),
   docStatus: zod.string().nullish(),
