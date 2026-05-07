@@ -651,8 +651,6 @@ export function ChatWidget() {
       return true;
     }
   });
-  /** Mutable ref so the polling interval closure always reads the live value */
-  const sfxEnabledRef = useRef(sfxEnabled);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -741,12 +739,6 @@ export function ChatWidget() {
           pendingAdminRef.current = [...pendingAdminRef.current, ...toAdd];
           setUnread((n) => n + toAdd.length);
           playSound("notification");
-          // Native browser notification when tab is hidden
-          const preview =
-            toAdd.length === 1
-              ? `Admin: ${toAdd[0].content.slice(0, 100)}`
-              : `${toAdd.length} pesan baru dari Admin`;
-          fireDesktopNotif(preview);
         }
       } catch {
         /* network errors are silently ignored */
@@ -766,11 +758,6 @@ export function ChatWidget() {
   useEffect(() => {
     if (!isStreaming) saveMessages(messages);
   }, [messages, isStreaming]);
-
-  // Keep sfxEnabledRef in sync so the polling closure always sees the latest value
-  useEffect(() => {
-    sfxEnabledRef.current = sfxEnabled;
-  }, [sfxEnabled]);
 
   // Cancel any inflight stream on unmount; also stop any TTS
   useEffect(() => {
@@ -832,7 +819,7 @@ export function ChatWidget() {
 
   /** Synthesize a short UI sound via Web Audio API — no external files, iOS/Android safe */
   function playSound(type: "sent" | "received" | "notification" | "error") {
-    if (!sfxEnabledRef.current) return;
+    if (!sfxEnabled) return;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const AC: (new () => AudioContext) | undefined =
@@ -910,33 +897,8 @@ export function ChatWidget() {
       } catch {
         /* empty */
       }
-      // Request browser notification permission when user enables sfx
-      if (next && "Notification" in window && Notification.permission === "default") {
-        void Notification.requestPermission();
-      }
       return next;
     });
-  }
-
-  /**
-   * Show a native browser notification when the tab is hidden and permission
-   * is granted. Only fired when sfxEnabledRef.current is true so it respects
-   * the same toggle as the audio ding.
-   */
-  function fireDesktopNotif(body: string) {
-    if (!sfxEnabledRef.current) return;
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    if (!document.hidden) return;
-    try {
-      const n = new Notification("CST Logistics — Pesan baru", {
-        body,
-        icon: "/favicon.ico",
-        tag: "cst-admin-reply",
-      });
-      setTimeout(() => n.close(), 8_000);
-    } catch {
-      /* unsupported or blocked */
-    }
   }
 
   /** Core send logic — accepts text directly so push-to-talk and keyboard can share it */
@@ -1339,9 +1301,9 @@ export function ChatWidget() {
             </div>
             <div className="flex-1 min-w-0 pr-2">
               <p
-                className="font-semibold text-white leading-snug text-right"
+                className="font-semibold text-white leading-snug text-center sm:text-right text-[11px] sm:text-sm whitespace-nowrap truncate"
                 style={{
-                  fontSize: 15,
+                  fontSize: 14,
                   letterSpacing: "0.3px",
                   textShadow: "0 1px 3px rgba(0,0,0,0.18)",
                   lineHeight: 1.2,
@@ -1371,9 +1333,7 @@ export function ChatWidget() {
               <button
                 onClick={toggleSfx}
                 title={
-                  sfxEnabled
-                    ? "Matikan suara & notifikasi"
-                    : "Aktifkan suara & notifikasi"
+                  sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"
                 }
                 className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
                   sfxEnabled
