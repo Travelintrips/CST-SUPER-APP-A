@@ -896,13 +896,13 @@ export function ChatWidget() {
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
-            width: "min(90vw, 460px)",
-            maxWidth: 460,
-            height: "min(78vh, 620px)",
-            borderRadius: 24,
-            border: "1px solid rgba(255,255,255,0.15)",
+            width: "min(92vw, 450px)",
+            maxWidth: 450,
+            height: "min(70vh, 600px)",
+            borderRadius: 20,
+            border: "1px solid rgba(0,0,0,0.06)",
             boxShadow:
-              "0 24px 64px rgba(0,0,0,0.22), 0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)",
+              "0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03)",
             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
             WebkitTapHighlightColor: "transparent",
             animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
@@ -910,9 +910,9 @@ export function ChatWidget() {
         >
           {/* Header */}
           <div
-            className="flex items-center gap-3 px-4 py-3 shrink-0"
+            className="flex items-center gap-2 px-4 py-3.5 sm:px-5 sm:py-4 shrink-0"
             style={{
-              background: "linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%)",
+              background: "linear-gradient(135deg, #0052D4 0%, #4364F7 100%)",
               backdropFilter: "blur(10px)",
               WebkitBackdropFilter: "blur(10px)",
             }}
@@ -921,7 +921,7 @@ export function ChatWidget() {
               <Bot className="h-5 w-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm leading-tight text-white tracking-tight">CST Logistics Assistant</p>
+              <p className="font-semibold text-white leading-snug" style={{ fontSize: 15, letterSpacing: "0.3px" }}>CST Logistics Assistant</p>
               <p className="text-xs text-sky-200 flex items-center gap-1 mt-0.5">
                 {isSpeaking ? (
                   <>
@@ -936,43 +936,50 @@ export function ChatWidget() {
                 )}
               </p>
             </div>
-            {/* Sound effects toggle */}
-            <button
-              onClick={toggleSfx}
-              title={sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"}
-              className={`w-11 h-11 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
-                sfxEnabled
-                  ? "bg-white/25 text-white"
-                  : "bg-white/10 text-white/60 hover:text-white hover:bg-white/20"
-              }`}
-            >
-              {sfxEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
-            </button>
-            {/* Voice output toggle */}
-            <button
-              onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
-              title={isSpeaking ? "Berhenti bicara" : voiceOutput ? "Matikan suara AI" : "Aktifkan suara AI"}
-              className={`w-11 h-11 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
-                voiceOutput || isSpeaking
-                  ? "bg-white/25 text-white"
-                  : "bg-white/10 text-white/60 hover:text-white hover:bg-white/20"
-              }`}
-            >
-              {voiceOutput || isSpeaking ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-            </button>
-            <button
-              onClick={resetChat}
-              className="h-11 sm:h-8 px-3 text-white/70 hover:text-white text-xs font-medium transition-all duration-200 rounded-lg hover:bg-white/10"
-              title="Reset percakapan"
-            >
-              Reset
-            </button>
-            <button
-              onClick={() => setOpen(false)}
-              className="w-11 h-11 sm:w-8 sm:h-8 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-all duration-200"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            {/* Icon button group — right-aligned */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
+              {/* Sound effects toggle */}
+              <button
+                onClick={toggleSfx}
+                title={sfxEnabled ? "Matikan suara efek" : "Aktifkan suara efek"}
+                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                  sfxEnabled
+                    ? "bg-white/25 text-white"
+                    : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
+                }`}
+                style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
+              >
+                {sfxEnabled ? <Bell className="h-[18px] w-[18px]" /> : <BellOff className="h-[18px] w-[18px]" />}
+              </button>
+              {/* Voice output toggle */}
+              <button
+                onClick={isSpeaking ? stopSpeaking : toggleVoiceOutput}
+                title={isSpeaking ? "Berhenti bicara" : voiceOutput ? "Matikan suara AI" : "Aktifkan suara AI"}
+                className={`w-11 h-11 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                  voiceOutput || isSpeaking
+                    ? "bg-white/25 text-white"
+                    : "bg-white/10 text-white/55 hover:text-white hover:bg-white/20"
+                }`}
+                style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
+              >
+                {voiceOutput || isSpeaking ? <Volume2 className="h-[18px] w-[18px]" /> : <VolumeX className="h-[18px] w-[18px]" />}
+              </button>
+              <button
+                onClick={resetChat}
+                className="h-11 sm:h-9 px-2.5 text-white/65 hover:text-white text-[11px] font-semibold tracking-wide transition-all duration-300 rounded-xl hover:bg-white/15"
+                title="Reset percakapan"
+                style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => setOpen(false)}
+                className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center text-white/75 hover:text-white hover:bg-white/15 rounded-xl transition-all duration-300"
+                style={{ transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)" }}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* Messages */}
@@ -995,14 +1002,17 @@ export function ChatWidget() {
                   )}
                   <div className={`flex flex-col max-w-[85%] ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <div
-                      className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap transition-all duration-200 ${
+                      className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                         msg.role === "user"
-                          ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-tr-sm shadow-sm"
+                          ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-2xl rounded-tr-sm"
                           : msg.role === "admin"
-                          ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-tl-sm shadow-sm"
-                          : "bg-white border border-gray-100 text-gray-800 rounded-tl-sm"
+                          ? "bg-amber-50 border border-amber-200 text-gray-800 rounded-2xl rounded-tl-sm"
+                          : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm"
                       }`}
-                      style={{ boxShadow: msg.role === "user" ? "0 2px 12px rgba(14,165,233,0.25)" : "0 1px 4px rgba(0,0,0,0.06)" }}
+                      style={{
+                        boxShadow: msg.role === "user" ? "0 2px 8px rgba(14,165,233,0.22)" : "0 2px 8px rgba(0,0,0,0.06)",
+                        transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
+                      }}
                     >
                       {msg.role === "admin" && (
                         <p className="text-[10px] font-semibold text-amber-600 mb-1">Admin CST</p>
@@ -1195,8 +1205,15 @@ export function ChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
                 placeholder={isStreaming ? "Menunggu balasan…" : isListening ? "Bicara sekarang…" : "Ketik atau bicara…"}
-                className="flex-1 rounded-full border border-gray-200 px-4 py-2.5 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 bg-gray-50 transition-all duration-200"
-                style={{ fontSize: 16, lineHeight: "1.4" }}
+                className="flex-1 rounded-full border outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                style={{
+                  fontSize: 16,
+                  lineHeight: "1.4",
+                  background: "#f8f9fa",
+                  borderColor: "#e9ecef",
+                  padding: "10px 16px",
+                  transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
+                }}
                 disabled={isStreaming}
               />
               <button
