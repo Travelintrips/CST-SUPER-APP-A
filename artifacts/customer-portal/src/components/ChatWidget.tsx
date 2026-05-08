@@ -651,6 +651,10 @@ export function ChatWidget() {
       return true;
     }
   });
+  /** True when viewport width is < 640px (phone-sized) — drives bottom-sheet layout */
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches,
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -765,6 +769,15 @@ export function ChatWidget() {
       abortRef.current?.abort();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
     };
+  }, []);
+
+  // Sync isMobile with viewport width changes (e.g. rotation, resize)
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
   /** Strip markdown symbols so TTS sounds natural */
@@ -1266,26 +1279,41 @@ export function ChatWidget() {
         />
       )}
 
-      {/* Chat panel — centered modal */}
+      {/* Chat panel — bottom-sheet on mobile, centered modal on desktop */}
       {open && (
         <div
           className="fixed z-[9999] flex flex-col bg-white overflow-hidden"
-          style={{
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: "min(92vw, 450px)",
-            maxWidth: 450,
-            height: "min(70vh, 600px)",
-            borderRadius: 20,
-            border: "1px solid rgba(0,0,0,0.06)",
-            boxShadow:
-              "0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03)",
-            fontFamily:
-              "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-            WebkitTapHighlightColor: "transparent",
-            animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-          }}
+          style={
+            isMobile
+              ? {
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  width: "100%",
+                  height: "calc(100dvh - 48px)",
+                  borderRadius: "20px 20px 0 0",
+                  border: "1px solid rgba(0,0,0,0.06)",
+                  boxShadow: "0 -4px 24px rgba(0,0,0,0.14), 0 -1px 4px rgba(0,0,0,0.06)",
+                  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                  WebkitTapHighlightColor: "transparent",
+                  animation: "chatSheetIn 0.32s cubic-bezier(0.32, 0.72, 0, 1)",
+                }
+              : {
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: "min(92vw, 450px)",
+                  maxWidth: 450,
+                  height: "min(70vh, 600px)",
+                  borderRadius: 20,
+                  border: "1px solid rgba(0,0,0,0.06)",
+                  boxShadow:
+                    "0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03)",
+                  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                  WebkitTapHighlightColor: "transparent",
+                  animation: "chatModalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                }
+          }
         >
           {/* Header */}
           <div
@@ -1701,7 +1729,7 @@ export function ChatWidget() {
         </div>
       )}
 
-      {/* Bubble button — fixed at bottom-right */}
+      {/* Bubble button — fixed at bottom-right; hidden on mobile when panel is open */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="fixed z-[9999] rounded-full text-white flex items-center justify-center transition-all duration-300 hover:-translate-y-1 active:scale-95"
@@ -1714,6 +1742,7 @@ export function ChatWidget() {
           boxShadow:
             "0 4px 20px rgba(14,165,233,0.5), 0 2px 8px rgba(0,0,0,0.15)",
           WebkitTapHighlightColor: "transparent",
+          display: isMobile && open ? "none" : undefined,
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLElement).style.boxShadow =
