@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/"
+previewPath = "/dl/"
 title = "GitHub Downloader"
 version = "1.0.0"
 id = "artifacts/github-downloader"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/" ]
+paths = [ "/dl/" ]
 localPort = 19326
 
 [services.development]
@@ -23,9 +23,9 @@ publicDir = "artifacts/github-downloader/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+from = "/dl/*"
+to = "/dl/index.html"
 
 [services.env]
 PORT = "19326"
-BASE_PATH = "/"
+BASE_PATH = "/dl/"
