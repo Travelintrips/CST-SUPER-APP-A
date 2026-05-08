@@ -164,7 +164,7 @@ export default function AiScanSettingsPage() {
                 )}
               </TabsTrigger>
               <TabsTrigger value="freight" className="relative">
-                Freight
+                Freight/Pengiriman
                 {isGroupDirty("freight") && (
                   <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
                 )}
@@ -205,7 +205,7 @@ export default function AiScanSettingsPage() {
                             className="h-7 text-xs"
                             onClick={() => allChecked ? clearAll(group, fields) : selectAll(group, fields)}
                           >
-                            {allChecked ? "Hapus Semua" : noneChecked ? "Pilih Semua" : "Pilih Semua"}
+                            {allChecked ? "Hapus Semua" : "Pilih Semua"}
                           </Button>
                         </div>
                       </div>
