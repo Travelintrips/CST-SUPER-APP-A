@@ -9,7 +9,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -22,7 +21,6 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-VITE_CLERK_PUBLISHABLE_KEY = "pk_test_Z2xvd2luZy1jaG93LTg1LmNsZXJrLmFjY291bnRzLmRldiQ"
 IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = "993"
 IMAP_USER = "admcst001@gmail.com"
@@ -35,7 +33,8 @@ SMTP_PORT = "587"
 SMTP_USER = "8a96b8001@smtp-brevo.com"
 SMTP_PASS = "xsmtpsib-ccee60eca66c4da65908d6a8a8deb075a41b54c7784a0cb94ebfa7929fe74d13-4V33DEBIIV8nHLuT"
 SMTP_FROM = "CST Logistics <info@cstlogistic.co.id>"
-CLERK_PUBLISHABLE_KEY = "pk_test_Z2xvd2luZy1jaG93LTg1LmNsZXJrLmFjY291bnRzLmRldiQ"
+VITE_CLERK_PUBLISHABLE_KEY = "pk_test_cG9saXRlLXNlYWwtNzAuY2xlcmsuYWNjb3VudHMuZGV2JA"
+CLERK_PUBLISHABLE_KEY = "pk_test_cG9saXRlLXNlYWwtNzAuY2xlcmsuYWNjb3VudHMuZGV2JA"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -74,6 +73,18 @@ externalPort = 5000
 [[ports]]
 localPort = 8086
 externalPort = 4200
+
+[[ports]]
+localPort = 8087
+externalPort = 8008
+
+[[ports]]
+localPort = 8088
+externalPort = 8081
+
+[[ports]]
+localPort = 8089
+externalPort = 9000
 
 [[ports]]
 localPort = 18442

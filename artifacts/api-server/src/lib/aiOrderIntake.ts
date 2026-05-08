@@ -6,10 +6,12 @@ import {
   emailCorrespondencesTable,
   waAiIntakeLogTable,
   portalContentTable,
+  logisticOrdersTable,
 } from "@workspace/db";
 import { eq, sql, and, gt } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { sendMail, isSmtpConfigured } from "./mailer.js";
+import { sendLogisticOrderNotification } from "./orderNotification.js";
 
 const AI_INTAKE_KEY = "ai_intake_enabled";
 const AI_INTAKE_REPLY_WA_KEY = "ai_intake_reply_wa";
@@ -126,6 +128,25 @@ async function isAiIntakeEnabled(): Promise<boolean> {
   return val !== "false";
 }
 
+function generateLogisticOrderNumber(): string {
+  const date = new Date();
+  const y = date.getFullYear().toString().slice(-2);
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const rand = Math.floor(Math.random() * 90000) + 10000;
+  return `LOG-${y}${m}${d}-${rand}`;
+}
+
+function toShipmentType(mode: string | null | undefined): string {
+  switch (mode) {
+    case "sea": return "Sea Freight";
+    case "air": return "Air Freight";
+    case "land": return "Trucking";
+    case "multimodal": return "Sea Freight";
+    default: return "Sea Freight";
+  }
+}
+
 async function nextDocNumber(): Promise<string> {
   const prefix = "SQ";
   const year = new Date().getFullYear();
@@ -168,6 +189,7 @@ async function createDraftQuotation(
   opts: {
     emailCorrespondenceId?: number;
     waPhone?: string;
+    fromEmail?: string | null;
   },
 ): Promise<AiIntakeResult | null> {
   const lines = extracted.lines ?? [];
@@ -237,6 +259,81 @@ async function createDraftQuotation(
     "AI intake: draft quotation created",
   );
 
+  // ── Create a Logistic Order so vendor notifications fire automatically ──
+  // Only proceed if we have at least origin + destination (required DB fields).
+  const origin = extracted.origin ?? null;
+  const destination = extracted.destination ?? null;
+  const shipmentType = toShipmentType(extracted.transportMode);
+  const phone = opts.waPhone ?? extracted.customerPhone ?? "000000000000";
+  const email = opts.fromEmail ?? extracted.customerEmail ?? `${phone}@ai.cstlogistics.id`;
+  const now = new Date();
+  const jamOrder = new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(now);
+
+  if (origin && destination) {
+    try {
+      const logOrderNumber = generateLogisticOrderNumber();
+      const serviceList = `• ${shipmentType}`;
+
+      const [logOrder] = await db.insert(logisticOrdersTable).values({
+        orderNumber: logOrderNumber,
+        companyName: "-",
+        customerName: extracted.customerName,
+        email,
+        phone,
+        shipmentType,
+        origin,
+        destination,
+        commodity: extracted.cargoDescription ?? null,
+        cargoDescription: extracted.cargoDescription ?? null,
+        grossWeight: extracted.grossWeight != null ? String(extracted.grossWeight) : null,
+        volumeCbm: extracted.volumeCbm != null ? String(extracted.volumeCbm) : null,
+        requiredDate: extracted.requiredDate ?? null,
+        notes: notesParts.join("\n") || null,
+        jamOrder,
+        subtotal: "0",
+        tax: "0",
+        grandTotal: "0",
+        status: "New Order",
+        source: "ai_intake",
+      }).returning();
+
+      if (logOrder) {
+        sendLogisticOrderNotification({
+          id: logOrder.id,
+          orderNumber: logOrderNumber,
+          customerName: extracted.customerName,
+          companyName: "-",
+          email,
+          phone,
+          shipmentType,
+          origin,
+          destination,
+          commodity: extracted.cargoDescription ?? null,
+          cargoDescription: extracted.cargoDescription ?? null,
+          grossWeight: extracted.grossWeight ?? null,
+          volumeCbm: extracted.volumeCbm ?? null,
+          grandTotal: subtotal,
+          serviceList,
+          requiredDate: extracted.requiredDate ?? null,
+          notes: notesParts.join("\n") || null,
+          jamOrder,
+          createdAt: logOrder.createdAt,
+        }).catch((err: unknown) => logger.error({ err }, "AI intake: sendLogisticOrderNotification failed"));
+
+        logger.info(
+          { logOrderId: logOrder.id, logOrderNumber, docNumber, shipmentType, origin, destination },
+          "AI intake: logistic order created and vendor notifications queued",
+        );
+      }
+    } catch (err) {
+      logger.warn({ err, docNumber }, "AI intake: failed to create logistic order (draft quotation still saved)");
+    }
+  } else {
+    logger.info({ docNumber, origin, destination }, "AI intake: skipping logistic order — origin/destination missing from inquiry");
+  }
+
   return {
     docId: doc.id,
     docNumber,
@@ -273,7 +370,7 @@ export async function processEmailForAiIntake(
     logger.debug({ emailCorrespondenceId }, "AI intake: email not classified as order inquiry");
     return null;
   }
-  const result = await createDraftQuotation(extracted, { emailCorrespondenceId });
+  const result = await createDraftQuotation(extracted, { emailCorrespondenceId, fromEmail });
   if (result && fromEmail) {
     try {
       const settings = await getAiIntakeSettings();

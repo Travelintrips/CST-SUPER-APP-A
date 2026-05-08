@@ -4,7 +4,7 @@ import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wo
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { useGetCurrentUser, getGetCurrentUserQueryKey, setAuthTokenGetter } from "@workspace/api-client-react";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 import NotFound from "@/pages/not-found";
@@ -132,11 +132,13 @@ function SignUpPage() {
 
 function AuthRouteGuard() {
   const { user, isLoaded } = useUser();
-  const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
+  const { signOut } = useAuth();
+  const { data: dbUser, isLoading: dbLoading, isError: dbError } = useGetCurrentUser({
     query: {
       enabled: isLoaded && !!user,
       queryKey: getGetCurrentUserQueryKey(),
       staleTime: Infinity,
+      retry: 1,
     }
   });
 
@@ -145,6 +147,13 @@ function AuthRouteGuard() {
   }
 
   if (!user) {
+    return <Redirect to="/sign-in" />;
+  }
+
+  // API returned an error (e.g. expired/invalid Clerk token) — sign out the stale
+  // session so the user lands on sign-in with a clean state instead of /welcome.
+  if (dbError) {
+    signOut().catch(() => null);
     return <Redirect to="/sign-in" />;
   }
 
@@ -159,7 +168,7 @@ function AuthRouteGuard() {
     }
   }
 
-  return <Redirect to="/welcome" />;
+  return <Redirect to="/sign-in" />;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -372,6 +381,20 @@ function Router() {
   );
 }
 
+// Wires Clerk's getToken() into the API client so every fetch request
+// automatically gets an "Authorization: Bearer <token>" header.
+// This is required in production where Clerk does not rely on cookies.
+function ClerkAuthTokenSync() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+
+  return null;
+}
+
 function ClerkQueryClientCacheInvalidator() {
   const clerkWindow = window as typeof window & { Clerk?: { addListener?: (cb: (ev: { user?: { id?: string | null } | null }) => void) => () => void } };
   const { addListener } = clerkWindow.Clerk || {};
@@ -412,6 +435,7 @@ function App() {
         signUpFallbackRedirectUrl={`${basePath}/`}
         afterSignOutUrl={`${basePath}/sign-in`}
       >
+        <ClerkAuthTokenSync />
         <ClerkQueryClientCacheInvalidator />
         <LanguageProvider>
           <TooltipProvider>
