@@ -28,15 +28,46 @@ const PDF_TEXT_FAST_PATH_MIN_CHARS = 200;
 // slow down the response without contributing useful data.
 const PDF_TEXT_MAX_CHARS = 5000;
 
+// Boilerplate section headers — text from here onward is legal/T&C noise.
+// Match at the start of a line, case-insensitive.
+const BOILERPLATE_HEADERS = [
+  "terms and conditions",
+  "terms & conditions",
+  "terms of service",
+  "syarat dan ketentuan",
+  "syarat & ketentuan",
+  "general conditions",
+  "conditions of contract",
+  "conditions of carriage",
+  "limitation of liability",
+  "liability limitation",
+  "disclaimer",
+  "important notice",
+  "ketentuan umum",
+  "ketentuan dan kondisi",
+  "notice to consignee",
+  "governing law",
+  "arbitration clause",
+];
+
 // Strip excessive blank lines and common boilerplate headers before sending to AI.
 function cleanPdfText(raw: string): string {
-  return raw
-    // Collapse 3+ consecutive newlines into 2
-    .replace(/\n{3,}/g, "\n\n")
-    // Remove lines that are only dashes / underscores / dots (dividers)
-    .replace(/^[-_.=*]{5,}\s*$/gm, "")
-    .trim()
-    .slice(0, PDF_TEXT_MAX_CHARS);
+  // Collapse 3+ consecutive newlines into 2
+  let text = raw.replace(/\n{3,}/g, "\n\n");
+  // Remove lines that are only dashes / underscores / dots (dividers)
+  text = text.replace(/^[-_.=*]{5,}\s*$/gm, "").trim();
+
+  // Truncate at the first boilerplate section header to drop T&C noise
+  const lines = text.split("\n");
+  const cutIndex = lines.findIndex((line) => {
+    const lower = line.trim().toLowerCase();
+    return BOILERPLATE_HEADERS.some((h) => lower === h || lower.startsWith(h + ":") || lower.startsWith(h + " "));
+  });
+  if (cutIndex > 0) {
+    text = lines.slice(0, cutIndex).join("\n").trim();
+  }
+
+  return text.slice(0, PDF_TEXT_MAX_CHARS);
 }
 
 router.use((req, res, next) => {
@@ -157,7 +188,8 @@ Rules:
 - For "measurement": total CBM across all containers/packages
 - Set partyName to the shipper or consignee name (whichever is the BizPortal customer side)
 - If unsure of docType, default to "sales"
-- Use Indonesian or English field values as they appear in the document`;
+- Use Indonesian or English field values as they appear in the document
+- IGNORE any terms & conditions, general conditions, conditions of carriage/contract, liability clauses, disclaimers, important notices, governing law sections, arbitration clauses, signature blocks, and any other legal boilerplate — extract data ONLY from the header, party boxes, cargo details, and line-item table sections of the document`;
 
 router.post("/", upload.single("file"), async (req, res): Promise<void> => {
   const file = req.file;
