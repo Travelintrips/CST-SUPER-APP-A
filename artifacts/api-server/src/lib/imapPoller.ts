@@ -63,6 +63,11 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
     logger: false,
   });
 
+  // Prevent unhandled 'error' events from crashing the process on socket timeout
+  client.on("error", (err) => {
+    logger.warn({ err }, "IMAP client error (socket/connection)");
+  });
+
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
