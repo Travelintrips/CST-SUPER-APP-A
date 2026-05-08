@@ -112,18 +112,18 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
     (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
     `Layanan         :\n${order.serviceList}\n` +
-    `Total Est.      : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `💬 *Cara merespon:*\n` +
-    `Balas dengan memilih:\n\n` +
-    `1️⃣ *TERIMA* — setuju terima pesanan\n` +
-    `2️⃣ *TOLAK* — tidak dapat memenuhi\n\n` +
-    `_Sertakan No. Order saat membalas, contoh:_\n` +
-    `\`TERIMA ${order.orderNumber}\`\n` +
+    `✏️ *DRAFT BALASAN — tinggal copy, isi harga, lalu kirim:*\n\n` +
+    `📌 *Kirim penawaran harga:*\n` +
+    `\`${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\`\n\n` +
+    `_Contoh:_\n` +
+    `\`${order.orderNumber} 5500000 ${tgl || "DD-Bln"} ${tgl || "DD-Bln"}\`\n\n` +
+    `📌 *Terima pesanan (tanpa harga dulu):*\n` +
+    `\`TERIMA ${order.orderNumber}\`\n\n` +
+    `📌 *Tolak pesanan:*\n` +
     `\`TOLAK ${order.orderNumber}\`\n\n` +
-    `_Atau balas harga jika sudah ada penawaran:_\n` +
-    `\`${order.orderNumber} [harga_vendor]\`\n\n` +
+    `_Balas pesan ini langsung dengan salah satu format di atas._\n` +
     `Terima kasih 🙏`
   );
 }
@@ -282,20 +282,39 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
     }
 
     if (vendor.contactEmail && isSmtpConfigured()) {
+      const draftReplyHtml =
+        `<div style="margin-top:24px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:16px 20px">` +
+        `<p style="margin:0 0 12px;font-weight:700;color:#0369a1;font-size:14px">✏️ Draft Balasan — Tinggal Copy, Isi Harga, Lalu Balas Email Ini</p>` +
+        `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 1 — Kirim Penawaran Harga:</strong></p>` +
+        `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 12px">${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\n\nContoh:\n${order.orderNumber} 5500000 15-Mei 20-Mei</pre>` +
+        `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 2 — Terima Pesanan (tanpa harga dulu):</strong></p>` +
+        `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 12px">TERIMA ${order.orderNumber}</pre>` +
+        `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 3 — Tolak Pesanan:</strong></p>` +
+        `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0">TOLAK ${order.orderNumber}</pre>` +
+        `</div>`;
+
       sendMail({
         to: vendor.contactEmail,
         subject: `[PERMINTAAN ORDER] ${order.orderNumber} — ${order.shipmentType}`,
         html: buildEmailHtml(
           "Permintaan Order Baru dari CST Logistics",
-          `Kepada Yth. <strong>${vendor.name}</strong>,<br><br>Anda mendapat permintaan pengiriman baru. Balas email ini atau hubungi kami jika ada pertanyaan.`,
+          `Kepada Yth. <strong>${vendor.name}</strong>,<br><br>Anda mendapat permintaan pengiriman baru dari CST Logistics. Silakan balas email ini dengan salah satu format di bawah.`,
           rows,
-          "Email ini dikirim otomatis oleh sistem CST Logistics. Hubungi admin untuk konfirmasi."
+          `Balas email ini langsung dengan format penawaran di bawah ini. Sistem kami akan membaca balasan Anda secara otomatis.`
+        ).replace(
+          `</td></tr>\n    </table>\n  </td></tr>`,
+          `${draftReplyHtml}</td></tr>\n    </table>\n  </td></tr>`
         ),
         text:
           `PERMINTAAN ORDER: ${order.orderNumber}\n` +
           `Jenis: ${order.shipmentType}\n` +
-          `Rute: ${order.origin} → ${order.destination}\n` +
-          `Balas email ini jika ada pertanyaan.`,
+          `Rute: ${order.origin} → ${order.destination}\n\n` +
+          `=== DRAFT BALASAN — tinggal copy, isi harga, balas email ini ===\n\n` +
+          `Opsi 1 - Kirim Penawaran Harga:\n` +
+          `${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\n` +
+          `Contoh: ${order.orderNumber} 5500000 15-Mei 20-Mei\n\n` +
+          `Opsi 2 - Terima Pesanan:\nTERIMA ${order.orderNumber}\n\n` +
+          `Opsi 3 - Tolak Pesanan:\nTOLAK ${order.orderNumber}`,
       }).catch((err: unknown) => logger.error({ err, vendorId: vendor.id }, "Email vendor notification failed"));
     } else if (vendor.contactEmail) {
       logger.warn({ vendorId: vendor.id }, "SMTP not configured — skipping vendor email");
