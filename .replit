@@ -21,12 +21,19 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-IMAP_HOST = "imap.gmail.com"
+
+<<<<<<< HEAD
+ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
+=======
+
+>>>>>>> 265a4ba20b2dc2c49ce05507639cf10458d58312
+FONNTE_ADMIN_WA = "6281288195206"IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = "993"
 IMAP_USER = "admcst001@gmail.com"
-ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
 PORTAL_ADMIN_EMAILS = "divatranssoetta@gmail.com,wangsamasindo@gmail.com"
-FONNTE_ADMIN_WA = "6281288195206"
+=======
+ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com"
+PORTAL_ADMIN_EMAILS = "divatranssoetta@gmail.com,divarestorxr@gmail.com"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 SMTP_HOST = "smtp-relay.brevo.com"
 SMTP_PORT = "587"
@@ -40,7 +47,19 @@ ADMIN_EMAIL_DOMAINS = "example.com"
 
 [nix]
 channel = "stable-25_05"
-packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tk", "zlib"]
+packages = [
+  "freetype",
+  "lcms2",
+  "libimagequant",
+  "libjpeg",
+  "libtiff",
+  "libwebp",
+  "libxcrypt",
+  "openjpeg",
+  "tcl",
+  "tk",
+  "zlib",
+]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
