@@ -10,6 +10,13 @@
   from { opacity: 0; transform: translateY(100%); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/* Mobile bottom-sheet: stacked height declarations so browsers that don't
+   understand dvh/svh fall back gracefully to plain vh */
+.chat-mobile-sheet {
+  height: calc(100vh - 48px);
+  height: calc(100svh - 48px);
+  height: calc(100dvh - 48px);
+}
 @keyframes backdropIn {
   from { opacity: 0; }
   to   { opacity: 1; }

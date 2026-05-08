@@ -1282,7 +1282,7 @@ export function ChatWidget() {
       {/* Chat panel — bottom-sheet on mobile, centered modal on desktop */}
       {open && (
         <div
-          className="fixed z-[9999] flex flex-col bg-white overflow-hidden"
+          className={`fixed z-[9999] flex flex-col bg-white overflow-hidden${isMobile ? " chat-mobile-sheet" : ""}`}
           style={
             isMobile
               ? {
@@ -1290,7 +1290,6 @@ export function ChatWidget() {
                   left: 0,
                   right: 0,
                   width: "100%",
-                  height: "calc(100dvh - 48px)",
                   borderRadius: "20px 20px 0 0",
                   border: "1px solid rgba(0,0,0,0.06)",
                   boxShadow: "0 -4px 24px rgba(0,0,0,0.14), 0 -1px 4px rgba(0,0,0,0.06)",
