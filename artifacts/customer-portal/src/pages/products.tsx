@@ -61,6 +61,7 @@ interface Product {
   price: number;
   unit: string;
   unitOptions: string[];
+  subcategory: string | null;
   imageUrl: string | null;
   mediaItems: MediaItem[];
   categories: string[];
@@ -71,7 +72,7 @@ const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
 function isUsdProduct(product: Product): boolean {
-  return (product.description ?? "").includes("USD");
+  return product.subcategory === "Green Bean";
 }
 
 function formatProductPrice(product: Product): string {
@@ -804,9 +805,16 @@ export default function Products() {
                 {/* Info */}
                 <div className="px-4 pt-3.5 pb-0 flex-1 flex flex-col">
                   {/* Product name */}
-                  <p className="text-[13.5px] font-semibold text-slate-800 line-clamp-2 leading-snug mb-2.5" style={{ minHeight: "2.5rem" }}>
+                  <p className="text-[13.5px] font-semibold text-slate-800 line-clamp-2 leading-snug mb-1.5" style={{ minHeight: "2.5rem" }}>
                     {product.name}
                   </p>
+
+                  {/* Short description */}
+                  {product.description && (
+                    <p className="text-[11.5px] text-slate-500 leading-snug line-clamp-2 mb-2">
+                      {product.description.split("\n")[0]}
+                    </p>
+                  )}
 
                   {/* Price */}
                   <div className="flex items-baseline gap-2 mb-2">

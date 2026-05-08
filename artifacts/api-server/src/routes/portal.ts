@@ -129,6 +129,7 @@ async function listByType(type: string) {
       stock: p.stock ?? 0,
       unit: p.unit,
       unitOptions,
+      subcategory: p.subcategory ?? null,
       imageUrl: p.imageUrl ?? null,
       mediaItems,
       categories: catMap[p.id] ?? [],
