@@ -331,16 +331,26 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
           sendWhatsApp(adminWa, adminMsg).catch(() => undefined);
         }
 
-        // Reply to sender (only for non-group or direct messages)
-        if (!isGroup) {
-          try {
-            const settings = await getAiIntakeSettings();
-            if (settings.replyWaTemplate) {
-              const replyMsg = buildAiReplyWa(settings.replyWaTemplate, mediaResult.docNumber);
-              sendWhatsApp(sender, replyMsg).catch(() => undefined);
-            }
-          } catch { /* non-critical */ }
-        }
+        // Reply to sender (direct) or to group
+        try {
+          const settings = await getAiIntakeSettings();
+          if (isGroup) {
+            // Reply ke group — sebut nama pengirim agar kontekstual
+            const groupReply =
+              `✅ *File dari ${displayName} berhasil diproses!*\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              `📋 Draft   : *${mediaResult.docNumber}*\n` +
+              `👤 Customer: ${mediaResult.customerName}\n` +
+              `📄 Dokumen : ${mediaResult.docSummary}\n` +
+              `🎯 Konfiden: ${mediaResult.confidence}\n` +
+              `━━━━━━━━━━━━━━━━━━\n` +
+              `_Tim kami akan segera menindaklanjuti._`;
+            sendWhatsApp(sender, groupReply).catch(() => undefined);
+          } else if (settings.replyWaTemplate) {
+            const replyMsg = buildAiReplyWa(settings.replyWaTemplate, mediaResult.docNumber);
+            sendWhatsApp(sender, replyMsg).catch(() => undefined);
+          }
+        } catch { /* non-critical */ }
 
         logger.info({ sender, docNumber: mediaResult.docNumber, docSummary: mediaResult.docSummary }, "AI media intake: draft created from WA file");
       } else {
@@ -358,6 +368,17 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
             `🔗 File: ${mediaUrl}\n\n` +
             `_Periksa file secara manual di BizPortal._`;
           sendWhatsApp(adminWa, forwardMsg).catch(() => undefined);
+        }
+
+        // Jika dari group — balas ke group bahwa file diterima tapi perlu dicek manual
+        if (isGroup) {
+          const fileLabel = mediaType === "image" ? "gambar" : "file";
+          const failReply =
+            `📎 *File dari ${displayName} diterima*\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `File ${fileLabel} Anda sudah kami terima dan akan diperiksa oleh tim kami.\n\n` +
+            `_Mohon tunggu, kami akan segera menindaklanjuti._`;
+          sendWhatsApp(sender, failReply).catch(() => undefined);
         }
       }
 
