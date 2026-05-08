@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "wouter";
-import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFork, Clock, BookOpen, TerminalSquare, Github, ChevronRight, XCircle, ArrowRight } from "lucide-react";
+import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFork, Clock, BookOpen, TerminalSquare, Github, ChevronRight, XCircle, ArrowRight, FolderTree } from "lucide-react";
 import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl } from "@/lib/github";
 import { useGitHubRepo, useGitHubBranches } from "@/hooks/use-github";
 import { useHistory } from "@/hooks/use-history";
+import { FileBrowser } from "@/components/file-browser";
 import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export default function Home() {
   const [parsedUrl, setParsedUrl] = useState<ParsedGitHubUrl | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [isCopied, setIsCopied] = useState(false);
+  const [showFileBrowser, setShowFileBrowser] = useState(false);
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -61,8 +62,9 @@ export default function Home() {
     }
 
     setParsedUrl(parsed);
-    setSelectedBranch(""); // Reset branch selection for new repo
+    setSelectedBranch("");
     setIsCopied(false);
+    setShowFileBrowser(false);
   };
 
   const handleDownload = () => {
@@ -335,8 +337,30 @@ export default function Home() {
                     </>
                   )}
                 </Button>
+                <Button
+                  onClick={() => setShowFileBrowser((v) => !v)}
+                  disabled={!selectedBranch}
+                  variant="outline"
+                  size="lg"
+                  className={`w-full sm:w-auto h-14 px-6 bg-background hover:bg-muted transition-colors ${showFileBrowser ? "border-primary/50 text-primary" : ""}`}
+                  title="Browse files"
+                >
+                  <FolderTree className="w-5 h-5 sm:mr-2" />
+                  <span className="hidden sm:inline">Browse Files</span>
+                </Button>
               </CardFooter>
             </Card>
+          )}
+
+          {/* File Browser Panel */}
+          {parsedUrl?.isValid && repoData && selectedBranch && showFileBrowser && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <FileBrowser
+                owner={repoData.owner.login}
+                repo={repoData.name}
+                branch={selectedBranch}
+              />
+            </div>
           )}
 
           {/* History State */}
