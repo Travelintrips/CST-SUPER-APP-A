@@ -841,7 +841,7 @@ function ProductsTab() {
   useEffect(() => {
     void (async () => {
       try {
-        const data = await apiGet<Product[]>("/api/portal/products");
+        const data = await apiGet<Product[]>("/api/portal/admin/products");
         setProducts(data);
       } catch {
         toast({ title: "Gagal memuat produk", variant: "destructive" });

@@ -681,6 +681,36 @@ router.delete("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   return res.json({ ok: true });
 });
 
+// GET /api/portal/admin/products  — semua produk aktif (admin only, semua item_type)
+router.get("/admin/products", requirePortalAdmin, async (_req, res) => {
+  const rows = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.isActive, true))
+    .orderBy(productsTable.id);
+  const ids = rows.map((p) => p.id);
+  const catMap = await getProductCategories(ids);
+  return res.json(rows.map((p) => {
+    let mediaItems: Array<{ type: string; url: string }> = [];
+    try { mediaItems = JSON.parse(p.mediaItems ?? "[]"); } catch { /* empty */ }
+    let unitOptions: string[] = [];
+    try { unitOptions = JSON.parse(p.unitOptions ?? "[]"); } catch { /* empty */ }
+    return {
+      id: p.id,
+      name: p.name,
+      description: p.description ?? null,
+      price: Number(p.price),
+      stock: p.stock ?? 0,
+      unit: p.unit,
+      unitOptions,
+      imageUrl: p.imageUrl ?? null,
+      mediaItems,
+      itemType: p.itemType,
+      categories: catMap[p.id] ?? [],
+    };
+  }));
+});
+
 // POST /api/portal/admin/products  — create a new product (admin only)
 router.post("/admin/products", requirePortalAdmin, async (req, res) => {
   const { name, description, price, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
