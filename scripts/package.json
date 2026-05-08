@@ -6,6 +6,8 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "backup-drive": "tsx ./src/backupToGoogleDrive.ts",
+    "backup-db-drive": "tsx ./src/backupDbToGoogleDrive.ts",
+    "backup-all": "tsx ./src/backupAll.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
