@@ -665,6 +665,8 @@ export function ChatWidget() {
   /** SpeechRecognition instance */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  /** Cached TTS voices — populated asynchronously via voiceschanged */
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   /** Stores the transcript captured during a push-to-talk session */
   const pendingTranscriptRef = useRef<string>("");
   /** ISO timestamp of when the user last viewed the widget — used for admin-reply polling */
@@ -771,6 +773,18 @@ export function ChatWidget() {
     };
   }, []);
 
+  // Pre-load TTS voices — on Android/iOS voices load asynchronously
+  useEffect(() => {
+    if (!window.speechSynthesis) return;
+    function loadVoices() {
+      voicesRef.current = window.speechSynthesis.getVoices();
+    }
+    loadVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+    return () =>
+      window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+  }, []);
+
   // Sync isMobile with viewport width changes (e.g. rotation, resize)
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 639px)");
@@ -802,9 +816,12 @@ export function ChatWidget() {
     utt.lang = "id-ID";
     utt.rate = 1.05;
     utt.pitch = 1;
-    // Prefer Indonesian voice, fall back to any available
-    const voices = window.speechSynthesis.getVoices();
-    const idVoice = voices.find((v) => v.lang.startsWith("id")) ?? voices[0];
+    // Use pre-loaded voices (works on mobile where getVoices() is async)
+    const voices = voicesRef.current.length
+      ? voicesRef.current
+      : window.speechSynthesis.getVoices();
+    const idVoice = voices.find((v) => v.lang.startsWith("id"));
+    // Only set voice if found — let browser pick default if no Indonesian voice
     if (idVoice) utt.voice = idVoice;
     utt.onstart = () => setIsSpeaking(true);
     utt.onend = () => setIsSpeaking(false);
@@ -1290,6 +1307,8 @@ export function ChatWidget() {
                   left: 0,
                   right: 0,
                   width: "100%",
+                  height: "min(92dvh, 92vh)",
+                  maxHeight: "min(92dvh, 92vh)",
                   borderRadius: "20px 20px 0 0",
                   border: "1px solid rgba(0,0,0,0.06)",
                   boxShadow: "0 -4px 24px rgba(0,0,0,0.14), 0 -1px 4px rgba(0,0,0,0.06)",
@@ -1655,7 +1674,7 @@ export function ChatWidget() {
                 Merekam… lepas tombol untuk kirim
               </div>
             )}
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center min-w-0">
               <button
                 type="button"
                 onMouseDown={(e) => {
@@ -1668,14 +1687,14 @@ export function ChatWidget() {
                 }}
                 disabled={isStreaming}
                 title="Tahan untuk merekam suara, lepas untuk kirim"
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 select-none ${
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 select-none ${
                   isListening
                     ? "bg-red-500 text-white scale-110 shadow-lg"
                     : "bg-gray-100 text-gray-500 hover:bg-gray-200 active:bg-red-100 active:text-red-500"
                 }`}
               >
                 {isListening ? (
-                  <MicOff className="h-4.5 w-4.5" />
+                  <MicOff className="h-4 w-4" />
                 ) : (
                   <Mic className="h-4 w-4" />
                 )}
@@ -1693,13 +1712,13 @@ export function ChatWidget() {
                       ? "Bicara sekarang…"
                       : "Ketik atau bicara…"
                 }
-                className="flex-1 rounded-full border outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                className="flex-1 min-w-0 rounded-full border outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                 style={{
                   fontSize: 16,
                   lineHeight: "1.4",
                   background: "#f8f9fa",
                   borderColor: "#e9ecef",
-                  padding: "10px 16px",
+                  padding: "10px 14px",
                   transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
                 }}
                 disabled={isStreaming}
@@ -1707,10 +1726,15 @@ export function ChatWidget() {
               <button
                 onClick={() => void sendMessage()}
                 disabled={isStreaming || !input.trim()}
-                className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Kirim pesan"
+                className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shrink-0"
                 style={{
-                  background: "linear-gradient(135deg, #0284c7, #1d4ed8)",
+                  background:
+                    isStreaming || !input.trim()
+                      ? "linear-gradient(135deg, #93c5fd, #6366f1)"
+                      : "linear-gradient(135deg, #0284c7, #1d4ed8)",
                   boxShadow: "0 2px 8px rgba(14,165,233,0.35)",
+                  opacity: isStreaming || !input.trim() ? 0.55 : 1,
                 }}
               >
                 <Send className="h-4 w-4 text-white" />
