@@ -794,6 +794,16 @@ export function ChatWidget() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
+  // Scroll-lock: prevent the page from scrolling while the mobile bottom-sheet is open
+  useEffect(() => {
+    if (!isMobile || !open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open, isMobile]);
+
   /** Strip markdown symbols so TTS sounds natural */
   function stripMarkdown(text: string): string {
     return text
