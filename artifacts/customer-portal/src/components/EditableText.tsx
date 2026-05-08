@@ -45,6 +45,7 @@ export function EditableText({
       ref={ref as any}
       contentEditable
       suppressContentEditableWarning
+      dir="ltr"
       className={`${className} outline-none cursor-text ring-2 ring-accent/60 ring-offset-1 rounded-sm px-0.5 focus:ring-accent transition-all`}
       onInput={() => {
         updateField(contentKey, ref.current?.textContent ?? "");
