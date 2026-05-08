@@ -1,8 +1,8 @@
 import { useState } from "react";
 import {
-  Folder, FolderOpen, FileText, FileCode, FileImage, FileArchive,
-  Download, ChevronRight, ChevronDown, Home, AlertCircle, ExternalLink,
-  FolderDown, Search, X, Loader2
+  Folder, FileText, FileCode, FileImage, FileArchive,
+  Download, ChevronRight, Home, AlertCircle, ExternalLink,
+  FolderDown, Search, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,23 +10,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useGitHubContents } from "@/hooks/use-github";
-import { GitHubContentItem, getFolderDownloadUrl, formatFileSize } from "@/lib/github";
+import { GitHubContentItem, getFolderDownloadUrl, formatFileSize, isBinaryPath } from "@/lib/github";
 import { cn } from "@/lib/utils";
 
-interface FileBrowserProps {
-  owner: string;
-  repo: string;
-  branch: string;
-}
-
 const CODE_EXTS = new Set([
-  "ts", "tsx", "js", "jsx", "py", "rb", "go", "rs", "java", "c", "cpp",
-  "cs", "php", "swift", "kt", "sh", "bash", "yaml", "yml", "json", "toml",
-  "html", "css", "scss", "sass", "less", "md", "mdx", "sql", "graphql",
-  "tf", "dockerfile", "makefile", "env"
+  "ts","tsx","js","jsx","py","rb","go","rs","java","c","cpp",
+  "cs","php","swift","kt","sh","bash","yaml","yml","json","toml",
+  "html","css","scss","sass","less","md","mdx","sql","graphql",
+  "tf","dockerfile","makefile","env","ini","conf","r","lua","perl",
+  "scala","dart","ex","exs","clj","hs","vue","astro","prisma",
 ]);
-const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp", "tiff"]);
-const ARCHIVE_EXTS = new Set(["zip", "tar", "gz", "rar", "7z", "bz2", "xz"]);
+const IMAGE_EXTS = new Set(["png","jpg","jpeg","gif","svg","webp","ico","bmp","tiff"]);
+const ARCHIVE_EXTS = new Set(["zip","tar","gz","rar","7z","bz2","xz"]);
 
 function getFileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
@@ -36,6 +31,14 @@ function getFileIcon(name: string) {
   return <FileText className="w-4 h-4 text-muted-foreground shrink-0" />;
 }
 
+interface FileBrowserProps {
+  owner: string;
+  repo: string;
+  branch: string;
+  onFileClick: (item: GitHubContentItem) => void;
+  selectedPath?: string;
+}
+
 interface DirectoryViewProps {
   owner: string;
   repo: string;
@@ -43,18 +46,20 @@ interface DirectoryViewProps {
   path: string;
   filter: string;
   onNavigate: (path: string) => void;
+  onFileClick: (item: GitHubContentItem) => void;
+  selectedPath?: string;
 }
 
-function DirectoryView({ owner, repo, branch, path, filter, onNavigate }: DirectoryViewProps) {
+function DirectoryView({ owner, repo, branch, path, filter, onNavigate, onFileClick, selectedPath }: DirectoryViewProps) {
   const { data, isLoading, error, isError } = useGitHubContents(owner, repo, branch, path, true);
 
   if (isLoading) {
     return (
       <div className="space-y-1 p-1">
-        {Array.from({ length: 6 }).map((_, i) => (
+        {Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 px-3 py-2">
             <Skeleton className="w-4 h-4 rounded" />
-            <Skeleton className="h-4 flex-1" style={{ width: `${50 + Math.random() * 40}%` }} />
+            <Skeleton className="h-4" style={{ width: `${40 + (i * 13) % 45}%` }} />
           </div>
         ))}
       </div>
@@ -97,6 +102,8 @@ function DirectoryView({ owner, repo, branch, path, filter, onNavigate }: Direct
           repo={repo}
           branch={branch}
           onNavigate={onNavigate}
+          onFileClick={onFileClick}
+          isSelected={selectedPath === item.path}
         />
       ))}
     </div>
@@ -109,16 +116,18 @@ interface FileRowProps {
   repo: string;
   branch: string;
   onNavigate: (path: string) => void;
+  onFileClick: (item: GitHubContentItem) => void;
+  isSelected: boolean;
 }
 
-function FileRow({ item, owner, repo, branch, onNavigate }: FileRowProps) {
+function FileRow({ item, owner, repo, branch, onNavigate, onFileClick, isSelected }: FileRowProps) {
   const isDir = item.type === "dir";
+  const isPreviewable = !isDir;
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isDir) {
-      const url = getFolderDownloadUrl(owner, repo, branch, item.path);
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.open(getFolderDownloadUrl(owner, repo, branch, item.path), "_blank", "noopener,noreferrer");
     } else if (item.download_url) {
       const a = document.createElement("a");
       a.href = item.download_url;
@@ -131,15 +140,22 @@ function FileRow({ item, owner, repo, branch, onNavigate }: FileRowProps) {
     }
   };
 
+  const handleClick = () => {
+    if (isDir) onNavigate(item.path);
+    else onFileClick(item);
+  };
+
   return (
     <div
       className={cn(
-        "group flex items-center gap-2 px-3 py-2 transition-colors",
-        isDir
-          ? "cursor-pointer hover:bg-primary/5"
-          : "hover:bg-muted/30"
+        "group flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer",
+        isSelected
+          ? "bg-primary/10 border-l-2 border-primary"
+          : isDir
+            ? "hover:bg-primary/5"
+            : "hover:bg-muted/30"
       )}
-      onClick={isDir ? () => onNavigate(item.path) : undefined}
+      onClick={handleClick}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {isDir ? (
@@ -149,7 +165,7 @@ function FileRow({ item, owner, repo, branch, onNavigate }: FileRowProps) {
         )}
         <span className={cn(
           "text-sm truncate font-mono",
-          isDir ? "text-foreground font-medium" : "text-foreground/80"
+          isSelected ? "text-primary font-medium" : isDir ? "text-foreground font-medium" : "text-foreground/80"
         )}>
           {item.name}
         </span>
@@ -158,7 +174,7 @@ function FileRow({ item, owner, repo, branch, onNavigate }: FileRowProps) {
         )}
       </div>
 
-      <div className="flex items-center gap-2 shrink-0 ml-auto">
+      <div className="flex items-center gap-1 shrink-0 ml-auto">
         {!isDir && item.size > 0 && (
           <span className="text-xs text-muted-foreground/50 hidden sm:block tabular-nums">
             {formatFileSize(item.size)}
@@ -171,7 +187,7 @@ function FileRow({ item, owner, repo, branch, onNavigate }: FileRowProps) {
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={handleDownload}
-            title={isDir ? "Download folder as ZIP (via download-directory.github.io)" : "Download file"}
+            title={isDir ? "Download folder as ZIP" : "Download file"}
           >
             {isDir ? <FolderDown className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
           </Button>
@@ -190,7 +206,7 @@ function FileRow({ item, owner, repo, branch, onNavigate }: FileRowProps) {
   );
 }
 
-export function FileBrowser({ owner, repo, branch }: FileBrowserProps) {
+export function FileBrowser({ owner, repo, branch, onFileClick, selectedPath }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState("");
   const [filter, setFilter] = useState("");
 
@@ -202,18 +218,14 @@ export function FileBrowser({ owner, repo, branch }: FileBrowserProps) {
   };
 
   const navigateToBreadcrumb = (index: number) => {
-    if (index < 0) {
-      navigateTo("");
-    } else {
-      navigateTo(pathSegments.slice(0, index + 1).join("/"));
-    }
+    navigateTo(index < 0 ? "" : pathSegments.slice(0, index + 1).join("/"));
   };
 
   return (
     <div className="rounded-xl border border-border/40 bg-card/30 overflow-hidden">
-      {/* Header */}
+      {/* Header / breadcrumb */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30 bg-muted/10">
-        <div className="flex items-center gap-1 flex-1 min-w-0 text-sm font-mono overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1 flex-1 min-w-0 text-sm font-mono overflow-x-auto">
           <button
             onClick={() => navigateTo("")}
             className={cn(
@@ -249,10 +261,7 @@ export function FileBrowser({ owner, repo, branch }: FileBrowserProps) {
               variant="ghost"
               size="sm"
               className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                const url = getFolderDownloadUrl(owner, repo, branch, currentPath);
-                window.open(url, "_blank", "noopener,noreferrer");
-              }}
+              onClick={() => window.open(getFolderDownloadUrl(owner, repo, branch, currentPath), "_blank", "noopener,noreferrer")}
               title="Download this folder as ZIP"
             >
               <FolderDown className="w-3.5 h-3.5" />
@@ -262,7 +271,7 @@ export function FileBrowser({ owner, repo, branch }: FileBrowserProps) {
         </div>
       </div>
 
-      {/* Search bar */}
+      {/* Filter bar */}
       <div className="px-3 py-2 border-b border-border/20 bg-muted/5">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
@@ -283,7 +292,7 @@ export function FileBrowser({ owner, repo, branch }: FileBrowserProps) {
         </div>
       </div>
 
-      {/* File listing */}
+      {/* Directory listing */}
       <ScrollArea className="h-72">
         <DirectoryView
           key={currentPath}
@@ -293,11 +302,15 @@ export function FileBrowser({ owner, repo, branch }: FileBrowserProps) {
           path={currentPath}
           filter={filter}
           onNavigate={navigateTo}
+          onFileClick={onFileClick}
+          selectedPath={selectedPath}
         />
       </ScrollArea>
 
       {/* Footer hint */}
-      <div className="px-4 py-2 border-t border-border/20 bg-muted/5 text-xs text-muted-foreground/40 font-mono flex items-center gap-2">
+      <div className="px-4 py-2 border-t border-border/20 bg-muted/5 text-xs text-muted-foreground/40 font-mono flex items-center gap-2 flex-wrap">
+        <span>Click files to preview</span>
+        <span className="text-border">·</span>
         <span>Click folders to navigate</span>
         <span className="text-border">·</span>
         <FolderDown className="w-3 h-3 inline" />

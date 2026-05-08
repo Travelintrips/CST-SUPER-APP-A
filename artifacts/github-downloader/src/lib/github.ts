@@ -169,6 +169,54 @@ export function getFolderDownloadUrl(owner: string, repo: string, branch: string
   return `https://download-directory.github.io/?url=${encodeURIComponent(githubUrl)}`;
 }
 
+export async function fetchFileContent(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string
+): Promise<string> {
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+  const res = await fetch(rawUrl);
+  if (!res.ok) {
+    if (res.status === 404) throw new Error("File not found");
+    throw new Error(`Failed to fetch file: ${res.statusText}`);
+  }
+  return res.text();
+}
+
+export function getLanguageFromPath(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx",
+    py: "python", rb: "ruby", go: "go", rs: "rust", java: "java",
+    c: "c", cpp: "cpp", cs: "csharp", php: "php", swift: "swift",
+    kt: "kotlin", sh: "bash", bash: "bash", zsh: "bash",
+    yaml: "yaml", yml: "yaml", json: "json", toml: "toml",
+    html: "html", css: "css", scss: "scss", sass: "sass", less: "less",
+    md: "markdown", mdx: "markdown", sql: "sql", graphql: "graphql",
+    tf: "hcl", dockerfile: "dockerfile", makefile: "makefile",
+    xml: "xml", svg: "xml", env: "bash", ini: "ini", conf: "bash",
+    r: "r", lua: "lua", perl: "perl", scala: "scala", dart: "dart",
+    ex: "elixir", exs: "elixir", clj: "clojure", hs: "haskell",
+    vue: "html", astro: "html", prisma: "sql",
+  };
+  return map[ext] ?? "text";
+}
+
+export function isBinaryPath(path: string): boolean {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const binaryExts = new Set([
+    "png","jpg","jpeg","gif","webp","ico","bmp","tiff","svg",
+    "zip","tar","gz","rar","7z","bz2","xz",
+    "pdf","doc","docx","xls","xlsx","ppt","pptx",
+    "mp3","mp4","wav","ogg","avi","mov","mkv","webm",
+    "ttf","otf","woff","woff2","eot",
+    "exe","dll","so","dylib","bin","o","a",
+    "pyc","class","jar","war","ear",
+  ]);
+  return binaryExts.has(ext);
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return "0 B";
   const k = 1024;

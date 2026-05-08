@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFork, Clock, BookOpen, TerminalSquare, Github, ChevronRight, XCircle, ArrowRight, FolderTree } from "lucide-react";
-import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl } from "@/lib/github";
+import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl, GitHubContentItem } from "@/lib/github";
 import { useGitHubRepo, useGitHubBranches } from "@/hooks/use-github";
 import { useHistory } from "@/hooks/use-history";
 import { FileBrowser } from "@/components/file-browser";
+import { FilePreview } from "@/components/file-preview";
 import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ export default function Home() {
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [isCopied, setIsCopied] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<GitHubContentItem | null>(null);
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +67,7 @@ export default function Home() {
     setSelectedBranch("");
     setIsCopied(false);
     setShowFileBrowser(false);
+    setSelectedFile(null);
   };
 
   const handleDownload = () => {
@@ -359,8 +362,27 @@ export default function Home() {
                 owner={repoData.owner.login}
                 repo={repoData.name}
                 branch={selectedBranch}
+                onFileClick={(item) => {
+                  setSelectedFile(item);
+                }}
+                selectedPath={selectedFile?.path}
               />
             </div>
+          )}
+
+          {/* File Preview Panel */}
+          {parsedUrl?.isValid && repoData && selectedBranch && selectedFile && showFileBrowser && (
+            <FilePreview
+              key={selectedFile.path}
+              owner={repoData.owner.login}
+              repo={repoData.name}
+              branch={selectedBranch}
+              path={selectedFile.path}
+              size={selectedFile.size}
+              downloadUrl={selectedFile.download_url}
+              htmlUrl={selectedFile.html_url}
+              onClose={() => setSelectedFile(null)}
+            />
           )}
 
           {/* History State */}
