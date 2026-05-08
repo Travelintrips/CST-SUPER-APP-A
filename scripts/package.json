@@ -5,10 +5,16 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "backup-drive": "tsx ./src/backupToGoogleDrive.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:"
+  },
+  "dependencies": {
+    "@replit/connectors-sdk": "^0.4.0",
+    "@types/pg": "^8.18.0",
+    "pg": "^8.20.0"
   }
 }
