@@ -132,11 +132,13 @@ function SignUpPage() {
 
 function AuthRouteGuard() {
   const { user, isLoaded } = useUser();
-  const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
+  const { signOut } = useAuth();
+  const { data: dbUser, isLoading: dbLoading, isError: dbError } = useGetCurrentUser({
     query: {
       enabled: isLoaded && !!user,
       queryKey: getGetCurrentUserQueryKey(),
       staleTime: Infinity,
+      retry: 1,
     }
   });
 
@@ -145,6 +147,13 @@ function AuthRouteGuard() {
   }
 
   if (!user) {
+    return <Redirect to="/sign-in" />;
+  }
+
+  // API returned an error (e.g. expired/invalid Clerk token) — sign out the stale
+  // session so the user lands on sign-in with a clean state instead of /welcome.
+  if (dbError) {
+    signOut().catch(() => null);
     return <Redirect to="/sign-in" />;
   }
 
@@ -159,7 +168,7 @@ function AuthRouteGuard() {
     }
   }
 
-  return <Redirect to="/welcome" />;
+  return <Redirect to="/sign-in" />;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
