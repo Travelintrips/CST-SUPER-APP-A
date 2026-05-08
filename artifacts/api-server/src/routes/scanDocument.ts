@@ -61,9 +61,16 @@ function cleanPdfText(raw: string): string {
   const lines = text.split("\n");
   const cutIndex = lines.findIndex((line) => {
     const lower = line.trim().toLowerCase();
-    return BOILERPLATE_HEADERS.some((h) => lower === h || lower.startsWith(h + ":") || lower.startsWith(h + " "));
+    return BOILERPLATE_HEADERS.some(
+      (h) =>
+        lower === h ||
+        lower.startsWith(h + ":") ||
+        lower.startsWith(h + " ") ||
+        lower.startsWith(h + ".") ||
+        lower.startsWith(h + "-"),
+    );
   });
-  if (cutIndex > 0) {
+  if (cutIndex >= 0) {
     text = lines.slice(0, cutIndex).join("\n").trim();
   }
 
