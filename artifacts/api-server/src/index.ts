@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAccountingDefaults } from "./lib/accountingSeed";
 import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
+import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
@@ -39,8 +40,9 @@ app.listen(port, (err) => {
     logger.error({ err: seedErr }, "Accounting seed failed");
   });
 
-  // Seed logistics service items, then demo data, then remediate any remaining orphan products
+  // Seed logistics service items, catalog products, then demo data, then remediate any remaining orphan products
   seedLogisticsServiceItems()
+    .then(() => seedCatalogProducts())
     .then(() => seedDemoData())
     .then(() => seedDemoDrivers())
     .then(() => remediateOrphanProducts())
