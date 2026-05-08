@@ -211,8 +211,6 @@ function buildSalesSchema(cfg: Record<string, boolean>): string {
   if (e("notes")) lines.push(`  "notes": string | null`);
   if (e("lines")) {
     lines.push(`  "lines": [\n    {\n      "name": string,\n      "description": string | null,\n      "quantity": number,\n      "unitPrice": number\n    }\n  ]`);
-  } else {
-    lines.push(`  "lines": []`);
   }
   return `{\n${lines.join(",\n")}\n}`;
 }
@@ -241,16 +239,13 @@ function buildFreightSchema(cfg: Record<string, boolean>): string {
   if (e("measurement")) lines.push(`  "measurement": number | null`);
   if (e("notes")) lines.push(`  "notes": string | null`);
   if (e("partyName")) lines.push(`  "partyName": string | null`);
-  lines.push(`  "lines": []`);
   return `{\n${lines.join(",\n")}\n}`;
 }
 
 function buildCustomsSchema(cfg: Record<string, boolean>): string {
   const e = (f: string) => isEnabled(cfg, f);
-  const lines: string[] = [
-    `  "docType": "customs"`,
-    `  "customsDocType": "PIB" | "PEB" | "SPPB" | "NPE" | "BC23" | "PP" | "SPTNP" | "other"`,
-  ];
+  const lines: string[] = [`  "docType": "customs"`];
+  if (e("customsDocType")) lines.push(`  "customsDocType": "PIB" | "PEB" | "SPPB" | "NPE" | "BC23" | "PP" | "SPTNP" | "other"`);
   if (e("nomorAju")) lines.push(`  "nomorAju": string | null`);
   if (e("nomorDokumen")) lines.push(`  "nomorDokumen": string | null`);
   if (e("tanggalDokumen")) lines.push(`  "tanggalDokumen": string | null`);
