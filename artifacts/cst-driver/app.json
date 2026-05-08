@@ -14,9 +14,18 @@
       "backgroundColor": "#0F3460"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.cst.driver"
     },
-    "android": {},
+    "android": {
+      "package": "com.cst.driver",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0F3460"
+      },
+      "permissions": []
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -24,7 +33,7 @@
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://cst-super-app.replit.app/cst-driver/"
         }
       ],
       "expo-font",
