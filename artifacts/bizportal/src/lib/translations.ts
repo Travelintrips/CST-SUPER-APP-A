@@ -72,6 +72,7 @@ export interface Translations {
     emailInbox: string;
     users: string;
     aiChatbot: string;
+    aiScanSettings: string;
     settings: string;
   };
   common: {
@@ -439,6 +440,7 @@ const id: Translations = {
     emailInbox: "Kotak Masuk Email",
     users: "Pengguna",
     aiChatbot: "AI Chatbot",
+    aiScanSettings: "Scan Dokumen",
     settings: "Pengaturan",
   },
   common: {
@@ -806,6 +808,7 @@ const en: Translations = {
     emailInbox: "Email Inbox",
     users: "Users",
     aiChatbot: "AI Chatbot",
+    aiScanSettings: "Document Scan",
     settings: "Settings",
   },
   common: {
@@ -1173,6 +1176,7 @@ const zhCN: Translations = {
     emailInbox: "收件箱",
     users: "用户",
     aiChatbot: "AI聊天机器人",
+    aiScanSettings: "扫描文档",
     settings: "设置",
   },
   common: {
@@ -1248,7 +1252,7 @@ const zhCN: Translations = {
 };
 
 const zhTW: Translations = {
-  nav: { modules: "模組", dashboard: "儀表板", sales: "銷售", salesDashboard: "儀表板", masterItem: "商品主資料", quotations: "報價單", salesOrders: "銷售訂單", aiDrafts: "AI草稿", customers: "客戶", invoices: "發票", purchase: "採購", purchaseDashboard: "儀表板", rfq: "詢價單", purchaseOrders: "採購訂單", vendors: "供應商", vendorService: "服務供應商", bills: "帳單", reports: "報表", salesReport: "銷售", purchaseReport: "採購", arAging: "應收帳款", apAging: "應付帳款", accounting: "會計", chartOfAccounts: "科目表", journals: "日記帳", journalEntry: "日記帳分錄", journalItems: "分錄明細", payments: "付款", taxes: "稅務", trialBalance: "試算平衡表", generalLedger: "總帳", profitLoss: "損益表", balanceSheet: "資產負債表", reconciliation: "對帳", accountingSettings: "設定", trading: "貿易", logistics: "物流", shipments: "貨運", freightForwarding: "貨運代理", portalOrders: "門戶訂單", pos: "收銀台", expense: "營運費用", expenseList: "費用列表", expenseCategories: "費用類別", expenseReports: "費用報表", correspondences: "往來函件", emailInbox: "收件匣", users: "使用者", aiChatbot: "AI聊天機器人", settings: "設定" },
+  nav: { modules: "模組", dashboard: "儀表板", sales: "銷售", salesDashboard: "儀表板", masterItem: "商品主資料", quotations: "報價單", salesOrders: "銷售訂單", aiDrafts: "AI草稿", customers: "客戶", invoices: "發票", purchase: "採購", purchaseDashboard: "儀表板", rfq: "詢價單", purchaseOrders: "採購訂單", vendors: "供應商", vendorService: "服務供應商", bills: "帳單", reports: "報表", salesReport: "銷售", purchaseReport: "採購", arAging: "應收帳款", apAging: "應付帳款", accounting: "會計", chartOfAccounts: "科目表", journals: "日記帳", journalEntry: "日記帳分錄", journalItems: "分錄明細", payments: "付款", taxes: "稅務", trialBalance: "試算平衡表", generalLedger: "總帳", profitLoss: "損益表", balanceSheet: "資產負債表", reconciliation: "對帳", accountingSettings: "設定", trading: "貿易", logistics: "物流", shipments: "貨運", freightForwarding: "貨運代理", portalOrders: "門戶訂單", pos: "收銀台", expense: "營運費用", expenseList: "費用列表", expenseCategories: "費用類別", expenseReports: "費用報表", correspondences: "往來函件", emailInbox: "收件匣", users: "使用者", aiChatbot: "AI聊天機器人", aiScanSettings: "掃描文件", settings: "設定" },
   common: { save: "儲存", saving: "儲存中...", saved: "已儲存！", cancel: "取消", delete: "刪除", edit: "編輯", add: "新增", search: "搜尋", filter: "篩選", loading: "載入中...", error: "錯誤", success: "成功", noData: "暫無資料", noResults: "無結果", confirm: "確認", close: "關閉", back: "返回", next: "下一步", submit: "送出", create: "建立", update: "更新", view: "檢視", download: "下載", export: "匯出", import: "匯入", print: "列印", all: "全部", status: "狀態", date: "日期", name: "名稱", email: "電子郵件", phone: "電話", address: "地址", description: "描述", amount: "金額", total: "總計", actions: "操作", type: "類型", category: "類別", logOut: "登出", noRole: "無角色", division: "部門", signOut: "登出" },
   welcome: { title: "歡迎使用 BizPortal", subtitle: "您的帳戶已註冊。請聯絡管理員取得您的部門存取權限。", ecommerce: "電商", ecommerceDesc: "線上零售管理", ecommerceDetail: "管理您的網店商品，追蹤客戶訂單，監控數位銷售業績。", trading: "貿易", tradingDesc: "B2B庫存與供應商", tradingDetail: "追蹤大宗庫存，管理供應商關係，監控成本價格，處理國際貿易HS編碼。", logistics: "物流", logisticsDesc: "車隊與貨運追蹤", logisticsDetail: "即時監控貨運，更新發貨狀態，確保貨物準時到達目的地。", pos: "銷售終端", posDesc: "門市交易", posDetail: "快速處理零售交易，支援多種支付方式，追蹤門市日營業額。", signOut: "登出" },
   dashboard: { title: "儀表板", totalRevenue: "總收入", totalOrders: "總訂單", activeCustomers: "活躍客戶", pendingShipments: "待出貨", recentOrders: "最近訂單", salesOverview: "銷售概覽", quickActions: "快速操作", newQuotation: "新報價單", newOrder: "新訂單", viewReports: "查看報表" },

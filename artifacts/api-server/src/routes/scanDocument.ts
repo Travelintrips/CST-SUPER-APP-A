@@ -4,6 +4,9 @@ import OpenAI from "openai";
 import { createRequire } from "node:module";
 import { getAuth } from "@clerk/express";
 import { logger } from "../lib/logger";
+import { db, aiAgentSettingsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { requireAdmin } from "../lib/requireAdmin.js";
 
 const require_ = createRequire(import.meta.url);
 type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
@@ -105,87 +108,176 @@ router.use((req, res, next) => {
   next();
 });
 
-const SYSTEM_PROMPT = `You are a document data extraction assistant for a business management system (BizPortal).
-Extract structured data from the uploaded document. Detect the document type and use the matching schema.
-Always respond ONLY with valid JSON. Do not include markdown, code blocks, or any explanatory text.
+// ─── Field Registry ──────────────────────────────────────────────────────────
+export type DocGroup = "sales" | "freight" | "customs";
 
-For invoice/quotation/sales order/purchase order/expense:
-{
-  "docType": "sales" | "purchase" | "freight",
-  "partyName": string,
-  "partyEmail": string | null,
-  "partyPhone": string | null,
-  "partyAddress": string | null,
-  "docDate": string | null,
-  "dueDate": string | null,
-  "notes": string | null,
-  "lines": [
-    {
-      "name": string,
-      "description": string | null,
-      "quantity": number,
-      "unitPrice": number
-    }
-  ]
+export interface FieldDef {
+  key: string;
+  label: string;
+  description: string;
 }
 
-For freight/shipment documents (Master Air Waybill / MAWB, House Air Waybill / HAWB, Bill of Lading / B/L, Sea Waybill, Delivery Order, Manifest, etc.):
-{
-  "docType": "freight",
-  "awbNumber": string | null,
-  "shipperName": string | null,
-  "shipperAddress": string | null,
-  "consigneeName": string | null,
-  "consigneeAddress": string | null,
-  "notifyParty": string | null,
-  "originAirport": string | null,
-  "destinationAirport": string | null,
-  "vessel": string | null,
-  "voyage": string | null,
-  "containerNo": string | null,
-  "commodity": string | null,
-  "hsCode": string | null,
-  "grossWeight": number | null,
-  "netWeight": number | null,
-  "pieces": number | null,
-  "packingType": string | null,
-  "dimensions": string | null,
-  "measurement": number | null,
-  "notes": string | null,
-  "partyName": string | null,
-  "lines": []
+export const FIELD_REGISTRY: Record<DocGroup, FieldDef[]> = {
+  sales: [
+    { key: "partyName", label: "Nama Pihak", description: "Nama perusahaan atau individu (pembeli/penjual)" },
+    { key: "partyEmail", label: "Email", description: "Alamat email pihak terkait" },
+    { key: "partyPhone", label: "Telepon", description: "Nomor telepon pihak terkait" },
+    { key: "partyAddress", label: "Alamat", description: "Alamat lengkap pihak terkait" },
+    { key: "docDate", label: "Tanggal Dokumen", description: "Tanggal terbit dokumen (invoice, PO, dll)" },
+    { key: "dueDate", label: "Tanggal Jatuh Tempo", description: "Batas waktu pembayaran" },
+    { key: "notes", label: "Catatan", description: "Catatan atau keterangan tambahan di dokumen" },
+    { key: "lines", label: "Item / Baris", description: "Daftar produk atau jasa beserta qty dan harga" },
+  ],
+  freight: [
+    { key: "awbNumber", label: "No. AWB / B/L", description: "Nomor Air Waybill atau Bill of Lading" },
+    { key: "shipperName", label: "Nama Shipper", description: "Nama pengirim barang" },
+    { key: "shipperAddress", label: "Alamat Shipper", description: "Alamat lengkap pengirim" },
+    { key: "consigneeName", label: "Nama Consignee", description: "Nama penerima barang" },
+    { key: "consigneeAddress", label: "Alamat Consignee", description: "Alamat lengkap penerima" },
+    { key: "notifyParty", label: "Notify Party", description: "Pihak yang perlu diberitahu saat barang tiba" },
+    { key: "originAirport", label: "Pelabuhan / Bandara Asal", description: "Port of Loading atau Airport of Departure" },
+    { key: "destinationAirport", label: "Pelabuhan / Bandara Tujuan", description: "Port of Discharge atau Airport of Destination" },
+    { key: "vessel", label: "Nama Kapal / Maskapai", description: "Nama kapal laut atau nama maskapai penerbangan" },
+    { key: "voyage", label: "Voyage / Flight No.", description: "Nomor voyage kapal atau nomor penerbangan" },
+    { key: "containerNo", label: "No. Container", description: "Nomor kontainer (bisa lebih dari satu, dipisah koma)" },
+    { key: "commodity", label: "Komoditi", description: "Jenis dan deskripsi barang yang dikirim" },
+    { key: "hsCode", label: "HS Code", description: "Kode Harmonized System untuk klasifikasi barang" },
+    { key: "grossWeight", label: "Berat Kotor (kg)", description: "Total berat kotor dalam kg" },
+    { key: "netWeight", label: "Berat Bersih (kg)", description: "Total berat bersih dalam kg" },
+    { key: "pieces", label: "Jumlah Pieces", description: "Total jumlah kemasan / koli" },
+    { key: "packingType", label: "Jenis Kemasan", description: "Tipe kemasan (karton, palet, drum, dll)" },
+    { key: "dimensions", label: "Dimensi / CBM", description: "Ukuran atau volume total dalam CBM" },
+    { key: "measurement", label: "Measurement (CBM)", description: "Total cubic meter sebagai angka" },
+    { key: "notes", label: "Catatan", description: "Keterangan tambahan pada dokumen pengiriman" },
+    { key: "partyName", label: "Nama Pihak Utama", description: "Nama shipper atau consignee sisi BizPortal" },
+  ],
+  customs: [
+    { key: "customsDocType", label: "Tipe Dokumen Pabean", description: "Jenis dokumen: PIB, PEB, SPPB, NPE, BC 2.3, dll" },
+    { key: "nomorAju", label: "Nomor Pengajuan", description: "Nomor aju dari sistem kepabeanan" },
+    { key: "nomorDokumen", label: "Nomor Dokumen", description: "Nomor resmi dokumen pabean" },
+    { key: "tanggalDokumen", label: "Tanggal Dokumen", description: "Tanggal penerbitan dokumen" },
+    { key: "namaPerusahaan", label: "Nama Perusahaan", description: "Nama importir atau eksportir" },
+    { key: "npwpPerusahaan", label: "NPWP", description: "NPWP perusahaan importir/eksportir" },
+    { key: "kantorPabean", label: "Kantor Pabean", description: "Nama kantor bea cukai yang menerbitkan" },
+    { key: "posHS", label: "Pos HS", description: "Kode Pos Tarif HS barang impor/ekspor" },
+    { key: "uraianBarang", label: "Uraian Barang", description: "Deskripsi barang sesuai dokumen pabean" },
+    { key: "jumlahKoli", label: "Jumlah Koli", description: "Total jumlah kemasan" },
+    { key: "beratBersih", label: "Berat Bersih (kg)", description: "Berat bersih barang dalam kg" },
+    { key: "beratKotor", label: "Berat Kotor (kg)", description: "Berat kotor barang dalam kg" },
+    { key: "negaraAsal", label: "Negara Asal", description: "Negara asal barang (untuk impor)" },
+    { key: "negaraTujuan", label: "Negara Tujuan", description: "Negara tujuan barang (untuk ekspor)" },
+    { key: "pelabuhan", label: "Pelabuhan", description: "Nama pelabuhan bongkar/muat" },
+    { key: "nilaiPabean", label: "Nilai Pabean", description: "Nilai pabean / CIF dalam rupiah" },
+    { key: "beaMasuk", label: "Bea Masuk", description: "Tagihan bea masuk dalam rupiah" },
+    { key: "ppnImpor", label: "PPN Impor", description: "PPN impor dalam rupiah" },
+    { key: "pphImpor", label: "PPh Impor", description: "PPh impor dalam rupiah" },
+    { key: "totalTagihan", label: "Total Tagihan", description: "Total tagihan pungutan bea cukai" },
+    { key: "nilaiEkspor", label: "Nilai Ekspor", description: "Nilai ekspor (untuk PEB)" },
+    { key: "nomorPIBTerkait", label: "No. PIB Terkait", description: "Nomor PIB yang terkait (jika ada)" },
+    { key: "nomorPEBTerkait", label: "No. PEB Terkait", description: "Nomor PEB yang terkait (jika ada)" },
+    { key: "keteranganTambahan", label: "Keterangan Tambahan", description: "Catatan atau informasi lain dari dokumen pabean" },
+  ],
+};
+
+const SCAN_FIELDS_KEY = "scan_document_fields";
+
+async function getScanFieldConfig(): Promise<Record<DocGroup, Record<string, boolean>>> {
+  try {
+    const [row] = await db
+      .select()
+      .from(aiAgentSettingsTable)
+      .where(eq(aiAgentSettingsTable.key, SCAN_FIELDS_KEY));
+    if (!row?.value) return {} as Record<DocGroup, Record<string, boolean>>;
+    return JSON.parse(row.value) as Record<DocGroup, Record<string, boolean>>;
+  } catch {
+    return {} as Record<DocGroup, Record<string, boolean>>;
+  }
 }
 
-For Indonesian customs documents (PIB, PEB, SPPB, NPE, BC 2.3, PP, SPTNP, etc.):
-{
-  "docType": "customs",
-  "customsDocType": "PIB" | "PEB" | "SPPB" | "NPE" | "BC23" | "PP" | "SPTNP" | "other",
-  "nomorAju": string | null,
-  "nomorDokumen": string | null,
-  "tanggalDokumen": string | null,
-  "namaPerusahaan": string | null,
-  "npwpPerusahaan": string | null,
-  "kantorPabean": string | null,
-  "posHS": string | null,
-  "uraianBarang": string | null,
-  "jumlahKoli": number | null,
-  "beratBersih": number | null,
-  "beratKotor": number | null,
-  "negaraAsal": string | null,
-  "negaraTujuan": string | null,
-  "pelabuhan": string | null,
-  "nilaiPabean": number | null,
-  "beaMasuk": number | null,
-  "ppnImpor": number | null,
-  "pphImpor": number | null,
-  "totalTagihan": number | null,
-  "nilaiEkspor": number | null,
-  "nomorPIBTerkait": string | null,
-  "nomorPEBTerkait": string | null,
-  "keteranganTambahan": string | null
+function isEnabled(cfg: Record<string, boolean>, field: string): boolean {
+  if (cfg[field] === undefined) return true;
+  return cfg[field];
 }
 
-Rules:
+function buildSalesSchema(cfg: Record<string, boolean>): string {
+  const e = (f: string) => isEnabled(cfg, f);
+  const lines: string[] = [`  "docType": "sales" | "purchase" | "freight"`];
+  if (e("partyName")) lines.push(`  "partyName": string`);
+  if (e("partyEmail")) lines.push(`  "partyEmail": string | null`);
+  if (e("partyPhone")) lines.push(`  "partyPhone": string | null`);
+  if (e("partyAddress")) lines.push(`  "partyAddress": string | null`);
+  if (e("docDate")) lines.push(`  "docDate": string | null`);
+  if (e("dueDate")) lines.push(`  "dueDate": string | null`);
+  if (e("notes")) lines.push(`  "notes": string | null`);
+  if (e("lines")) {
+    lines.push(`  "lines": [\n    {\n      "name": string,\n      "description": string | null,\n      "quantity": number,\n      "unitPrice": number\n    }\n  ]`);
+  } else {
+    lines.push(`  "lines": []`);
+  }
+  return `{\n${lines.join(",\n")}\n}`;
+}
+
+function buildFreightSchema(cfg: Record<string, boolean>): string {
+  const e = (f: string) => isEnabled(cfg, f);
+  const lines: string[] = [`  "docType": "freight"`];
+  if (e("awbNumber")) lines.push(`  "awbNumber": string | null`);
+  if (e("shipperName")) lines.push(`  "shipperName": string | null`);
+  if (e("shipperAddress")) lines.push(`  "shipperAddress": string | null`);
+  if (e("consigneeName")) lines.push(`  "consigneeName": string | null`);
+  if (e("consigneeAddress")) lines.push(`  "consigneeAddress": string | null`);
+  if (e("notifyParty")) lines.push(`  "notifyParty": string | null`);
+  if (e("originAirport")) lines.push(`  "originAirport": string | null`);
+  if (e("destinationAirport")) lines.push(`  "destinationAirport": string | null`);
+  if (e("vessel")) lines.push(`  "vessel": string | null`);
+  if (e("voyage")) lines.push(`  "voyage": string | null`);
+  if (e("containerNo")) lines.push(`  "containerNo": string | null`);
+  if (e("commodity")) lines.push(`  "commodity": string | null`);
+  if (e("hsCode")) lines.push(`  "hsCode": string | null`);
+  if (e("grossWeight")) lines.push(`  "grossWeight": number | null`);
+  if (e("netWeight")) lines.push(`  "netWeight": number | null`);
+  if (e("pieces")) lines.push(`  "pieces": number | null`);
+  if (e("packingType")) lines.push(`  "packingType": string | null`);
+  if (e("dimensions")) lines.push(`  "dimensions": string | null`);
+  if (e("measurement")) lines.push(`  "measurement": number | null`);
+  if (e("notes")) lines.push(`  "notes": string | null`);
+  if (e("partyName")) lines.push(`  "partyName": string | null`);
+  lines.push(`  "lines": []`);
+  return `{\n${lines.join(",\n")}\n}`;
+}
+
+function buildCustomsSchema(cfg: Record<string, boolean>): string {
+  const e = (f: string) => isEnabled(cfg, f);
+  const lines: string[] = [
+    `  "docType": "customs"`,
+    `  "customsDocType": "PIB" | "PEB" | "SPPB" | "NPE" | "BC23" | "PP" | "SPTNP" | "other"`,
+  ];
+  if (e("nomorAju")) lines.push(`  "nomorAju": string | null`);
+  if (e("nomorDokumen")) lines.push(`  "nomorDokumen": string | null`);
+  if (e("tanggalDokumen")) lines.push(`  "tanggalDokumen": string | null`);
+  if (e("namaPerusahaan")) lines.push(`  "namaPerusahaan": string | null`);
+  if (e("npwpPerusahaan")) lines.push(`  "npwpPerusahaan": string | null`);
+  if (e("kantorPabean")) lines.push(`  "kantorPabean": string | null`);
+  if (e("posHS")) lines.push(`  "posHS": string | null`);
+  if (e("uraianBarang")) lines.push(`  "uraianBarang": string | null`);
+  if (e("jumlahKoli")) lines.push(`  "jumlahKoli": number | null`);
+  if (e("beratBersih")) lines.push(`  "beratBersih": number | null`);
+  if (e("beratKotor")) lines.push(`  "beratKotor": number | null`);
+  if (e("negaraAsal")) lines.push(`  "negaraAsal": string | null`);
+  if (e("negaraTujuan")) lines.push(`  "negaraTujuan": string | null`);
+  if (e("pelabuhan")) lines.push(`  "pelabuhan": string | null`);
+  if (e("nilaiPabean")) lines.push(`  "nilaiPabean": number | null`);
+  if (e("beaMasuk")) lines.push(`  "beaMasuk": number | null`);
+  if (e("ppnImpor")) lines.push(`  "ppnImpor": number | null`);
+  if (e("pphImpor")) lines.push(`  "pphImpor": number | null`);
+  if (e("totalTagihan")) lines.push(`  "totalTagihan": number | null`);
+  if (e("nilaiEkspor")) lines.push(`  "nilaiEkspor": number | null`);
+  if (e("nomorPIBTerkait")) lines.push(`  "nomorPIBTerkait": string | null`);
+  if (e("nomorPEBTerkait")) lines.push(`  "nomorPEBTerkait": string | null`);
+  if (e("keteranganTambahan")) lines.push(`  "keteranganTambahan": string | null`);
+  return `{\n${lines.join(",\n")}\n}`;
+}
+
+const PROMPT_RULES = `Rules:
 - Extract all monetary values as plain numbers (no currency symbols)
 - Extract all weights, pieces, and volumes as plain numbers (no units like "kg", "pcs", "cbm")
 - Dates as ISO strings (YYYY-MM-DD) or null if not found
@@ -207,6 +299,28 @@ Rules:
 - Use Indonesian or English field values as they appear in the document
 - IGNORE any terms & conditions, general conditions, conditions of carriage/contract, liability clauses, disclaimers, important notices, governing law sections, arbitration clauses, signature blocks, and any other legal boilerplate — extract data ONLY from the header, party boxes, cargo details, and line-item table sections of the document`;
 
+async function buildSystemPrompt(): Promise<string> {
+  const config = await getScanFieldConfig();
+  const salesCfg = config.sales ?? {};
+  const freightCfg = config.freight ?? {};
+  const customsCfg = config.customs ?? {};
+
+  return `You are a document data extraction assistant for a business management system (BizPortal).
+Extract structured data from the uploaded document. Detect the document type and use the matching schema.
+Always respond ONLY with valid JSON. Do not include markdown, code blocks, or any explanatory text.
+
+For invoice/quotation/sales order/purchase order/expense:
+${buildSalesSchema(salesCfg)}
+
+For freight/shipment documents (Master Air Waybill / MAWB, House Air Waybill / HAWB, Bill of Lading / B/L, Sea Waybill, Delivery Order, Manifest, etc.):
+${buildFreightSchema(freightCfg)}
+
+For Indonesian customs documents (PIB, PEB, SPPB, NPE, BC 2.3, PP, SPTNP, etc.):
+${buildCustomsSchema(customsCfg)}
+
+${PROMPT_RULES}`;
+}
+
 router.post("/", upload.single("file"), async (req, res): Promise<void> => {
   const file = req.file;
   if (!file) {
@@ -224,6 +338,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
   }
 
   try {
+    const systemPrompt = await buildSystemPrompt();
     let extractedText: string;
     let mode: "pdf-text" | "pdf-vision" | "image-vision" = "image-vision";
 
@@ -248,7 +363,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
           model: "gpt-5-mini",
           max_completion_tokens: 3500,
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: systemPrompt },
             {
               role: "user",
               content: `Extract all data from this document and return as JSON only.\n\n----- DOCUMENT TEXT -----\n${cleanText}`,
@@ -264,7 +379,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
           model: "gpt-5.1",
           max_completion_tokens: 3500,
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: systemPrompt },
             {
               role: "user",
               content: [
@@ -283,7 +398,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
         model: "gpt-5.1",
         max_completion_tokens: 3500,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: systemPrompt },
           {
             role: "user",
             content: [
@@ -315,6 +430,67 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
     }, "[scan-document] extraction failed");
     res.status(500).json({ message: "Extraction failed", error: msg });
   }
+});
+
+// ── GET /api/scan-document/fields ────────────────────────────────────────────
+router.get("/fields", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const config = await getScanFieldConfig();
+
+  const buildEnabled = (group: DocGroup): Record<string, boolean> => {
+    const groupCfg = config[group] ?? {};
+    const out: Record<string, boolean> = {};
+    for (const f of FIELD_REGISTRY[group]) {
+      out[f.key] = groupCfg[f.key] !== false;
+    }
+    return out;
+  };
+
+  res.json({
+    fields: FIELD_REGISTRY,
+    enabled: {
+      sales: buildEnabled("sales"),
+      freight: buildEnabled("freight"),
+      customs: buildEnabled("customs"),
+    },
+  });
+});
+
+// ── PUT /api/scan-document/fields ─────────────────────────────────────────────
+router.put("/fields", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const body = req.body as Partial<Record<DocGroup, Record<string, boolean>>>;
+  const groups: DocGroup[] = ["sales", "freight", "customs"];
+
+  const newConfig: Record<DocGroup, Record<string, boolean>> = {
+    sales: {},
+    freight: {},
+    customs: {},
+  };
+
+  for (const group of groups) {
+    const incoming = body[group];
+    if (incoming && typeof incoming === "object") {
+      const validKeys = new Set(FIELD_REGISTRY[group].map((f) => f.key));
+      for (const [k, v] of Object.entries(incoming)) {
+        if (validKeys.has(k) && typeof v === "boolean") {
+          newConfig[group][k] = v;
+        }
+      }
+    }
+  }
+
+  await db
+    .insert(aiAgentSettingsTable)
+    .values({ key: SCAN_FIELDS_KEY, value: JSON.stringify(newConfig) })
+    .onConflictDoUpdate({
+      target: aiAgentSettingsTable.key,
+      set: { value: JSON.stringify(newConfig), updatedAt: new Date() },
+    });
+
+  res.json({ ok: true });
 });
 
 export default router;
