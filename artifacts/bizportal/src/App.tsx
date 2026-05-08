@@ -4,7 +4,7 @@ import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wo
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { useGetCurrentUser, getGetCurrentUserQueryKey, setAuthTokenGetter } from "@workspace/api-client-react";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 import NotFound from "@/pages/not-found";
@@ -381,6 +381,20 @@ function Router() {
   );
 }
 
+// Wires Clerk's getToken() into the API client so every fetch request
+// automatically gets an "Authorization: Bearer <token>" header.
+// This is required in production where Clerk does not rely on cookies.
+function ClerkAuthTokenSync() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+
+  return null;
+}
+
 function ClerkQueryClientCacheInvalidator() {
   const clerkWindow = window as typeof window & { Clerk?: { addListener?: (cb: (ev: { user?: { id?: string | null } | null }) => void) => () => void } };
   const { addListener } = clerkWindow.Clerk || {};
@@ -421,6 +435,7 @@ function App() {
         signUpFallbackRedirectUrl={`${basePath}/`}
         afterSignOutUrl={`${basePath}/sign-in`}
       >
+        <ClerkAuthTokenSync />
         <ClerkQueryClientCacheInvalidator />
         <LanguageProvider>
           <TooltipProvider>
