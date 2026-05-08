@@ -32,6 +32,10 @@ args = "BizPortal"
 task = "workflow.run"
 args = "Logistic Order"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "CST Driver"
+
 [[workflows.workflow]]
 name = "API Server"
 author = "agent"
@@ -76,6 +80,18 @@ author = "agent"
 task = "shell.exec"
 args = "PORT=19368 BASE_PATH=/logistic-order/ pnpm --filter @workspace/logistic-order run dev"
 waitForPort = 19368
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "CST Driver"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=21170 pnpm --filter @workspace/cst-driver run dev"
+waitForPort = 21170
 
 [workflows.workflow.metadata]
 outputType = "webview"
