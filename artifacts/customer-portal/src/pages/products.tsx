@@ -381,7 +381,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
           {product.description && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{t("products.descriptionLabel")}</p>
-              <p className="text-sm text-foreground leading-relaxed line-clamp-3">{product.description}</p>
+              <pre className="text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">{product.description}</pre>
             </div>
           )}
 
@@ -500,7 +500,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             <div className="bg-gray-50 rounded-xl px-4 py-3 border border-border">
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-muted-foreground">{t("products.subtotal")} ({qty}x)</span>
-                <span>{formatIDR(product.price * qty)}</span>
+                <span>{isUsdProduct(product) ? `USD ${product.price * qty}` : formatIDR(product.price * qty)}</span>
               </div>
               {chosen.kind === "vendor" && (
                 <div className="flex justify-between text-sm mb-1">
