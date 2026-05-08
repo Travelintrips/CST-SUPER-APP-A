@@ -71,6 +71,11 @@ export interface GitHubRepo {
   updated_at: string;
   default_branch: string;
   private: boolean;
+  owner: {
+    login: string;
+    avatar_url: string;
+    html_url: string;
+  };
   license: {
     key: string;
     name: string;
@@ -286,6 +291,38 @@ export async function fetchCodeSearch(
   }
 
   return res.json();
+}
+
+export async function checkIsStarred(owner: string, repo: string, token: string): Promise<boolean> {
+  const res = await fetch(`${GITHUB_API_BASE}/user/starred/${owner}/${repo}`, {
+    headers: buildHeaders(token),
+  });
+  if (res.status === 204) return true;
+  if (res.status === 404) return false;
+  if (res.status === 401) throw new Error("Invalid GitHub token");
+  throw new Error(`Failed to check star status: ${res.statusText}`);
+}
+
+export async function starRepo(owner: string, repo: string, token: string): Promise<void> {
+  const res = await fetch(`${GITHUB_API_BASE}/user/starred/${owner}/${repo}`, {
+    method: "PUT",
+    headers: buildHeaders(token, { "Content-Length": "0" }),
+  });
+  if (!res.ok && res.status !== 204) {
+    if (res.status === 401) throw new Error("Invalid GitHub token");
+    throw new Error(`Failed to star repository: ${res.statusText}`);
+  }
+}
+
+export async function unstarRepo(owner: string, repo: string, token: string): Promise<void> {
+  const res = await fetch(`${GITHUB_API_BASE}/user/starred/${owner}/${repo}`, {
+    method: "DELETE",
+    headers: buildHeaders(token),
+  });
+  if (!res.ok && res.status !== 204) {
+    if (res.status === 401) throw new Error("Invalid GitHub token");
+    throw new Error(`Failed to unstar repository: ${res.statusText}`);
+  }
 }
 
 export async function fetchRateLimit(token?: string): Promise<RateLimitResponse> {

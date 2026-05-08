@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFork, Clock, BookOpen, TerminalSquare, Github, ChevronRight, XCircle, ArrowRight, FolderTree, SearchCode } from "lucide-react";
-import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl, GitHubContentItem, CodeSearchItem } from "@/lib/github";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFork, Clock, BookOpen, TerminalSquare, Github, ChevronRight, XCircle, ArrowRight, FolderTree, SearchCode, Eye, GitFork as ForkIcon, Loader2, Lock } from "lucide-react";
+import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl, GitHubContentItem, CodeSearchItem, checkIsStarred, starRepo, unstarRepo } from "@/lib/github";
 import { useGitHubRepo, useGitHubBranches } from "@/hooks/use-github";
 import { useHistory } from "@/hooks/use-history";
 import { useGitHubToken } from "@/hooks/use-github-token";
@@ -33,6 +33,11 @@ export default function Home() {
   const { token, setToken, clearToken, isAuthenticated } = useGitHubToken();
   const { history, addToHistory, clearHistory } = useHistory();
 
+  // Star state — null = unknown, true/false = known
+  const [isStarred, setIsStarred] = useState<boolean | null>(null);
+  const [isStarring, setIsStarring] = useState(false);
+  const [localStarCount, setLocalStarCount] = useState<number | null>(null);
+
   const { 
     data: repoData, 
     isLoading: isLoadingRepo, 
@@ -44,6 +49,49 @@ export default function Home() {
     data: branchesData,
     isLoading: isLoadingBranches
   } = useGitHubBranches(parsedUrl?.owner || "", parsedUrl?.repo || "", !!parsedUrl?.isValid && !!repoData, token || undefined);
+
+  // Check star status when repo + token become available
+  useEffect(() => {
+    if (!repoData || !token) {
+      setIsStarred(null);
+      return;
+    }
+    let cancelled = false;
+    checkIsStarred(repoData.owner.login, repoData.name, token)
+      .then((starred) => { if (!cancelled) setIsStarred(starred); })
+      .catch(() => { if (!cancelled) setIsStarred(null); });
+    return () => { cancelled = true; };
+  }, [repoData, token]);
+
+  // Sync local star count with fresh repo data
+  useEffect(() => {
+    if (repoData) setLocalStarCount(repoData.stargazers_count);
+  }, [repoData]);
+
+  const handleToggleStar = useCallback(async () => {
+    if (!repoData || !token || isStarring) return;
+    setIsStarring(true);
+    const wasStarred = isStarred;
+    // Optimistic update
+    setIsStarred(!wasStarred);
+    setLocalStarCount((c) => (c ?? repoData.stargazers_count) + (wasStarred ? -1 : 1));
+    try {
+      if (wasStarred) {
+        await unstarRepo(repoData.owner.login, repoData.name, token);
+        toast({ title: "Unstarred", description: `${repoData.full_name} removed from your stars.` });
+      } else {
+        await starRepo(repoData.owner.login, repoData.name, token);
+        toast({ title: "Starred!", description: `${repoData.full_name} added to your stars.`, className: "bg-primary text-primary-foreground border-primary" });
+      }
+    } catch (err) {
+      // Revert on failure
+      setIsStarred(wasStarred);
+      setLocalStarCount((c) => (c ?? repoData.stargazers_count) + (wasStarred ? 1 : -1));
+      toast({ title: "Action failed", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setIsStarring(false);
+    }
+  }, [repoData, token, isStarred, isStarring, toast]);
 
   // Set default branch when repo data loads
   useEffect(() => {
@@ -74,6 +122,8 @@ export default function Home() {
     setShowFileBrowser(false);
     setShowCodeSearch(false);
     setSelectedFile(null);
+    setIsStarred(null);
+    setLocalStarCount(null);
   };
 
   const handleDownload = () => {
@@ -248,7 +298,7 @@ export default function Home() {
                 </div>
                 
                 <div className="flex justify-between items-start gap-4 relative z-10">
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <CardTitle className="text-2xl font-bold flex items-center gap-2 flex-wrap mb-2">
                       <a 
                         href={repoData.html_url} 
@@ -258,10 +308,65 @@ export default function Home() {
                       >
                         {repoData.full_name}
                       </a>
+                      {repoData.private && (
+                        <Badge variant="outline" className="text-xs font-mono border-amber-500/40 text-amber-400 gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Private
+                        </Badge>
+                      )}
                     </CardTitle>
                     <CardDescription className="text-base text-foreground/80 leading-relaxed max-w-xl">
                       {repoData.description || "No description provided."}
                     </CardDescription>
+                  </div>
+
+                  {/* Action buttons: Star / Watch / Fork */}
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                    {/* Star */}
+                    <button
+                      onClick={isAuthenticated ? handleToggleStar : undefined}
+                      disabled={isStarring}
+                      title={!isAuthenticated ? "Add a GitHub token to star repos" : isStarred ? "Unstar this repo" : "Star this repo"}
+                      className={`group/star flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-mono transition-all select-none ${
+                        !isAuthenticated
+                          ? "border-border/30 text-muted-foreground/40 cursor-not-allowed"
+                          : isStarred
+                          ? "border-yellow-500/50 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 cursor-pointer"
+                          : "border-border/40 text-muted-foreground hover:border-yellow-500/40 hover:text-yellow-400 cursor-pointer"
+                      }`}
+                    >
+                      {isStarring ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Star className={`w-3.5 h-3.5 transition-all ${isStarred ? "fill-yellow-400 text-yellow-400" : ""}`} />
+                      )}
+                      <span className="tabular-nums">
+                        {(localStarCount ?? repoData.stargazers_count).toLocaleString()}
+                      </span>
+                    </button>
+
+                    {/* Watch */}
+                    <a
+                      href={`${repoData.html_url}/subscription`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Manage watch settings on GitHub"
+                      className="flex items-center gap-1.5 rounded-lg border border-border/40 px-3 py-1.5 text-sm font-mono text-muted-foreground hover:border-sky-500/40 hover:text-sky-400 transition-all"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Watch</span>
+                    </a>
+
+                    {/* Fork */}
+                    <a
+                      href={`${repoData.html_url}/fork`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Fork this repo on GitHub"
+                      className="flex items-center gap-1.5 rounded-lg border border-border/40 px-3 py-1.5 text-sm font-mono text-muted-foreground hover:border-violet-500/40 hover:text-violet-400 transition-all"
+                    >
+                      <GitFork className="w-3.5 h-3.5" />
+                      <span>{repoData.forks_count.toLocaleString()}</span>
+                    </a>
                   </div>
                 </div>
               </CardHeader>
@@ -276,7 +381,7 @@ export default function Home() {
                   )}
                   <Badge variant="secondary" className="font-mono px-3 py-1 bg-secondary/80">
                     <Star className="w-3 h-3 mr-2 text-yellow-500" />
-                    {repoData.stargazers_count.toLocaleString()}
+                    {(localStarCount ?? repoData.stargazers_count).toLocaleString()}
                   </Badge>
                   <Badge variant="secondary" className="font-mono px-3 py-1 bg-secondary/80">
                     <GitFork className="w-3 h-3 mr-2" />
