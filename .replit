@@ -9,6 +9,7 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -21,45 +22,27 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-
-<<<<<<< HEAD
-ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
-=======
-
->>>>>>> 265a4ba20b2dc2c49ce05507639cf10458d58312
-FONNTE_ADMIN_WA = "6281288195206"IMAP_HOST = "imap.gmail.com"
+VITE_CLERK_PUBLISHABLE_KEY = "pk_test_Z2xvd2luZy1jaG93LTg1LmNsZXJrLmFjY291bnRzLmRldiQ"
+IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = "993"
 IMAP_USER = "admcst001@gmail.com"
-PORTAL_ADMIN_EMAILS = "divatranssoetta@gmail.com,wangsamasindo@gmail.com"
-=======
 ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com"
-PORTAL_ADMIN_EMAILS = "divatranssoetta@gmail.com,divarestorxr@gmail.com"
+PORTAL_ADMIN_EMAILS = "divatranssoetta@gmail.com"
+FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 SMTP_HOST = "smtp-relay.brevo.com"
 SMTP_PORT = "587"
 SMTP_USER = "8a96b8001@smtp-brevo.com"
 SMTP_PASS = "xsmtpsib-ccee60eca66c4da65908d6a8a8deb075a41b54c7784a0cb94ebfa7929fe74d13-4V33DEBIIV8nHLuT"
 SMTP_FROM = "CST Logistics <info@cstlogistic.co.id>"
-CLERK_PUBLISHABLE_KEY = "pk_test_cG9saXRlLXNlYWwtNzAuY2xlcmsuYWNjb3VudHMuZGV2JA"
+CLERK_PUBLISHABLE_KEY = "pk_test_Z2xvd2luZy1jaG93LTg1LmNsZXJrLmFjY291bnRzLmRldiQ"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
 
 [nix]
 channel = "stable-25_05"
-packages = [
-  "freetype",
-  "lcms2",
-  "libimagequant",
-  "libjpeg",
-  "libtiff",
-  "libwebp",
-  "libxcrypt",
-  "openjpeg",
-  "tcl",
-  "tk",
-  "zlib",
-]
+packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tk", "zlib"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
@@ -93,24 +76,8 @@ localPort = 8086
 externalPort = 4200
 
 [[ports]]
-localPort = 8087
-externalPort = 8008
-
-[[ports]]
-localPort = 8088
-externalPort = 8081
-
-[[ports]]
-localPort = 8089
-externalPort = 9000
-
-[[ports]]
 localPort = 18442
 externalPort = 3000
-
-[[ports]]
-localPort = 19326
-externalPort = 8008
 
 [[ports]]
 localPort = 19368
