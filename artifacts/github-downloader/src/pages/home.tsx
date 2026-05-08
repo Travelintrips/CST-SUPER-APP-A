@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFork, Clock, BookOpen, TerminalSquare, Github, ChevronRight, XCircle, ArrowRight, FolderTree } from "lucide-react";
-import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl, GitHubContentItem } from "@/lib/github";
+import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFork, Clock, BookOpen, TerminalSquare, Github, ChevronRight, XCircle, ArrowRight, FolderTree, SearchCode } from "lucide-react";
+import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl, GitHubContentItem, CodeSearchItem } from "@/lib/github";
 import { useGitHubRepo, useGitHubBranches } from "@/hooks/use-github";
 import { useHistory } from "@/hooks/use-history";
 import { FileBrowser } from "@/components/file-browser";
 import { FilePreview } from "@/components/file-preview";
+import { CodeSearch } from "@/components/code-search";
 import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export default function Home() {
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [isCopied, setIsCopied] = useState(false);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
+  const [showCodeSearch, setShowCodeSearch] = useState(false);
   const [selectedFile, setSelectedFile] = useState<GitHubContentItem | null>(null);
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +69,7 @@ export default function Home() {
     setSelectedBranch("");
     setIsCopied(false);
     setShowFileBrowser(false);
+    setShowCodeSearch(false);
     setSelectedFile(null);
   };
 
@@ -351,6 +354,17 @@ export default function Home() {
                   <FolderTree className="w-5 h-5 sm:mr-2" />
                   <span className="hidden sm:inline">Browse Files</span>
                 </Button>
+                <Button
+                  onClick={() => setShowCodeSearch((v) => !v)}
+                  disabled={!selectedBranch}
+                  variant="outline"
+                  size="lg"
+                  className={`w-full sm:w-auto h-14 px-6 bg-background hover:bg-muted transition-colors ${showCodeSearch ? "border-primary/50 text-primary" : ""}`}
+                  title="Search code"
+                >
+                  <SearchCode className="w-5 h-5 sm:mr-2" />
+                  <span className="hidden sm:inline">Search Code</span>
+                </Button>
               </CardFooter>
             </Card>
           )}
@@ -370,8 +384,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* File Preview Panel */}
-          {parsedUrl?.isValid && repoData && selectedBranch && selectedFile && showFileBrowser && (
+          {/* File Preview Panel — shown for both browser and search selections */}
+          {parsedUrl?.isValid && repoData && selectedBranch && selectedFile && (showFileBrowser || showCodeSearch) && (
             <FilePreview
               key={selectedFile.path}
               owner={repoData.owner.login}
@@ -383,6 +397,30 @@ export default function Home() {
               htmlUrl={selectedFile.html_url}
               onClose={() => setSelectedFile(null)}
             />
+          )}
+
+          {/* Code Search Panel */}
+          {parsedUrl?.isValid && repoData && selectedBranch && showCodeSearch && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <CodeSearch
+                owner={repoData.owner.login}
+                repo={repoData.name}
+                branch={selectedBranch}
+                selectedPath={selectedFile?.path}
+                onFileSelect={(item: CodeSearchItem) => {
+                  const rawUrl = `https://raw.githubusercontent.com/${repoData.owner.login}/${repoData.name}/${selectedBranch}/${item.path}`;
+                  setSelectedFile({
+                    name: item.name,
+                    path: item.path,
+                    type: "file",
+                    size: 0,
+                    sha: item.sha,
+                    download_url: rawUrl,
+                    html_url: item.html_url,
+                  });
+                }}
+              />
+            </div>
           )}
 
           {/* History State */}

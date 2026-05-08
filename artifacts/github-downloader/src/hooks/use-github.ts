@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchRepoInfo, fetchRepoBranches, fetchRepoContents, fetchFileContent } from "@/lib/github";
+import { fetchRepoInfo, fetchRepoBranches, fetchRepoContents, fetchFileContent, fetchCodeSearch } from "@/lib/github";
 
 export function useGitHubRepo(owner: string, repo: string, enabled: boolean) {
   return useQuery({

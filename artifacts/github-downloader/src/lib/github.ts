@@ -203,6 +203,48 @@ export function getLanguageFromPath(path: string): string {
   return map[ext] ?? "text";
 }
 
+export interface CodeSearchItem {
+  name: string;
+  path: string;
+  sha: string;
+  html_url: string;
+  repository: { full_name: string };
+  text_matches?: Array<{
+    fragment: string;
+    matches: Array<{ text: string; indices: [number, number] }>;
+  }>;
+}
+
+export interface CodeSearchResult {
+  total_count: number;
+  incomplete_results: boolean;
+  items: CodeSearchItem[];
+}
+
+export async function fetchCodeSearch(
+  owner: string,
+  repo: string,
+  query: string
+): Promise<CodeSearchResult> {
+  const q = encodeURIComponent(`${query} repo:${owner}/${repo}`);
+  const res = await fetch(
+    `https://api.github.com/search/code?q=${q}&per_page=30`,
+    {
+      headers: {
+        Accept: "application/vnd.github.v3.text-match+json",
+      },
+    }
+  );
+
+  if (!res.ok) {
+    if (res.status === 403) throw new Error("GitHub API rate limit exceeded. Please wait a moment and try again.");
+    if (res.status === 422) throw new Error("Invalid search query. Try a different term.");
+    throw new Error(`Search failed: ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
 export function isBinaryPath(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   const binaryExts = new Set([
