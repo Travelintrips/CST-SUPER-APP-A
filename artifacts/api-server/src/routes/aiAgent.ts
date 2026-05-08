@@ -16,10 +16,19 @@ import { sendWhatsApp } from "../lib/fonnte";
 import { requireAdmin } from "../lib/requireAdmin";
 import { logger } from "../lib/logger";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key not configured.");
+    }
+    _openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return _openai;
+}
 
 export const aiAgentRouter = Router();
 
@@ -559,7 +568,7 @@ async function streamAiChat(
   while (loopCount < 5) {
     loopCount++;
 
-    const stream = await openai.chat.completions.create({
+    const stream = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: chatMessages,
       tools: TOOLS,

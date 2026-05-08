@@ -11,10 +11,19 @@ type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }
 // root; importing the inner module path skips that and works in CJS+ESM.
 const pdfParse = require_("pdf-parse/lib/pdf-parse.js") as PdfParseFn;
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key not configured.");
+    }
+    _openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return _openai;
+}
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -235,7 +244,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
         // Text-based PDF: send extracted text to a faster text-only model.
         mode = "pdf-text";
         const cleanText = cleanPdfText(pdfText);
-        const response = await openai.chat.completions.create({
+        const response = await getOpenAI().chat.completions.create({
           model: "gpt-5-mini",
           max_completion_tokens: 3500,
           messages: [
@@ -251,7 +260,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
         // Scanned image PDF (no text layer) — fall back to vision OCR.
         mode = "pdf-vision";
         const base64Pdf = file.buffer.toString("base64");
-        const response = await openai.chat.completions.create({
+        const response = await getOpenAI().chat.completions.create({
           model: "gpt-5.1",
           max_completion_tokens: 3500,
           messages: [
@@ -270,7 +279,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
     } else {
       mode = "image-vision";
       const base64Image = file.buffer.toString("base64");
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAI().chat.completions.create({
         model: "gpt-5.1",
         max_completion_tokens: 3500,
         messages: [

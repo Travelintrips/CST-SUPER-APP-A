@@ -10,10 +10,19 @@ import { syncImapEmails } from "../lib/imapPoller.js";
 const router = Router();
 const objectStorageService = new ObjectStorageService();
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+let openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key not configured. Please add OPENAI_API_KEY to environment variables.");
+    }
+    openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return openai;
+}
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -74,7 +83,7 @@ router.post("/scan", async (req, res, next) => {
     const base64Data = file.buffer.toString("base64");
     const dataUrl = `data:${mimeType};base64,${base64Data}`;
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       max_tokens: 2048,
       messages: [
