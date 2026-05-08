@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { createRequire } from "node:module";
 import {
   db,
   salesDocumentsTable,
@@ -12,6 +13,10 @@ import { eq, sql, and, gt } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { sendMail, isSmtpConfigured } from "./mailer.js";
 import { sendLogisticOrderNotification } from "./orderNotification.js";
+
+const require_ = createRequire(import.meta.url);
+type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
+const pdfParse = require_("pdf-parse/lib/pdf-parse.js") as PdfParseFn;
 
 const AI_INTAKE_KEY = "ai_intake_enabled";
 const AI_INTAKE_REPLY_WA_KEY = "ai_intake_reply_wa";
@@ -505,4 +510,235 @@ export async function saveAiIntakeSettings(settings: {
 
 export function buildAiReplyWa(template: string, docNumber: string): string {
   return template.replace(/\{docNumber\}/g, docNumber);
+}
+
+// ── WA Media (PDF / Image) intake ────────────────────────────────────────────
+
+function guessMimeFromUrl(url: string): string {
+  const lower = url.toLowerCase().split("?")[0];
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  return "";
+}
+
+async function downloadFileBuffer(
+  url: string,
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    if (!resp.ok) {
+      logger.warn({ url, status: resp.status }, "AI media intake: download failed");
+      return null;
+    }
+    const contentType = (resp.headers.get("content-type") ?? "").split(";")[0].trim();
+    const arrayBuffer = await resp.arrayBuffer();
+    return { buffer: Buffer.from(arrayBuffer), mimeType: contentType };
+  } catch (err) {
+    logger.warn({ err, url }, "AI media intake: download error");
+    return null;
+  }
+}
+
+const AI_MEDIA_INTAKE_PROMPT = `You are an order intake assistant for CST Logistics, a freight forwarding company.
+Your job is to read a document (invoice, quotation, Bill of Lading, Air Waybill, shipping order, customs form, or any business document) and extract order/freight inquiry data.
+Always respond ONLY with valid JSON — no markdown, no code blocks, no explanation.
+
+Extract the following into this JSON structure:
+{
+  "customerName": string,
+  "customerEmail": string | null,
+  "customerPhone": string | null,
+  "origin": string | null,
+  "destination": string | null,
+  "transportMode": "sea" | "air" | "land" | "multimodal" | null,
+  "cargoDescription": string | null,
+  "grossWeight": number | null,
+  "volumeCbm": number | null,
+  "requiredDate": string | null,
+  "notes": string | null,
+  "lines": [
+    {
+      "name": string,
+      "description": string | null,
+      "quantity": number,
+      "unitPrice": number
+    }
+  ],
+  "confidence": "high" | "medium" | "low",
+  "isOrderInquiry": boolean,
+  "docSummary": string
+}
+
+Rules:
+- Set isOrderInquiry: true if the document relates to freight, logistics, shipping, customs, or any business transaction/inquiry.
+- docSummary: one-line summary of what the document is (e.g. "Bill of Lading — Jakarta to Singapore, 20ft FCL")
+- For customerName: use the shipper, importer, or sender party name as it appears on the document. If not found use "Prospective Customer".
+- For lines: create at least one line from the document. For freight docs without explicit line items, create one line from the service (e.g. {"name": "Sea Freight FCL Jakarta–Singapore", "description": "Container: TCNU1234567", "quantity": 1, "unitPrice": 0}).
+- If no price is mentioned, set unitPrice to 0.
+- requiredDate as ISO string (YYYY-MM-DD) or null.
+- grossWeight and volumeCbm as plain numbers or null.
+- confidence: "high" if data is clear and complete, "medium" if partial, "low" if very little info.
+- Do NOT make up specific prices unless clearly stated in the document.`;
+
+async function extractOrderFromMediaBuffer(
+  buffer: Buffer,
+  mimeType: string,
+  caption: string,
+): Promise<ExtractedOrder | null> {
+  const openai = buildOpenAi();
+  const isImage = mimeType.startsWith("image/");
+  const isPdf = mimeType === "application/pdf";
+  if (!isImage && !isPdf) return null;
+
+  const captionNote = caption.trim() ? `\n\nCaption/note from sender: ${caption.trim()}` : "";
+
+  try {
+    if (isPdf) {
+      let pdfText = "";
+      try {
+        const parsed = await pdfParse(buffer);
+        pdfText = (parsed.text ?? "").trim();
+      } catch { /* fall through to vision */ }
+
+      if (pdfText.length >= 200) {
+        // Text-based PDF — fast text path
+        const cleanText = pdfText.slice(0, 5000);
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          max_completion_tokens: 1500,
+          messages: [
+            { role: "system", content: AI_MEDIA_INTAKE_PROMPT },
+            { role: "user", content: `Extract order data from this document:\n\n${cleanText}${captionNote}` },
+          ],
+        });
+        const raw = response.choices[0]?.message?.content ?? "{}";
+        return JSON.parse(raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()) as ExtractedOrder;
+      } else {
+        // Scanned/image PDF — vision path
+        const base64 = buffer.toString("base64");
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          max_completion_tokens: 1500,
+          messages: [
+            { role: "system", content: AI_MEDIA_INTAKE_PROMPT },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: `Extract order data from this document:${captionNote}` },
+                { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
+              ],
+            },
+          ],
+        });
+        const raw = response.choices[0]?.message?.content ?? "{}";
+        return JSON.parse(raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()) as ExtractedOrder;
+      }
+    } else {
+      // Image (JPG, PNG, WEBP)
+      const base64 = buffer.toString("base64");
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        max_completion_tokens: 1500,
+        messages: [
+          { role: "system", content: AI_MEDIA_INTAKE_PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: `Extract order data from this document image:${captionNote}` },
+              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+            ],
+          },
+        ],
+      });
+      const raw = response.choices[0]?.message?.content ?? "{}";
+      return JSON.parse(raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()) as ExtractedOrder;
+    }
+  } catch (err) {
+    logger.warn({ err }, "AI media intake: extraction failed");
+    return null;
+  }
+}
+
+export interface AiMediaIntakeResult extends AiIntakeResult {
+  docSummary: string;
+  mimeType: string;
+}
+
+/**
+ * Process a media file URL (PDF or image) from a WhatsApp message.
+ * Downloads the file, extracts order data via AI vision/OCR, and creates a draft quotation.
+ */
+export async function processWaMediaForAiIntake(
+  fileUrl: string,
+  phone: string,
+  senderName?: string | null,
+  caption?: string | null,
+): Promise<AiMediaIntakeResult | null> {
+  if (!(await isAiIntakeEnabled())) return null;
+
+  const downloaded = await downloadFileBuffer(fileUrl);
+  if (!downloaded) {
+    await db.insert(waAiIntakeLogTable).values({
+      phone,
+      senderName: senderName ?? null,
+      status: "error",
+      skipReason: "download_failed",
+    });
+    return null;
+  }
+
+  let { mimeType } = downloaded;
+  if (!mimeType || mimeType === "application/octet-stream" || mimeType === "") {
+    mimeType = guessMimeFromUrl(fileUrl);
+  }
+
+  const isImage = mimeType.startsWith("image/");
+  const isPdf = mimeType === "application/pdf";
+
+  if (!isImage && !isPdf) {
+    logger.info({ mimeType, phone }, "AI media intake: unsupported file type, skipping");
+    await db.insert(waAiIntakeLogTable).values({
+      phone,
+      senderName: senderName ?? null,
+      status: "skipped",
+      skipReason: "unsupported_file_type",
+    });
+    return null;
+  }
+
+  const extracted = await extractOrderFromMediaBuffer(
+    downloaded.buffer,
+    mimeType,
+    caption ?? "",
+  );
+
+  if (!extracted) {
+    await db.insert(waAiIntakeLogTable).values({
+      phone,
+      senderName: senderName ?? null,
+      status: "error",
+      skipReason: "ai_error",
+    });
+    return null;
+  }
+
+  // For documents, we always treat as order inquiry even if AI is unsure
+  if (!extracted.isOrderInquiry) {
+    logger.debug({ phone, mimeType }, "AI media intake: document not classified as order — forcing isOrderInquiry=true");
+    extracted.isOrderInquiry = true;
+  }
+
+  const docSummary = (extracted as ExtractedOrder & { docSummary?: string }).docSummary ?? "Dokumen dari WA";
+
+  const result = await createDraftQuotation(extracted, { waPhone: phone });
+  if (!result) return null;
+
+  logger.info(
+    { phone, docId: result.docId, docNumber: result.docNumber, mimeType, docSummary },
+    "AI media intake: draft created from WA media file",
+  );
+
+  return { ...result, docSummary, mimeType };
 }

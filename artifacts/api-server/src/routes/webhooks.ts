@@ -4,7 +4,7 @@ import { eq, sql, and, desc } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
-import { processWaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
+import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
 
 const router = Router();
 
@@ -271,12 +271,25 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
   try {
     const body = req.body as Record<string, unknown>;
     const sender = typeof body.sender === "string" ? body.sender : null;
-    const message = typeof body.message === "string" ? body.message : null;
+    const message = typeof body.message === "string" ? body.message : "";
     const senderName = typeof body.sender_name === "string" ? body.sender_name : null;
     const member = typeof body.member === "string" ? body.member : null;
+    // Fonnte sends media URL in 'url' field; 'type' can be 'image','document','video','audio'
+    const mediaUrl = typeof body.url === "string" ? body.url.trim() : null;
+    const mediaType = typeof body.type === "string" ? body.type.trim().toLowerCase() : null;
 
-    if (!sender || !message) {
-      logger.warn({ body }, "Fonnte webhook: missing sender or message");
+    if (!sender) {
+      logger.warn({ body }, "Fonnte webhook: missing sender");
+      return;
+    }
+
+    // Must have either a text message OR a media file to process
+    const hasText = message.trim().length > 0;
+    const hasMedia = !!mediaUrl && (mediaType === "image" || mediaType === "document" || mediaType === "pdf"
+      || (mediaUrl.match(/\.(pdf|jpg|jpeg|png|webp)(\?|$)/i) !== null));
+
+    if (!hasText && !hasMedia) {
+      logger.info({ sender, mediaType }, "Fonnte webhook: no text or processable media, skipping");
       return;
     }
 
@@ -284,6 +297,73 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
     const actualSender = (isGroup && member) ? member : sender;
     const normalizedSender = normalizePhone(actualSender);
     const adminWa = await getAdminWa();
+
+    // ─── 0. Media file processing (PDF / image) ───────────────────────────────
+    if (hasMedia && mediaUrl) {
+      const displayName = senderName ?? actualSender;
+      logger.info({ sender, mediaUrl, mediaType }, "Fonnte webhook: processing media file");
+
+      let mediaResult = null;
+      try {
+        mediaResult = await processWaMediaForAiIntake(mediaUrl, normalizedSender, senderName, message || null);
+      } catch (mediaErr) {
+        logger.warn({ mediaErr, sender }, "AI media intake: processing failed");
+      }
+
+      if (mediaResult) {
+        const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+        const draftUrl = domain ? `https://${domain}/bizportal/sales/ai-drafts` : "";
+        const fileLabel = mediaResult.mimeType === "application/pdf" ? "📄 PDF" : "🖼️ Gambar";
+
+        if (adminWa) {
+          const adminMsg =
+            `🤖 *DRAFT DARI FILE ${fileLabel} (AI)*\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `Dari      : ${displayName}\n` +
+            `No. HP    : ${actualSender}\n` +
+            `Dokumen   : ${mediaResult.docSummary}\n` +
+            `Draft     : *${mediaResult.docNumber}*\n` +
+            `Customer  : ${mediaResult.customerName}\n` +
+            `Konfiden  : ${mediaResult.confidence}\n` +
+            (message ? `Caption   : ${message}\n` : "") +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            (draftUrl ? `🔗 Review di BizPortal:\n${draftUrl}` : "");
+          sendWhatsApp(adminWa, adminMsg).catch(() => undefined);
+        }
+
+        // Reply to sender (only for non-group or direct messages)
+        if (!isGroup) {
+          try {
+            const settings = await getAiIntakeSettings();
+            if (settings.replyWaTemplate) {
+              const replyMsg = buildAiReplyWa(settings.replyWaTemplate, mediaResult.docNumber);
+              sendWhatsApp(sender, replyMsg).catch(() => undefined);
+            }
+          } catch { /* non-critical */ }
+        }
+
+        logger.info({ sender, docNumber: mediaResult.docNumber, docSummary: mediaResult.docSummary }, "AI media intake: draft created from WA file");
+      } else {
+        // Could not extract — forward the file info to admin
+        if (adminWa) {
+          const fileLabel = mediaType === "image" ? "🖼️ Gambar" : "📄 File";
+          const forwardMsg =
+            `📎 *File Masuk — Tidak Bisa Diproses Otomatis*\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `Dari   : ${displayName}\n` +
+            `No. HP : ${actualSender}\n` +
+            `Tipe   : ${fileLabel}\n` +
+            (message ? `Caption: ${message}\n` : "") +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `🔗 File: ${mediaUrl}\n\n` +
+            `_Periksa file secara manual di BizPortal._`;
+          sendWhatsApp(adminWa, forwardMsg).catch(() => undefined);
+        }
+      }
+
+      // If no text to process further, stop here
+      if (!hasText) return;
+    }
 
     // ─── 1. Admin commands ───────────────────────────────────────────────────
     const adminPhones = getAdminPhones();
