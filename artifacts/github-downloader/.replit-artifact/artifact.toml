@@ -26,6 +26,9 @@ serve = "static"
 from = "/dl/*"
 to = "/dl/index.html"
 
+[services.production.env]
+BASE_PATH = "/dl/"
+
 [services.env]
 PORT = "19326"
 BASE_PATH = "/dl/"
