@@ -70,6 +70,15 @@ interface Product {
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
+function isUsdProduct(product: Product): boolean {
+  return (product.description ?? "").includes("USD");
+}
+
+function formatProductPrice(product: Product): string {
+  if (isUsdProduct(product)) return `USD ${product.price}`;
+  return formatIDR(product.price);
+}
+
 function getMedia(product: Product): MediaItem[] {
   const items = product.mediaItems ?? [];
   if (items.length > 0) return items;
@@ -362,7 +371,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
           {/* Price */}
           <div className="bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
             {product.price > 0 ? (
-              <p className="text-2xl font-bold text-primary">{formatIDR(product.price)}</p>
+              <p className="text-2xl font-bold text-primary">{formatProductPrice(product)}</p>
             ) : (
               <p className="text-lg font-semibold text-amber-600">{t("products.negotiable")}</p>
             )}
@@ -803,7 +812,7 @@ export default function Products() {
                   <div className="flex items-baseline gap-2 mb-2">
                     {product.price > 0 ? (
                       <p className="font-bold text-[#0B5CAD]" style={{ fontSize: "15px", lineHeight: 1 }}>
-                        {formatIDR(product.price)}
+                        {formatProductPrice(product)}
                       </p>
                     ) : (
                       <p className="text-sm font-bold text-amber-600 leading-none">{t("products.negotiable")}</p>

@@ -41,7 +41,7 @@ const CATALOG_PRODUCTS: CatalogProductSeed[] = [
     itemType: "barang",
     unit: "Kg",
     unitOptions: ["Kg", "MT (Metric Ton)", "Container 20ft", "Container 40ft"],
-    price: "0",
+    price: "12",
     subcategory: "Green Bean",
     categoryName: "Kopi / Green Bean",
     description: GREEN_BEAN_ARABICA_DESCRIPTION,
@@ -69,11 +69,11 @@ export async function seedCatalogProducts(): Promise<void> {
         .where(inArray(productCategoriesTable.name, REQUIRED_CATEGORIES));
       const catByName = new Map(cats.map((c) => [c.name, c.id]));
 
-      // 3. Insert products (idempotent via ON CONFLICT DO NOTHING on sku)
-      await tx
-        .insert(productsTable)
-        .values(
-          CATALOG_PRODUCTS.map((item) => ({
+      // 3. Upsert products — update price, description, isActive on conflict so re-runs self-heal
+      for (const item of CATALOG_PRODUCTS) {
+        await tx
+          .insert(productsTable)
+          .values({
             sku: item.sku,
             name: item.name,
             itemType: item.itemType,
@@ -84,9 +84,20 @@ export async function seedCatalogProducts(): Promise<void> {
             subcategory: item.subcategory,
             description: item.description,
             isActive: item.isActive,
-          })),
-        )
-        .onConflictDoNothing({ target: productsTable.sku });
+          })
+          .onConflictDoUpdate({
+            target: productsTable.sku,
+            set: {
+              name: item.name,
+              price: item.price,
+              unit: item.unit,
+              unitOptions: JSON.stringify(item.unitOptions),
+              subcategory: item.subcategory,
+              description: item.description,
+              isActive: item.isActive,
+            },
+          });
+      }
 
       // 4. Fetch product ids by sku
       const skus = CATALOG_PRODUCTS.map((p) => p.sku);
