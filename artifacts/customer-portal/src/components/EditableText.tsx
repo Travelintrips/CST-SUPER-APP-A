@@ -19,10 +19,11 @@ export function EditableText({
 }: EditableTextProps) {
   const { editMode, content, updateField } = useEditMode();
   const ref = useRef<HTMLElement>(null);
+  const isFocused = useRef(false);
   const value = content[contentKey] ?? defaultValue;
 
   useEffect(() => {
-    if (ref.current && ref.current.textContent !== value) {
+    if (ref.current && !isFocused.current && ref.current.textContent !== value) {
       ref.current.textContent = value;
     }
   }, [value, editMode]);
@@ -47,15 +48,17 @@ export function EditableText({
       suppressContentEditableWarning
       dir="ltr"
       className={`${className} outline-none cursor-text ring-2 ring-accent/60 ring-offset-1 rounded-sm px-0.5 focus:ring-accent transition-all`}
+      onFocus={() => {
+        isFocused.current = true;
+      }}
       onInput={() => {
         updateField(contentKey, ref.current?.textContent ?? "");
       }}
       onKeyDown={handleKeyDown}
       onBlur={() => {
+        isFocused.current = false;
         updateField(contentKey, ref.current?.textContent ?? "");
       }}
-    >
-      {value}
-    </Comp>
+    />
   );
 }
