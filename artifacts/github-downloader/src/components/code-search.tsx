@@ -18,6 +18,7 @@ interface CodeSearchProps {
   branch: string;
   onFileSelect: (item: CodeSearchItem) => void;
   selectedPath?: string;
+  token?: string;
 }
 
 const CODE_EXTS = new Set([
@@ -118,14 +119,14 @@ function ResultItem({ item, isSelected, onSelect }: ResultItemProps) {
   );
 }
 
-export function CodeSearch({ owner, repo, branch, onFileSelect, selectedPath }: CodeSearchProps) {
+export function CodeSearch({ owner, repo, branch, onFileSelect, selectedPath, token }: CodeSearchProps) {
   const [inputValue, setInputValue] = useState("");
   const [committedQuery, setCommittedQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, error, isError } = useQuery({
-    queryKey: ["github", "search", owner, repo, committedQuery],
-    queryFn: () => fetchCodeSearch(owner, repo, committedQuery),
+    queryKey: ["github", "search", owner, repo, committedQuery, token ?? ""],
+    queryFn: () => fetchCodeSearch(owner, repo, committedQuery, token),
     enabled: committedQuery.trim().length >= 2,
     retry: false,
     staleTime: 1000 * 60 * 2,

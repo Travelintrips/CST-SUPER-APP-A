@@ -21,12 +21,13 @@ interface FilePreviewProps {
   downloadUrl: string | null;
   htmlUrl: string;
   onClose: () => void;
+  token?: string;
 }
 
 const MAX_PREVIEW_BYTES = 500_000;
 
 export function FilePreview({
-  owner, repo, branch, path, size, downloadUrl, htmlUrl, onClose
+  owner, repo, branch, path, size, downloadUrl, htmlUrl, onClose, token
 }: FilePreviewProps) {
   const [copied, setCopied] = useState(false);
   const filename = path.split("/").pop() ?? path;
@@ -36,8 +37,8 @@ export function FilePreview({
   const isTooBig = size > MAX_PREVIEW_BYTES;
 
   const { data: content, isLoading, error } = useQuery({
-    queryKey: ["github", "file", owner, repo, branch, path],
-    queryFn: () => fetchFileContent(owner, repo, branch, path),
+    queryKey: ["github", "file", owner, repo, branch, path, token ?? ""],
+    queryFn: () => fetchFileContent(owner, repo, branch, path, token),
     enabled: !isBinary && !isTooBig,
     retry: false,
     staleTime: 1000 * 60 * 5,

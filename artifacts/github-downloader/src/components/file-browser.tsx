@@ -37,6 +37,7 @@ interface FileBrowserProps {
   branch: string;
   onFileClick: (item: GitHubContentItem) => void;
   selectedPath?: string;
+  token?: string;
 }
 
 interface DirectoryViewProps {
@@ -48,10 +49,11 @@ interface DirectoryViewProps {
   onNavigate: (path: string) => void;
   onFileClick: (item: GitHubContentItem) => void;
   selectedPath?: string;
+  token?: string;
 }
 
-function DirectoryView({ owner, repo, branch, path, filter, onNavigate, onFileClick, selectedPath }: DirectoryViewProps) {
-  const { data, isLoading, error, isError } = useGitHubContents(owner, repo, branch, path, true);
+function DirectoryView({ owner, repo, branch, path, filter, onNavigate, onFileClick, selectedPath, token }: DirectoryViewProps) {
+  const { data, isLoading, error, isError } = useGitHubContents(owner, repo, branch, path, true, token);
 
   if (isLoading) {
     return (
@@ -206,7 +208,7 @@ function FileRow({ item, owner, repo, branch, onNavigate, onFileClick, isSelecte
   );
 }
 
-export function FileBrowser({ owner, repo, branch, onFileClick, selectedPath }: FileBrowserProps) {
+export function FileBrowser({ owner, repo, branch, onFileClick, selectedPath, token }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState("");
   const [filter, setFilter] = useState("");
 
@@ -304,6 +306,7 @@ export function FileBrowser({ owner, repo, branch, onFileClick, selectedPath }: 
           onNavigate={navigateTo}
           onFileClick={onFileClick}
           selectedPath={selectedPath}
+          token={token}
         />
       </ScrollArea>
 

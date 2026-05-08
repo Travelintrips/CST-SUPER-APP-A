@@ -3,9 +3,11 @@ import { Search, Download, Copy, AlertCircle, CheckCircle2, History, Star, GitFo
 import { parseGitHubUrl, getZipDownloadUrl, ParsedGitHubUrl, GitHubContentItem, CodeSearchItem } from "@/lib/github";
 import { useGitHubRepo, useGitHubBranches } from "@/hooks/use-github";
 import { useHistory } from "@/hooks/use-history";
+import { useGitHubToken } from "@/hooks/use-github-token";
 import { FileBrowser } from "@/components/file-browser";
 import { FilePreview } from "@/components/file-preview";
 import { CodeSearch } from "@/components/code-search";
+import { TokenDialog } from "@/components/token-dialog";
 import { formatDistanceToNow } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,7 @@ export default function Home() {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const { token, setToken, clearToken, isAuthenticated } = useGitHubToken();
   const { history, addToHistory, clearHistory } = useHistory();
 
   const { 
@@ -35,12 +38,12 @@ export default function Home() {
     isLoading: isLoadingRepo, 
     error: repoError,
     isError: isRepoError
-  } = useGitHubRepo(parsedUrl?.owner || "", parsedUrl?.repo || "", !!parsedUrl?.isValid);
+  } = useGitHubRepo(parsedUrl?.owner || "", parsedUrl?.repo || "", !!parsedUrl?.isValid, token || undefined);
 
   const {
     data: branchesData,
     isLoading: isLoadingBranches
-  } = useGitHubBranches(parsedUrl?.owner || "", parsedUrl?.repo || "", !!parsedUrl?.isValid && !!repoData);
+  } = useGitHubBranches(parsedUrl?.owner || "", parsedUrl?.repo || "", !!parsedUrl?.isValid && !!repoData, token || undefined);
 
   // Set default branch when repo data loads
   useEffect(() => {
@@ -147,6 +150,12 @@ export default function Home() {
           <p className="text-muted-foreground text-lg max-w-lg">
             Download any GitHub repository as a ZIP archive instantly. Fast, precise, and native.
           </p>
+          <TokenDialog
+            token={token}
+            isAuthenticated={isAuthenticated}
+            onSave={setToken}
+            onClear={clearToken}
+          />
         </div>
 
         {/* Search Input */}
@@ -380,6 +389,7 @@ export default function Home() {
                   setSelectedFile(item);
                 }}
                 selectedPath={selectedFile?.path}
+                token={token || undefined}
               />
             </div>
           )}
@@ -396,6 +406,7 @@ export default function Home() {
               downloadUrl={selectedFile.download_url}
               htmlUrl={selectedFile.html_url}
               onClose={() => setSelectedFile(null)}
+              token={token || undefined}
             />
           )}
 
@@ -407,6 +418,7 @@ export default function Home() {
                 repo={repoData.name}
                 branch={selectedBranch}
                 selectedPath={selectedFile?.path}
+                token={token || undefined}
                 onFileSelect={(item: CodeSearchItem) => {
                   const rawUrl = `https://raw.githubusercontent.com/${repoData.owner.login}/${repoData.name}/${selectedBranch}/${item.path}`;
                   setSelectedFile({

@@ -18,7 +18,6 @@ export function parseGitHubUrl(input: string): ParsedGitHubUrl {
 
   const cleanInput = input.trim();
 
-  // Try to match shorthand "owner/repo" or "owner/repo@branch"
   if (!cleanInput.includes("http") && !cleanInput.includes("github.com")) {
     const parts = cleanInput.split("/");
     if (parts.length === 2) {
@@ -39,15 +38,15 @@ export function parseGitHubUrl(input: string): ParsedGitHubUrl {
       urlString = `https://${urlString}`;
     }
     const url = new URL(urlString);
-    
+
     if (url.hostname === "github.com" || url.hostname === "www.github.com") {
       const paths = url.pathname.split("/").filter(Boolean);
-      
+
       if (paths.length >= 2) {
         result.owner = paths[0];
         result.repo = paths[1];
         result.isValid = true;
-        
+
         if (paths.length >= 4 && paths[2] === "tree") {
           result.branch = paths.slice(3).join("/");
         }
@@ -71,6 +70,7 @@ export interface GitHubRepo {
   language: string;
   updated_at: string;
   default_branch: string;
+  private: boolean;
   license: {
     key: string;
     name: string;
@@ -88,34 +88,59 @@ export interface GitHubBranch {
   protected: boolean;
 }
 
+export interface RateLimit {
+  limit: number;
+  used: number;
+  remaining: number;
+  reset: number;
+}
+
+export interface RateLimitResponse {
+  resources: {
+    core: RateLimit;
+    search: RateLimit;
+    graphql: RateLimit;
+  };
+  rate: RateLimit;
+}
+
 const GITHUB_API_BASE = "https://api.github.com";
 
-export async function fetchRepoInfo(owner: string, repo: string): Promise<GitHubRepo> {
+function buildHeaders(token?: string, extra?: Record<string, string>): HeadersInit {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github.v3+json",
+    ...extra,
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+export async function fetchRepoInfo(owner: string, repo: string, token?: string): Promise<GitHubRepo> {
   const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}`, {
-    headers: {
-      "Accept": "application/vnd.github.v3+json",
-    }
+    headers: buildHeaders(token),
   });
 
   if (!res.ok) {
     if (res.status === 404) throw new Error("Repository not found");
     if (res.status === 403) throw new Error("GitHub API rate limit exceeded");
+    if (res.status === 401) throw new Error("Invalid GitHub token");
     throw new Error(`Failed to fetch repository info: ${res.statusText}`);
   }
 
   return res.json();
 }
 
-export async function fetchRepoBranches(owner: string, repo: string): Promise<GitHubBranch[]> {
+export async function fetchRepoBranches(owner: string, repo: string, token?: string): Promise<GitHubBranch[]> {
   const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/branches?per_page=100`, {
-    headers: {
-      "Accept": "application/vnd.github.v3+json",
-    }
+    headers: buildHeaders(token),
   });
 
   if (!res.ok) {
     if (res.status === 404) throw new Error("Repository not found");
     if (res.status === 403) throw new Error("GitHub API rate limit exceeded");
+    if (res.status === 401) throw new Error("Invalid GitHub token");
     throw new Error(`Failed to fetch branches: ${res.statusText}`);
   }
 
@@ -140,17 +165,19 @@ export async function fetchRepoContents(
   owner: string,
   repo: string,
   branch: string,
-  path: string = ""
+  path: string = "",
+  token?: string
 ): Promise<GitHubContentItem[]> {
   const encodedPath = path ? `/${encodeURIComponent(path).replace(/%2F/g, "/")}` : "";
   const res = await fetch(
     `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents${encodedPath}?ref=${encodeURIComponent(branch)}`,
-    { headers: { Accept: "application/vnd.github.v3+json" } }
+    { headers: buildHeaders(token) }
   );
 
   if (!res.ok) {
     if (res.status === 404) throw new Error("Path not found");
     if (res.status === 403) throw new Error("GitHub API rate limit exceeded");
+    if (res.status === 401) throw new Error("Invalid GitHub token");
     throw new Error(`Failed to fetch contents: ${res.statusText}`);
   }
 
@@ -173,8 +200,22 @@ export async function fetchFileContent(
   owner: string,
   repo: string,
   branch: string,
-  path: string
+  path: string,
+  token?: string
 ): Promise<string> {
+  if (token) {
+    const res = await fetch(
+      `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`,
+      { headers: buildHeaders(token, { Accept: "application/vnd.github.v3.raw" }) }
+    );
+    if (!res.ok) {
+      if (res.status === 404) throw new Error("File not found");
+      if (res.status === 401) throw new Error("Invalid GitHub token");
+      throw new Error(`Failed to fetch file: ${res.statusText}`);
+    }
+    return res.text();
+  }
+
   const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
   const res = await fetch(rawUrl);
   if (!res.ok) {
@@ -224,24 +265,34 @@ export interface CodeSearchResult {
 export async function fetchCodeSearch(
   owner: string,
   repo: string,
-  query: string
+  query: string,
+  token?: string
 ): Promise<CodeSearchResult> {
   const q = encodeURIComponent(`${query} repo:${owner}/${repo}`);
   const res = await fetch(
     `https://api.github.com/search/code?q=${q}&per_page=30`,
     {
-      headers: {
+      headers: buildHeaders(token, {
         Accept: "application/vnd.github.v3.text-match+json",
-      },
+      }),
     }
   );
 
   if (!res.ok) {
     if (res.status === 403) throw new Error("GitHub API rate limit exceeded. Please wait a moment and try again.");
     if (res.status === 422) throw new Error("Invalid search query. Try a different term.");
+    if (res.status === 401) throw new Error("Invalid GitHub token.");
     throw new Error(`Search failed: ${res.statusText}`);
   }
 
+  return res.json();
+}
+
+export async function fetchRateLimit(token?: string): Promise<RateLimitResponse> {
+  const res = await fetch(`${GITHUB_API_BASE}/rate_limit`, {
+    headers: buildHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to fetch rate limit");
   return res.json();
 }
 
