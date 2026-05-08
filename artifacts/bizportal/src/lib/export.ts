@@ -1,14 +1,26 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
-export function exportXlsx(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  const colWidths = headers.map((h, i) => ({
-    wch: Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length), 8),
+export async function exportXlsx(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Data");
+
+  worksheet.addRow(headers);
+  rows.forEach((row) => worksheet.addRow(row));
+
+  worksheet.columns = headers.map((h, i) => ({
+    width: Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length), 8),
   }));
-  ws["!cols"] = colWidths;
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Data");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function printWindow(
