@@ -1,26 +1,31 @@
 import ExcelJS from "exceljs";
 
 export async function exportXlsx(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Data");
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Data");
 
-  worksheet.addRow(headers);
-  rows.forEach((row) => worksheet.addRow(row));
+    worksheet.addRow(headers);
+    rows.forEach((row) => worksheet.addRow(row));
 
-  worksheet.columns = headers.map((h, i) => ({
-    width: Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length), 8),
-  }));
+    worksheet.columns = headers.map((h, i) => ({
+      width: Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length), 8),
+    }));
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${filename}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("[exportXlsx] failed:", err);
+    alert("Gagal mengekspor file Excel. Silakan coba lagi.");
+  }
 }
 
 export function printWindow(
