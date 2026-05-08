@@ -50,15 +50,24 @@ app.use(cors({ credentials: true, origin: true }));
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
-// Dynamically pass proxyUrl so clerkMiddleware can validate JWT tokens
-// that were issued through the Clerk proxy in production.
+// Lazy singleton: create ONE clerkMiddleware instance on the first request and
+// reuse it for all subsequent requests.  Calling clerkMiddleware({...}) inside
+// an express wrapper (the old pattern) created a fresh Clerk SDK per request,
+// which emptied the JWKS cache every time and caused every token validation
+// to race against a cold JWKS fetch — always losing at 3–7 ms vs ~300 ms
+// network time — and returning 401 even for valid sessions.
+let _clerkAuth: ReturnType<typeof clerkMiddleware> | null = null;
+
 app.use((req, res, next) => {
-  const host = getClerkProxyHost(req);
-  const protocol = (Array.isArray(req.headers["x-forwarded-proto"])
-    ? req.headers["x-forwarded-proto"][0]
-    : req.headers["x-forwarded-proto"])?.split(",")[0]?.trim() || "https";
-  const proxyUrl = host ? `${protocol}://${host}${CLERK_PROXY_PATH}` : undefined;
-  clerkMiddleware({ proxyUrl })(req, res, next);
+  if (!_clerkAuth) {
+    const host = getClerkProxyHost(req);
+    const protocol = (Array.isArray(req.headers["x-forwarded-proto"])
+      ? req.headers["x-forwarded-proto"][0]
+      : req.headers["x-forwarded-proto"])?.split(",")[0]?.trim() || "https";
+    const proxyUrl = host ? `${protocol}://${host}${CLERK_PROXY_PATH}` : undefined;
+    _clerkAuth = clerkMiddleware({ proxyUrl });
+  }
+  return _clerkAuth(req, res, next);
 });
 
 app.use("/api", router);
