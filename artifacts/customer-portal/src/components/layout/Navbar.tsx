@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
   ChevronDown, Ship, FileCheck, Truck,
-  Search, Calculator, ChevronRight, MapPin, Phone, Info,
+  Search, Calculator, ChevronRight, MapPin, Phone, Info, ImagePlus, Loader2,
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
@@ -12,6 +12,7 @@ import { useCart } from "@/lib/cart";
 import { CART_KEY } from "@/lib/logistic-cart";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { useEditMode } from "@/contexts/EditModeContext";
 
 const SERVICES_ITEMS = [
   { icon: Ship,      titleKey: "servicesMenu.freight.title",   descKey: "servicesMenu.freight.desc",   href: "/freight-forwarding" },
@@ -55,10 +56,30 @@ export function Navbar() {
   const [mobileServicesOpen, setMobileServicesOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen]     = useState(false);
   const [location, setLocation]                 = useLocation();
+  const [logoUploading, setLogoUploading]       = useState(false);
   const isAuth  = isAuthenticated();
   const isAdmin = isPortalAdmin();
   const { count, openCart } = useCart();
   const { t } = useLanguage();
+  const { editMode, content, uploadImage, updateField } = useEditMode();
+  const logoFileRef = useRef<HTMLInputElement>(null);
+
+  const logoSrc = content["navbar_logo"]
+    ? content["navbar_logo"]
+    : `${import.meta.env.BASE_URL}images/logo.png`;
+
+  async function handleLogoUpload(file: File) {
+    setLogoUploading(true);
+    try {
+      const path = await uploadImage(file);
+      updateField("navbar_logo", path);
+      updateField("footer_logo", path);
+    } catch {
+      alert("Gagal upload logo");
+    } finally {
+      setLogoUploading(false);
+    }
+  }
 
   // Logistic booking cart count (persisted in localStorage)
   const [logisticCount, setLogisticCount] = useState<number>(() => {
@@ -145,19 +166,48 @@ export function Navbar() {
         <div className="flex h-[76px] items-center justify-between gap-4">
 
           {/* ── Logo & Brand ──────────────────────────────────── */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
-            <img
-              src={`${import.meta.env.BASE_URL}images/logo.png`}
-              alt="Logo"
-              className="h-[44px] w-auto object-contain"
-            />
-            <span
-              className="font-extrabold text-[19px] leading-tight tracking-tight whitespace-nowrap"
-              style={{ color: "#0F172A" }}
-            >
-              {brandName}
-            </span>
-          </Link>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="relative group">
+              {editMode ? (
+                <button
+                  className="relative flex items-center"
+                  onClick={() => logoFileRef.current?.click()}
+                  title="Ganti Logo"
+                >
+                  <img src={logoSrc} alt="Logo" className="h-[44px] w-auto object-contain" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
+                    {logoUploading
+                      ? <Loader2 className="h-5 w-5 text-white animate-spin" />
+                      : <ImagePlus className="h-5 w-5 text-white" />
+                    }
+                  </span>
+                </button>
+              ) : (
+                <Link href="/">
+                  <img src={logoSrc} alt="Logo" className="h-[44px] w-auto object-contain" />
+                </Link>
+              )}
+              <input
+                ref={logoFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleLogoUpload(file);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+            <Link href="/">
+              <span
+                className="font-extrabold text-[19px] leading-tight tracking-tight whitespace-nowrap"
+                style={{ color: "#0F172A" }}
+              >
+                {brandName}
+              </span>
+            </Link>
+          </div>
 
           {/* ── Desktop Navigation ───────────────────────────── */}
           <div className="hidden lg:flex lg:items-center flex-1 justify-center" style={{ gap: "4px" }}>

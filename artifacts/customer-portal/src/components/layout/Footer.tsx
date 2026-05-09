@@ -2,6 +2,8 @@ import { useLocation } from "wouter";
 import { Mail, MapPin, Phone, MessageCircle } from "lucide-react";
 import { useGetPortalCompany } from "@workspace/api-client-react";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { useEditMode } from "@/contexts/EditModeContext";
+import { resolveImageUrl } from "@/lib/utils";
 
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
@@ -82,6 +84,12 @@ export function Footer() {
     query: { queryKey: ["getPortalCompany"] },
   });
   const { t } = useLanguage();
+  const { content } = useEditMode();
+
+  const rawLogoSrc = content["footer_logo"] ?? content["navbar_logo"];
+  const logoSrc = rawLogoSrc
+    ? (rawLogoSrc.startsWith("/") ? (resolveImageUrl(rawLogoSrc) ?? rawLogoSrc) : rawLogoSrc)
+    : `${import.meta.env.BASE_URL}images/logo.png`;
 
   const brandName = company?.name
     ? company.name.length > 24
@@ -122,7 +130,7 @@ export function Footer() {
             <div className="flex items-center gap-3">
               <div className="shrink-0 bg-white/95 rounded-xl p-1.5 shadow-md">
                 <img
-                  src={`${import.meta.env.BASE_URL}images/logo.png`}
+                  src={logoSrc}
                   alt="Logo"
                   className="h-[48px] w-auto object-contain"
                   style={{ maxWidth: "120px" }}
