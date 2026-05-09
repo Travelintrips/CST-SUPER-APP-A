@@ -3063,6 +3063,101 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /portal-product/orders:
+    post:
+      operationId: createPortalProductOrder
+      tags: [logistic-orders]
+      summary: Submit a new product order from Customer Portal (public, guest)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePortalProductOrderBody" }
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalProductOrderDetail" }
+    get:
+      operationId: listPortalProductOrders
+      tags: [logistic-orders]
+      summary: List portal product orders (admin)
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        "200":
+          description: Order list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PortalProductOrder" }
+
+  /portal-product/orders/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getPortalProductOrder
+      tags: [logistic-orders]
+      summary: Get product order detail (admin)
+      responses:
+        "200":
+          description: Order detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalProductOrderDetail" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /portal-product/orders/{id}/status:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    put:
+      operationId: updatePortalProductOrderStatus
+      tags: [logistic-orders]
+      summary: Update status of a portal product order (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePortalProductOrderStatusBody" }
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalProductOrder" }
+
+  /portal-product/products:
+    get:
+      operationId: listPortalProducts
+      tags: [logistic-orders]
+      summary: List active products available for customer portal ordering (public)
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: subcategory
+          schema: { type: string }
+      responses:
+        "200":
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PortalProduct" }
+
   /logistic/orders:
     post:
       operationId: createLogisticOrder
@@ -5999,3 +6094,87 @@ components:
             - $ref: "#/components/schemas/AiChatOrderCreated"
             - type: "null"
       required: [sessionToken, message]
+
+    PortalProduct:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        sku: { type: string }
+        price: { type: number }
+        unit: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        subcategory: { type: string, nullable: true }
+        stock: { type: integer }
+      required: [id, name, sku, price, stock]
+
+    PortalProductOrderItem:
+      type: object
+      properties:
+        id: { type: integer }
+        orderId: { type: integer }
+        productId: { type: integer, nullable: true }
+        productName: { type: string }
+        productSku: { type: string, nullable: true }
+        unit: { type: string, nullable: true }
+        unitPrice: { type: number }
+        qty: { type: integer }
+        subtotal: { type: number }
+        createdAt: { type: string }
+      required: [id, orderId, productName, unitPrice, qty, subtotal, createdAt]
+
+    PortalProductOrder:
+      type: object
+      properties:
+        id: { type: integer }
+        orderNumber: { type: string }
+        customerName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        shippingAddress: { type: string }
+        notes: { type: string, nullable: true }
+        subtotal: { type: number }
+        grandTotal: { type: number }
+        status: { type: string }
+        createdAt: { type: string }
+      required: [id, orderNumber, customerName, email, phone, shippingAddress, subtotal, grandTotal, status, createdAt]
+
+    PortalProductOrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/PortalProductOrder"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/PortalProductOrderItem" }
+          required: [items]
+
+    CreatePortalProductOrderBody:
+      type: object
+      properties:
+        customerName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        shippingAddress: { type: string }
+        notes: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId: { type: integer }
+              productName: { type: string }
+              productSku: { type: string }
+              unit: { type: string }
+              unitPrice: { type: number }
+              qty: { type: integer }
+              subtotal: { type: number }
+            required: [productName, unitPrice, qty, subtotal]
+      required: [customerName, email, phone, shippingAddress, items]
+
+    UpdatePortalProductOrderStatusBody:
+      type: object
+      properties:
+        status: { type: string }
+      required: [status]

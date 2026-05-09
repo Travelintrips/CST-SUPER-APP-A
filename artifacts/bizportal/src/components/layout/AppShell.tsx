@@ -106,6 +106,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "overview", href: "/dashboard", icon: LayoutDashboard },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
+        { titleKey: "portalProductOrders", href: "/portal-product-orders", icon: PackageOpen },
       ],
     },
     {
@@ -221,8 +222,12 @@ export function AppShell({ children }: AppShellProps) {
 
   const filteredNav = navItems.filter((item) => dbUser?.role && item.roles.includes(dbUser.role));
 
-  const isGroupActive = (g: GroupItem) =>
-    location === g.basePath || location.startsWith(`${g.basePath}/`);
+  const DASHBOARD_CHILD_PATHS = ["/portal-product-orders"];
+  const isGroupActive = (g: GroupItem) => {
+    if (location === g.basePath || location.startsWith(`${g.basePath}/`)) return true;
+    if (g.basePath === "/dashboard" && DASHBOARD_CHILD_PATHS.some((p) => location === p || location.startsWith(`${p}/`))) return true;
+    return false;
+  };
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};

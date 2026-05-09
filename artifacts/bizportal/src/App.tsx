@@ -62,6 +62,7 @@ import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
 import ExpenseCategoriesPage from "@/pages/expense/categories";
 import ExpenseReportsPage from "@/pages/expense/reports";
+import PortalProductOrdersPage from "@/pages/portal-product-orders";
 
 const queryClient = new QueryClient();
 
@@ -316,6 +317,10 @@ function Router() {
       </Route>
       <Route path="/expense">
         <ProtectedRoute component={ExpenseListPage} />
+      </Route>
+
+      <Route path="/portal-product-orders">
+        <ProtectedRoute component={PortalProductOrdersPage} />
       </Route>
 
       <Route component={NotFound} />

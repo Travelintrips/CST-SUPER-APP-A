@@ -64,6 +64,7 @@ export interface Translations {
     shipments: string;
     freightForwarding: string;
     portalOrders: string;
+    portalProductOrders: string;
     pos: string;
     expense: string;
     expenseList: string;
@@ -432,7 +433,8 @@ const id: Translations = {
     logistics: "Logistik",
     shipments: "Pengiriman",
     freightForwarding: "Freight Forwarding",
-    portalOrders: "Pesanan Portal",
+    portalOrders: "Pesanan Portal Logistik",
+    portalProductOrders: "Pesanan Portal Produk",
     pos: "POS",
     expense: "Biaya Operasional",
     expenseList: "Daftar Expense",
@@ -801,7 +803,8 @@ const en: Translations = {
     logistics: "Logistics",
     shipments: "Shipments",
     freightForwarding: "Freight Forwarding",
-    portalOrders: "Portal Orders",
+    portalOrders: "Portal Orders (Logistic)",
+    portalProductOrders: "Portal Orders (Product)",
     pos: "POS",
     expense: "Operational Expenses",
     expenseList: "Expense List",

@@ -58,6 +58,7 @@ import type {
   CreateLogisticQuoteBody,
   CreateLogisticRfqBody,
   CreateOrderBody,
+  CreatePortalProductOrderBody,
   CreateProductBody,
   CreateProductCategoryBody,
   CreatePurchaseDocumentBody,
@@ -113,6 +114,8 @@ import type {
   ListFreightRfqsParams,
   ListFreightShipmentsParams,
   ListLogisticOrdersParams,
+  ListPortalProductOrdersParams,
+  ListPortalProductsParams,
   ListProductsParams,
   ListPurchaseDocumentsParams,
   ListSalesDocumentsParams,
@@ -134,6 +137,9 @@ import type {
   PortalLoginBody,
   PortalLogisticOrder,
   PortalOrder,
+  PortalProduct,
+  PortalProductOrder,
+  PortalProductOrderDetail,
   PortalRegisterBody,
   PortalService,
   PortalSession,
@@ -171,6 +177,7 @@ import type {
   UpdateLogisticOrderStatusBody,
   UpdateLogisticQuoteBody,
   UpdateOrderBody,
+  UpdatePortalProductOrderStatusBody,
   UpdateShipmentStatusBody,
   UpdateTaxBody,
   UpdateTransactionDocumentBody,
@@ -14741,6 +14748,478 @@ export const useDeleteExpenseAttachment = <
 > => {
   return useMutation(getDeleteExpenseAttachmentMutationOptions(options));
 };
+
+/**
+ * @summary Submit a new product order from Customer Portal (public, guest)
+ */
+export const getCreatePortalProductOrderUrl = () => {
+  return `/api/portal-product/orders`;
+};
+
+export const createPortalProductOrder = async (
+  createPortalProductOrderBody: CreatePortalProductOrderBody,
+  options?: RequestInit,
+): Promise<PortalProductOrderDetail> => {
+  return customFetch<PortalProductOrderDetail>(
+    getCreatePortalProductOrderUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createPortalProductOrderBody),
+    },
+  );
+};
+
+export const getCreatePortalProductOrderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPortalProductOrder>>,
+    TError,
+    { data: BodyType<CreatePortalProductOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPortalProductOrder>>,
+  TError,
+  { data: BodyType<CreatePortalProductOrderBody> },
+  TContext
+> => {
+  const mutationKey = ["createPortalProductOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPortalProductOrder>>,
+    { data: BodyType<CreatePortalProductOrderBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPortalProductOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePortalProductOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPortalProductOrder>>
+>;
+export type CreatePortalProductOrderMutationBody =
+  BodyType<CreatePortalProductOrderBody>;
+export type CreatePortalProductOrderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Submit a new product order from Customer Portal (public, guest)
+ */
+export const useCreatePortalProductOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPortalProductOrder>>,
+    TError,
+    { data: BodyType<CreatePortalProductOrderBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPortalProductOrder>>,
+  TError,
+  { data: BodyType<CreatePortalProductOrderBody> },
+  TContext
+> => {
+  return useMutation(getCreatePortalProductOrderMutationOptions(options));
+};
+
+/**
+ * @summary List portal product orders (admin)
+ */
+export const getListPortalProductOrdersUrl = (
+  params?: ListPortalProductOrdersParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/portal-product/orders?${stringifiedParams}`
+    : `/api/portal-product/orders`;
+};
+
+export const listPortalProductOrders = async (
+  params?: ListPortalProductOrdersParams,
+  options?: RequestInit,
+): Promise<PortalProductOrder[]> => {
+  return customFetch<PortalProductOrder[]>(
+    getListPortalProductOrdersUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListPortalProductOrdersQueryKey = (
+  params?: ListPortalProductOrdersParams,
+) => {
+  return [`/api/portal-product/orders`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPortalProductOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPortalProductOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPortalProductOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPortalProductOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPortalProductOrdersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPortalProductOrders>>
+  > = ({ signal }) =>
+    listPortalProductOrders(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalProductOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPortalProductOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPortalProductOrders>>
+>;
+export type ListPortalProductOrdersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List portal product orders (admin)
+ */
+
+export function useListPortalProductOrders<
+  TData = Awaited<ReturnType<typeof listPortalProductOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPortalProductOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPortalProductOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPortalProductOrdersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get product order detail (admin)
+ */
+export const getGetPortalProductOrderUrl = (id: number) => {
+  return `/api/portal-product/orders/${id}`;
+};
+
+export const getPortalProductOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PortalProductOrderDetail> => {
+  return customFetch<PortalProductOrderDetail>(
+    getGetPortalProductOrderUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetPortalProductOrderQueryKey = (id: number) => {
+  return [`/api/portal-product/orders/${id}`] as const;
+};
+
+export const getGetPortalProductOrderQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPortalProductOrder>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPortalProductOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPortalProductOrderQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPortalProductOrder>>
+  > = ({ signal }) => getPortalProductOrder(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPortalProductOrder>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPortalProductOrderQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPortalProductOrder>>
+>;
+export type GetPortalProductOrderQueryError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Get product order detail (admin)
+ */
+
+export function useGetPortalProductOrder<
+  TData = Awaited<ReturnType<typeof getPortalProductOrder>>,
+  TError = ErrorType<MessageResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPortalProductOrder>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPortalProductOrderQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update status of a portal product order (admin)
+ */
+export const getUpdatePortalProductOrderStatusUrl = (id: number) => {
+  return `/api/portal-product/orders/${id}/status`;
+};
+
+export const updatePortalProductOrderStatus = async (
+  id: number,
+  updatePortalProductOrderStatusBody: UpdatePortalProductOrderStatusBody,
+  options?: RequestInit,
+): Promise<PortalProductOrder> => {
+  return customFetch<PortalProductOrder>(
+    getUpdatePortalProductOrderStatusUrl(id),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updatePortalProductOrderStatusBody),
+    },
+  );
+};
+
+export const getUpdatePortalProductOrderStatusMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePortalProductOrderStatus>>,
+    TError,
+    { id: number; data: BodyType<UpdatePortalProductOrderStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updatePortalProductOrderStatus>>,
+  TError,
+  { id: number; data: BodyType<UpdatePortalProductOrderStatusBody> },
+  TContext
+> => {
+  const mutationKey = ["updatePortalProductOrderStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updatePortalProductOrderStatus>>,
+    { id: number; data: BodyType<UpdatePortalProductOrderStatusBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updatePortalProductOrderStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdatePortalProductOrderStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updatePortalProductOrderStatus>>
+>;
+export type UpdatePortalProductOrderStatusMutationBody =
+  BodyType<UpdatePortalProductOrderStatusBody>;
+export type UpdatePortalProductOrderStatusMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update status of a portal product order (admin)
+ */
+export const useUpdatePortalProductOrderStatus = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePortalProductOrderStatus>>,
+    TError,
+    { id: number; data: BodyType<UpdatePortalProductOrderStatusBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updatePortalProductOrderStatus>>,
+  TError,
+  { id: number; data: BodyType<UpdatePortalProductOrderStatusBody> },
+  TContext
+> => {
+  return useMutation(getUpdatePortalProductOrderStatusMutationOptions(options));
+};
+
+/**
+ * @summary List active products available for customer portal ordering (public)
+ */
+export const getListPortalProductsUrl = (params?: ListPortalProductsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/portal-product/products?${stringifiedParams}`
+    : `/api/portal-product/products`;
+};
+
+export const listPortalProducts = async (
+  params?: ListPortalProductsParams,
+  options?: RequestInit,
+): Promise<PortalProduct[]> => {
+  return customFetch<PortalProduct[]>(getListPortalProductsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPortalProductsQueryKey = (
+  params?: ListPortalProductsParams,
+) => {
+  return [`/api/portal-product/products`, ...(params ? [params] : [])] as const;
+};
+
+export const getListPortalProductsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPortalProducts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPortalProductsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPortalProducts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListPortalProductsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPortalProducts>>
+  > = ({ signal }) => listPortalProducts(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPortalProducts>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPortalProductsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPortalProducts>>
+>;
+export type ListPortalProductsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List active products available for customer portal ordering (public)
+ */
+
+export function useListPortalProducts<
+  TData = Awaited<ReturnType<typeof listPortalProducts>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListPortalProductsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPortalProducts>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPortalProductsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Submit a new logistic order (public)

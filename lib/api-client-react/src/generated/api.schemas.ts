@@ -2454,6 +2454,72 @@ export interface AiChatResponse {
   orderCreated?: AiChatOrderCreated | null;
 }
 
+export interface PortalProduct {
+  id: number;
+  name: string;
+  sku: string;
+  price: number;
+  unit?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  subcategory?: string | null;
+  stock: number;
+}
+
+export interface PortalProductOrderItem {
+  id: number;
+  orderId: number;
+  productId?: number | null;
+  productName: string;
+  productSku?: string | null;
+  unit?: string | null;
+  unitPrice: number;
+  qty: number;
+  subtotal: number;
+  createdAt: string;
+}
+
+export interface PortalProductOrder {
+  id: number;
+  orderNumber: string;
+  customerName: string;
+  email: string;
+  phone: string;
+  shippingAddress: string;
+  notes?: string | null;
+  subtotal: number;
+  grandTotal: number;
+  status: string;
+  createdAt: string;
+}
+
+export type PortalProductOrderDetail = PortalProductOrder & {
+  items: PortalProductOrderItem[];
+};
+
+export type CreatePortalProductOrderBodyItemsItem = {
+  productId?: number;
+  productName: string;
+  productSku?: string;
+  unit?: string;
+  unitPrice: number;
+  qty: number;
+  subtotal: number;
+};
+
+export interface CreatePortalProductOrderBody {
+  customerName: string;
+  email: string;
+  phone: string;
+  shippingAddress: string;
+  notes?: string;
+  items: CreatePortalProductOrderBodyItemsItem[];
+}
+
+export interface UpdatePortalProductOrderStatusBody {
+  status: string;
+}
+
 export type LoginParams = {
   returnTo?: string;
 };
@@ -2761,6 +2827,16 @@ export const ExpenseActionBodyAction = {
 export type ExpenseActionBody = {
   action: ExpenseActionBodyAction;
   reason?: string | null;
+};
+
+export type ListPortalProductOrdersParams = {
+  status?: string;
+  search?: string;
+};
+
+export type ListPortalProductsParams = {
+  search?: string;
+  subcategory?: string;
 };
 
 export type ListLogisticOrdersParams = {

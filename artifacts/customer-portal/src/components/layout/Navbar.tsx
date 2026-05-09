@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Menu, X, LogOut, LayoutDashboard, ShoppingCart, Shield,
   ChevronDown, Ship, FileCheck, Truck,
-  Search, Calculator, ChevronRight, MapPin, Phone, Info, ImagePlus, Loader2,
+  Search, Calculator, ChevronRight, MapPin, Phone, Info, ImagePlus, Loader2, PackageSearch,
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
@@ -220,6 +220,12 @@ export function Navbar() {
             {/* Produk */}
             <Link href="/products" className={navItemCls(location === "/products")}>
               {t("nav.products")}
+            </Link>
+
+            {/* Pesan Produk */}
+            <Link href="/order-produk" className={navItemCls(location === "/order-produk")}>
+              <PackageSearch className="h-4 w-4" />
+              {t("nav.orderProduct")}
             </Link>
 
             {/* Services Mega Menu */}
@@ -470,6 +476,15 @@ export function Navbar() {
                 location === "/products" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
               }`}>
                 {t("nav.products")}
+              </div>
+            </Link>
+
+            <Link href="/order-produk" onClick={() => setIsOpen(false)}>
+              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-[14px] text-[15px] font-semibold cursor-pointer ${
+                location === "/order-produk" ? "bg-[rgba(14,165,233,0.10)] text-[#0284C7]" : "text-slate-600 hover:bg-slate-50"
+              }`}>
+                <PackageSearch className="h-4 w-4 shrink-0" />
+                {t("nav.orderProduct")}
               </div>
             </Link>
 

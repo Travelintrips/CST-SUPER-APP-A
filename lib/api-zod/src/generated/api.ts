@@ -4447,6 +4447,141 @@ export const DeleteExpenseAttachmentResponse = zod.object({
 });
 
 /**
+ * @summary Submit a new product order from Customer Portal (public, guest)
+ */
+export const CreatePortalProductOrderBody = zod.object({
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shippingAddress: zod.string(),
+  notes: zod.string().optional(),
+  items: zod.array(
+    zod.object({
+      productId: zod.number().optional(),
+      productName: zod.string(),
+      productSku: zod.string().optional(),
+      unit: zod.string().optional(),
+      unitPrice: zod.number(),
+      qty: zod.number(),
+      subtotal: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary List portal product orders (admin)
+ */
+export const ListPortalProductOrdersQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+});
+
+export const ListPortalProductOrdersResponseItem = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shippingAddress: zod.string(),
+  notes: zod.string().nullish(),
+  subtotal: zod.number(),
+  grandTotal: zod.number(),
+  status: zod.string(),
+  createdAt: zod.string(),
+});
+export const ListPortalProductOrdersResponse = zod.array(
+  ListPortalProductOrdersResponseItem,
+);
+
+/**
+ * @summary Get product order detail (admin)
+ */
+export const GetPortalProductOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetPortalProductOrderResponse = zod
+  .object({
+    id: zod.number(),
+    orderNumber: zod.string(),
+    customerName: zod.string(),
+    email: zod.string(),
+    phone: zod.string(),
+    shippingAddress: zod.string(),
+    notes: zod.string().nullish(),
+    subtotal: zod.number(),
+    grandTotal: zod.number(),
+    status: zod.string(),
+    createdAt: zod.string(),
+  })
+  .and(
+    zod.object({
+      items: zod.array(
+        zod.object({
+          id: zod.number(),
+          orderId: zod.number(),
+          productId: zod.number().nullish(),
+          productName: zod.string(),
+          productSku: zod.string().nullish(),
+          unit: zod.string().nullish(),
+          unitPrice: zod.number(),
+          qty: zod.number(),
+          subtotal: zod.number(),
+          createdAt: zod.string(),
+        }),
+      ),
+    }),
+  );
+
+/**
+ * @summary Update status of a portal product order (admin)
+ */
+export const UpdatePortalProductOrderStatusParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdatePortalProductOrderStatusBody = zod.object({
+  status: zod.string(),
+});
+
+export const UpdatePortalProductOrderStatusResponse = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shippingAddress: zod.string(),
+  notes: zod.string().nullish(),
+  subtotal: zod.number(),
+  grandTotal: zod.number(),
+  status: zod.string(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary List active products available for customer portal ordering (public)
+ */
+export const ListPortalProductsQueryParams = zod.object({
+  search: zod.coerce.string().optional(),
+  subcategory: zod.coerce.string().optional(),
+});
+
+export const ListPortalProductsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  sku: zod.string(),
+  price: zod.number(),
+  unit: zod.string().nullish(),
+  description: zod.string().nullish(),
+  imageUrl: zod.string().nullish(),
+  subcategory: zod.string().nullish(),
+  stock: zod.number(),
+});
+export const ListPortalProductsResponse = zod.array(
+  ListPortalProductsResponseItem,
+);
+
+/**
  * @summary Submit a new logistic order (public)
  */
 export const CreateLogisticOrderBody = zod.object({

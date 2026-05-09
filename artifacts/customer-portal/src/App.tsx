@@ -38,6 +38,7 @@ import FreightForwarding from "@/pages/freight-forwarding";
 import Pabean from "@/pages/pabean";
 import Calculator from "@/pages/calculator";
 import ResetPassword from "@/pages/reset-password";
+import ProductOrder from "@/pages/product-order";
 
 const queryClient = new QueryClient();
 
@@ -46,7 +47,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
   window.location.replace("/bizportal/");
 }
 
-const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin"];
+const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
 const NO_SHELL_PREFIXES = ["/jasa/"];
 
 function AppShell() {
@@ -79,6 +80,7 @@ function AppShell() {
       <Route path="/logistic-admin/orders/:id" component={LogisticAdminOrderDetail} />
       <Route path="/calculator" component={Calculator} />
       <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/order-produk" component={ProductOrder} />
       <Route component={NotFound} />
     </Switch>
   );
