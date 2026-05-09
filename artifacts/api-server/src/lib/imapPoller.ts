@@ -61,6 +61,8 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
     secure: true,
     auth: { user: user!, pass: pass! },
     logger: false,
+    socketTimeout: 20000,
+    connectionTimeout: 15000,
   });
 
   // Prevent unhandled 'error' events from crashing the process on socket timeout
