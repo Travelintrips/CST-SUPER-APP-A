@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { ScanLine, Save, Loader2, CheckCircle2, Info, X, Plus, RotateCcw, FileSearch } from "lucide-react";
+import { ScanLine, Save, Loader2, CheckCircle2, Info, X, Plus, RotateCcw, FileSearch, FlaskConical, ChevronDown, ChevronUp, Scissors, CheckCircle } from "lucide-react";
 
 type DocGroup = "sales" | "freight" | "customs";
 
@@ -55,6 +56,31 @@ export default function AiScanSettingsPage() {
   const [bpSaving, setBpSaving] = useState(false);
   const [newPhrase, setNewPhrase] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── Boilerplate test panel ─────────────────────────────────────────────────
+  const [testOpen, setTestOpen] = useState(false);
+  const [testText, setTestText] = useState("");
+
+  const testResult = useMemo(() => {
+    if (!testText.trim() || bpPhrases.length === 0) return null;
+    // Replicate cleanPdfText logic client-side (same algorithm as server)
+    let text = testText.replace(/\n{3,}/g, "\n\n");
+    text = text.replace(/^[-_.=*]{5,}\s*$/gm, "").trim();
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const lower = lines[i].trim().toLowerCase();
+      const hit = bpPhrases.find(
+        (h) =>
+          lower === h ||
+          lower.startsWith(h + ":") ||
+          lower.startsWith(h + " ") ||
+          lower.startsWith(h + ".") ||
+          lower.startsWith(h + "-"),
+      );
+      if (hit) return { matchedPhrase: hit, lineIndex: i, lines };
+    }
+    return { matchedPhrase: null, lineIndex: -1, lines };
+  }, [testText, bpPhrases]);
 
   useEffect(() => {
     void loadFields();
@@ -422,6 +448,87 @@ export default function AiScanSettingsPage() {
                     <Plus className="h-3.5 w-3.5" />
                     Tambah
                   </Button>
+                </div>
+
+                {/* Test panel */}
+                <div className="border rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setTestOpen((v) => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-gray-700 font-medium"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FlaskConical className="h-4 w-4 text-violet-500" />
+                      Uji Coba Frasa
+                      <span className="text-xs font-normal text-gray-400">— tempel teks PDF untuk melihat di mana pemotongan terjadi</span>
+                    </span>
+                    {testOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                  </button>
+
+                  {testOpen && (
+                    <div className="p-3 space-y-3 border-t bg-white">
+                      <Textarea
+                        value={testText}
+                        onChange={(e) => setTestText(e.target.value)}
+                        placeholder={"Tempel teks PDF di sini...\n\nCth:\nSHIPPER: PT EXAMPLE\nCONSIGNEE: PT TUJUAN\n\nTERMS AND CONDITIONS\nAll shipments are subject to..."}
+                        className="text-xs font-mono resize-none h-32"
+                      />
+
+                      {testText.trim() && testResult && (
+                        <div className="space-y-2">
+                          {testResult.matchedPhrase ? (
+                            <>
+                              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                                <Scissors className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                                <span>
+                                  Frasa <span className="font-semibold">"{testResult.matchedPhrase}"</span> cocok di baris {testResult.lineIndex + 1} — teks setelah baris ini tidak akan dikirim ke AI.
+                                </span>
+                              </div>
+                              <div className="rounded-md border text-xs font-mono overflow-hidden">
+                                <div className="max-h-52 overflow-y-auto">
+                                  {testResult.lines.map((line, i) => {
+                                    const isMatch = i === testResult.lineIndex;
+                                    const isAfter = i > testResult.lineIndex;
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={`flex items-start gap-2 px-2.5 py-0.5 ${
+                                          isMatch
+                                            ? "bg-amber-100 border-l-2 border-amber-400"
+                                            : isAfter
+                                            ? "bg-gray-50 text-gray-300"
+                                            : "bg-white text-gray-700"
+                                        }`}
+                                      >
+                                        <span className="shrink-0 w-8 text-right text-gray-300 select-none pt-0.5">
+                                          {i + 1}
+                                        </span>
+                                        <span className={`break-all ${isMatch ? "text-amber-800 font-semibold" : ""} ${isAfter ? "line-through" : ""}`}>
+                                          {line || <span className="opacity-30">&nbsp;</span>}
+                                        </span>
+                                        {isMatch && (
+                                          <span className="ml-auto shrink-0 text-amber-600 font-bold pl-2">✂</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-md px-2.5 py-1.5">
+                              <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                              Tidak ada frasa yang cocok — seluruh teks akan dikirim ke AI.
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {testText.trim() && bpPhrases.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">Tambah frasa di atas untuk menguji pencocokan.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
