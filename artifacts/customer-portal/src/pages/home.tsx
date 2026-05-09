@@ -88,9 +88,9 @@ export default function Home() {
   ];
 
   const testimonials = [
-    { nameKey: "testimonials.t1Name", roleKey: "testimonials.t1Role", textKey: "testimonials.t1Text", img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=96&h=96&fit=crop&crop=face" },
-    { nameKey: "testimonials.t2Name", roleKey: "testimonials.t2Role", textKey: "testimonials.t2Text", img: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=96&h=96&fit=crop&crop=face" },
-    { nameKey: "testimonials.t3Name", roleKey: "testimonials.t3Role", textKey: "testimonials.t3Text", img: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=96&h=96&fit=crop&crop=face" },
+    { nameKey: "testimonials.t1Name", roleKey: "testimonials.t1Role", textKey: "testimonials.t1Text", photoKey: "testimonials.t1Photo", defaultImg: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=96&h=96&fit=crop&crop=face" },
+    { nameKey: "testimonials.t2Name", roleKey: "testimonials.t2Role", textKey: "testimonials.t2Text", photoKey: "testimonials.t2Photo", defaultImg: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=96&h=96&fit=crop&crop=face" },
+    { nameKey: "testimonials.t3Name", roleKey: "testimonials.t3Role", textKey: "testimonials.t3Text", photoKey: "testimonials.t3Photo", defaultImg: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=96&h=96&fit=crop&crop=face" },
   ];
 
   return (
@@ -472,7 +472,7 @@ export default function Home() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-7">
-            {testimonials.map(({ nameKey, roleKey, textKey, img }) => (
+            {testimonials.map(({ nameKey, roleKey, textKey, photoKey, defaultImg }) => (
               <div
                 key={nameKey}
                 className="bg-white/5 hover:bg-white/8 border border-white/10 hover:border-white/20 rounded-2xl p-8 flex flex-col transition-all duration-300 hover:-translate-y-1"
@@ -486,7 +486,7 @@ export default function Home() {
                   &ldquo;<EditableText contentKey={textKey} defaultValue={t(textKey)} multiline />&rdquo;
                 </p>
                 <div className="flex items-center gap-4 pt-5 border-t border-white/10">
-                  <img src={img} alt={t(nameKey)} className="w-12 h-12 rounded-full object-cover ring-2 ring-sky-400/40" />
+                  <img src={content[photoKey] || defaultImg} alt={t(nameKey)} className="w-12 h-12 rounded-full object-cover ring-2 ring-sky-400/40" />
                   <div>
                     <p className="font-semibold text-white text-sm">
                       <EditableText contentKey={nameKey} defaultValue={t(nameKey)} />

@@ -358,6 +358,12 @@ function ContentTab() {
     );
   }
 
+  const TESTIMONIAL_PHOTOS = [
+    { key: "testimonials.t1Photo", label: "Foto Testimoni 1", nameKey: "testimonials.t1Name", defaultName: "Testimoni 1" },
+    { key: "testimonials.t2Photo", label: "Foto Testimoni 2", nameKey: "testimonials.t2Name", defaultName: "Testimoni 2" },
+    { key: "testimonials.t3Photo", label: "Foto Testimoni 3", nameKey: "testimonials.t3Name", defaultName: "Testimoni 3" },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-5">
@@ -381,6 +387,27 @@ function ContentTab() {
           </div>
         ))}
       </div>
+
+      <div className="border rounded-lg p-4 space-y-4">
+        <div>
+          <p className="text-sm font-semibold">Foto Testimonial</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Upload foto untuk setiap pemberi testimoni. Foto akan tampil sebagai avatar bulat di halaman utama.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          {TESTIMONIAL_PHOTOS.map((t) => (
+            <div key={t.key} className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
+                {content[t.nameKey] || t.defaultName}
+              </Label>
+              <ImageUploader
+                currentUrl={content[t.key] ?? null}
+                onUpload={(url) => handleChange(t.key, url)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
       <Button onClick={handleSave} disabled={saving || Object.keys(changed).length === 0} className="gap-2">
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         {saving ? "Menyimpan..." : `Simpan Perubahan${Object.keys(changed).length > 0 ? ` (${Object.keys(changed).length})` : ""}`}
