@@ -512,9 +512,17 @@ router.put("/boilerplate-headers", async (req, res): Promise<void> => {
     res.status(400).json({ message: "phrases must be an array of strings" });
     return;
   }
-  const cleaned = (body.phrases as unknown[])
-    .map((p) => String(p).trim().toLowerCase())
-    .filter(Boolean);
+  const MAX_PHRASE_LENGTH = 200;
+  const invalid = (body.phrases as unknown[]).find((p) => typeof p !== "string");
+  if (invalid !== undefined) {
+    res.status(400).json({ message: "each phrase must be a string" });
+    return;
+  }
+  const seen = new Set<string>();
+  const cleaned = (body.phrases as string[])
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length > 0 && p.length <= MAX_PHRASE_LENGTH)
+    .filter((p) => { if (seen.has(p)) return false; seen.add(p); return true; });
 
   if (cleaned.length === 0) {
     // Empty array means "reset to defaults" — delete the row
