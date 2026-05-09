@@ -76,9 +76,24 @@ async function upsertUser(claims: Record<string, unknown>) {
       .where(and(eq(usersTable.email, email), ne(usersTable.id, id)));
   }
 
+  // Auto-promote to admin if email matches ADMIN_EMAIL env var
+  const adminEmails = (process.env.ADMIN_EMAIL ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const isAdmin = adminEmails.includes(email.toLowerCase());
+
   const [user] = await db
     .insert(usersTable)
-    .values({ id, email, name, firstName, lastName, profileImageUrl })
+    .values({
+      id,
+      email,
+      name,
+      firstName,
+      lastName,
+      profileImageUrl,
+      ...(isAdmin ? { role: "admin" as const } : {}),
+    })
     .onConflictDoUpdate({
       target: usersTable.id,
       set: {
@@ -88,6 +103,8 @@ async function upsertUser(claims: Record<string, unknown>) {
         lastName,
         profileImageUrl,
         updatedAt: new Date(),
+        // Promote to admin if configured, but never demote
+        ...(isAdmin ? { role: "admin" as const } : {}),
       },
     })
     .returning();
