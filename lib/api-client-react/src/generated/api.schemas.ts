@@ -2864,6 +2864,10 @@ export type ListLogisticOrdersParams = {
   dateTo?: string;
 };
 
+export type UpdateLogisticOrderTypeBody = {
+  shipmentType: string;
+};
+
 export type AiAgentChatBody = {
   sessionToken?: string | null;
   message: string;

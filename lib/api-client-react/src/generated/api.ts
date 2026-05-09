@@ -177,6 +177,7 @@ import type {
   UpdateFreightShipmentBody,
   UpdateJournalBody,
   UpdateLogisticOrderStatusBody,
+  UpdateLogisticOrderTypeBody,
   UpdateLogisticQuoteBody,
   UpdateOrderBody,
   UpdatePortalProductOrderStatusBody,
@@ -16458,6 +16459,94 @@ export const useUpdateLogisticOrderStatus = <
   TContext
 > => {
   return useMutation(getUpdateLogisticOrderStatusMutationOptions(options));
+};
+
+/**
+ * @summary Update shipment type (admin)
+ */
+export const getUpdateLogisticOrderTypeUrl = (id: number) => {
+  return `/api/logistic/orders/${id}/type`;
+};
+
+export const updateLogisticOrderType = async (
+  id: number,
+  updateLogisticOrderTypeBody: UpdateLogisticOrderTypeBody,
+  options?: RequestInit,
+): Promise<LogisticOrder> => {
+  return customFetch<LogisticOrder>(getUpdateLogisticOrderTypeUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateLogisticOrderTypeBody),
+  });
+};
+
+export const getUpdateLogisticOrderTypeMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateLogisticOrderType>>,
+    TError,
+    { id: number; data: BodyType<UpdateLogisticOrderTypeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateLogisticOrderType>>,
+  TError,
+  { id: number; data: BodyType<UpdateLogisticOrderTypeBody> },
+  TContext
+> => {
+  const mutationKey = ["updateLogisticOrderType"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateLogisticOrderType>>,
+    { id: number; data: BodyType<UpdateLogisticOrderTypeBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateLogisticOrderType(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateLogisticOrderTypeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateLogisticOrderType>>
+>;
+export type UpdateLogisticOrderTypeMutationBody =
+  BodyType<UpdateLogisticOrderTypeBody>;
+export type UpdateLogisticOrderTypeMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Update shipment type (admin)
+ */
+export const useUpdateLogisticOrderType = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateLogisticOrderType>>,
+    TError,
+    { id: number; data: BodyType<UpdateLogisticOrderTypeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateLogisticOrderType>>,
+  TError,
+  { id: number; data: BodyType<UpdateLogisticOrderTypeBody> },
+  TContext
+> => {
+  return useMutation(getUpdateLogisticOrderTypeMutationOptions(options));
 };
 
 /**

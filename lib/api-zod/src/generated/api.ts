@@ -5140,6 +5140,55 @@ export const UpdateLogisticOrderStatusResponse = zod.object({
 });
 
 /**
+ * @summary Update shipment type (admin)
+ */
+export const UpdateLogisticOrderTypeParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateLogisticOrderTypeBody = zod.object({
+  shipmentType: zod.string(),
+});
+
+export const UpdateLogisticOrderTypeResponse = zod.object({
+  id: zod.number(),
+  orderNumber: zod.string(),
+  companyName: zod.string(),
+  customerName: zod.string(),
+  email: zod.string(),
+  phone: zod.string(),
+  shipmentType: zod.string(),
+  origin: zod.string(),
+  destination: zod.string(),
+  commodity: zod.string().nullish(),
+  cargoDescription: zod.string().nullish(),
+  grossWeight: zod.number().nullish(),
+  volumeCbm: zod.number().nullish(),
+  jumlahKoli: zod.number().nullish(),
+  requiredDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  paymentType: zod.string().nullish(),
+  paymentMethod: zod.string().nullish(),
+  namaPenerima: zod.string().nullish(),
+  nomorPenerima: zod.string().nullish(),
+  jamOrder: zod.string().nullish(),
+  source: zod.string(),
+  aiSessionToken: zod.string().nullish(),
+  subtotal: zod.number(),
+  tax: zod.number(),
+  grandTotal: zod.number(),
+  status: zod.string(),
+  approvedQuoteId: zod.number().nullish(),
+  adminApprovalStatus: zod.string().nullish(),
+  approvedAt: zod.string().nullish(),
+  approvedVendorId: zod.number().nullish(),
+  approvedVendorName: zod.string().nullish(),
+  finalSellingPrice: zod.number().nullish(),
+  quotationSentAt: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
  * @summary Send a message to the AI logistics agent
  */
 export const AiAgentChatBody = zod.object({

@@ -444,6 +444,22 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   return res.json(toOrder(updated));
 });
 
+// PATCH /api/logistic/orders/:id/type — update shipment type (admin)
+logisticOrdersRouter.patch("/:id/type", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { shipmentType } = req.body as { shipmentType?: unknown };
+  if (!shipmentType || typeof shipmentType !== "string" || shipmentType.trim() === "")
+    return res.status(400).json({ message: "shipmentType wajib diisi" });
+  const [updated] = await db
+    .update(logisticOrdersTable)
+    .set({ shipmentType: shipmentType.trim() })
+    .where(eq(logisticOrdersTable.id, id))
+    .returning();
+  if (!updated) return res.status(404).json({ message: "Order tidak ditemukan" });
+  return res.json(toOrder(updated));
+});
+
 // DELETE /api/logistic/orders/:id
 logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""));

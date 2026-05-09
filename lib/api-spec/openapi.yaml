@@ -3425,6 +3425,34 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MessageResponse" }
 
+  /logistic/orders/{id}/type:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      operationId: updateLogisticOrderType
+      tags: [logistic-orders]
+      summary: Update shipment type (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shipmentType]
+              properties:
+                shipmentType: { type: string }
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogisticOrder" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
   /ai-agent/chat:
     post:
       operationId: aiAgentChat
