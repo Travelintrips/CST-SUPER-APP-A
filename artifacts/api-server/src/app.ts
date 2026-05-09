@@ -77,7 +77,7 @@ if (fs.existsSync(BIZPORTAL_DIST)) {
   );
 
   // SPA fallback: any /bizportal/* path that isn't a file → index.html
-  app.use("/bizportal/*", (_req: Request, res: Response) => {
+  app.use("/bizportal/{*path}", (_req: Request, res: Response) => {
     res.sendFile(path.join(BIZPORTAL_DIST, "index.html"));
   });
 }
