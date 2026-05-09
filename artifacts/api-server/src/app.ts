@@ -1,4 +1,6 @@
-import express, { type Express } from "express";
+import path from "path";
+import fs from "fs";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -55,15 +57,51 @@ app.use(authMiddleware);
 // Auth routes (login/callback/logout/mobile-auth)
 app.use(authRouter);
 
-// Redirect bizportal subdomain root to /bizportal/
-app.use((req, res, next) => {
-  const host = (req.headers["x-forwarded-host"] as string) || req.headers.host || "";
+// Serve BizPortal static files for custom domain bizportal.cstlogistic.co.id.
+// When the custom domain is active, all requests arrive at the API server.
+// BizPortal is built with base="/bizportal/", so HTML references /bizportal/assets/...
+// We strip the /bizportal prefix and serve from the dist directory.
+const BIZPORTAL_DIST = path.resolve(
+  process.cwd(),
+  "artifacts/bizportal/dist/public",
+);
+
+function serveBizportalStatic(req: Request, res: Response, next: NextFunction) {
+  const host =
+    (req.headers["x-forwarded-host"] as string) || req.headers.host || "";
   const hostname = host.split(":")[0];
-  if (hostname === "bizportal.cstlogistic.co.id" && req.path === "/") {
-    return res.redirect(301, "/bizportal/");
+
+  if (hostname !== "bizportal.cstlogistic.co.id") return next();
+
+  // Let API / auth routes pass through
+  const skipPrefixes = ["/api/", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
+  if (skipPrefixes.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
+    return next();
   }
-  next();
-});
+
+  // BizPortal HTML references assets as /bizportal/assets/... so strip that prefix
+  let filePath = req.path;
+  if (filePath.startsWith("/bizportal")) {
+    filePath = filePath.slice("/bizportal".length) || "/";
+  }
+  if (!filePath || filePath === "/") filePath = "/index.html";
+
+  const fullPath = path.join(BIZPORTAL_DIST, filePath);
+
+  // Serve the file if it exists, otherwise SPA fallback to index.html
+  if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+    res.sendFile(fullPath);
+  } else {
+    const indexPath = path.join(BIZPORTAL_DIST, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      next();
+    }
+  }
+}
+
+app.use(serveBizportalStatic);
 
 app.use("/api", router);
 
