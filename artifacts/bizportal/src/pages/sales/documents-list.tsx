@@ -1,43 +1,32 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   useListSalesDocuments,
   useDeleteSalesDocument,
   useSalesDocumentAction,
   getListSalesDocumentsQueryKey,
 } from "@workspace/api-client-react";
+import type { SalesDocument } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, X, Search } from "lucide-react";
+import { Plus, Trash2, X, Search, RefreshCw, FileText } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
-
-const statusVariant = (s: string): "default" | "secondary" | "outline" | "destructive" => {
-  switch (s) {
-    case "draft": return "secondary";
-    case "sent": return "outline";
-    case "confirmed": return "default";
-    case "done": return "default";
-    case "cancelled": return "destructive";
-    default: return "secondary";
-  }
-};
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -55,6 +44,14 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-100 text-red-700 border-red-200",
 };
 
+const STAT_CARD_COLORS: Record<string, string> = {
+  draft:     "text-slate-400",
+  sent:      "text-blue-400",
+  confirmed: "text-emerald-400",
+  done:      "text-green-400",
+  cancelled: "text-red-400",
+};
+
 type PaymentFilter = "all" | "unpaid" | "partial" | "paid";
 
 const PAYMENT_LABELS: Record<PaymentFilter, string> = {
@@ -64,77 +61,110 @@ const PAYMENT_LABELS: Record<PaymentFilter, string> = {
   paid: "Lunas",
 };
 
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <Badge className={`text-xs border ${STATUS_COLORS[status] ?? "bg-gray-100 text-gray-700 border-gray-200"} capitalize`}>
+      {STATUS_LABELS[status] ?? status}
+    </Badge>
+  );
+}
+
 function PaymentBadge({ status }: { status: string }) {
-  if (status === "paid") return <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700">Lunas</Badge>;
-  if (status === "partial") return <Badge className="bg-amber-900/50 text-amber-300 border-amber-700">Sebagian</Badge>;
-  return <Badge variant="outline" className="text-slate-400 border-slate-600">Belum Bayar</Badge>;
+  if (status === "paid") return <Badge className="bg-emerald-900/50 text-emerald-300 border-emerald-700 text-xs">Lunas</Badge>;
+  if (status === "partial") return <Badge className="bg-amber-900/50 text-amber-300 border-amber-700 text-xs">Sebagian</Badge>;
+  return <Badge variant="outline" className="text-slate-400 border-slate-600 text-xs">Belum Bayar</Badge>;
 }
 
-function isOverdueSales(
-  expectedDate: string | null | undefined,
-  paymentStatus: string,
-  invoiceStatus: string,
-): boolean {
-  if (!expectedDate) return false;
-  if (paymentStatus === "paid") return false;
-  if (invoiceStatus === "none") return false;
-  return new Date(expectedDate) < new Date(new Date().toDateString());
+function isOverdue(doc: SalesDocument): boolean {
+  if (!doc.expectedDate) return false;
+  if (doc.paymentStatus === "paid") return false;
+  if (doc.invoiceStatus === "none") return false;
+  return new Date(doc.expectedDate) < new Date(new Date().toDateString());
 }
 
-interface Props {
-  kind: "quote" | "order";
-}
+interface Props { kind: "quote" | "order" }
 
 export default function SalesDocumentsListPage({ kind }: Props) {
   const isQuote = kind === "quote";
-  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [search, setSearch] = useState("");
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-
+  const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [quickViewDoc, setQuickViewDoc] = useState<SalesDocument | null>(null);
+
   const deleteMut = useDeleteSalesDocument();
   const actionMut = useSalesDocumentAction();
 
-  const { data: docs } = useListSalesDocuments({
-    kind,
-    ...(!isQuote && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
-    ...(statusFilter !== "all" ? { status: statusFilter as "draft" | "sent" | "confirmed" | "done" | "cancelled" } : {}),
-    ...(search.trim() ? { search: search.trim() } : {}),
-  });
+  // Fetch all docs (no filter) for counts; then filter client-side
+  const { data: allDocs = [], refetch } = useListSalesDocuments({ kind });
 
-  const allDocs = docs ?? [];
+  const filtered = useMemo(() => {
+    let result = allDocs;
+    if (statusFilter !== "all")
+      result = result.filter((d) => d.status === statusFilter);
+    if (!isQuote && paymentFilter !== "all")
+      result = result.filter((d) => d.paymentStatus === paymentFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (d) =>
+          d.docNumber.toLowerCase().includes(q) ||
+          d.customerName.toLowerCase().includes(q),
+      );
+    }
+    return result;
+  }, [allDocs, statusFilter, paymentFilter, search, isQuote]);
+
+  const counts = useMemo(() => ({
+    total: allDocs.length,
+    draft: allDocs.filter((d) => d.status === "draft").length,
+    sent: allDocs.filter((d) => d.status === "sent").length,
+    confirmed: allDocs.filter((d) => d.status === "confirmed").length,
+    done: allDocs.filter((d) => d.status === "done").length,
+    cancelled: allDocs.filter((d) => d.status === "cancelled").length,
+    // for orders
+    unpaid: allDocs.filter((d) => d.paymentStatus === "unpaid").length,
+    toDeliver: allDocs.filter((d) => d.deliveryStatus === "to_deliver").length,
+  }), [allDocs]);
 
   const title = isQuote ? "Quotations" : "Sales Orders";
   const desc = isQuote ? "Penawaran ke pelanggan." : "Pesanan penjualan terkonfirmasi.";
   const detailBase = isQuote ? "/sales/quotations" : "/sales/orders";
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
+  // Stat cards definition
+  const statCards = isQuote
+    ? [
+        { label: "Total",     value: counts.total,     key: "all",       color: "text-foreground" },
+        { label: "Draft",     value: counts.draft,     key: "draft",     color: STAT_CARD_COLORS.draft },
+        { label: "Sent",      value: counts.sent,      key: "sent",      color: STAT_CARD_COLORS.sent },
+        { label: "Confirmed", value: counts.confirmed, key: "confirmed", color: STAT_CARD_COLORS.confirmed },
+      ]
+    : [
+        { label: "Total",      value: counts.total,     key: "all",       color: "text-foreground" },
+        { label: "Draft",      value: counts.draft,     key: "draft",     color: STAT_CARD_COLORS.draft },
+        { label: "Belum Bayar",value: counts.unpaid,    key: "unpaid_pay",color: "text-yellow-500" },
+        { label: "Done",       value: counts.done,      key: "done",      color: STAT_CARD_COLORS.done },
+      ];
 
-  const allSelected = allDocs.length > 0 && allDocs.every((d) => selectedIds.has(d.id));
+  const toggleSelect = (id: number) =>
+    setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(allDocs.map((d) => d.id)));
-    }
-  };
+  const allSelected = filtered.length > 0 && filtered.every((d) => selectedIds.has(d.id));
+  const toggleAll = () =>
+    setSelectedIds(allSelected ? new Set() : new Set(filtered.map((d) => d.id)));
 
   const handleDelete = async (id: number) => {
     if (!confirm("Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.")) return;
     try {
       await deleteMut.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey({ kind }) });
+      if (quickViewDoc?.id === id) setQuickViewDoc(null);
       toast({ title: t.common.success });
     } catch {
       toast({ title: t.common.error, variant: "destructive" });
@@ -142,31 +172,20 @@ export default function SalesDocumentsListPage({ kind }: Props) {
   };
 
   const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Hapus ${selectedIds.size} dokumen terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+    if (!confirm(`Hapus ${selectedIds.size} dokumen terpilih?`)) return;
     setBulkDeleting(true);
-    let success = 0;
-    let failed = 0;
+    let ok = 0, fail = 0;
     for (const id of selectedIds) {
-      try {
-        await deleteMut.mutateAsync({ id });
-        success++;
-      } catch {
-        failed++;
-      }
+      try { await deleteMut.mutateAsync({ id }); ok++; } catch { fail++; }
     }
     setBulkDeleting(false);
     setSelectedIds(new Set());
     queryClient.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey({ kind }) });
-    if (failed === 0) {
-      toast({ title: `${success} dokumen berhasil dihapus` });
-    } else {
-      toast({ title: `${success} berhasil, ${failed} gagal`, variant: "destructive" });
-    }
+    toast({ title: fail === 0 ? `${ok} dokumen dihapus` : `${ok} berhasil, ${fail} gagal`, variant: fail > 0 ? "destructive" : "default" });
   };
 
   const handleCancel = async (id: number) => {
-    if (!confirm(t.common.confirmDeleteDesc)) return;
+    if (!confirm("Batalkan dokumen ini?")) return;
     try {
       await actionMut.mutateAsync({ id, data: { action: "cancel" } });
       queryClient.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey({ kind }) });
@@ -176,174 +195,221 @@ export default function SalesDocumentsListPage({ kind }: Props) {
     }
   };
 
-  const colCount = isQuote ? 8 : 11;
+  const colCount = isQuote ? 7 : 10;
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-6">
+      <div className="space-y-6">
+
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">{title}</h1>
-            <p className="text-sm text-muted-foreground">{desc}</p>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <FileText className="h-6 w-6" /> {title}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">{desc}</p>
           </div>
-          {isQuote && (
-            <Link href="/sales/quotations/new">
-              <Button data-testid="button-new-quote">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
+            {isQuote && (
+              <Button onClick={() => navigate("/sales/quotations/new")} data-testid="button-new-quote">
                 <Plus className="mr-2 h-4 w-4" /> New Quotation
               </Button>
-            </Link>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* Status filter chips */}
-        <div className="flex flex-wrap gap-2" data-testid="status-filter">
-          {(["all", ...Object.keys(STATUS_LABELS)] as string[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors border ${
-                statusFilter === s
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : s !== "all"
-                    ? `${STATUS_COLORS[s] ?? "bg-muted text-muted-foreground"} border-transparent`
-                    : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
+        {/* Stat Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {statCards.map((s) => (
+            <Card
+              key={s.key}
+              className={`cursor-pointer hover:border-primary transition-colors ${
+                (statusFilter === s.key || (s.key === "all" && statusFilter === "all") ||
+                 (s.key === "unpaid_pay" && paymentFilter === "unpaid" && statusFilter === "all"))
+                  ? "border-primary bg-primary/5" : ""
               }`}
+              onClick={() => {
+                if (s.key === "unpaid_pay") {
+                  setStatusFilter("all");
+                  setPaymentFilter(paymentFilter === "unpaid" ? "all" : "unpaid");
+                } else {
+                  setPaymentFilter("all");
+                  setStatusFilter(s.key === statusFilter ? "all" : s.key);
+                }
+              }}
             >
-              {s === "all" ? "Semua" : STATUS_LABELS[s]}
-              {s !== "all" && (
-                <span className="ml-1.5 opacity-70">
-                  {(docs ?? []).filter((d) => d.status === s).length}
-                </span>
-              )}
-            </button>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+                <p className={`text-3xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
+
+        {/* Search + Status Filter row */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={`Cari nomor ${isQuote ? "penawaran" : "order"}, customer...`}
+              className={`pl-9 ${search ? "pr-9" : ""}`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                aria-label="Hapus pencarian"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPaymentFilter("all"); }}>
+            <SelectTrigger className="w-44" data-testid="status-filter">
+              <SelectValue placeholder="Semua Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Status</SelectItem>
+              {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Payment filter chips — orders only */}
+        {!isQuote && (
+          <div className="flex flex-wrap gap-2" data-testid="payment-status-filter">
+            {(Object.keys(PAYMENT_LABELS) as PaymentFilter[]).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => { setPaymentFilter(f); if (f !== "all") setStatusFilter("all"); }}
+                data-testid={`filter-payment-${f}`}
+                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                  paymentFilter === f
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
+                }`}
+              >
+                {PAYMENT_LABELS[f]}
+                {f !== "all" && (
+                  <span className="ml-1.5 opacity-70">
+                    {allDocs.filter((d) => d.paymentStatus === f).length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg">
             <span className="text-sm font-medium">{selectedIds.size} dipilih</span>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleBulkDelete}
-              disabled={bulkDeleting}
-            >
+            <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />
               {bulkDeleting ? "Menghapus..." : "Hapus Terpilih"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
-              Batal
-            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Batal</Button>
           </div>
         )}
 
+        {/* Table Card */}
         <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <CardTitle className="flex-1">Daftar {title}</CardTitle>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Cari no. doc, customer..."
-                  className="pl-9 h-8 text-sm"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-            {!isQuote && (
-              <div className="flex flex-wrap gap-2 mt-2" data-testid="payment-status-filter">
-                {(Object.keys(PAYMENT_LABELS) as PaymentFilter[]).map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setPaymentFilter(f)}
-                    data-testid={`filter-payment-${f}`}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors border ${
-                      paymentFilter === f
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
-                    }`}
-                  >
-                    {PAYMENT_LABELS[f]}
-                  </button>
-                ))}
-              </div>
-            )}
+          <CardHeader className="pb-3 pt-4 px-4">
+            <CardTitle className="text-sm text-muted-foreground">
+              {filtered.length} {isQuote ? "penawaran" : "order"}
+              {statusFilter !== "all" ? ` · ${STATUS_LABELS[statusFilter] ?? statusFilter}` : ""}
+              {!isQuote && paymentFilter !== "all" ? ` · ${PAYMENT_LABELS[paymentFilter]}` : ""}
+              {search ? ` · "${search}"` : ""}
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">
-                    {allDocs.length > 0 && (
-                      <Checkbox
-                        checked={allSelected}
-                        onCheckedChange={toggleAll}
-                        aria-label="Pilih semua"
-                      />
+                  <TableHead className="w-10 pl-4">
+                    {filtered.length > 0 && (
+                      <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Pilih semua" />
                     )}
                   </TableHead>
                   <TableHead>No.</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Status</TableHead>
                   {!isQuote && <TableHead>Invoice</TableHead>}
-                  {!isQuote && <TableHead>Delivery</TableHead>}
+                  {!isQuote && <TableHead>Pengiriman</TableHead>}
                   {!isQuote && <TableHead>Bayar</TableHead>}
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Tanggal</TableHead>
-                  <TableHead className="w-16"></TableHead>
+                  <TableHead className="w-16 pr-4"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allDocs.map((d) => (
-                  <TableRow key={d.id} className="cursor-pointer" data-testid={`row-doc-${d.id}`}>
-                    <TableCell>
+                {filtered.map((d) => (
+                  <TableRow
+                    key={d.id}
+                    className="cursor-pointer hover:bg-muted/40 transition-colors"
+                    onClick={() => setQuickViewDoc(d)}
+                    data-testid={`row-doc-${d.id}`}
+                  >
+                    <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selectedIds.has(d.id)}
                         onCheckedChange={() => toggleSelect(d.id)}
-                        onClick={(e) => e.stopPropagation()}
                         aria-label={`Pilih ${d.docNumber}`}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">
+                    <TableCell className="font-mono text-sm font-semibold">
                       <div className="flex items-center gap-2">
-                        <Link href={`${detailBase}/${d.id}`} className="hover:underline">{d.docNumber}</Link>
-                        {!isQuote && isOverdueSales(d.expectedDate, d.paymentStatus, d.invoiceStatus) && (
+                        {d.docNumber}
+                        {!isQuote && isOverdue(d) && (
                           <Badge className="bg-red-900/50 text-red-300 border-red-700 text-xs" data-testid="badge-overdue">Jatuh Tempo</Badge>
+                        )}
+                        {d.aiGenerated && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">🤖 AI</span>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>{d.customerName}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant(d.status)} className="capitalize">{d.status}</Badge>
-                    </TableCell>
-                    {!isQuote && <TableCell><Badge variant="outline" className="capitalize">{d.invoiceStatus.replace("_", " ")}</Badge></TableCell>}
-                    {!isQuote && <TableCell><Badge variant="outline" className="capitalize">{d.deliveryStatus.replace("_", " ")}</Badge></TableCell>}
+                    <TableCell className="font-medium">{d.customerName}</TableCell>
+                    <TableCell><StatusBadge status={d.status} /></TableCell>
+                    {!isQuote && (
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs capitalize">{d.invoiceStatus.replace("_", " ")}</Badge>
+                      </TableCell>
+                    )}
+                    {!isQuote && (
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs capitalize">{d.deliveryStatus.replace("_", " ")}</Badge>
+                      </TableCell>
+                    )}
                     {!isQuote && <TableCell><PaymentBadge status={d.paymentStatus} /></TableCell>}
-                    <TableCell className="text-right font-medium">{idr(Number(d.totalAmount))}</TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("id-ID")}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right font-semibold">{idr(Number(d.grandTotal ?? d.totalAmount))}</TableCell>
+                    <TableCell className="text-right text-sm text-muted-foreground">
+                      {new Date(d.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                    </TableCell>
+                    <TableCell className="text-right pr-4" onClick={(e) => e.stopPropagation()}>
                       {d.status !== "draft" && d.status !== "cancelled" && d.status !== "done" && (
                         <Button
-                          size="sm"
-                          variant="ghost"
+                          size="sm" variant="ghost"
                           className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                           title="Batalkan"
-                          onClick={(e) => { e.stopPropagation(); void handleCancel(d.id); }}
+                          onClick={() => handleCancel(d.id)}
                           data-testid={`btn-cancel-${d.id}`}
                         >
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       )}
                       <Button
-                        size="sm"
-                        variant="ghost"
+                        size="sm" variant="ghost"
                         className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                         title="Hapus"
-                        onClick={(e) => { e.stopPropagation(); void handleDelete(d.id); }}
+                        onClick={() => handleDelete(d.id)}
                         data-testid={`btn-delete-${d.id}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -351,16 +417,19 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                     </TableCell>
                   </TableRow>
                 ))}
-                {allDocs.length === 0 && (
+                {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={colCount} className="text-center text-muted-foreground py-8">
-                      {search
-                        ? `Tidak ada hasil untuk "${search}".`
-                        : statusFilter !== "all"
-                          ? `Tidak ada dokumen dengan status "${STATUS_LABELS[statusFilter] ?? statusFilter}".`
-                          : paymentFilter !== "all"
-                            ? `Tidak ada order dengan status pembayaran "${PAYMENT_LABELS[paymentFilter]}".`
-                            : "Belum ada dokumen."}
+                    <TableCell colSpan={colCount} className="text-center text-muted-foreground py-12">
+                      <FileText className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                      <p>
+                        {search
+                          ? `Tidak ada hasil untuk "${search}"`
+                          : statusFilter !== "all"
+                            ? `Tidak ada dokumen dengan status ${STATUS_LABELS[statusFilter] ?? statusFilter}`
+                            : paymentFilter !== "all"
+                              ? `Tidak ada order dengan pembayaran ${PAYMENT_LABELS[paymentFilter]}`
+                              : `Belum ada ${isQuote ? "penawaran" : "sales order"}`}
+                      </p>
                     </TableCell>
                   </TableRow>
                 )}
@@ -369,6 +438,98 @@ export default function SalesDocumentsListPage({ kind }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick View Dialog */}
+      {quickViewDoc && (
+        <Dialog open onOpenChange={() => setQuickViewDoc(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 font-mono">
+                <FileText className="h-4 w-4 shrink-0" />
+                {quickViewDoc.docNumber}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+                <QRow label="Customer" value={quickViewDoc.customerName} />
+                <QRow label="Status">
+                  <StatusBadge status={quickViewDoc.status} />
+                </QRow>
+                {!isQuote && (
+                  <QRow label="Pembayaran">
+                    <PaymentBadge status={quickViewDoc.paymentStatus} />
+                  </QRow>
+                )}
+                {quickViewDoc.origin && quickViewDoc.destination && (
+                  <QRow label="Rute" value={`${quickViewDoc.origin} → ${quickViewDoc.destination}`} />
+                )}
+                {quickViewDoc.transportMode && (
+                  <QRow label="Moda" value={quickViewDoc.transportMode} />
+                )}
+                {quickViewDoc.validUntil && isQuote && (
+                  <QRow label="Berlaku s/d" value={new Date(quickViewDoc.validUntil).toLocaleDateString("id-ID")} />
+                )}
+                {quickViewDoc.expectedDate && !isQuote && (
+                  <QRow label="Jatuh Tempo" value={new Date(quickViewDoc.expectedDate).toLocaleDateString("id-ID")} />
+                )}
+                {quickViewDoc.notes && (
+                  <QRow label="Catatan" value={quickViewDoc.notes} />
+                )}
+                <div className="border-t pt-2 mt-1">
+                  <QRow label="Total">
+                    <span className="font-bold text-base text-primary">
+                      {idr(Number(quickViewDoc.grandTotal ?? quickViewDoc.totalAmount))}
+                    </span>
+                  </QRow>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Dibuat: {new Date(quickViewDoc.createdAt).toLocaleString("id-ID")}
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2">
+              {quickViewDoc.status !== "draft" && quickViewDoc.status !== "cancelled" && quickViewDoc.status !== "done" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => { handleCancel(quickViewDoc.id); setQuickViewDoc(null); }}
+                >
+                  <X className="h-3.5 w-3.5 mr-1" /> Batalkan
+                </Button>
+              )}
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => { void handleDelete(quickViewDoc.id); }}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Hapus
+              </Button>
+              <Button
+                onClick={() => { setQuickViewDoc(null); navigate(`${detailBase}/${quickViewDoc.id}`); }}
+              >
+                Buka Detail →
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </AppShell>
+  );
+}
+
+function QRow({
+  label,
+  value,
+  children,
+}: { label: string; value?: string | null; children?: React.ReactNode }) {
+  if (!value && !children) return null;
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className="text-right font-medium">{children ?? value}</span>
+    </div>
   );
 }
