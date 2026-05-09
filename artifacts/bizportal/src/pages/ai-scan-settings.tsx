@@ -481,29 +481,29 @@ export default function AiScanSettingsPage() {
                               <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
                                 <Scissors className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                                 <span>
-                                  Frasa <span className="font-semibold">"{testResult.matchedPhrase}"</span> cocok di baris {testResult.lineIndex + 1} — teks setelah baris ini tidak akan dikirim ke AI.
+                                  Frasa <span className="font-semibold">"{testResult.matchedPhrase}"</span> cocok di baris {testResult.lineIndex + 1} — mulai dari baris ini tidak akan dikirim ke AI.
                                 </span>
                               </div>
                               <div className="rounded-md border text-xs font-mono overflow-hidden">
                                 <div className="max-h-52 overflow-y-auto">
                                   {testResult.lines.map((line, i) => {
                                     const isMatch = i === testResult.lineIndex;
-                                    const isAfter = i > testResult.lineIndex;
+                                    const isDropped = i >= testResult.lineIndex;
                                     return (
                                       <div
                                         key={i}
                                         className={`flex items-start gap-2 px-2.5 py-0.5 ${
                                           isMatch
                                             ? "bg-amber-100 border-l-2 border-amber-400"
-                                            : isAfter
-                                            ? "bg-gray-50 text-gray-300"
+                                            : isDropped
+                                            ? "bg-gray-50"
                                             : "bg-white text-gray-700"
                                         }`}
                                       >
                                         <span className="shrink-0 w-8 text-right text-gray-300 select-none pt-0.5">
                                           {i + 1}
                                         </span>
-                                        <span className={`break-all ${isMatch ? "text-amber-800 font-semibold" : ""} ${isAfter ? "line-through" : ""}`}>
+                                        <span className={`break-all line-through ${isMatch ? "text-amber-700 font-semibold" : "text-gray-300"}`}>
                                           {line || <span className="opacity-30">&nbsp;</span>}
                                         </span>
                                         {isMatch && (
