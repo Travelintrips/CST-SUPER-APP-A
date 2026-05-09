@@ -660,6 +660,8 @@ export function ChatWidget() {
   /** True while the keyboard is actively animating — enables bottom transition */
   const [kbMoving, setKbMoving] = useState(false);
   const kbMoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Mirrors kbOffset without triggering re-renders — used for pure comparison in the viewport handler */
+  const kbOffsetRef = useRef(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -821,14 +823,13 @@ export function ChatWidget() {
     if (!vv) return;
     const update = () => {
       const next = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKbOffset((prev) => {
-        if (prev === next) return prev;
-        // Keyboard is moving — enable transition, then clear it after animation
-        setKbMoving(true);
-        if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
-        kbMoveTimerRef.current = setTimeout(() => setKbMoving(false), 250);
-        return next;
-      });
+      if (next === kbOffsetRef.current) return;
+      // Keyboard is moving — enable bottom transition, then clear after animation
+      kbOffsetRef.current = next;
+      setKbOffset(next);
+      setKbMoving(true);
+      if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
+      kbMoveTimerRef.current = setTimeout(() => setKbMoving(false), 250);
     };
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
@@ -836,6 +837,7 @@ export function ChatWidget() {
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
+      kbOffsetRef.current = 0;
       setKbOffset(0);
       setKbMoving(false);
       if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
