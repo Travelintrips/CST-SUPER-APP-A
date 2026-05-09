@@ -22,7 +22,6 @@
 import { createProxyMiddleware } from "http-proxy-middleware";
 import type { RequestHandler } from "express";
 import type { IncomingHttpHeaders } from "http";
-import { logger } from "../lib/logger";
 
 const CLERK_FAPI = "https://frontend-api.clerk.dev";
 export const CLERK_PROXY_PATH = "/api/__clerk";
@@ -86,31 +85,20 @@ export function clerkProxyMiddleware(): RequestHandler {
         if (clientIp) {
           proxyReq.setHeader("X-Forwarded-For", clientIp);
         }
-
-        logger.info({
-          clerkProxyUrl: proxyUrl,
-          clerkReqPath: proxyReq.path,
-          xForwardedHost: req.headers["x-forwarded-host"],
-          incomingCookies: req.headers["cookie"] ? "[present]" : "[none]",
-        }, "clerk-proxy: outgoing request");
       },
       proxyRes: (proxyRes, req: any) => {
         const host = getClerkProxyHost(req) || "";
         const cookies = proxyRes.headers["set-cookie"] as string[] | undefined;
-        logger.info({
-          clerkResStatus: proxyRes.statusCode,
-          clerkResPath: req.url,
-          setCookieRaw: cookies ?? [],
-        }, "clerk-proxy: FAPI response");
 
         // Rewrite Set-Cookie Domain to match the actual proxy host so the
-        // browser stores the __client cookie on the correct domain.
+        // browser stores the __client cookie on the correct domain, even when
+        // Clerk FAPI issues the cookie for the parent domain (e.g. cstlogistic.co.id)
+        // instead of the specific subdomain (bizportal.cstlogistic.co.id).
         if (cookies && host) {
           const hostname = host.split(":")[0];
           proxyRes.headers["set-cookie"] = cookies.map((c) =>
             c.replace(/;\s*Domain=[^;,]*/gi, `; Domain=${hostname}`)
           );
-          logger.info({ rewrittenCookies: proxyRes.headers["set-cookie"] }, "clerk-proxy: cookies rewritten");
         }
       },
     },
