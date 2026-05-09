@@ -30,11 +30,6 @@ ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gma
 PORTAL_ADMIN_EMAILS = "admcst001@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
-SMTP_HOST = "smtp-relay.brevo.com"
-SMTP_PORT = "587"
-SMTP_USER = "8a96b8001@smtp-brevo.com"
-SMTP_PASS = "xsmtpsib-ccee60eca66c4da65908d6a8a8deb075a41b54c7784a0cb94ebfa7929fe74d13-4V33DEBIIV8nHLuT"
-SMTP_FROM = "CST Logistics <info@cstlogistic.co.id>"
 ADMIN_EMAIL = "admcst001@gmail.com"
 
 [userenv.development]
