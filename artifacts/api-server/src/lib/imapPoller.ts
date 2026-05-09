@@ -6,7 +6,7 @@ import {
   emailCorrespondencesTable,
   emailAttachmentsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { objectStorageClient } from "./objectStorage.js";
 import { logger } from "./logger.js";
 import { processEmailForAiIntake } from "./aiOrderIntake.js";
@@ -61,9 +61,11 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
     secure: true,
     auth: { user: user!, pass: pass! },
     logger: false,
-    socketTimeout: 20000,
+    socketTimeout: 30000,
     connectionTimeout: 15000,
-  });
+    disableAutoIdle: true,
+    disableCompression: true,
+  } as any);
 
   // Prevent unhandled 'error' events from crashing the process on socket timeout
   client.on("error", (err) => {
@@ -75,33 +77,71 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
     const lock = await client.getMailboxLock("INBOX");
 
     try {
-      const uids: number[] = [];
-      for await (const msg of client.fetch("1:*", { uid: true, flags: true, envelope: true })) {
-        uids.push(msg.uid);
-      }
+      // Only search the last 30 days — avoids fetching the entire mailbox on large inboxes
+      const sinceDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const uids = await client.search({ since: sinceDate }, { uid: true });
 
       if (uids.length === 0) {
+        logger.info({ synced: 0, errors: 0 }, "IMAP sync completed (no recent emails)");
         return { synced: 0, errors: 0 };
       }
 
       const recentUids = uids.slice(-200);
+      // Skip UIDs already cached in memory from a previous sync run
+      const uncachedUids = recentUids.filter((uid) => !processedUids.has(uid));
 
-      for (const uid of recentUids) {
+      if (uncachedUids.length === 0) {
+        logger.info({ synced: 0, errors: 0, cached: recentUids.length }, "IMAP sync completed (all UIDs cached)");
+        return { synced: 0, errors: 0 };
+      }
+
+      // ── Phase 1: Batch-fetch envelopes (ONE IMAP command) to get messageIds ──
+      // Envelopes are tiny (no body), so this is fast even for 100+ emails.
+      const uidToMsgId = new Map<number, string>();
+      const uidRange = uncachedUids.join(",");
+      for await (const msg of client.fetch(uidRange, { uid: true, envelope: true }, { uid: true })) {
+        const msgId = (msg.envelope as any)?.messageId ?? `uid-${msg.uid}-${user}`;
+        uidToMsgId.set(msg.uid, msgId);
+      }
+
+      // Mark any UIDs that had no envelope as cached (skip them)
+      for (const uid of uncachedUids) {
+        if (!uidToMsgId.has(uid)) processedUids.add(uid);
+      }
+
+      // ── Phase 2: Batch DB deduplication check ──
+      const candidateMsgIds = [...uidToMsgId.values()];
+      const existingRows = candidateMsgIds.length > 0
+        ? await db
+            .select({ emailMessageId: emailCorrespondencesTable.emailMessageId })
+            .from(emailCorrespondencesTable)
+            .where(inArray(emailCorrespondencesTable.emailMessageId, candidateMsgIds))
+        : [];
+      const existingSet = new Set(existingRows.map((r) => r.emailMessageId));
+
+      // Mark already-stored UIDs as cached
+      for (const [uid, msgId] of uidToMsgId) {
+        if (existingSet.has(msgId)) processedUids.add(uid);
+      }
+
+      // ── Phase 3: fetchOne only for truly new emails ──
+      const newUids = uncachedUids.filter((uid) => {
+        const msgId = uidToMsgId.get(uid);
+        return msgId !== undefined && !existingSet.has(msgId);
+      });
+
+      logger.info({ total: uncachedUids.length, alreadyStored: existingSet.size, toFetch: newUids.length }, "IMAP: deduplication complete");
+
+      for (const uid of newUids) {
+        const messageId = uidToMsgId.get(uid)!;
         try {
           const msgData = await client.fetchOne(String(uid), { uid: true, source: true }, { uid: true });
-          if (!msgData?.source) continue;
+          if (!msgData?.source) {
+            processedUids.add(uid);
+            continue;
+          }
 
           const parsed = await simpleParser(msgData.source);
-          const messageId = parsed.messageId ?? `uid-${uid}-${user}`;
-
-          // Deduplication — check email_correspondences table
-          const [existing] = await db
-            .select({ id: emailCorrespondencesTable.id })
-            .from(emailCorrespondencesTable)
-            .where(eq(emailCorrespondencesTable.emailMessageId, messageId))
-            .limit(1);
-
-          if (existing) continue;
 
           const fromAddr = Array.isArray(parsed.from?.value)
             ? parsed.from!.value[0]
@@ -168,6 +208,7 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
             }
           }
 
+          processedUids.add(uid);
           synced++;
         } catch (msgErr) {
           logger.warn({ msgErr, uid }, "Failed to process email");
@@ -190,6 +231,8 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
+// In-memory UID cache — avoids fetchOne for already-processed UIDs across periodic syncs
+const processedUids = new Set<number>();
 
 export async function safeSyncImapEmails(context: string): Promise<{ synced: number; errors: number }> {
   if (isSyncing) {
@@ -197,8 +240,17 @@ export async function safeSyncImapEmails(context: string): Promise<{ synced: num
     return { synced: 0, errors: 0 };
   }
   isSyncing = true;
+
+  // Hard deadline: release mutex after 300s even if IMAP connection hangs.
+  // The first sync after startup may take 150-180s due to Gmail throttling on
+  // batch envelope fetch (100+ UIDs). Subsequent syncs are fast (<10s) because
+  // the in-memory processedUids cache skips already-seen UIDs.
+  const timeoutPromise = new Promise<{ synced: number; errors: number }>(
+    (_, reject) => setTimeout(() => reject(new Error("IMAP sync exceeded 300s deadline")), 300_000),
+  );
+
   try {
-    return await syncImapEmails();
+    return await Promise.race([syncImapEmails(), timeoutPromise]);
   } catch (err) {
     logger.error({ err, context }, "IMAP sync failed");
     return { synced: 0, errors: 1 };
