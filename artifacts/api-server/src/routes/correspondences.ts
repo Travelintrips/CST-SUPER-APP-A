@@ -5,7 +5,7 @@ import { db, correspondencesTable, correspondenceAttachmentsTable, customersTabl
 import { eq, desc, ilike, or, and, count, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { syncImapEmails } from "../lib/imapPoller.js";
+import { safeSyncImapEmails } from "../lib/imapPoller.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();

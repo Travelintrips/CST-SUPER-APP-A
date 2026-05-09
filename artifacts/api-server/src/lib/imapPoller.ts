@@ -187,6 +187,22 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
 }
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
+let isSyncing = false;
+
+export async function safeSyncImapEmails(context: string) {
+  if (isSyncing) {
+    logger.debug({ context }, "IMAP sync skipped — previous sync still running");
+    return;
+  }
+  isSyncing = true;
+  try {
+    await syncImapEmails();
+  } catch (err) {
+    logger.error({ err, context }, "IMAP sync failed");
+  } finally {
+    isSyncing = false;
+  }
+}
 
 export function startImapPoller(intervalMs = 5 * 60 * 1000): void {
   if (!isImapConfigured()) {
@@ -194,10 +210,13 @@ export function startImapPoller(intervalMs = 5 * 60 * 1000): void {
     return;
   }
 
-  syncImapEmails().catch((err) => logger.error({ err }, "Initial IMAP sync failed"));
+  // Delay initial sync by 10s to let server fully boot and avoid connection storm on restart
+  setTimeout(() => {
+    safeSyncImapEmails("initial").catch(() => {});
+  }, 10_000);
 
   syncTimer = setInterval(() => {
-    syncImapEmails().catch((err) => logger.error({ err }, "Periodic IMAP sync failed"));
+    safeSyncImapEmails("periodic").catch(() => {});
   }, intervalMs);
 
   logger.info({ intervalMs }, "IMAP poller started");
