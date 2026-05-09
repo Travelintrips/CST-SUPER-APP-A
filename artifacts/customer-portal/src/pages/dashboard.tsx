@@ -364,7 +364,7 @@ export default function Dashboard() {
                 <CardDescription className="text-primary-foreground/70">{t("dashboard.bookDescription")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Link href="/jasa">
+                <Link href="/book">
                   <Button variant="secondary" className="w-full bg-white text-primary hover:bg-gray-100 gap-2">
                     <Ship className="h-4 w-4" /> {t("dashboard.createOrder")}
                   </Button>

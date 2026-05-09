@@ -1,59 +1,39 @@
-import { ReactNode } from "react";
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Navbar } from "@/components/layout/Navbar";
-import HomePage from "@/pages/home";
-import BookPage from "@/pages/book";
-import OrderSuccessPage from "@/pages/order-success";
-import TrackPage from "@/pages/track";
-import AdminPage from "@/pages/admin";
-import AdminOrderDetail from "@/pages/admin-order-detail";
-import NotFound from "@/pages/not-found";
+import { useEffect } from "react";
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
-});
+const ROUTE_MAP: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
+  [/^\/admin\/orders\/(.+)$/, (m) => `/logistic-admin/orders/${m[1]}`],
+  [/^\/admin(\/.*)?$/, () => `/logistic-admin`],
+  [/^\/order-success$/, () => `/logistic-order-success`],
+  [/^\/track$/, () => `/track`],
+  [/^\/book$/, () => `/book`],
+  [/^\//, () => `/book`],
+];
 
-function AppShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
-      <main className="flex-1">{children}</main>
-    </div>
-  );
-}
+function getRedirectTarget(): string {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const fullPath = window.location.pathname;
+  const localPath = fullPath.startsWith(base) ? fullPath.slice(base.length) || "/" : "/";
 
-function Router() {
-  const [location] = useLocation();
-  const isAdmin = location.startsWith("/admin");
-
-  const routes = (
-    <Switch>
-      <Route path="/" component={HomePage} />
-      <Route path="/book" component={BookPage} />
-      <Route path="/order-success" component={OrderSuccessPage} />
-      <Route path="/track" component={TrackPage} />
-      <Route path="/admin" component={AdminPage} />
-      <Route path="/admin/orders/:id" component={AdminOrderDetail} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-
-  if (isAdmin) return routes;
-  return <AppShell>{routes}</AppShell>;
+  for (const [pattern, builder] of ROUTE_MAP) {
+    const match = localPath.match(pattern);
+    if (match) return builder(match);
+  }
+  return "/book";
 }
 
 export default function App() {
+  useEffect(() => {
+    const target = getRedirectTarget();
+    const search = window.location.search;
+    window.location.replace(target + search);
+  }, []);
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center space-y-3">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-sm text-muted-foreground">Mengalihkan ke portal utama…</p>
+      </div>
+    </div>
   );
 }
