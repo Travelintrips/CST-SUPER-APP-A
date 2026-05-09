@@ -657,6 +657,9 @@ export function ChatWidget() {
   );
   /** Pixels the soft keyboard has pushed up the visual viewport on mobile */
   const [kbOffset, setKbOffset] = useState(0);
+  /** True while the keyboard is actively animating — enables bottom transition */
+  const [kbMoving, setKbMoving] = useState(false);
+  const kbMoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -810,12 +813,22 @@ export function ChatWidget() {
   useEffect(() => {
     if (!isMobile || !open) {
       setKbOffset(0);
+      setKbMoving(false);
+      if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
       return;
     }
     const vv = window.visualViewport;
     if (!vv) return;
     const update = () => {
-      setKbOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+      const next = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbOffset((prev) => {
+        if (prev === next) return prev;
+        // Keyboard is moving — enable transition, then clear it after animation
+        setKbMoving(true);
+        if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
+        kbMoveTimerRef.current = setTimeout(() => setKbMoving(false), 250);
+        return next;
+      });
     };
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
@@ -824,6 +837,8 @@ export function ChatWidget() {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
       setKbOffset(0);
+      setKbMoving(false);
+      if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
     };
   }, [isMobile, open]);
 
@@ -1348,6 +1363,7 @@ export function ChatWidget() {
                   fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                   WebkitTapHighlightColor: "transparent",
                   animation: "chatSheetIn 0.32s cubic-bezier(0.32, 0.72, 0, 1)",
+                  transition: kbMoving ? "bottom 0.2s ease" : undefined,
                 }
               : {
                   top: "50%",
