@@ -8,8 +8,9 @@ import {
   waAiIntakeLogTable,
   portalContentTable,
   logisticOrdersTable,
+  suppliersTable,
 } from "@workspace/db";
-import { eq, sql, and, gt } from "drizzle-orm";
+import { eq, sql, and, gt, ilike } from "drizzle-orm";
 import { logger } from "./logger.js";
 import { sendMail, isSmtpConfigured } from "./mailer.js";
 import { sendLogisticOrderNotification } from "./orderNotification.js";
@@ -167,6 +168,303 @@ async function nextDocNumber(): Promise<string> {
     .where(sql`doc_number LIKE ${pattern}`);
   const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
+}
+
+// ── Vendor Reply Prompt ────────────────────────────────────────────────────
+const AI_VENDOR_REPLY_PROMPT = `You are an assistant for CST Logistics, a freight forwarding company.
+Your job is to read a vendor's reply email and extract their pricing/quotation data.
+Always respond ONLY with valid JSON — no markdown, no code blocks, no explanation.
+
+Extract the following into this JSON structure:
+{
+  "isVendorQuote": boolean,
+  "vendorName": string | null,
+  "quotedItems": [
+    {
+      "name": string,
+      "description": string | null,
+      "price": number,
+      "currency": "IDR" | "USD" | "EUR" | "SGD",
+      "unit": string
+    }
+  ],
+  "totalPrice": number | null,
+  "currency": "IDR" | "USD" | "EUR" | "SGD",
+  "transitTime": string | null,
+  "validUntil": string | null,
+  "notes": string | null,
+  "confidence": "high" | "medium" | "low"
+}
+
+Rules:
+- Set isVendorQuote: true if the email contains freight/logistics pricing, rates, or cost breakdown from a vendor/carrier/agent.
+- vendorName: the company name of the sender if mentioned.
+- quotedItems: each line of service quoted with its price. If no explicit line items, create one from the total.
+- currency: guess from context (IDR for Rupiah, USD for Dollar, etc.).
+- transitTime: estimated transit/delivery time (e.g. "7-14 days", "2 minggu").
+- validUntil: ISO date string (YYYY-MM-DD) or null.
+- If no price mentioned, set price to 0 and confidence to "low".`;
+
+interface ExtractedVendorQuote {
+  isVendorQuote: boolean;
+  vendorName: string | null;
+  quotedItems: Array<{
+    name: string;
+    description: string | null;
+    price: number;
+    currency: string;
+    unit: string;
+  }>;
+  totalPrice: number | null;
+  currency: string;
+  transitTime: string | null;
+  validUntil: string | null;
+  notes: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
+// ── Customer Approval Prompt ───────────────────────────────────────────────
+const AI_APPROVAL_PROMPT = `You are an assistant for CST Logistics, a freight forwarding company.
+Your job is to read a customer's reply email and determine if it is an approval, rejection, or counter-offer for a quotation.
+Always respond ONLY with valid JSON — no markdown, no code blocks, no explanation.
+
+Extract the following into this JSON structure:
+{
+  "isApproval": boolean,
+  "isRejection": boolean,
+  "isCounterOffer": boolean,
+  "confidence": "high" | "medium" | "low",
+  "notes": string | null
+}
+
+Rules:
+- isApproval: true if customer clearly accepts/confirms the quote (e.g. "setuju", "ok", "approved", "proceed", "kami setuju", "silakan lanjutkan").
+- isRejection: true if customer clearly declines (e.g. "tidak jadi", "cancel", "too expensive").
+- isCounterOffer: true if customer proposes different terms or asks for discount.
+- notes: brief summary of what the customer said.
+- Only one of isApproval/isRejection/isCounterOffer should be true at a time.`;
+
+interface CustomerApprovalResult {
+  isApproval: boolean;
+  isRejection: boolean;
+  isCounterOffer: boolean;
+  confidence: "high" | "medium" | "low";
+  notes: string | null;
+}
+
+async function extractVendorQuote(content: string): Promise<ExtractedVendorQuote | null> {
+  const openai = buildOpenAi();
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_completion_tokens: 1000,
+      messages: [
+        { role: "system", content: AI_VENDOR_REPLY_PROMPT },
+        { role: "user", content: `Extract vendor quote data from this email:\n\n${content.slice(0, 4000)}` },
+      ],
+    });
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    return JSON.parse(cleaned) as ExtractedVendorQuote;
+  } catch (err) {
+    logger.warn({ err }, "AI intake: vendor quote extraction failed");
+    return null;
+  }
+}
+
+async function classifyCustomerApproval(content: string): Promise<CustomerApprovalResult | null> {
+  const openai = buildOpenAi();
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_completion_tokens: 400,
+      messages: [
+        { role: "system", content: AI_APPROVAL_PROMPT },
+        { role: "user", content: `Classify this customer email:\n\n${content.slice(0, 3000)}` },
+      ],
+    });
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    return JSON.parse(cleaned) as CustomerApprovalResult;
+  } catch (err) {
+    logger.warn({ err }, "AI intake: customer approval classification failed");
+    return null;
+  }
+}
+
+async function findLinkedSalesDocByReplyTo(inReplyTo: string): Promise<{
+  emailId: number;
+  salesDocId: number;
+  customerName: string;
+  docNumber: string;
+} | null> {
+  // Find the parent email by its Message-ID
+  const [parentEmail] = await db
+    .select({
+      id: emailCorrespondencesTable.id,
+      linkedSalesDocId: emailCorrespondencesTable.linkedSalesDocId,
+    })
+    .from(emailCorrespondencesTable)
+    .where(eq(emailCorrespondencesTable.emailMessageId, inReplyTo))
+    .limit(1);
+
+  if (!parentEmail?.linkedSalesDocId) {
+    // Also check if the parent itself has a threadSalesDocId
+    const [parentWithThread] = await db
+      .select({
+        id: emailCorrespondencesTable.id,
+        threadSalesDocId: emailCorrespondencesTable.threadSalesDocId,
+      })
+      .from(emailCorrespondencesTable)
+      .where(eq(emailCorrespondencesTable.emailMessageId, inReplyTo))
+      .limit(1);
+
+    if (!parentWithThread?.threadSalesDocId) return null;
+
+    const [doc] = await db
+      .select({ id: salesDocumentsTable.id, customerName: salesDocumentsTable.customerName, docNumber: salesDocumentsTable.docNumber })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.id, parentWithThread.threadSalesDocId))
+      .limit(1);
+    if (!doc) return null;
+    return { emailId: parentWithThread.id, salesDocId: doc.id, customerName: doc.customerName, docNumber: doc.docNumber };
+  }
+
+  const [doc] = await db
+    .select({ id: salesDocumentsTable.id, customerName: salesDocumentsTable.customerName, docNumber: salesDocumentsTable.docNumber })
+    .from(salesDocumentsTable)
+    .where(eq(salesDocumentsTable.id, parentEmail.linkedSalesDocId))
+    .limit(1);
+  if (!doc) return null;
+  return { emailId: parentEmail.id, salesDocId: doc.id, customerName: doc.customerName, docNumber: doc.docNumber };
+}
+
+async function processVendorReply(opts: {
+  emailCorrespondenceId: number;
+  salesDocId: number;
+  docNumber: string;
+  fromEmail: string;
+  subject: string;
+  body: string;
+  vendorName: string;
+}): Promise<void> {
+  const content = `Subject: ${opts.subject}\nFrom: ${opts.fromEmail}\n\n${opts.body}`;
+  const quote = await extractVendorQuote(content);
+
+  let notesAppend = `\n\n---\n📦 PENAWARAN VENDOR: ${opts.vendorName}`;
+  if (quote?.isVendorQuote) {
+    if (quote.quotedItems.length > 0) {
+      notesAppend += "\n" + quote.quotedItems
+        .map((i) => `• ${i.name}: ${i.currency} ${i.price.toLocaleString("id-ID")} / ${i.unit}`)
+        .join("\n");
+    }
+    if (quote.totalPrice) {
+      notesAppend += `\nTotal: ${quote.currency} ${quote.totalPrice.toLocaleString("id-ID")}`;
+    }
+    if (quote.transitTime) notesAppend += `\nEstimasi Transit: ${quote.transitTime}`;
+    if (quote.validUntil) notesAppend += `\nBerlaku s/d: ${quote.validUntil}`;
+    if (quote.notes) notesAppend += `\nCatatan: ${quote.notes}`;
+  } else {
+    notesAppend += `\n(Email vendor diterima — harga belum terdeteksi otomatis, silakan cek manual)`;
+  }
+
+  // Append vendor quote info to the sales doc notes
+  const [doc] = await db
+    .select({ notes: salesDocumentsTable.notes })
+    .from(salesDocumentsTable)
+    .where(eq(salesDocumentsTable.id, opts.salesDocId));
+
+  const existingNotes = doc?.notes ?? "";
+  await db
+    .update(salesDocumentsTable)
+    .set({ notes: existingNotes + notesAppend, updatedAt: new Date() })
+    .where(eq(salesDocumentsTable.id, opts.salesDocId));
+
+  // Mark email with role and thread link
+  await db
+    .update(emailCorrespondencesTable)
+    .set({
+      aiProcessed: true,
+      emailRole: "vendor_reply",
+      threadSalesDocId: opts.salesDocId,
+    })
+    .where(eq(emailCorrespondencesTable.id, opts.emailCorrespondenceId));
+
+  // Notify staff
+  if (isSmtpConfigured()) {
+    sendMail({
+      to: process.env.ADMIN_EMAIL ?? process.env.SMTP_FROM ?? "",
+      subject: `[Penawaran Vendor] ${opts.vendorName} — ${opts.docNumber}`,
+      text: `Vendor ${opts.vendorName} telah membalas penawaran untuk quotation ${opts.docNumber}.\n${notesAppend}\n\nSilakan buka sistem untuk meninjau dan mengonfirmasi.`,
+      html: `<p>Vendor <strong>${opts.vendorName}</strong> telah membalas penawaran untuk quotation <strong>${opts.docNumber}</strong>.</p><pre>${notesAppend}</pre><p>Silakan buka sistem untuk meninjau dan mengonfirmasi.</p>`,
+    }).catch((err: unknown) => logger.warn({ err }, "AI intake: vendor reply notification email failed"));
+  }
+
+  logger.info({ salesDocId: opts.salesDocId, docNumber: opts.docNumber, vendorName: opts.vendorName }, "AI intake: vendor reply processed and appended to quotation");
+}
+
+async function processCustomerApproval(opts: {
+  emailCorrespondenceId: number;
+  salesDocId: number;
+  docNumber: string;
+  customerName: string;
+  fromEmail: string;
+  subject: string;
+  body: string;
+}): Promise<void> {
+  const content = `Subject: ${opts.subject}\nFrom: ${opts.fromEmail}\n\n${opts.body}`;
+  const classification = await classifyCustomerApproval(content);
+
+  if (!classification) {
+    await db
+      .update(emailCorrespondencesTable)
+      .set({ aiProcessed: true, emailRole: "other", threadSalesDocId: opts.salesDocId })
+      .where(eq(emailCorrespondencesTable.id, opts.emailCorrespondenceId));
+    return;
+  }
+
+  const role = classification.isApproval
+    ? "customer_approval"
+    : classification.isRejection
+      ? "customer_rejection"
+      : classification.isCounterOffer
+        ? "customer_counter"
+        : "other";
+
+  await db
+    .update(emailCorrespondencesTable)
+    .set({ aiProcessed: true, emailRole: role, threadSalesDocId: opts.salesDocId })
+    .where(eq(emailCorrespondencesTable.id, opts.emailCorrespondenceId));
+
+  if (classification.isApproval && classification.confidence !== "low") {
+    // Append approval note to sales doc
+    const [doc] = await db
+      .select({ notes: salesDocumentsTable.notes })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.id, opts.salesDocId));
+
+    const approvalNote = `\n\n---\n✅ PERSETUJUAN CUSTOMER: ${opts.customerName} menyetujui penawaran ini via email.\n${classification.notes ? `Catatan: ${classification.notes}` : ""}`;
+    await db
+      .update(salesDocumentsTable)
+      .set({ notes: (doc?.notes ?? "") + approvalNote, updatedAt: new Date() })
+      .where(eq(salesDocumentsTable.id, opts.salesDocId));
+
+    // Notify staff to confirm the quotation
+    if (isSmtpConfigured()) {
+      sendMail({
+        to: process.env.ADMIN_EMAIL ?? process.env.SMTP_FROM ?? "",
+        subject: `[Customer SETUJU] ${opts.customerName} — ${opts.docNumber}`,
+        text: `Customer ${opts.customerName} telah menyetujui quotation ${opts.docNumber} via email.\n\nCatatan AI: ${classification.notes ?? "-"}\n\nSilakan buka sistem dan konfirmasi quotation tersebut.`,
+        html: `<p>Customer <strong>${opts.customerName}</strong> telah <strong>menyetujui</strong> quotation <strong>${opts.docNumber}</strong> via email.</p><p>Catatan AI: ${classification.notes ?? "-"}</p><p>Silakan buka sistem dan <strong>konfirmasi</strong> quotation tersebut.</p>`,
+      }).catch((err: unknown) => logger.warn({ err }, "AI intake: customer approval notification email failed"));
+    }
+
+    logger.info({ salesDocId: opts.salesDocId, docNumber: opts.docNumber, customerName: opts.customerName }, "AI intake: customer approval detected — staff notified");
+  } else if (classification.isRejection) {
+    logger.info({ salesDocId: opts.salesDocId, docNumber: opts.docNumber }, "AI intake: customer rejection detected");
+  } else {
+    logger.info({ salesDocId: opts.salesDocId, docNumber: opts.docNumber, role }, "AI intake: customer follow-up classified");
+  }
 }
 
 async function extractOrderFromText(content: string): Promise<ExtractedOrder | null> {
@@ -355,13 +653,59 @@ export async function processEmailForAiIntake(
   subject: string,
   body: string,
   fromEmail: string | null,
+  inReplyTo?: string | null,
 ): Promise<AiIntakeResult | null> {
   if (!(await isAiIntakeEnabled())) return null;
 
+  // ── Threading: check if this email is a reply to a known quotation thread ──
+  if (inReplyTo && fromEmail) {
+    const thread = await findLinkedSalesDocByReplyTo(inReplyTo);
+    if (thread) {
+      logger.info(
+        { emailCorrespondenceId, salesDocId: thread.salesDocId, docNumber: thread.docNumber, fromEmail },
+        "AI intake: email is a reply in a known quotation thread",
+      );
+
+      // Determine if sender is a known vendor
+      const normalizedEmail = fromEmail.trim().toLowerCase();
+      const [matchedVendor] = await db
+        .select({ id: suppliersTable.id, name: suppliersTable.name, contactEmail: suppliersTable.contactEmail })
+        .from(suppliersTable)
+        .where(ilike(suppliersTable.contactEmail, normalizedEmail))
+        .limit(1);
+
+      if (matchedVendor) {
+        // Sender is a registered vendor → process as vendor reply
+        await processVendorReply({
+          emailCorrespondenceId,
+          salesDocId: thread.salesDocId,
+          docNumber: thread.docNumber,
+          fromEmail,
+          subject,
+          body,
+          vendorName: matchedVendor.name,
+        });
+        return null;
+      }
+
+      // Not a known vendor — could be customer follow-up/approval
+      await processCustomerApproval({
+        emailCorrespondenceId,
+        salesDocId: thread.salesDocId,
+        docNumber: thread.docNumber,
+        customerName: thread.customerName,
+        fromEmail,
+        subject,
+        body,
+      });
+      return null;
+    }
+  }
+
+  // ── No thread found: existing new-inquiry flow ─────────────────────────────
   const content = `Subject: ${subject}\nFrom: ${fromEmail ?? "unknown"}\n\n${body ?? ""}`;
   const extracted = await extractOrderFromText(content);
   if (!extracted) {
-    // AI extraction failed (network / parse error) — mark processed so it appears in log
     await db
       .update(emailCorrespondencesTable)
       .set({ aiProcessed: true, aiSkipReason: "ai_error" })
@@ -370,10 +714,9 @@ export async function processEmailForAiIntake(
     return null;
   }
   if (!extracted.isOrderInquiry) {
-    // AI decided not an order inquiry — mark processed so it appears in log as skipped
     await db
       .update(emailCorrespondencesTable)
-      .set({ aiProcessed: true, aiSkipReason: "not_order_inquiry" })
+      .set({ aiProcessed: true, aiSkipReason: "not_order_inquiry", emailRole: "other" })
       .where(eq(emailCorrespondencesTable.id, emailCorrespondenceId));
     logger.debug({ emailCorrespondenceId }, "AI intake: email not classified as order inquiry");
     return null;

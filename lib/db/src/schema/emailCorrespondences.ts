@@ -15,6 +15,9 @@ export const emailCorrespondencesTable = pgTable("email_correspondences", {
   aiProcessed: boolean("ai_processed").notNull().default(false),
   aiSkipReason: text("ai_skip_reason"),
   linkedSalesDocId: integer("linked_sales_doc_id"),
+  inReplyTo: text("in_reply_to"),
+  emailRole: text("email_role").default("inquiry"),
+  threadSalesDocId: integer("thread_sales_doc_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

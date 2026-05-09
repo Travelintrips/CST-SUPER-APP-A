@@ -162,6 +162,7 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
           const ccEmail = ccList.map((a: any) => a.address).filter(Boolean).join(", ") || null;
 
           const body = parsed.text ?? parsed.html?.replace(/<[^>]*>/g, "") ?? null;
+          const inReplyTo = (parsed as any).inReplyTo ?? null;
 
           const [saved] = await db
             .insert(emailCorrespondencesTable)
@@ -174,6 +175,7 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
               body: body ? body.slice(0, 10000) : null,
               receivedAt: parsed.date ?? new Date(),
               status: "new",
+              inReplyTo: inReplyTo ? String(inReplyTo).slice(0, 500) : null,
             })
             .returning();
 
@@ -186,6 +188,7 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
               parsed.subject ?? "(No Subject)",
               body,
               fromEmail,
+              inReplyTo ? String(inReplyTo) : null,
             ).catch((err) => logger.warn({ err, emailId: saved.id }, "AI intake: email processing failed"));
           }
 
