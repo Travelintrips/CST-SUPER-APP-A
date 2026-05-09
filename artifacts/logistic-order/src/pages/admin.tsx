@@ -14,8 +14,9 @@ import {
 } from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, SHIPMENT_TYPES, OrderStatus } from "@/lib/services-data";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight, Truck, Save, Loader2, Settings, ChevronDown, X,
+  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight, Truck, Save, Loader2, Settings, ChevronDown, X, Trash2,
 } from "lucide-react";
 
 const VEHICLE_TYPES = ["CDE", "CDD", "Fuso", "Wingbox", "Trailer"] as const;
@@ -83,6 +84,9 @@ export default function AdminPage() {
     try { return JSON.parse(localStorage.getItem(CARD_STYLE_KEY) ?? "{}"); } catch { return {}; }
   });
   const [cardConfigOpen, setCardConfigOpen] = useState(false);
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   function updateCardStyle(id: string, patch: Partial<CardStyle>) {
     const next = { ...cardStyles, [id]: { ...cardStyles[id], ...patch } };
@@ -155,6 +159,50 @@ export default function AdminPage() {
     localStorage.removeItem(ADMIN_KEY);
     setAuthed(false);
     setPassword("");
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = orders.length > 0 && orders.every((o) => selectedIds.has(o.id));
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(orders.map((o) => o.id)));
+    }
+  };
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedIds.size} order terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkDeleting(true);
+    let success = 0;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
+        const res = await fetch(`/api/logistic/orders/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("failed");
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkDeleting(false);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetLogisticOrderSummaryQueryKey() });
+    if (failed === 0) {
+      toast({ title: `${success} order berhasil dihapus` });
+    } else {
+      toast({ title: `${success} berhasil, ${failed} gagal`, variant: "destructive" });
+    }
   }
 
   function setStatusFilterAndUrl(status: string) {
@@ -489,8 +537,31 @@ export default function AdminPage() {
 
         {/* Orders Table */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
             <h2 className="font-semibold text-foreground text-sm">Daftar Pesanan ({orders.length})</h2>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{selectedIds.size} dipilih</span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 text-xs px-2.5"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  {bulkDeleting ? "Menghapus..." : "Hapus Terpilih"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs px-2.5"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Batal
+                </Button>
+              </div>
+            )}
           </div>
 
           {isLoading ? (
@@ -506,6 +577,13 @@ export default function AdminPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
+                    <th className="px-4 py-3 w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={toggleAll}
+                        aria-label="Pilih semua"
+                      />
+                    </th>
                     {["Order #", "Perusahaan", "PIC", "Tipe", "Route", "Total", "Status", "Tanggal", ""].map((h) => (
                       <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">{h}</th>
                     ))}
@@ -517,6 +595,13 @@ export default function AdminPage() {
                       key={order.id}
                       className="border-b border-border hover:bg-muted/20 transition-colors"
                     >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedIds.has(order.id)}
+                          onCheckedChange={() => toggleSelect(order.id)}
+                          aria-label={`Pilih ${order.orderNumber}`}
+                        />
+                      </td>
                       <td className="px-4 py-3 text-sm font-mono font-semibold text-foreground">{order.orderNumber}</td>
                       <td className="px-4 py-3 text-sm text-foreground">{order.companyName}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{order.customerName}</td>

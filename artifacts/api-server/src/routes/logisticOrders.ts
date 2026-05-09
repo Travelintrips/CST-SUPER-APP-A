@@ -446,7 +446,7 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
 
 // DELETE /api/logistic/orders/:id
 logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
-  const id = parseInt(req.params["id"] ?? "");
+  const id = parseInt(String(req.params["id"] ?? ""));
   if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
   const [deleted] = await db
     .delete(logisticOrdersTable)
