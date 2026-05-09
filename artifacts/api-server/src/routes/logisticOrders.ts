@@ -444,3 +444,15 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   return res.json(toOrder(updated));
 });
 
+// DELETE /api/logistic/orders/:id
+logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params["id"] ?? "");
+  if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+  const [deleted] = await db
+    .delete(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, id))
+    .returning();
+  if (!deleted) return res.status(404).json({ message: "Order tidak ditemukan" });
+  return res.json({ message: "Deleted", id });
+});
+

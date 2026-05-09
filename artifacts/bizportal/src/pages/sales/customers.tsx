@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +57,8 @@ export default function CustomersPage() {
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -129,6 +132,49 @@ export default function CustomersPage() {
       toast({ title: t.common.success });
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const allList = customers ?? [];
+  const allSelected = allList.length > 0 && allList.every((c) => selectedIds.has(c.id));
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allList.map((c) => c.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedIds.size} customer terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkDeleting(true);
+    let success = 0;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
+        await deleteMut.mutateAsync({ id });
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkDeleting(false);
+    setSelectedIds(new Set());
+    qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
+    if (failed === 0) {
+      toast({ title: `${success} customer berhasil dihapus` });
+    } else {
+      toast({ title: `${success} berhasil, ${failed} gagal`, variant: "destructive" });
     }
   };
 
@@ -211,6 +257,18 @@ export default function CustomersPage() {
           </Dialog>
         </div>
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg">
+            <span className="text-sm font-medium">{selectedIds.size} dipilih</span>
+            <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              {bulkDeleting ? "Menghapus..." : "Hapus Terpilih"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Batal</Button>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Daftar Customer</CardTitle>
@@ -219,6 +277,11 @@ export default function CustomersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    {allList.length > 0 && (
+                      <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Pilih semua" />
+                    )}
+                  </TableHead>
                   <TableHead>Nama</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Telepon</TableHead>
@@ -228,8 +291,15 @@ export default function CustomersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(customers ?? []).map((c) => (
+                {allList.map((c) => (
                   <TableRow key={c.id} data-testid={`row-customer-${c.id}`}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(c.id)}
+                        onCheckedChange={() => toggleSelect(c.id)}
+                        aria-label={`Pilih ${c.name}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell>{c.email ?? "-"}</TableCell>
                     <TableCell>{c.phone ?? "-"}</TableCell>
@@ -245,9 +315,9 @@ export default function CustomersPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {(!customers || customers.length === 0) && (
+                {allList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       Belum ada customer.
                     </TableCell>
                   </TableRow>

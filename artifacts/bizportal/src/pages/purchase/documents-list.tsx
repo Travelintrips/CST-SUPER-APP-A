@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -70,6 +71,8 @@ interface Props {
 export default function PurchaseDocumentsListPage({ kind }: Props) {
   const isRfq = kind === "rfq";
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -82,9 +85,29 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
     ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
   });
 
+  const draftDocs = (docs ?? []).filter((d) => d.status === "draft");
+
   const title = isRfq ? "Request for Quotation" : "Purchase Orders";
   const desc = isRfq ? "Permintaan penawaran ke vendor." : "Pesanan pembelian terkonfirmasi.";
   const detailBase = isRfq ? "/purchase/rfq" : "/purchase/orders";
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allDraftSelected = draftDocs.length > 0 && draftDocs.every((d) => selectedIds.has(d.id));
+
+  const toggleAll = () => {
+    if (allDraftSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(draftDocs.map((d) => d.id)));
+    }
+  };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.")) return;
@@ -94,6 +117,30 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
       toast({ title: t.common.success });
     } catch {
       toast({ title: t.common.error, variant: "destructive" });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedIds.size} dokumen terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkDeleting(true);
+    let success = 0;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
+        await deleteMut.mutateAsync({ id });
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkDeleting(false);
+    setSelectedIds(new Set());
+    queryClient.invalidateQueries({ queryKey: getListPurchaseDocumentsQueryKey({ kind }) });
+    if (failed === 0) {
+      toast({ title: `${success} dokumen berhasil dihapus` });
+    } else {
+      toast({ title: `${success} berhasil, ${failed} gagal`, variant: "destructive" });
     }
   };
 
@@ -108,7 +155,7 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
     }
   };
 
-  const colCount = isRfq ? 6 : 9;
+  const colCount = isRfq ? 7 : 10;
 
   return (
     <AppShell>
@@ -126,6 +173,25 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
             </Link>
           )}
         </div>
+
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg">
+            <span className="text-sm font-medium">{selectedIds.size} dipilih</span>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              {bulkDeleting ? "Menghapus..." : "Hapus Terpilih"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+              Batal
+            </Button>
+          </div>
+        )}
 
         <Card>
           <CardHeader>
@@ -154,6 +220,15 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    {draftDocs.length > 0 && (
+                      <Checkbox
+                        checked={allDraftSelected}
+                        onCheckedChange={toggleAll}
+                        aria-label="Pilih semua draft"
+                      />
+                    )}
+                  </TableHead>
                   <TableHead>No.</TableHead>
                   <TableHead>Vendor</TableHead>
                   <TableHead>Status</TableHead>
@@ -168,6 +243,15 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
               <TableBody>
                 {(docs ?? []).map((d) => (
                   <TableRow key={d.id} data-testid={`row-doc-${d.id}`}>
+                    <TableCell>
+                      {d.status === "draft" && (
+                        <Checkbox
+                          checked={selectedIds.has(d.id)}
+                          onCheckedChange={() => toggleSelect(d.id)}
+                          aria-label={`Pilih ${d.docNumber}`}
+                        />
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <Link href={`${detailBase}/${d.id}`} className="hover:underline">{d.docNumber}</Link>

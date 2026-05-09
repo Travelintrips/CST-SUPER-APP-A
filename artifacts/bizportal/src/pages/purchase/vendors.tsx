@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -127,10 +128,12 @@ export default function VendorsPage() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [logoUploading, setLogoUploading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const { uploadFile } = useUpload({
-    onError: (err) => {
+    onError: () => {
       toast({ title: t.common.error, variant: "destructive" });
       setLogoUploading(false);
     },
@@ -246,6 +249,49 @@ export default function VendorsPage() {
       toast({ title: t.common.success });
     } catch (e) {
       toast({ title: t.common.error, description: String(e), variant: "destructive" });
+    }
+  };
+
+  const allList = vendors ?? [];
+  const allSelected = allList.length > 0 && allList.every((v) => selectedIds.has(v.id));
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allList.map((v) => v.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedIds.size} vendor terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkDeleting(true);
+    let success = 0;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
+        await deleteMut.mutateAsync({ id });
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setBulkDeleting(false);
+    setSelectedIds(new Set());
+    qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });
+    if (failed === 0) {
+      toast({ title: `${success} vendor berhasil dihapus` });
+    } else {
+      toast({ title: `${success} berhasil, ${failed} gagal`, variant: "destructive" });
     }
   };
 
@@ -459,6 +505,18 @@ export default function VendorsPage() {
           </Dialog>
         </div>
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg">
+            <span className="text-sm font-medium">{selectedIds.size} dipilih</span>
+            <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              {bulkDeleting ? "Menghapus..." : "Hapus Terpilih"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Batal</Button>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Daftar Vendor</CardTitle>
@@ -467,6 +525,11 @@ export default function VendorsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    {allList.length > 0 && (
+                      <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Pilih semua" />
+                    )}
+                  </TableHead>
                   <TableHead>Nama</TableHead>
                   <TableHead>Tipe Layanan</TableHead>
                   <TableHead>Negara</TableHead>
@@ -480,55 +543,62 @@ export default function VendorsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(vendors ?? []).map((v) => {
+                {allList.map((v) => {
                   const baseFee = Number(v.fee ?? 0);
                   const markupPct = Number(v.markup ?? 0);
                   const afterMarkup = baseFee * (1 + markupPct / 100);
                   return (
-                  <TableRow key={v.id} data-testid={`row-vendor-${v.id}`}>
-                    <TableCell>
-                      <span className="mr-1.5 inline-flex items-center"><LogoDisplay logo={v.logo} /></span>
-                      <span className="font-medium">{v.name}</span>
-                    </TableCell>
-                    <TableCell>
-                      {v.serviceType
-                        ? <Badge variant="secondary" className="text-xs">{v.serviceType}</Badge>
-                        : <span className="text-muted-foreground text-xs">Semua</span>}
-                    </TableCell>
-                    <TableCell>{v.country ?? "-"}</TableCell>
-                    <TableCell>{v.phone ?? "-"}</TableCell>
-                    <TableCell>{v.eta ?? "-"}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {baseFee > 0 ? `Rp ${baseFee.toLocaleString("id-ID")}` : "-"}
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {markupPct > 0 ? `${markupPct}%` : "-"}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm font-medium text-primary">
-                      {baseFee > 0 ? `Rp ${Math.round(afterMarkup).toLocaleString("id-ID")}` : "-"}
-                    </TableCell>
-                    <TableCell>
-                      {v.isActive
-                        ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
-                        : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" title="Etalase" onClick={() => navigate(`/purchase/vendors/${v.id}`)}>
-                        <Store className="h-4 w-4 text-primary" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => remove(v.id)} data-testid={`button-delete-vendor-${v.id}`}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                    <TableRow key={v.id} data-testid={`row-vendor-${v.id}`}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(v.id)}
+                          onCheckedChange={() => toggleSelect(v.id)}
+                          aria-label={`Pilih ${v.name}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <span className="mr-1.5 inline-flex items-center"><LogoDisplay logo={v.logo} /></span>
+                        <span className="font-medium">{v.name}</span>
+                      </TableCell>
+                      <TableCell>
+                        {v.serviceType
+                          ? <Badge variant="secondary" className="text-xs">{v.serviceType}</Badge>
+                          : <span className="text-muted-foreground text-xs">Semua</span>}
+                      </TableCell>
+                      <TableCell>{v.country ?? "-"}</TableCell>
+                      <TableCell>{v.phone ?? "-"}</TableCell>
+                      <TableCell>{v.eta ?? "-"}</TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {baseFee > 0 ? `Rp ${baseFee.toLocaleString("id-ID")}` : "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        {markupPct > 0 ? `${markupPct}%` : "-"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-medium text-primary">
+                        {baseFee > 0 ? `Rp ${Math.round(afterMarkup).toLocaleString("id-ID")}` : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {v.isActive
+                          ? <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Aktif</Badge>
+                          : <Badge variant="outline" className="text-xs text-muted-foreground">Nonaktif</Badge>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button size="icon" variant="ghost" title="Etalase" onClick={() => navigate(`/purchase/vendors/${v.id}`)}>
+                          <Store className="h-4 w-4 text-primary" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => startEdit(v)} data-testid={`button-edit-vendor-${v.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => remove(v.id)} data-testid={`button-delete-vendor-${v.id}`}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-                {(!vendors || vendors.length === 0) && (
+                {allList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                       Belum ada vendor.
                     </TableCell>
                   </TableRow>
