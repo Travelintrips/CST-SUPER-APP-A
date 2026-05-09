@@ -57,51 +57,55 @@ app.use(authMiddleware);
 // Auth routes (login/callback/logout/mobile-auth)
 app.use(authRouter);
 
-// Serve BizPortal static files for custom domain bizportal.cstlogistic.co.id.
-// When the custom domain is active, all requests arrive at the API server.
-// BizPortal is built with base="/bizportal/", so HTML references /bizportal/assets/...
-// We strip the /bizportal prefix and serve from the dist directory.
+// ─── BizPortal Static Serving ────────────────────────────────────────────────
+// BizPortal is built with base="/bizportal/" so all asset hrefs are /bizportal/...
+// The API server handles /bizportal/* so that:
+//   1. cst-super-app.replit.app/bizportal/ works (normal access)
+//   2. bizportal.cstlogistic.co.id/bizportal/ works (custom domain, old cached redirect)
+//   3. bizportal.cstlogistic.co.id/ works (custom domain root — served below)
+
 const BIZPORTAL_DIST = path.resolve(
   process.cwd(),
   "artifacts/bizportal/dist/public",
 );
 
-function serveBizportalStatic(req: Request, res: Response, next: NextFunction) {
+// Serve static assets at /bizportal/* (strips /bizportal prefix internally)
+if (fs.existsSync(BIZPORTAL_DIST)) {
+  app.use(
+    "/bizportal",
+    express.static(BIZPORTAL_DIST, { index: "index.html" }),
+  );
+
+  // SPA fallback: any /bizportal/* path that isn't a file → index.html
+  app.use("/bizportal/*", (_req: Request, res: Response) => {
+    res.sendFile(path.join(BIZPORTAL_DIST, "index.html"));
+  });
+}
+
+// ─── Custom domain: serve BizPortal at root "/" ───────────────────────────────
+// When accessed via bizportal.cstlogistic.co.id, requests for "/" should show
+// BizPortal. The HTML will load assets from /bizportal/assets/... which are
+// handled by the express.static above.
+app.use((req: Request, res: Response, next: NextFunction) => {
   const host =
     (req.headers["x-forwarded-host"] as string) || req.headers.host || "";
   const hostname = host.split(":")[0];
 
   if (hostname !== "bizportal.cstlogistic.co.id") return next();
 
-  // Let API / auth routes pass through
-  const skipPrefixes = ["/api/", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
-  if (skipPrefixes.some((p) => req.path === p || req.path.startsWith(p + "/"))) {
+  // Skip API / auth routes
+  const skip = ["/api/", "/login", "/logout", "/callback", "/auth", "/mobile-auth", "/bizportal"];
+  if (skip.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
     return next();
   }
 
-  // BizPortal HTML references assets as /bizportal/assets/... so strip that prefix
-  let filePath = req.path;
-  if (filePath.startsWith("/bizportal")) {
-    filePath = filePath.slice("/bizportal".length) || "/";
-  }
-  if (!filePath || filePath === "/") filePath = "/index.html";
-
-  const fullPath = path.join(BIZPORTAL_DIST, filePath);
-
-  // Serve the file if it exists, otherwise SPA fallback to index.html
-  if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-    res.sendFile(fullPath);
+  const indexPath = path.join(BIZPORTAL_DIST, "index.html");
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
   } else {
-    const indexPath = path.join(BIZPORTAL_DIST, "index.html");
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      next();
-    }
+    next();
   }
-}
-
-app.use(serveBizportalStatic);
+});
 
 app.use("/api", router);
 
