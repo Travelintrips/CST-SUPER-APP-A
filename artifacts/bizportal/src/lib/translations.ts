@@ -59,6 +59,7 @@ export interface Translations {
     reconciliation: string;
     accountingSettings: string;
     trading: string;
+    overview: string;
     logistics: string;
     shipments: string;
     freightForwarding: string;
@@ -426,6 +427,7 @@ const id: Translations = {
     balanceSheet: "Neraca",
     reconciliation: "Rekonsiliasi",
     accountingSettings: "Pengaturan",
+    overview: "Ikhtisar",
     trading: "Trading",
     logistics: "Logistik",
     shipments: "Pengiriman",
@@ -794,6 +796,7 @@ const en: Translations = {
     balanceSheet: "Balance Sheet",
     reconciliation: "Reconciliation",
     accountingSettings: "Settings",
+    overview: "Overview",
     trading: "Trading",
     logistics: "Logistics",
     shipments: "Shipments",

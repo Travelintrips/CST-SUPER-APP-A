@@ -97,7 +97,17 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const navItems: NavItem[] = [
-    { type: "flat", titleKey: "dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin"] },
+    {
+      type: "group",
+      titleKey: "dashboard",
+      basePath: "/dashboard",
+      icon: LayoutDashboard,
+      roles: ["admin"],
+      children: [
+        { titleKey: "overview", href: "/dashboard", icon: LayoutDashboard },
+        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
+      ],
+    },
     {
       type: "group",
       titleKey: "sales",
@@ -173,7 +183,6 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship },
-        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
       ],
     },
     { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
