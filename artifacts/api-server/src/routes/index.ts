@@ -24,7 +24,6 @@ import settingsRouter from "./settings";
 import { driverRouter, driversAdminRouter } from "./driver";
 import webhooksRouter from "./webhooks";
 import { aiAgentRouter } from "./aiAgent";
-import adminClearRouter from "./adminClearTransactions";
 
 const router: IRouter = Router();
 
@@ -54,6 +53,4 @@ router.use("/drivers", driversAdminRouter);
 router.use(storageRouter);
 router.use(webhooksRouter);
 router.use("/ai-agent", aiAgentRouter);
-router.use(adminClearRouter);
-
 export default router;
