@@ -24,7 +24,7 @@ Commands:
 ## Stack
 
 - **Runtime**: Node.js 24, TypeScript 5.9
-- **Backend**: Express 5, Drizzle ORM, Zod/v4, Clerk (Auth)
+- **Backend**: Express 5, Drizzle ORM, Zod/v4, OpenID Connect (Auth)
 - **Database**: PostgreSQL
 - **Frontend**: React 19, Vite, Tailwind CSS, shadcn/ui, Wouter, TanStack Query v5, Orval
 - **Storage**: Replit Object Storage
@@ -84,7 +84,6 @@ Commands:
 
 ## Pointers
 
-- **Clerk Documentation**: For authentication and user management.
 - **Drizzle ORM Documentation**: For database schema definition and migrations.
 - **Orval Documentation**: For API client generation.
 - **TanStack Query Documentation**: For data fetching and state management in React.

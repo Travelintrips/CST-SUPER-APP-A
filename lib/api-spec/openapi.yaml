@@ -3328,8 +3328,6 @@ paths:
       operationId: aiAgentAdminReply
       tags: [ai-agent]
       summary: Send an admin reply to the customer (via WhatsApp)
-      security:
-        - clerkAuth: []
       requestBody:
         required: true
         content:
@@ -3358,8 +3356,6 @@ paths:
       operationId: getAiChatSessionByOrder
       tags: [ai-agent]
       summary: Get AI chat session and messages for a given logistic order (admin)
-      security:
-        - clerkAuth: []
       responses:
         "200":
           description: Session with messages
