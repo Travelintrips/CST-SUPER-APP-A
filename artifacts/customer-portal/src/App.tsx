@@ -41,6 +41,11 @@ import ResetPassword from "@/pages/reset-password";
 
 const queryClient = new QueryClient();
 
+// Redirect bizportal subdomain to /bizportal/
+if (typeof window !== "undefined" && window.location.hostname === "bizportal.cstlogistic.co.id") {
+  window.location.replace("/bizportal/");
+}
+
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin"];
 const NO_SHELL_PREFIXES = ["/jasa/"];
 
