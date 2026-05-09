@@ -8,6 +8,7 @@ import {
 } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
+import { and, eq, ne } from "drizzle-orm";
 import {
   clearSession,
   getOidcConfig,
@@ -65,6 +66,15 @@ async function upsertUser(claims: Record<string, unknown>) {
   const lastName = (claims.last_name as string) || null;
   const profileImageUrl = ((claims.profile_image_url || claims.picture) as string) || null;
   const name = [firstName, lastName].filter(Boolean).join(" ") || email.split("@")[0] || id;
+
+  // Remove any stale user rows with the same email but a different id
+  // (e.g. leftover Clerk users after migration). No FK constraints on users.id
+  // so this is safe.
+  if (email) {
+    await db
+      .delete(usersTable)
+      .where(and(eq(usersTable.email, email), ne(usersTable.id, id)));
+  }
 
   const [user] = await db
     .insert(usersTable)
