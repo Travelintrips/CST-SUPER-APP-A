@@ -62,7 +62,7 @@ const BOILERPLATE_HEADERS = [
 ];
 
 // Strip excessive blank lines and common boilerplate headers before sending to AI.
-function cleanPdfText(raw: string): string {
+function cleanPdfText(raw: string, headers: string[] = BOILERPLATE_HEADERS): string {
   // Collapse 3+ consecutive newlines into 2
   let text = raw.replace(/\n{3,}/g, "\n\n");
   // Remove lines that are only dashes / underscores / dots (dividers)
@@ -72,7 +72,7 @@ function cleanPdfText(raw: string): string {
   const lines = text.split("\n");
   const cutIndex = lines.findIndex((line) => {
     const lower = line.trim().toLowerCase();
-    return BOILERPLATE_HEADERS.some(
+    return headers.some(
       (h) =>
         lower === h ||
         lower.startsWith(h + ":") ||
@@ -168,6 +168,7 @@ export const FIELD_REGISTRY: Record<DocGroup, FieldDef[]> = {
 };
 
 const SCAN_FIELDS_KEY = "scan_document_fields";
+const SCAN_BOILERPLATE_KEY = "scan_boilerplate_headers";
 
 async function getScanFieldConfig(): Promise<Record<DocGroup, Record<string, boolean>>> {
   try {
@@ -180,6 +181,22 @@ async function getScanFieldConfig(): Promise<Record<DocGroup, Record<string, boo
   } catch {
     return {} as Record<DocGroup, Record<string, boolean>>;
   }
+}
+
+async function getBoilerplateHeaders(): Promise<{ phrases: string[]; isCustom: boolean }> {
+  try {
+    const [row] = await db
+      .select()
+      .from(aiAgentSettingsTable)
+      .where(eq(aiAgentSettingsTable.key, SCAN_BOILERPLATE_KEY));
+    if (row?.value) {
+      const parsed = JSON.parse(row.value) as string[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return { phrases: parsed, isCustom: true };
+      }
+    }
+  } catch { /* fall through */ }
+  return { phrases: BOILERPLATE_HEADERS, isCustom: false };
 }
 
 function isEnabled(cfg: Record<string, boolean>, field: string): boolean {
@@ -321,7 +338,10 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
   }
 
   try {
-    const systemPrompt = await buildSystemPrompt();
+    const [systemPrompt, { phrases: boilerplateHeaders }] = await Promise.all([
+      buildSystemPrompt(),
+      getBoilerplateHeaders(),
+    ]);
     let extractedText: string;
     let mode: "pdf-text" | "pdf-vision" | "image-vision" = "image-vision";
 
@@ -341,7 +361,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       if (pdfText.length >= PDF_TEXT_FAST_PATH_MIN_CHARS) {
         // Text-based PDF: send extracted text to a faster text-only model.
         mode = "pdf-text";
-        const cleanText = cleanPdfText(pdfText);
+        const cleanText = cleanPdfText(pdfText, boilerplateHeaders);
         const response = await getOpenAI().chat.completions.create({
           model: "gpt-5-mini",
           max_completion_tokens: 3500,
@@ -474,6 +494,46 @@ router.put("/fields", async (req, res): Promise<void> => {
     });
 
   res.json({ ok: true });
+});
+
+// ── GET /api/scan-document/boilerplate-headers ────────────────────────────────
+router.get("/boilerplate-headers", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const { phrases, isCustom } = await getBoilerplateHeaders();
+  res.json({ phrases, isCustom, defaults: BOILERPLATE_HEADERS });
+});
+
+// ── PUT /api/scan-document/boilerplate-headers ────────────────────────────────
+router.put("/boilerplate-headers", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const body = req.body as { phrases?: unknown };
+  if (!Array.isArray(body.phrases)) {
+    res.status(400).json({ message: "phrases must be an array of strings" });
+    return;
+  }
+  const cleaned = (body.phrases as unknown[])
+    .map((p) => String(p).trim().toLowerCase())
+    .filter(Boolean);
+
+  if (cleaned.length === 0) {
+    // Empty array means "reset to defaults" — delete the row
+    await db
+      .delete(aiAgentSettingsTable)
+      .where(eq(aiAgentSettingsTable.key, SCAN_BOILERPLATE_KEY));
+    res.json({ ok: true, isCustom: false, phrases: BOILERPLATE_HEADERS });
+    return;
+  }
+
+  await db
+    .insert(aiAgentSettingsTable)
+    .values({ key: SCAN_BOILERPLATE_KEY, value: JSON.stringify(cleaned) })
+    .onConflictDoUpdate({
+      target: aiAgentSettingsTable.key,
+      set: { value: JSON.stringify(cleaned), updatedAt: new Date() },
+    });
+
+  res.json({ ok: true, isCustom: true, phrases: cleaned });
 });
 
 export default router;
