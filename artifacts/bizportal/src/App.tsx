@@ -67,7 +67,13 @@ const queryClient = new QueryClient();
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+// Dynamically resolve proxy URL from current origin so multi-domain setups
+// (e.g. bizportal.cstlogistic.co.id) always send Clerk requests to the correct host.
+// VITE_CLERK_PROXY_URL is only set in production by Replit; when empty we are in dev
+// and proxying is not active (dev Clerk instance doesn't use a proxy).
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL
+  ? `${window.location.origin}/api/__clerk`
+  : undefined;
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
