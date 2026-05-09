@@ -655,6 +655,8 @@ export function ChatWidget() {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches,
   );
+  /** Pixels the soft keyboard has pushed up the visual viewport on mobile */
+  const [kbOffset, setKbOffset] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -803,6 +805,27 @@ export function ChatWidget() {
       document.body.style.overflow = prev;
     };
   }, [open, isMobile]);
+
+  // Track keyboard height via visualViewport so the input bar stays above the keyboard
+  useEffect(() => {
+    if (!isMobile || !open) {
+      setKbOffset(0);
+      return;
+    }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      setKbOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      setKbOffset(0);
+    };
+  }, [isMobile, open]);
 
   /** Strip markdown symbols so TTS sounds natural */
   function stripMarkdown(text: string): string {
@@ -1313,12 +1336,12 @@ export function ChatWidget() {
           style={
             isMobile
               ? {
-                  bottom: 0,
+                  bottom: kbOffset,
                   left: 0,
                   right: 0,
                   width: "100%",
-                  height: "min(92dvh, 92vh)",
-                  maxHeight: "min(92dvh, 92vh)",
+                  height: `min(92dvh, 92vh)`,
+                  maxHeight: `min(92dvh, 92vh)`,
                   borderRadius: "20px 20px 0 0",
                   border: "1px solid rgba(0,0,0,0.06)",
                   boxShadow: "0 -4px 24px rgba(0,0,0,0.14), 0 -1px 4px rgba(0,0,0,0.06)",
@@ -1666,7 +1689,14 @@ export function ChatWidget() {
           </div>
 
           {/* Input */}
-          <div className="px-3 py-3 sm:py-2.5 bg-white border-t border-gray-100 shrink-0">
+          <div
+            className="px-3 pt-3 sm:pt-2.5 bg-white border-t border-gray-100 shrink-0"
+            style={{
+              paddingBottom: kbOffset > 0
+                ? "12px"
+                : "calc(12px + env(safe-area-inset-bottom))",
+            }}
+          >
             {isListening && (
               <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium mb-2">
                 <span className="flex gap-0.5 items-center">
