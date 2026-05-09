@@ -210,12 +210,16 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 
   const adminWa = await getAdminWa();
   if (adminWa) {
+    logger.info({ phone: adminWa, orderNumber: order.orderNumber }, "Sending admin WA notification");
     sendWhatsApp(adminWa, buildAdminWaMessage(order)).catch((err: unknown) =>
       logger.error({ err }, "WA admin notification failed")
     );
+  } else {
+    logger.warn("Admin WA target not configured — skipping (set FONNTE_ADMIN_WA or configure via admin panel)");
   }
 
   if (isSmtpConfigured()) {
+    logger.info({ to: ADMIN_EMAIL, orderNumber: order.orderNumber }, "Sending admin email notification");
     sendMail({
       to: ADMIN_EMAIL,
       subject: `[ORDER BARU] ${order.orderNumber} — ${order.customerName}`,
@@ -231,7 +235,9 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         `Rute: ${order.origin} → ${order.destination}\n` +
         `Jenis: ${order.shipmentType}\n` +
         `Total: Rp ${formatRupiah(order.grandTotal)}`,
-    }).catch((err: unknown) => logger.error({ err }, "Email admin notification failed"));
+    })
+      .then(() => logger.info({ to: ADMIN_EMAIL, orderNumber: order.orderNumber }, "Admin email sent successfully"))
+      .catch((err: unknown) => logger.error({ err, to: ADMIN_EMAIL }, "Email admin notification failed"));
   } else {
     logger.warn("SMTP not configured — skipping admin email");
   }
