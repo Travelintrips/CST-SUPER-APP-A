@@ -6,7 +6,6 @@ import {
   emailLinksTable,
 } from "@workspace/db";
 import { eq, desc, ilike, or, and, inArray, gte, lte } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
 
 const router = Router();
 
@@ -187,7 +186,7 @@ router.post("/:id/validate-status", async (req, res) => {
     return res.status(400).json({ message: `status harus salah satu dari: ${validStatuses.join(", ")}` });
   }
 
-  const { userId } = getAuth(req);
+  const userId = req.isAuthenticated() ? (req.user as { id: string }).id : null;
 
   const updateData = status === "validated"
     ? { status, updatedAt: new Date(), validatedBy: userId, validatedAt: new Date() }
@@ -270,7 +269,7 @@ router.post("/:id/links", async (req, res) => {
 router.put("/:id/links/:linkId/validate", async (req, res) => {
   const linkId = Number(req.params.linkId);
   const { notes } = req.body;
-  const { userId } = getAuth(req);
+  const userId = req.isAuthenticated() ? (req.user as { id: string }).id : null;
 
   const [link] = await db
     .update(emailLinksTable)

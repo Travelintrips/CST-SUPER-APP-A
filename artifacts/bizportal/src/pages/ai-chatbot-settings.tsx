@@ -6,7 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Bot, Save, Loader2, RotateCcw, Info, CheckCircle2 } from "lucide-react";
-import { useAuth } from "@clerk/react";
 
 const DEFAULT_PROMPT = `Kamu adalah asisten logistik virtual dari CST Logistics — perusahaan jasa pengiriman dan kepabeanan terkemuka di Indonesia.
 
@@ -35,7 +34,6 @@ Layanan yang tersedia:
 Harga dikonfirmasi tim setelah order masuk (tergantung volume, rute, pasar).`;
 
 export default function AiChatbotSettingsPage() {
-  const { getToken } = useAuth();
   const { toast } = useToast();
   const { t } = useLanguage();
 
@@ -51,9 +49,8 @@ export default function AiChatbotSettingsPage() {
   async function load() {
     setLoading(true);
     try {
-      const token = await getToken();
       const res = await fetch("/api/ai-agent/settings", {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (!res.ok) throw new Error();
       const data = await res.json() as { systemPrompt: string };
@@ -69,14 +66,11 @@ export default function AiChatbotSettingsPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const token = await getToken();
       const res = await fetch("/api/ai-agent/settings", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ systemPrompt: prompt }),
+        credentials: "include",
       });
       if (!res.ok) throw new Error();
       setSaved(prompt);

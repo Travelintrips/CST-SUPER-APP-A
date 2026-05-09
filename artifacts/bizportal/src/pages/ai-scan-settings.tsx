@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { ScanLine, Save, Loader2, CheckCircle2, Info } from "lucide-react";
-import { useAuth } from "@clerk/react";
+import { useAuth } from "@workspace/replit-auth-web";
 
 type DocGroup = "sales" | "freight" | "customs";
 
@@ -36,7 +36,6 @@ const GROUP_DESCRIPTIONS: Record<DocGroup, string> = {
 };
 
 export default function AiScanSettingsPage() {
-  const { getToken } = useAuth();
   const { toast } = useToast();
 
   const [registry, setRegistry] = useState<Record<DocGroup, FieldDef[]> | null>(null);
@@ -52,9 +51,8 @@ export default function AiScanSettingsPage() {
   async function load() {
     setLoading(true);
     try {
-      const token = await getToken();
       const res = await fetch("/api/scan-document/fields", {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (!res.ok) throw new Error();
       const data = (await res.json()) as FieldsResponse;
@@ -71,13 +69,10 @@ export default function AiScanSettingsPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const token = await getToken();
       const res = await fetch("/api/scan-document/fields", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(enabled),
       });
       if (!res.ok) throw new Error();

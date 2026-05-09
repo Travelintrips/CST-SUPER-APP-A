@@ -13,6 +13,34 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface AuthUser {
+  id: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  profileImageUrl?: string | null;
+}
+
+export interface GetCurrentAuthUserResponse {
+  user: AuthUser | null;
+}
+
+export interface ExchangeMobileAuthorizationCodeBody {
+  code: string;
+  code_verifier: string;
+  redirect_uri: string;
+  state: string;
+  nonce?: string | null;
+}
+
+export interface ExchangeMobileAuthorizationCodeResponse {
+  token: string;
+}
+
+export interface LogoutMobileSessionResponse {
+  success: boolean;
+}
+
 export type UserProfileRole =
   (typeof UserProfileRole)[keyof typeof UserProfileRole];
 
@@ -2425,6 +2453,10 @@ export interface AiChatResponse {
   message: string;
   orderCreated?: AiChatOrderCreated | null;
 }
+
+export type LoginParams = {
+  returnTo?: string;
+};
 
 export type ListProductsParams = {
   search?: string;

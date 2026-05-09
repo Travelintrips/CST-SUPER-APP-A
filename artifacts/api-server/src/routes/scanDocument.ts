@@ -2,7 +2,6 @@ import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
 import { createRequire } from "node:module";
-import { getAuth } from "@clerk/express";
 import { logger } from "../lib/logger";
 import { db, aiAgentSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -90,18 +89,7 @@ function cleanPdfText(raw: string): string {
 }
 
 router.use((req, res, next) => {
-  const { userId } = getAuth(req);
-  if (!userId) {
-    if (process.env.NODE_ENV !== "production") {
-      const authHeader = req.headers["authorization"];
-      const cookieHeader = req.headers["cookie"];
-      logger.warn({
-        authHeader: authHeader ? authHeader.slice(0, 30) + "..." : "NONE",
-        cookieKeys: cookieHeader
-          ? cookieHeader.split(";").map(c => c.trim().split("=")[0]).join(", ")
-          : "NONE",
-      }, "[scan-auth] 401 — no userId from getAuth");
-    }
+  if (!req.isAuthenticated()) {
     res.status(401).json({ message: "Unauthorized" });
     return;
   }

@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import { useAuth } from "@clerk/react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -38,7 +37,6 @@ interface ScanDocumentDialogProps {
 }
 
 export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title = "Scan Dokumen" }: ScanDocumentDialogProps) {
-  const { getToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -64,15 +62,11 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
 
     setLoading(true);
     try {
-      const token = await getToken();
       const form = new FormData();
       form.append("file", file);
-      const headers: HeadersInit = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
       const resp = await fetch("/api/scan-document", {
         method: "POST",
         body: form,
-        headers,
         credentials: "include",
       });
       if (!resp.ok) {

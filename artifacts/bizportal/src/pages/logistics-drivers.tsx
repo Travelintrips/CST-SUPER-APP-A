@@ -1,6 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@clerk/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,10 +81,11 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
-async function apiFetch(url: string, token: string, opts?: RequestInit) {
+async function apiFetch(url: string, opts?: RequestInit) {
   const res = await fetch(url, {
+    credentials: "include",
     ...opts,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(opts?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...(opts?.headers ?? {}) },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -97,7 +97,6 @@ async function apiFetch(url: string, token: string, opts?: RequestInit) {
 const EMPTY_FORM = { name: "", email: "", password: "", phone: "", licenseNumber: "", vehiclePlate: "", vehicleType: "" };
 
 export default function LogisticsDriversPage() {
-  const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
@@ -115,12 +114,10 @@ export default function LogisticsDriversPage() {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let active = true;
 
-    async function connect() {
+    function connect() {
       if (!active) return;
-      const token = await getToken();
-      if (!token || !active) return;
 
-      es = new EventSource(`/api/drivers/events?token=${encodeURIComponent(token)}`);
+      es = new EventSource(`/api/drivers/events`, { withCredentials: true });
       sseRef.current = es;
 
       es.addEventListener("connected", () => {
@@ -164,7 +161,7 @@ export default function LogisticsDriversPage() {
       es?.close();
       sseRef.current = null;
     };
-  }, [getToken, queryClient, toast]);
+  }, [queryClient, toast]);
 
   const [showJobDialog, setShowJobDialog] = useState(false);
   const [jobTargetDriver, setJobTargetDriver] = useState<Driver | null>(null);
@@ -173,19 +170,13 @@ export default function LogisticsDriversPage() {
 
   const { data: drivers = [], isLoading } = useQuery<Driver[]>({
     queryKey: ["drivers"],
-    queryFn: async () => {
-      const token = await getToken();
-      return apiFetch("/api/drivers", token!);
-    },
+    queryFn: () => apiFetch("/api/drivers"),
     refetchInterval: 30_000,
   });
 
   const { data: allJobs = [] } = useQuery<ActiveJob[]>({
     queryKey: ["driver-jobs-all"],
-    queryFn: async () => {
-      const token = await getToken();
-      return apiFetch("/api/drivers/jobs/list", token!);
-    },
+    queryFn: () => apiFetch("/api/drivers/jobs/list"),
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
@@ -199,19 +190,13 @@ export default function LogisticsDriversPage() {
 
   const { data: expandedDetail } = useQuery<DriverDetail>({
     queryKey: ["driver-detail", expandedId],
-    queryFn: async () => {
-      const token = await getToken();
-      return apiFetch(`/api/drivers/${expandedId}`, token!);
-    },
+    queryFn: () => apiFetch(`/api/drivers/${expandedId}`),
     enabled: expandedId !== null,
     refetchInterval: expandedId !== null ? 15_000 : false,
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof EMPTY_FORM) => {
-      const token = await getToken();
-      return apiFetch("/api/drivers", token!, { method: "POST", body: JSON.stringify(data) });
-    },
+    mutationFn: (data: typeof EMPTY_FORM) => apiFetch("/api/drivers", { method: "POST", body: JSON.stringify(data) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
       toast({ title: t.common.success });
@@ -222,10 +207,8 @@ export default function LogisticsDriversPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<typeof EMPTY_FORM> & { isActive?: boolean } }) => {
-      const token = await getToken();
-      return apiFetch(`/api/drivers/${id}`, token!, { method: "PUT", body: JSON.stringify(data) });
-    },
+    mutationFn: ({ id, data }: { id: number; data: Partial<typeof EMPTY_FORM> & { isActive?: boolean } }) =>
+      apiFetch(`/api/drivers/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
       toast({ title: t.common.success });
@@ -237,10 +220,7 @@ export default function LogisticsDriversPage() {
   });
 
   const deactivateMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const token = await getToken();
-      return apiFetch(`/api/drivers/${id}`, token!, { method: "DELETE" });
-    },
+    mutationFn: (id: number) => apiFetch(`/api/drivers/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
       toast({ title: t.common.success });
@@ -249,9 +229,8 @@ export default function LogisticsDriversPage() {
   });
 
   const createJobMutation = useMutation({
-    mutationFn: async (data: typeof EMPTY_JOB & { driverId: number }) => {
-      const token = await getToken();
-      return apiFetch("/api/drivers/jobs", token!, {
+    mutationFn: (data: typeof EMPTY_JOB & { driverId: number }) =>
+      apiFetch("/api/drivers/jobs", {
         method: "POST",
         body: JSON.stringify({
           driverId: data.driverId,
@@ -262,8 +241,7 @@ export default function LogisticsDriversPage() {
           specialInstruction: data.specialInstruction || null,
           weight: data.weight || null,
         }),
-      });
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["driver-jobs-all"] });
       queryClient.invalidateQueries({ queryKey: ["driver-detail", jobTargetDriver?.id] });

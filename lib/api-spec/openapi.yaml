@@ -53,6 +53,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /auth/user:
+    get:
+      operationId: getCurrentAuthUser
+      tags: [users]
+      summary: Get current auth session user
+      responses:
+        "200":
+          description: Auth user state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetCurrentAuthUserResponse"
+
+  /login:
+    get:
+      operationId: login
+      tags: [users]
+      summary: Redirect to OIDC login
+      parameters:
+        - in: query
+          name: returnTo
+          schema: { type: string }
+      responses:
+        "302":
+          description: Redirect to OIDC provider
+
+  /logout:
+    get:
+      operationId: logout
+      tags: [users]
+      summary: Clear session and redirect to OIDC end-session
+      responses:
+        "302":
+          description: Redirect to OIDC end-session
+
+  /callback:
+    get:
+      operationId: oidcCallback
+      tags: [users]
+      summary: OIDC callback — validates tokens and creates session
+      responses:
+        "302":
+          description: Redirect to app
+
+  /mobile-auth/token-exchange:
+    post:
+      operationId: exchangeMobileAuthorizationCode
+      tags: [users]
+      summary: Exchange PKCE auth code for a session token (mobile)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeBody"
+      responses:
+        "200":
+          description: Session token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeResponse"
+
+  /mobile-auth/logout:
+    post:
+      operationId: logoutMobileSession
+      tags: [users]
+      summary: Delete mobile session
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutMobileSessionResponse"
+
   /users/me:
     get:
       operationId: getCurrentUser
@@ -3311,6 +3387,47 @@ components:
         message:
           type: string
       required: [message]
+
+    AuthUser:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, nullable: true }
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        profileImageUrl: { type: string, nullable: true }
+      required: [id]
+
+    GetCurrentAuthUserResponse:
+      type: object
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+      required: [user]
+
+    ExchangeMobileAuthorizationCodeBody:
+      type: object
+      properties:
+        code: { type: string }
+        code_verifier: { type: string }
+        redirect_uri: { type: string }
+        state: { type: string }
+        nonce: { type: string, nullable: true }
+      required: [code, code_verifier, redirect_uri, state]
+
+    ExchangeMobileAuthorizationCodeResponse:
+      type: object
+      properties:
+        token: { type: string }
+      required: [token]
+
+    LogoutMobileSessionResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+      required: [success]
 
     UserProfile:
       type: object

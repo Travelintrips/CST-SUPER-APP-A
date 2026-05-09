@@ -422,23 +422,10 @@ adminRouter.post("/", async (req, res) => {
 });
 
 // GET /api/drivers/events — SSE stream for BizPortal dispatcher
-// Auth: Clerk token passed as ?token=<jwt> query param (EventSource cannot set headers)
+// Auth: Uses session cookie (withCredentials: true in EventSource)
 adminRouter.get("/events", async (req, res) => {
-  const tokenParam = String(req.query.token ?? "");
-  if (!tokenParam) {
+  if (!req.isAuthenticated()) {
     res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-  // Lightweight Clerk token verification — just decode sub; full verification done by clerkMiddleware elsewhere
-  // We trust the token if it passes the Clerk middleware signature check done upstream.
-  // For SSE we accept any non-empty token that starts a session; if it's invalid Clerk will reject on /me calls.
-  // A more strict alternative would call `getAuth(req)` after setting up the token header.
-  try {
-    const parts = tokenParam.split(".");
-    if (parts.length !== 3) throw new Error("bad token");
-    // Token looks structurally valid — proceed
-  } catch {
-    res.status(401).json({ message: "Invalid token" });
     return;
   }
 

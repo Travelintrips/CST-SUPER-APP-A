@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect, useCallback } from "react";
-import { useAuth } from "@clerk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,14 +141,12 @@ function PhotoUploadZone({
   onUploaded: () => void;
 }) {
   const { toast } = useToast();
-  const { getToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileLabel, setFileLabel] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const createAttachment = useCreateFreightAttachment();
   const { uploadFile } = useUpload({
-    getAuthToken: getToken,
     onError: (err) => {
       toast({ title: `Upload gagal: ${err.message}`, variant: "destructive" });
       setUploading(false);
@@ -246,7 +243,6 @@ function DocumentUploadForm({
   onUploaded: () => void;
 }) {
   const { toast } = useToast();
-  const { getToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -256,7 +252,6 @@ function DocumentUploadForm({
   const [docStatus, setDocStatus] = useState("draft");
   const createAttachment = useCreateFreightAttachment();
   const { uploadFile } = useUpload({
-    getAuthToken: getToken,
     onError: (err) => {
       toast({ title: `Upload gagal: ${err.message}`, variant: "destructive" });
       setUploading(false);

@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getAuth, clerkClient } from "@clerk/express";
 
 const router = Router();
 
@@ -25,44 +24,22 @@ function emailIsAdmin(email: string): boolean {
 const ALLOWED_ROLES = ["admin", "ecommerce", "trading", "logistics", "pos"] as const;
 type AllowedRole = typeof ALLOWED_ROLES[number];
 
-async function fetchClerkEmail(userId: string): Promise<{ email: string; name: string; verified: boolean } | null> {
-  try {
-    const u = await clerkClient.users.getUser(userId);
-    const primary = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId);
-    const chosen = primary ?? u.emailAddresses[0];
-    const email = chosen?.emailAddress ?? null;
-    if (!email) return null;
-    const verified = chosen?.verification?.status === "verified";
-    const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || email;
-    return { email, name, verified };
-  } catch {
-    return null;
-  }
-}
-
-async function ensureUserRecord(userId: string) {
+async function ensureUserRecord(userId: string, email?: string | null, name?: string | null) {
   const existing = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  const clerkInfo = await fetchClerkEmail(userId);
-  // Auto-promote to admin when the email is in the allowlist.
-  // We do not require Clerk's "verified" flag here because dev-mode Clerk environments
-  // (and some OAuth providers) may not return verified=true even for legitimate logins.
-  // The ADMIN_EMAILS / ADMIN_EMAIL_DOMAINS lists are the trusted source of truth.
-  const isAdminEmail = !!clerkInfo && emailIsAdmin(clerkInfo.email);
+  const isAdminEmail = !!email && emailIsAdmin(email);
 
   if (existing.length === 0) {
     await db.insert(usersTable).values({
       id: userId,
-      email: clerkInfo?.email ?? `${userId}@unknown.com`,
-      name: clerkInfo?.name ?? "User",
+      email: email ?? `${userId}@unknown.com`,
+      name: name ?? "User",
       role: isAdminEmail ? "admin" : "ecommerce",
     }).onConflictDoNothing();
   } else {
     const cur = existing[0];
     const patch: Partial<typeof cur> = {};
-    if (clerkInfo) {
-      if (cur.email !== clerkInfo.email) patch.email = clerkInfo.email;
-      if (!cur.name || cur.name === "User") patch.name = clerkInfo.name;
-    }
+    if (email && cur.email !== email) patch.email = email;
+    if (name && (!cur.name || cur.name === "User")) patch.name = name;
     if (isAdminEmail && cur.role !== "admin") patch.role = "admin";
     if (Object.keys(patch).length > 0) {
       await db.update(usersTable).set(patch).where(eq(usersTable.id, userId));
@@ -74,14 +51,11 @@ async function ensureUserRecord(userId: string) {
 }
 
 async function requireAdmin(req: any, res: any): Promise<boolean> {
-  const { userId } = getAuth(req);
-  if (!userId) {
+  if (!req.isAuthenticated()) {
     res.status(401).json({ message: "Unauthorized" });
     return false;
   }
-  // Provision the user record (and apply admin allowlist) before checking the role.
-  // This avoids a first-login race where /api/users is hit before /api/users/me has provisioned.
-  const u = await ensureUserRecord(userId);
+  const u = await ensureUserRecord(req.user.id, req.user.email, [req.user.firstName, req.user.lastName].filter(Boolean).join(" ") || null);
   if (!u || u.role !== "admin") {
     res.status(403).json({ message: "Forbidden: admin only" });
     return false;
@@ -91,10 +65,11 @@ async function requireAdmin(req: any, res: any): Promise<boolean> {
 
 // GET /api/users/me
 router.get("/me", async (req, res) => {
-  const { userId } = getAuth(req);
-  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+  if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
 
-  const u = await ensureUserRecord(userId);
+  const authUser = req.user;
+  const fullName = [authUser.firstName, authUser.lastName].filter(Boolean).join(" ") || null;
+  const u = await ensureUserRecord(authUser.id, authUser.email, fullName);
   return res.json({
     id: u.id,
     email: u.email,

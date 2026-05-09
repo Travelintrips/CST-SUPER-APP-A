@@ -1,15 +1,15 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
-import { clerkMiddleware } from "@clerk/express";
-import { CLERK_PROXY_PATH, clerkProxyMiddleware, getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
+import authRouter from "./routes/auth";
+import { authMiddleware } from "./middlewares/authMiddleware";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
 
 const app: Express = express();
 
-// Attach X-Response-Time header (milliseconds) to every response and record it
 app.use((req, res, next) => {
   const startNs = process.hrtime.bigint();
   const originalEnd = res.end.bind(res) as typeof res.end;
@@ -44,31 +44,16 @@ app.use(
   }),
 );
 
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
-
 app.use(cors({ credentials: true, origin: true }));
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+app.use(cookieParser());
 
-// Lazy singleton: create ONE clerkMiddleware instance on the first request and
-// reuse it for all subsequent requests.  Calling clerkMiddleware({...}) inside
-// an express wrapper (the old pattern) created a fresh Clerk SDK per request,
-// which emptied the JWKS cache every time and caused every token validation
-// to race against a cold JWKS fetch — always losing at 3–7 ms vs ~300 ms
-// network time — and returning 401 even for valid sessions.
-let _clerkAuth: ReturnType<typeof clerkMiddleware> | null = null;
+// Replit Auth middleware — populates req.user and req.isAuthenticated()
+app.use(authMiddleware);
 
-app.use((req, res, next) => {
-  if (!_clerkAuth) {
-    const host = getClerkProxyHost(req);
-    const protocol = (Array.isArray(req.headers["x-forwarded-proto"])
-      ? req.headers["x-forwarded-proto"][0]
-      : req.headers["x-forwarded-proto"])?.split(",")[0]?.trim() || "https";
-    const proxyUrl = host ? `${protocol}://${host}${CLERK_PROXY_PATH}` : undefined;
-    _clerkAuth = clerkMiddleware({ proxyUrl });
-  }
-  return _clerkAuth(req, res, next);
-});
+// Auth routes (login/callback/logout/mobile-auth)
+app.use(authRouter);
 
 // Redirect bizportal subdomain root to /bizportal/
 app.use((req, res, next) => {

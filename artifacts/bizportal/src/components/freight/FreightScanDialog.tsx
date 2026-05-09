@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect, useCallback } from "react";
-import { useAuth } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -298,7 +297,6 @@ const AWB_SAMPLE = JSON.stringify(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
-  const { getToken } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -454,15 +452,11 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
     setApplied(false);
     setCameraError(null);
     try {
-      const token = await getToken();
       const form = new FormData();
       form.append("file", file);
-      const headers: HeadersInit = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
       const resp = await fetch("/api/scan-document", {
         method: "POST",
         body: form,
-        headers,
         credentials: "include",
       });
       if (!resp.ok) {

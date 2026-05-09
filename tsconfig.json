@@ -16,6 +16,9 @@
       "path": "./lib/object-storage-web"
     },
     {
+      "path": "./lib/replit-auth-web"
+    },
+    {
       "path": "./lib/integrations-openai-ai-server"
     },
     {

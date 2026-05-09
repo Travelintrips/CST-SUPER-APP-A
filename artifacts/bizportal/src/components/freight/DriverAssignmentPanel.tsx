@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useAuth } from "@clerk/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,11 +83,11 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
-async function apiFetch<T>(url: string, token: string, opts?: RequestInit): Promise<T> {
+async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
+    credentials: "include",
     ...opts,
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(opts?.headers ?? {}),
     },
@@ -120,7 +119,6 @@ interface Props {
 }
 
 export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, origin, destination }: Props) {
-  const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -138,19 +136,13 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
 
   const { data: jobs = [], isLoading: jobsLoading, refetch } = useQuery<DriverJob[]>({
     queryKey: ["driver-jobs-by-shipment", shipmentId],
-    queryFn: async () => {
-      const token = await getToken();
-      return apiFetch<DriverJob[]>(`/api/drivers/jobs/list?shipmentId=${shipmentId}`, token!);
-    },
+    queryFn: () => apiFetch<DriverJob[]>(`/api/drivers/jobs/list?shipmentId=${shipmentId}`),
     refetchInterval: 15_000,
   });
 
   const { data: drivers = [] } = useQuery<Driver[]>({
     queryKey: ["drivers"],
-    queryFn: async () => {
-      const token = await getToken();
-      return apiFetch<Driver[]>("/api/drivers", token!);
-    },
+    queryFn: () => apiFetch<Driver[]>("/api/drivers"),
     refetchInterval: 30_000,
   });
 
@@ -160,8 +152,7 @@ export function DriverAssignmentPanel({ shipmentId, shipperName, commodity, orig
 
   const assignMutation = useMutation({
     mutationFn: async (data: typeof form) => {
-      const token = await getToken();
-      return apiFetch("/api/drivers/jobs", token!, {
+      return apiFetch("/api/drivers/jobs", {
         method: "POST",
         body: JSON.stringify({
           driverId: Number(data.driverId),

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
-import { UserButton, useUser, useAuth } from "@clerk/react";
+import { useAuth } from "@workspace/replit-auth-web";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ const SERVICE_FIELDS: Record<ServiceKey, FieldDef[]> = {
 };
 
 function CalculatorRatesCard() {
-  const { getToken } = useAuth();
+
   const { toast } = useToast();
   const { t } = useLanguage();
   const [rates, setRates] = useState<CalcRates>(DEFAULT_RATES);
@@ -85,9 +85,9 @@ function CalculatorRatesCard() {
   useEffect(() => {
     void (async () => {
       try {
-        const token = await getToken();
+        
         const res = await fetch("/api/settings/calculator-rates", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
         });
         if (res.ok) {
           const data = await res.json() as CalcRates;
@@ -96,7 +96,7 @@ function CalculatorRatesCard() {
       } catch { /* ignore */ }
       finally { setLoading(false); }
     })();
-  }, [getToken]);
+  }, []);
 
   function updateField(service: ServiceKey, field: string, raw: string) {
     const num = parseFloat(raw);
@@ -110,12 +110,12 @@ function CalculatorRatesCard() {
   async function handleSave() {
     setSaving(true);
     try {
-      const token = await getToken();
+      
       const res = await fetch("/api/settings/calculator-rates", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          
         },
         body: JSON.stringify(rates),
       });
@@ -220,7 +220,7 @@ function CalculatorRatesCard() {
 }
 
 function CargoTypesCard() {
-  const { getToken } = useAuth();
+
   const { toast } = useToast();
   const { t } = useLanguage();
   const [types, setTypes] = useState<string[]>([]);
@@ -232,15 +232,15 @@ function CargoTypesCard() {
   useEffect(() => {
     void (async () => {
       try {
-        const token = await getToken();
+        
         const res = await fetch("/api/settings/cargo-types", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
         });
         if (res.ok) setTypes(await res.json() as string[]);
       } catch { /* ignore */ }
       finally { setLoading(false); }
     })();
-  }, [getToken]);
+  }, []);
 
   function addType() {
     const t = newType.trim();
@@ -256,10 +256,10 @@ function CargoTypesCard() {
   async function handleSave() {
     setSaving(true);
     try {
-      const token = await getToken();
+      
       const res = await fetch("/api/settings/cargo-types", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify(types),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -336,7 +336,7 @@ interface AiIntakeSettingsData {
 }
 
 function AiIntakeSettingsCard() {
-  const { getToken } = useAuth();
+
   const { toast } = useToast();
   const { t } = useLanguage();
   const [data, setData] = useState<AiIntakeSettingsData>({
@@ -353,9 +353,9 @@ function AiIntakeSettingsCard() {
   useEffect(() => {
     void (async () => {
       try {
-        const token = await getToken();
+        
         const res = await fetch("/api/settings/ai-intake", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
         });
         if (res.ok) {
           const json = await res.json() as AiIntakeSettingsData;
@@ -364,15 +364,15 @@ function AiIntakeSettingsCard() {
       } catch { /* ignore */ }
       finally { setLoading(false); }
     })();
-  }, [getToken]);
+  }, []);
 
   async function handleSave() {
     setSaving(true);
     try {
-      const token = await getToken();
+      
       const res = await fetch("/api/settings/ai-intake", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -512,7 +512,7 @@ function AiIntakeSettingsCard() {
 }
 
 function WhatsAppNotificationCard() {
-  const { getToken } = useAuth();
+
   const { toast } = useToast();
   const { t } = useLanguage();
   const [adminWa, setAdminWa] = useState("");
@@ -523,9 +523,9 @@ function WhatsAppNotificationCard() {
   useEffect(() => {
     void (async () => {
       try {
-        const token = await getToken();
+        
         const res = await fetch("/api/settings/notifications", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
         });
         if (res.ok) {
           const data = await res.json() as { adminWa: string };
@@ -537,17 +537,17 @@ function WhatsAppNotificationCard() {
         setLoading(false);
       }
     })();
-  }, [getToken]);
+  }, []);
 
   async function handleSave() {
     setSaving(true);
     try {
-      const token = await getToken();
+      
       const res = await fetch("/api/settings/notifications", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          
         },
         body: JSON.stringify({ adminWa }),
       });
@@ -619,16 +619,15 @@ function WhatsAppNotificationCard() {
 }
 
 export default function SettingsPage() {
-  const { user, isLoaded } = useUser();
-  const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
+  const { isAuthenticated } = useAuth();
+  const { data: dbUser, isLoading } = useGetCurrentUser({
     query: {
-      enabled: isLoaded && !!user,
+      enabled: isAuthenticated,
       queryKey: getGetCurrentUserQueryKey(),
       staleTime: Infinity,
     }
   });
 
-  const isLoading = !isLoaded || dbLoading;
   const isAdmin = dbUser?.role === "admin";
 
   return (
@@ -667,7 +666,7 @@ export default function SettingsPage() {
                       <User className="h-4 w-4" /> Full Name
                     </label>
                     <div className="p-3 bg-background rounded-md border border-border text-foreground font-medium">
-                      {dbUser?.name || user?.fullName || "Not provided"}
+                      {dbUser?.name || "Not provided"}
                     </div>
                   </div>
                   
@@ -676,7 +675,7 @@ export default function SettingsPage() {
                       <Mail className="h-4 w-4" /> Email Address
                     </label>
                     <div className="p-3 bg-background rounded-md border border-border text-foreground font-medium">
-                      {dbUser?.email || user?.primaryEmailAddress?.emailAddress || "Not provided"}
+                      {dbUser?.email || "Not provided"}
                     </div>
                   </div>
                 </>
@@ -741,17 +740,12 @@ export default function SettingsPage() {
             <CardContent>
               <div className="flex items-center justify-between p-4 bg-background rounded-lg border border-border">
                 <div className="space-y-1">
-                  <p className="font-medium text-foreground">Clerk Account</p>
-                  <p className="text-sm text-muted-foreground">Manage your password, connected accounts, and sessions.</p>
+                  <p className="font-medium text-foreground">Replit Auth</p>
+                  <p className="text-sm text-muted-foreground">Your account is managed via Replit authentication.</p>
                 </div>
-                <div className="scale-125 origin-right">
-                  <UserButton appearance={{
-                    elements: {
-                      userButtonBox: "shadow-sm",
-                      userButtonTrigger: "focus:shadow-none focus:ring-2 focus:ring-primary rounded-full"
-                    }
-                  }} />
-                </div>
+                <Button variant="outline" size="sm" onClick={() => { window.location.href = "/api/logout"; }}>
+                  Sign Out
+                </Button>
               </div>
             </CardContent>
           </Card>

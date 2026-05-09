@@ -1,6 +1,5 @@
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useClerk, useUser } from "@clerk/react";
 import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations, getListAiDraftQuotationsQueryKey } from "@workspace/api-client-react";
 import {
   LayoutDashboard,
@@ -84,12 +83,9 @@ type NavItem = FlatItem | GroupItem;
 
 export function AppShell({ children }: AppShellProps) {
   const [location] = useLocation();
-  const { signOut } = useClerk();
-  const { user } = useUser();
   const { t } = useLanguage();
   const { data: dbUser } = useGetCurrentUser({
     query: {
-      enabled: !!user,
       queryKey: getGetCurrentUserQueryKey(),
       staleTime: Infinity,
     },
@@ -325,14 +321,13 @@ export function AppShell({ children }: AppShellProps) {
               <DropdownMenuTrigger asChild>
                 <button className="flex w-full items-center gap-3 rounded-md p-2 hover:bg-sidebar-accent transition-colors text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
                   <Avatar className="h-9 w-9 border border-border">
-                    <AvatarImage src={user?.imageUrl} />
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {getInitials(dbUser?.name || user?.fullName || undefined)}
+                      {getInitials(dbUser?.name || undefined)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex flex-1 flex-col overflow-hidden">
                     <span className="truncate text-sm font-medium leading-none">
-                      {dbUser?.name || user?.fullName || "User"}
+                      {dbUser?.name || "User"}
                     </span>
                     <span className="truncate text-xs text-muted-foreground mt-1">
                       {dbUser?.role || t.common.noRole}
@@ -343,7 +338,6 @@ export function AppShell({ children }: AppShellProps) {
               <DropdownMenuContent align="end" className="w-56 bg-popover text-popover-foreground border-border">
                 <div className="flex items-center gap-2 p-2">
                   <Avatar className="h-8 w-8 border border-border">
-                    <AvatarImage src={user?.imageUrl} />
                     <AvatarFallback>{getInitials(dbUser?.name)}</AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col space-y-1">
@@ -357,7 +351,7 @@ export function AppShell({ children }: AppShellProps) {
                   </Badge>
                 </div>
                 <DropdownMenuItem
-                  onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL.replace(/\/$/, "") + "/sign-in" })}
+                  onClick={() => { window.location.href = "/api/logout"; }}
                   className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
                 >
                   <LogOut className="mr-2 h-4 w-4" />

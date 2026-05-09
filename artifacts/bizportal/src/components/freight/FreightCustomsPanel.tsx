@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -182,7 +181,6 @@ interface Props {
 }
 
 export function FreightCustomsPanel({ shipmentId }: Props) {
-  const { getToken } = useAuth();
   const qc = useQueryClient();
 
   const { data: docs = [], isLoading } = useQuery<CustomsDoc[]>({
@@ -326,7 +324,6 @@ export function FreightCustomsPanel({ shipmentId }: Props) {
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onSave={handleSave}
-        getToken={getToken}
         isSaving={createMutation.isPending}
       />
 
@@ -337,7 +334,6 @@ export function FreightCustomsPanel({ shipmentId }: Props) {
           onOpenChange={(open) => { if (!open) setEditDoc(null); }}
           initialDoc={editDoc}
           onSave={(form) => handleSave(form, editDoc.id)}
-          getToken={getToken}
           isSaving={updateMutation.isPending}
         />
       )}
@@ -484,11 +480,10 @@ interface FormDialogProps {
   onOpenChange: (open: boolean) => void;
   initialDoc?: CustomsDoc;
   onSave: (form: ReturnType<typeof emptyForm>) => void;
-  getToken: () => Promise<string | null>;
   isSaving: boolean;
 }
 
-function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, getToken, isSaving }: FormDialogProps) {
+function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, isSaving }: FormDialogProps) {
   const [mode, setMode] = useState<"form" | "scan">(initialDoc ? "form" : "form");
   const [scanState, setScanState] = useState<ScanState>({ kind: "idle" });
 
@@ -533,13 +528,11 @@ function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, getToken
     setScanState({ kind: "uploading", fileName: file.name });
     setMode("form");
     try {
-      const token = await getToken();
       const fd = new FormData();
       fd.append("file", file);
       const resp = await fetch("/api/scan-document", {
         method: "POST",
         credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -582,7 +575,7 @@ function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, getToken
       setScanState({ kind: "error", message: (e as Error).message });
       toast.error("Gagal scan dokumen: " + (e as Error).message);
     }
-  }, [getToken]);
+  }, []);
 
   const isEdit = !!initialDoc;
 

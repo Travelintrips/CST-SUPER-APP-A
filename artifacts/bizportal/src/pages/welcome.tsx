@@ -1,12 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, ShoppingCart, Truck, Calculator } from "lucide-react";
-import { useClerk } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
+import { useAuth } from "@workspace/replit-auth-web";
 
 export default function WelcomePage() {
-  const { signOut } = useClerk();
+  const { logout } = useAuth();
   const { t } = useLanguage();
 
   return (
@@ -78,7 +78,7 @@ export default function WelcomePage() {
         <div className="flex justify-center pt-8">
           <Button
             variant="outline"
-            onClick={() => signOut({ redirectUrl: import.meta.env.BASE_URL.replace(/\/$/, "") + "/sign-in" })}
+            onClick={() => logout()}
             className="min-w-[200px] border-border text-foreground hover:bg-accent"
           >
             {t.welcome.signOut}

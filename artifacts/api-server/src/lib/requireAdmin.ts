@@ -1,7 +1,6 @@
 import type { Request, Response } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getAuth, clerkClient } from "@clerk/express";
 
 const ADMIN_EMAILS = (process.env["ADMIN_EMAILS"] ?? "divatranssoetta@gmail.com")
   .split(",")
@@ -20,29 +19,14 @@ function emailIsAdmin(email: string): boolean {
   return !!domain && ADMIN_EMAIL_DOMAINS.includes(domain);
 }
 
-async function fetchClerkEmail(userId: string) {
-  try {
-    const u = await clerkClient.users.getUser(userId);
-    const primary = u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId);
-    const chosen = primary ?? u.emailAddresses[0];
-    const email = chosen?.emailAddress ?? null;
-    if (!email) return null;
-    const verified = chosen?.verification?.status === "verified";
-    return { email, verified };
-  } catch {
-    return null;
-  }
-}
-
 const PORTAL_ADMIN_KEY = process.env["PORTAL_ADMIN_KEY"] ?? "";
 
-/** Any authenticated Clerk user — used for BizPortal staff operations */
+/** Any authenticated user — used for BizPortal staff operations */
 export async function requireClerkUser(req: Request, res: Response): Promise<boolean> {
   if (PORTAL_ADMIN_KEY && req.headers["x-admin-key"] === PORTAL_ADMIN_KEY) {
     return true;
   }
-  const { userId } = getAuth(req);
-  if (!userId) {
+  if (!req.isAuthenticated()) {
     res.status(401).json({ message: "Unauthorized" });
     return false;
   }
@@ -50,28 +34,17 @@ export async function requireClerkUser(req: Request, res: Response): Promise<boo
 }
 
 export async function requireAdmin(req: Request, res: Response): Promise<boolean> {
-  // Allow server-to-server calls with PORTAL_ADMIN_KEY header
   if (PORTAL_ADMIN_KEY && req.headers["x-admin-key"] === PORTAL_ADMIN_KEY) {
     return true;
   }
 
-  const { userId } = getAuth(req);
-  if (!userId) {
+  if (!req.isAuthenticated()) {
     res.status(401).json({ message: "Unauthorized" });
     return false;
   }
-  let rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (rows.length === 0) {
-    const info = await fetchClerkEmail(userId);
-    const isAdmin = !!info && info.verified && emailIsAdmin(info.email);
-    await db.insert(usersTable).values({
-      id: userId,
-      email: info?.email ?? `${userId}@unknown.com`,
-      name: "User",
-      role: isAdmin ? "admin" : "ecommerce",
-    }).onConflictDoNothing();
-    rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  }
+
+  const userId = (req.user as { id: string }).id;
+  const rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   const u = rows[0];
   if (!u || u.role !== "admin") {
     res.status(403).json({ message: "Forbidden: admin only" });

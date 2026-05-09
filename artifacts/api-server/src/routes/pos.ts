@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { db, transactionsTable } from "@workspace/db";
 import { sql, eq } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postPosTransaction } from "../lib/accounting.js";
 
@@ -35,7 +34,7 @@ router.get("/transactions", async (_req, res) => {
 
 // POST /api/pos/transactions
 router.post("/transactions", async (req, res) => {
-  const { userId } = getAuth(req);
+  const userId = req.isAuthenticated() ? req.user.id : undefined;
   const { productName, quantity, unitPrice, totalPrice, paymentMethod, documentUrl } = req.body;
   const normalizedDoc = safeNormalizeDoc(documentUrl);
   const [transaction] = await db.insert(transactionsTable).values({

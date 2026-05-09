@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
-import { getAuth } from "@clerk/express";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -21,8 +20,7 @@ const ALLOWED_UPLOAD_PREFIXES = ["image/", "application/pdf"];
  * Then uploads the file directly to the returned presigned URL.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
-  const { userId } = getAuth(req);
-  if (!userId) {
+  if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

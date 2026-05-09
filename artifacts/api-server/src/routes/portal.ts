@@ -419,7 +419,6 @@ router.get("/vendor/profile", requirePortalAuth, async (req, res) => {
   const linkedSupplier = allSuppliers.find(
     (s) =>
       (s.contactEmail && s.contactEmail.toLowerCase() === customer.email.toLowerCase()) ||
-      (s.email && s.email.toLowerCase() === customer.email.toLowerCase()) ||
       (customerPhone && normalizePhone(s.phone) === customerPhone)
   ) ?? null;
 
@@ -536,7 +535,6 @@ router.post("/vendor/quotes", requirePortalAuth, async (req, res) => {
   const linkedSupplier = allSuppliers.find(
     (s) =>
       (s.contactEmail && s.contactEmail.toLowerCase() === customer.email.toLowerCase()) ||
-      (s.email && s.email.toLowerCase() === customer.email.toLowerCase()) ||
       (customerPhone && normalizePhone(s.phone) === customerPhone)
   ) ?? null;
   if (!linkedSupplier) return res.status(403).json({ message: "Akun belum terhubung ke data vendor" });

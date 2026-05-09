@@ -1,10 +1,10 @@
-import React, { useEffect, useRef } from "react";
-import { ClerkProvider, SignIn, SignUp, RedirectToSignIn, useAuth, useUser } from "@clerk/react";
-import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import React from "react";
+import { Switch, Route, Redirect } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useGetCurrentUser, getGetCurrentUserQueryKey, setAuthTokenGetter } from "@workspace/api-client-react";
+import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { useAuth } from "@workspace/replit-auth-web";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 import NotFound from "@/pages/not-found";
@@ -65,103 +65,34 @@ import ExpenseReportsPage from "@/pages/expense/reports";
 
 const queryClient = new QueryClient();
 
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-// Dynamically resolve proxy URL from current origin so multi-domain setups
-// (e.g. bizportal.cstlogistic.co.id) always send Clerk requests to the correct host.
-// VITE_CLERK_PROXY_URL is only set in production by Replit; when empty we are in dev
-// and proxying is not active (dev Clerk instance doesn't use a proxy).
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL
-  ? `${window.location.origin}/api/__clerk`
-  : undefined;
 
-function stripBase(path: string): string {
-  return basePath && path.startsWith(basePath)
-    ? path.slice(basePath.length) || "/"
-    : path;
-}
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
-}
-
-function SignInPage() {
+function LoadingSpinner() {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-slate-950 px-4">
-      <div className="w-full max-w-md">
-        <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} appearance={{
-          elements: {
-            cardBox: "w-full max-w-full",
-            card: "rounded-xl border border-slate-800 bg-slate-900 shadow-xl",
-            headerTitle: "text-slate-50",
-            headerSubtitle: "text-slate-400",
-            socialButtonsBlockButton: "border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700",
-            socialButtonsBlockButtonText: "text-slate-200 font-medium",
-            formButtonPrimary: "bg-indigo-600 hover:bg-indigo-700 text-white font-medium",
-            formFieldLabel: "text-slate-300 font-medium",
-            formFieldInput: "bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-500",
-            footerActionLink: "text-indigo-400 hover:text-indigo-300",
-            footerActionText: "text-slate-400",
-            dividerText: "text-slate-500 bg-slate-900 px-2",
-            dividerLine: "bg-slate-800",
-          }
-        }} />
-      </div>
-    </div>
-  );
-}
-
-function SignUpPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-slate-950 px-4">
-      <div className="w-full max-w-md">
-        <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} appearance={{
-          elements: {
-             cardBox: "w-full max-w-full",
-             card: "rounded-xl border border-slate-800 bg-slate-900 shadow-xl",
-             headerTitle: "text-slate-50",
-             headerSubtitle: "text-slate-400",
-             socialButtonsBlockButton: "border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700",
-             socialButtonsBlockButtonText: "text-slate-200 font-medium",
-             formButtonPrimary: "bg-indigo-600 hover:bg-indigo-700 text-white font-medium",
-             formFieldLabel: "text-slate-300 font-medium",
-             formFieldInput: "bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-500",
-             footerActionLink: "text-indigo-400 hover:text-indigo-300",
-             footerActionText: "text-slate-400",
-             dividerText: "text-slate-500 bg-slate-900 px-2",
-             dividerLine: "bg-slate-800",
-          }
-        }} />
-      </div>
+    <div className="flex h-screen items-center justify-center bg-slate-950">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
     </div>
   );
 }
 
 function AuthRouteGuard() {
-  const { user, isLoaded } = useUser();
-  const { signOut } = useAuth();
-  const { data: dbUser, isLoading: dbLoading, isError: dbError } = useGetCurrentUser({
+  const { isAuthenticated, isLoading, login } = useAuth();
+  const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
     query: {
-      enabled: isLoaded && !!user,
+      enabled: isAuthenticated,
       queryKey: getGetCurrentUserQueryKey(),
       staleTime: Infinity,
       retry: 1,
     }
   });
 
-  if (!isLoaded || (user && dbLoading)) {
-    return <div className="flex h-screen items-center justify-center bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" /></div>;
+  if (isLoading || (isAuthenticated && dbLoading)) {
+    return <LoadingSpinner />;
   }
 
-  if (!user) {
-    return <Redirect to="/sign-in" />;
-  }
-
-  // API returned an error (e.g. expired/invalid Clerk token) — sign out the stale
-  // session so the user lands on sign-in with a clean state instead of /welcome.
-  if (dbError) {
-    signOut().catch(() => null);
-    return <Redirect to="/sign-in" />;
+  if (!isAuthenticated) {
+    login();
+    return <LoadingSpinner />;
   }
 
   if (dbUser) {
@@ -175,17 +106,19 @@ function AuthRouteGuard() {
     }
   }
 
-  return <Redirect to="/sign-in" />;
+  return <Redirect to="/welcome" />;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isSignedIn, isLoaded } = useAuth();
-  if (!isLoaded) {
-    return <div className="flex h-screen items-center justify-center bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" /></div>;
+  const { isAuthenticated, isLoading, login } = useAuth();
+
+  if (isLoading) return <LoadingSpinner />;
+
+  if (!isAuthenticated) {
+    login();
+    return <LoadingSpinner />;
   }
-  if (!isSignedIn) {
-    return <RedirectToSignIn />;
-  }
+
   return <Component />;
 }
 
@@ -193,8 +126,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={AuthRouteGuard} />
-      <Route path="/sign-in/*?" component={SignInPage} />
-      <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/welcome" component={WelcomePage} />
 
       <Route path="/dashboard">
@@ -391,71 +322,15 @@ function Router() {
   );
 }
 
-// Wires Clerk's getToken() into the API client so every fetch request
-// automatically gets an "Authorization: Bearer <token>" header.
-// This is required in production where Clerk does not rely on cookies.
-function ClerkAuthTokenSync() {
-  const { getToken } = useAuth();
-
-  useEffect(() => {
-    setAuthTokenGetter(() => getToken());
-    return () => setAuthTokenGetter(null);
-  }, [getToken]);
-
-  return null;
-}
-
-function ClerkQueryClientCacheInvalidator() {
-  const clerkWindow = window as typeof window & { Clerk?: { addListener?: (cb: (ev: { user?: { id?: string | null } | null }) => void) => () => void } };
-  const { addListener } = clerkWindow.Clerk || {};
-  const qc = useQueryClient();
-  const prevUserIdRef = useRef<string | null | undefined>(undefined);
-
-  useEffect(() => {
-    if (!addListener) return;
-    const unsubscribe = addListener(({ user }) => {
-      const userId = user?.id ?? null;
-      if (
-        prevUserIdRef.current !== undefined &&
-        prevUserIdRef.current !== userId
-      ) {
-        qc.clear();
-      }
-      prevUserIdRef.current = userId;
-    });
-    return unsubscribe;
-  }, [addListener, qc]);
-
-  return null;
-}
-
 function App() {
-  const [location, setLocation] = useLocation();
-
   return (
     <QueryClientProvider client={queryClient}>
-      <ClerkProvider
-        publishableKey={clerkPubKey}
-        proxyUrl={clerkProxyUrl}
-        routerPush={(to) => setLocation(to)}
-        routerReplace={(to) => setLocation(to, { replace: true })}
-        signInUrl={`${basePath}/sign-in`}
-        signUpUrl={`${basePath}/sign-up`}
-        signInFallbackRedirectUrl={`${basePath}/`}
-        signUpFallbackRedirectUrl={`${basePath}/`}
-        afterSignOutUrl={`${basePath}/sign-in`}
-      >
-        <ClerkAuthTokenSync />
-        <ClerkQueryClientCacheInvalidator />
-        <LanguageProvider>
-          <TooltipProvider>
-            <WouterRouter base={basePath}>
-              <Router />
-            </WouterRouter>
-            <Toaster />
-          </TooltipProvider>
-        </LanguageProvider>
-      </ClerkProvider>
+      <LanguageProvider>
+        <TooltipProvider>
+          <Router />
+          <Toaster />
+        </TooltipProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }
