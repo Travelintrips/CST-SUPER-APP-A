@@ -1,5 +1,5 @@
 import React from "react";
-import { Switch, Route, Redirect } from "wouter";
+import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -124,7 +124,8 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
 function Router() {
   return (
-    <Switch>
+    <WouterRouter base={basePath}>
+      <Switch>
       <Route path="/" component={AuthRouteGuard} />
       <Route path="/welcome" component={WelcomePage} />
 
@@ -319,6 +320,7 @@ function Router() {
 
       <Route component={NotFound} />
     </Switch>
+    </WouterRouter>
   );
 }
 

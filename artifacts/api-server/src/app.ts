@@ -54,8 +54,8 @@ app.use(cookieParser());
 // Replit Auth middleware — populates req.user and req.isAuthenticated()
 app.use(authMiddleware);
 
-// Auth routes (login/callback/logout/mobile-auth)
-app.use(authRouter);
+// Auth routes (login/callback/logout/mobile-auth) — mounted under /api
+app.use("/api", authRouter);
 
 // ─── BizPortal Static Serving ────────────────────────────────────────────────
 // BizPortal is built with base="/bizportal/" so all asset hrefs are /bizportal/...
