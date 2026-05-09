@@ -366,7 +366,7 @@ router.post("/:id/link", async (req, res) => {
 router.post("/sync", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   try {
-    const result = await syncImapEmails();
+    const result = await safeSyncImapEmails("manual");
     return res.json({ message: `Sinkronisasi selesai: ${result.synced} email baru`, ...result });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

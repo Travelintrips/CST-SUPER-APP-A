@@ -189,16 +189,17 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
 
-export async function safeSyncImapEmails(context: string) {
+export async function safeSyncImapEmails(context: string): Promise<{ synced: number; errors: number }> {
   if (isSyncing) {
     logger.debug({ context }, "IMAP sync skipped — previous sync still running");
-    return;
+    return { synced: 0, errors: 0 };
   }
   isSyncing = true;
   try {
-    await syncImapEmails();
+    return await syncImapEmails();
   } catch (err) {
     logger.error({ err, context }, "IMAP sync failed");
+    return { synced: 0, errors: 1 };
   } finally {
     isSyncing = false;
   }
