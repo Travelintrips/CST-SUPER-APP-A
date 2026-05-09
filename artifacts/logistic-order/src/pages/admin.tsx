@@ -15,7 +15,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_OPTIONS, STATUS_COLORS, SHIPMENT_TYPES, OrderStatus } from "@/lib/services-data";
 import {
-  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight, Truck, Save, Loader2, Settings, ChevronDown,
+  Package, Ship, TrendingUp, Search, LogOut, Filter, ChevronRight, Truck, Save, Loader2, Settings, ChevronDown, X,
 } from "lucide-react";
 
 const VEHICLE_TYPES = ["CDE", "CDD", "Fuso", "Wingbox", "Trailer"] as const;
@@ -302,8 +302,17 @@ export default function AdminPage() {
                 placeholder="Cari nama perusahaan, PIC, atau nomor order..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
+                className={`pl-9 ${search ? "pr-9" : ""}`}
               />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Hapus pencarian"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <Select value={statusFilter} onValueChange={(v) => setStatusFilterAndUrl(v === "_all" ? "" : v)}>
               <SelectTrigger className="w-full sm:w-44">
