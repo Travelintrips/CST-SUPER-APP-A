@@ -307,6 +307,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
   const [showFormat, setShowFormat] = useState(false);
+  const [lastTruncation, setLastTruncation] = useState<{ phrase: string; lineIndex: number } | null>(null);
 
   const stopCamera = useCallback(() => {
     try {
@@ -445,12 +446,14 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
     setScanState({ kind: "idle" });
     setApplied(false);
     setCameraError(null);
+    setLastTruncation(null);
   }
 
   async function handleFileUpload(file: File) {
     setScanState({ kind: "uploading", fileName: file.name });
     setApplied(false);
     setCameraError(null);
+    setLastTruncation(null);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -463,7 +466,12 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
         const err = await resp.json().catch(() => ({}));
         throw new Error((err as { message?: string })?.message ?? `Error ${resp.status}`);
       }
-      const json = (await resp.json()) as { data: Record<string, unknown> };
+      const json = (await resp.json()) as {
+        data: Record<string, unknown>;
+        mode?: string;
+        truncation?: { phrase: string; lineIndex: number } | null;
+      };
+      if (json.truncation) setLastTruncation(json.truncation);
       const text = JSON.stringify(json.data ?? {});
       const matched = parseResultFromUpload(text);
       if (!matched) {
@@ -533,6 +541,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
       setCameraError(null);
       setApplied(false);
       setShowFormat(false);
+      setLastTruncation(null);
     }
     return () => stopCamera();
   }, [open, stopCamera]);
@@ -641,6 +650,12 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                   : "QR berhasil dibaca"}{" "}
                 — {Object.keys(scanState.fields).length} field ditemukan
               </div>
+              {lastTruncation && scanState.source === "upload" && (
+                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                  <span>Teks PDF dipotong di baris {lastTruncation.lineIndex + 1}: <span className="font-medium">"{lastTruncation.phrase}"</span></span>
+                </div>
+              )}
               <div className="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border p-3 bg-muted/30">
                 {(
                   Object.entries(scanState.fields) as [

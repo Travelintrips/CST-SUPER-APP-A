@@ -41,6 +41,7 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
   const [preview, setPreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<ScannedDocumentData | null>(null);
+  const [truncation, setTruncation] = useState<{ phrase: string; lineIndex: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,6 +49,7 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
     setPreview(null);
     setFileName(null);
     setExtracted(null);
+    setTruncation(null);
   };
 
   const handleFile = async (file: File) => {
@@ -73,8 +75,13 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
         const err = await resp.json().catch(() => ({}));
         throw new Error((err as any)?.message ?? `Error ${resp.status}`);
       }
-      const json = await resp.json() as { data: ScannedDocumentData };
+      const json = await resp.json() as {
+        data: ScannedDocumentData;
+        mode?: string;
+        truncation?: { phrase: string; lineIndex: number } | null;
+      };
       setExtracted(json.data);
+      setTruncation(json.truncation ?? null);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Gagal memproses dokumen");
     } finally {
@@ -171,6 +178,12 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
                 <p className="text-xs text-muted-foreground">{extracted.lines.length} item ditemukan</p>
               )}
               {extracted.origin && <p className="text-xs text-muted-foreground">Rute: {extracted.origin} → {extracted.destination}</p>}
+              {truncation && (
+                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1 mt-1">
+                  <AlertCircle className="h-3 w-3 shrink-0 text-amber-500" />
+                  <span>Dipotong di: <span className="font-medium">"{truncation.phrase}"</span> (baris {truncation.lineIndex + 1})</span>
+                </div>
+              )}
             </div>
           )}
 

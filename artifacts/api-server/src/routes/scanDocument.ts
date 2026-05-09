@@ -61,8 +61,15 @@ const BOILERPLATE_HEADERS = [
   "arbitration clause",
 ];
 
+interface CleanPdfResult {
+  text: string;
+  truncatedAt: string | null;
+  lineIndex: number;
+}
+
 // Strip excessive blank lines and common boilerplate headers before sending to AI.
-function cleanPdfText(raw: string, headers: string[] = BOILERPLATE_HEADERS): string {
+// Returns the cleaned text plus metadata about which phrase triggered truncation (if any).
+function cleanPdfText(raw: string, headers: string[] = BOILERPLATE_HEADERS): CleanPdfResult {
   // Collapse 3+ consecutive newlines into 2
   let text = raw.replace(/\n{3,}/g, "\n\n");
   // Remove lines that are only dashes / underscores / dots (dividers)
@@ -70,9 +77,12 @@ function cleanPdfText(raw: string, headers: string[] = BOILERPLATE_HEADERS): str
 
   // Truncate at the first boilerplate section header to drop T&C noise
   const lines = text.split("\n");
-  const cutIndex = lines.findIndex((line) => {
-    const lower = line.trim().toLowerCase();
-    return headers.some(
+  let truncatedAt: string | null = null;
+  let lineIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const lower = lines[i].trim().toLowerCase();
+    const hit = headers.find(
       (h) =>
         lower === h ||
         lower.startsWith(h + ":") ||
@@ -80,12 +90,18 @@ function cleanPdfText(raw: string, headers: string[] = BOILERPLATE_HEADERS): str
         lower.startsWith(h + ".") ||
         lower.startsWith(h + "-"),
     );
-  });
-  if (cutIndex >= 0) {
-    text = lines.slice(0, cutIndex).join("\n").trim();
+    if (hit) {
+      truncatedAt = hit;
+      lineIndex = i;
+      break;
+    }
   }
 
-  return text.slice(0, PDF_TEXT_MAX_CHARS);
+  if (lineIndex >= 0) {
+    text = lines.slice(0, lineIndex).join("\n").trim();
+  }
+
+  return { text: text.slice(0, PDF_TEXT_MAX_CHARS), truncatedAt, lineIndex };
 }
 
 router.use((req, res, next) => {
@@ -344,6 +360,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
     ]);
     let extractedText: string;
     let mode: "pdf-text" | "pdf-vision" | "image-vision" = "image-vision";
+    let truncation: { phrase: string; lineIndex: number } | null = null;
 
     if (isPdf) {
       // Fast path: try local PDF text extraction first.
@@ -361,7 +378,8 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       if (pdfText.length >= PDF_TEXT_FAST_PATH_MIN_CHARS) {
         // Text-based PDF: send extracted text to a faster text-only model.
         mode = "pdf-text";
-        const cleanText = cleanPdfText(pdfText, boilerplateHeaders);
+        const { text: cleanText, truncatedAt, lineIndex } = cleanPdfText(pdfText, boilerplateHeaders);
+        truncation = truncatedAt != null ? { phrase: truncatedAt, lineIndex } : null;
         const response = await getOpenAI().chat.completions.create({
           model: "gpt-5-mini",
           max_completion_tokens: 3500,
@@ -423,7 +441,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       return;
     }
 
-    res.json({ data: parsed, mode });
+    res.json({ data: parsed, mode, truncation });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({
