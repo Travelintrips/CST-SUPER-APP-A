@@ -35,7 +35,7 @@ SMTP_PORT = "587"
 SMTP_USER = "8a96b8001@smtp-brevo.com"
 SMTP_PASS = "xsmtpsib-ccee60eca66c4da65908d6a8a8deb075a41b54c7784a0cb94ebfa7929fe74d13-4V33DEBIIV8nHLuT"
 SMTP_FROM = "CST Logistics <info@cstlogistic.co.id>"
-ADMIN_EMAIL = "divatranssoetta@gmail.com"
+ADMIN_EMAIL = "admcst001@gmail.com"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
