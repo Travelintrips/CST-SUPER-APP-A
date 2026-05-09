@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -21,7 +22,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, Search } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const idr = (n: number) =>
@@ -36,6 +37,22 @@ const statusVariant = (s: string): "default" | "secondary" | "outline" | "destru
     case "cancelled": return "destructive";
     default: return "secondary";
   }
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  confirmed: "Confirmed",
+  done: "Done",
+  cancelled: "Cancelled",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  draft:     "bg-slate-100 text-slate-700 border-slate-200",
+  sent:      "bg-blue-100 text-blue-700 border-blue-200",
+  confirmed: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  done:      "bg-green-100 text-green-800 border-green-200",
+  cancelled: "bg-red-100 text-red-700 border-red-200",
 };
 
 type PaymentFilter = "all" | "unpaid" | "partial" | "paid";
@@ -71,6 +88,8 @@ interface Props {
 export default function SalesDocumentsListPage({ kind }: Props) {
   const isQuote = kind === "quote";
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -83,6 +102,8 @@ export default function SalesDocumentsListPage({ kind }: Props) {
   const { data: docs } = useListSalesDocuments({
     kind,
     ...(!isQuote && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
+    ...(statusFilter !== "all" ? { status: statusFilter as "draft" | "sent" | "confirmed" | "done" | "cancelled" } : {}),
+    ...(search.trim() ? { search: search.trim() } : {}),
   });
 
   const allDocs = docs ?? [];
@@ -155,7 +176,7 @@ export default function SalesDocumentsListPage({ kind }: Props) {
     }
   };
 
-  const colCount = isQuote ? 7 : 10;
+  const colCount = isQuote ? 8 : 11;
 
   return (
     <AppShell>
@@ -172,6 +193,31 @@ export default function SalesDocumentsListPage({ kind }: Props) {
               </Button>
             </Link>
           )}
+        </div>
+
+        {/* Status filter chips */}
+        <div className="flex flex-wrap gap-2" data-testid="status-filter">
+          {(["all", ...Object.keys(STATUS_LABELS)] as string[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatusFilter(s)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors border ${
+                statusFilter === s
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : s !== "all"
+                    ? `${STATUS_COLORS[s] ?? "bg-muted text-muted-foreground"} border-transparent`
+                    : "bg-muted text-muted-foreground border-transparent hover:bg-muted/80"
+              }`}
+            >
+              {s === "all" ? "Semua" : STATUS_LABELS[s]}
+              {s !== "all" && (
+                <span className="ml-1.5 opacity-70">
+                  {(docs ?? []).filter((d) => d.status === s).length}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
         {/* Bulk action bar */}
@@ -195,7 +241,18 @@ export default function SalesDocumentsListPage({ kind }: Props) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Daftar {title}</CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <CardTitle className="flex-1">Daftar {title}</CardTitle>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari no. doc, customer..."
+                  className="pl-9 h-8 text-sm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+            </div>
             {!isQuote && (
               <div className="flex flex-wrap gap-2 mt-2" data-testid="payment-status-filter">
                 {(Object.keys(PAYMENT_LABELS) as PaymentFilter[]).map((f) => (
@@ -237,11 +294,11 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                   {!isQuote && <TableHead>Bayar</TableHead>}
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Tanggal</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-16"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(docs ?? []).map((d) => (
+                {allDocs.map((d) => (
                   <TableRow key={d.id} className="cursor-pointer" data-testid={`row-doc-${d.id}`}>
                     <TableCell>
                       <Checkbox
@@ -260,7 +317,9 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                       </div>
                     </TableCell>
                     <TableCell>{d.customerName}</TableCell>
-                    <TableCell><Badge variant={statusVariant(d.status)} className="capitalize">{d.status}</Badge></TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant(d.status)} className="capitalize">{d.status}</Badge>
+                    </TableCell>
                     {!isQuote && <TableCell><Badge variant="outline" className="capitalize">{d.invoiceStatus.replace("_", " ")}</Badge></TableCell>}
                     {!isQuote && <TableCell><Badge variant="outline" className="capitalize">{d.deliveryStatus.replace("_", " ")}</Badge></TableCell>}
                     {!isQuote && <TableCell><PaymentBadge status={d.paymentStatus} /></TableCell>}
@@ -292,10 +351,16 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                     </TableCell>
                   </TableRow>
                 ))}
-                {(!docs || docs.length === 0) && (
+                {allDocs.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={colCount} className="text-center text-muted-foreground py-8">
-                      {paymentFilter !== "all" ? `Tidak ada order dengan status pembayaran "${PAYMENT_LABELS[paymentFilter]}".` : "Belum ada dokumen."}
+                      {search
+                        ? `Tidak ada hasil untuk "${search}".`
+                        : statusFilter !== "all"
+                          ? `Tidak ada dokumen dengan status "${STATUS_LABELS[statusFilter] ?? statusFilter}".`
+                          : paymentFilter !== "all"
+                            ? `Tidak ada order dengan status pembayaran "${PAYMENT_LABELS[paymentFilter]}".`
+                            : "Belum ada dokumen."}
                     </TableCell>
                   </TableRow>
                 )}

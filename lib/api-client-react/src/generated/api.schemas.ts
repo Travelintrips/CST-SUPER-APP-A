@@ -2516,6 +2516,10 @@ export interface CreatePortalProductOrderBody {
   items: CreatePortalProductOrderBodyItemsItem[];
 }
 
+export interface LinkPortalProductOrderItemBody {
+  productId: number;
+}
+
 export interface UpdatePortalProductOrderStatusBody {
   status: string;
 }
@@ -2545,8 +2549,10 @@ export type ListFreightQuotesParams = {
 
 export type ListSalesDocumentsParams = {
   kind?: ListSalesDocumentsKind;
+  status?: ListSalesDocumentsStatus;
   invoiceStatus?: ListSalesDocumentsInvoiceStatus;
   paymentStatus?: ListSalesDocumentsPaymentStatus;
+  search?: string;
 };
 
 export type ListSalesDocumentsKind =
@@ -2555,6 +2561,17 @@ export type ListSalesDocumentsKind =
 export const ListSalesDocumentsKind = {
   quote: "quote",
   order: "order",
+} as const;
+
+export type ListSalesDocumentsStatus =
+  (typeof ListSalesDocumentsStatus)[keyof typeof ListSalesDocumentsStatus];
+
+export const ListSalesDocumentsStatus = {
+  draft: "draft",
+  sent: "sent",
+  confirmed: "confirmed",
+  done: "done",
+  cancelled: "cancelled",
 } as const;
 
 export type ListSalesDocumentsInvoiceStatus =

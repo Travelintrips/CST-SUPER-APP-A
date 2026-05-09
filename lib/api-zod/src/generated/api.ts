@@ -1620,8 +1620,12 @@ export const DeleteCustomerResponse = zod.object({
  */
 export const ListSalesDocumentsQueryParams = zod.object({
   kind: zod.enum(["quote", "order"]).optional(),
+  status: zod
+    .enum(["draft", "sent", "confirmed", "done", "cancelled"])
+    .optional(),
   invoiceStatus: zod.enum(["none", "to_invoice", "invoiced"]).optional(),
   paymentStatus: zod.enum(["unpaid", "partial", "paid"]).optional(),
+  search: zod.coerce.string().optional(),
 });
 
 export const ListSalesDocumentsResponseItem = zod.object({
@@ -4532,6 +4536,41 @@ export const GetPortalProductOrderResponse = zod
       ),
     }),
   );
+
+/**
+ * @summary Delete a portal product order (admin)
+ */
+export const DeletePortalProductOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeletePortalProductOrderResponse = zod.object({
+  message: zod.string(),
+});
+
+/**
+ * @summary Re-link an order item to a master product (admin)
+ */
+export const LinkPortalProductOrderItemParams = zod.object({
+  itemId: zod.coerce.number(),
+});
+
+export const LinkPortalProductOrderItemBody = zod.object({
+  productId: zod.number(),
+});
+
+export const LinkPortalProductOrderItemResponse = zod.object({
+  id: zod.number(),
+  orderId: zod.number(),
+  productId: zod.number().nullish(),
+  productName: zod.string(),
+  productSku: zod.string().nullish(),
+  unit: zod.string().nullish(),
+  unitPrice: zod.number(),
+  qty: zod.number(),
+  subtotal: zod.number(),
+  createdAt: zod.string(),
+});
 
 /**
  * @summary Update status of a portal product order (admin)

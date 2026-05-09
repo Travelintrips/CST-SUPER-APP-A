@@ -103,6 +103,7 @@ import type {
   GetTrialBalanceParams,
   HealthStatus,
   LinkCorrespondenceBody,
+  LinkPortalProductOrderItemBody,
   ListAccountingEntriesParams,
   ListAccountingEntryLinesParams,
   ListAccountingPaymentsParams,
@@ -140,6 +141,7 @@ import type {
   PortalProduct,
   PortalProductOrder,
   PortalProductOrderDetail,
+  PortalProductOrderItem,
   PortalRegisterBody,
   PortalService,
   PortalSession,
@@ -15032,6 +15034,182 @@ export function useGetPortalProductOrder<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Delete a portal product order (admin)
+ */
+export const getDeletePortalProductOrderUrl = (id: number) => {
+  return `/api/portal-product/orders/${id}`;
+};
+
+export const deletePortalProductOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MessageResponse> => {
+  return customFetch<MessageResponse>(getDeletePortalProductOrderUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeletePortalProductOrderMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePortalProductOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deletePortalProductOrder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deletePortalProductOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deletePortalProductOrder>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deletePortalProductOrder(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeletePortalProductOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deletePortalProductOrder>>
+>;
+
+export type DeletePortalProductOrderMutationError = ErrorType<MessageResponse>;
+
+/**
+ * @summary Delete a portal product order (admin)
+ */
+export const useDeletePortalProductOrder = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePortalProductOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deletePortalProductOrder>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeletePortalProductOrderMutationOptions(options));
+};
+
+/**
+ * @summary Re-link an order item to a master product (admin)
+ */
+export const getLinkPortalProductOrderItemUrl = (itemId: number) => {
+  return `/api/portal-product/orders/items/${itemId}/link`;
+};
+
+export const linkPortalProductOrderItem = async (
+  itemId: number,
+  linkPortalProductOrderItemBody: LinkPortalProductOrderItemBody,
+  options?: RequestInit,
+): Promise<PortalProductOrderItem> => {
+  return customFetch<PortalProductOrderItem>(
+    getLinkPortalProductOrderItemUrl(itemId),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(linkPortalProductOrderItemBody),
+    },
+  );
+};
+
+export const getLinkPortalProductOrderItemMutationOptions = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkPortalProductOrderItem>>,
+    TError,
+    { itemId: number; data: BodyType<LinkPortalProductOrderItemBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof linkPortalProductOrderItem>>,
+  TError,
+  { itemId: number; data: BodyType<LinkPortalProductOrderItemBody> },
+  TContext
+> => {
+  const mutationKey = ["linkPortalProductOrderItem"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof linkPortalProductOrderItem>>,
+    { itemId: number; data: BodyType<LinkPortalProductOrderItemBody> }
+  > = (props) => {
+    const { itemId, data } = props ?? {};
+
+    return linkPortalProductOrderItem(itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LinkPortalProductOrderItemMutationResult = NonNullable<
+  Awaited<ReturnType<typeof linkPortalProductOrderItem>>
+>;
+export type LinkPortalProductOrderItemMutationBody =
+  BodyType<LinkPortalProductOrderItemBody>;
+export type LinkPortalProductOrderItemMutationError =
+  ErrorType<MessageResponse>;
+
+/**
+ * @summary Re-link an order item to a master product (admin)
+ */
+export const useLinkPortalProductOrderItem = <
+  TError = ErrorType<MessageResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof linkPortalProductOrderItem>>,
+    TError,
+    { itemId: number; data: BodyType<LinkPortalProductOrderItemBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof linkPortalProductOrderItem>>,
+  TError,
+  { itemId: number; data: BodyType<LinkPortalProductOrderItemBody> },
+  TContext
+> => {
+  return useMutation(getLinkPortalProductOrderItemMutationOptions(options));
+};
 
 /**
  * @summary Update status of a portal product order (admin)

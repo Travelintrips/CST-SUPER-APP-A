@@ -227,6 +227,46 @@ portalProductOrdersRouter.get("/orders", async (req: Request, res: Response) => 
   return res.json(rows.map(toOrder));
 });
 
+// DELETE /api/portal-product/orders/:id — delete order (admin)
+portalProductOrdersRouter.delete("/orders/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [deleted] = await db
+    .delete(portalProductOrdersTable)
+    .where(eq(portalProductOrdersTable.id, id))
+    .returning();
+
+  if (!deleted) return res.status(404).json({ message: "Order tidak ditemukan" });
+  return res.json({ message: "Order berhasil dihapus", id });
+});
+
+// PATCH /api/portal-product/orders/items/:itemId/link — re-link item to master product (admin)
+portalProductOrdersRouter.patch("/orders/items/:itemId/link", async (req: Request, res: Response) => {
+  const itemId = parseInt(req.params.itemId, 10);
+  if (isNaN(itemId)) return res.status(400).json({ message: "Item ID tidak valid" });
+
+  const { productId } = req.body as { productId?: number };
+  if (!productId) return res.status(400).json({ message: "productId wajib diisi" });
+
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
+  if (!product) return res.status(404).json({ message: "Produk tidak ditemukan" });
+
+  const [updated] = await db
+    .update(portalProductOrderItemsTable)
+    .set({
+      productId: product.id,
+      productName: product.name,
+      productSku: product.sku ?? null,
+      unit: product.unit ?? null,
+    })
+    .where(eq(portalProductOrderItemsTable.id, itemId))
+    .returning();
+
+  if (!updated) return res.status(404).json({ message: "Item tidak ditemukan" });
+  return res.json(toItem(updated));
+});
+
 // GET /api/portal-product/orders/:id — get order detail (admin)
 portalProductOrdersRouter.get("/orders/:id", async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);

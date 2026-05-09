@@ -1322,6 +1322,12 @@ paths:
             type: string
             enum: [quote, order]
         - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [draft, sent, confirmed, done, cancelled]
+        - in: query
           name: invoiceStatus
           required: false
           schema:
@@ -1333,6 +1339,11 @@ paths:
           schema:
             type: string
             enum: [unpaid, partial, paid]
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Sales documents
@@ -3112,6 +3123,45 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PortalProductOrderDetail" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+    delete:
+      operationId: deletePortalProductOrder
+      tags: [logistic-orders]
+      summary: Delete a portal product order (admin)
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+
+  /portal-product/orders/items/{itemId}/link:
+    parameters:
+      - { name: itemId, in: path, required: true, schema: { type: integer } }
+    patch:
+      operationId: linkPortalProductOrderItem
+      tags: [logistic-orders]
+      summary: Re-link an order item to a master product (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LinkPortalProductOrderItemBody" }
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortalProductOrderItem" }
         "404":
           description: Not found
           content:
@@ -6172,6 +6222,12 @@ components:
               subtotal: { type: number }
             required: [productName, unitPrice, qty, subtotal]
       required: [customerName, email, phone, shippingAddress, items]
+
+    LinkPortalProductOrderItemBody:
+      type: object
+      properties:
+        productId: { type: integer }
+      required: [productId]
 
     UpdatePortalProductOrderStatusBody:
       type: object

@@ -10,7 +10,7 @@ import {
   emailCorrespondencesTable,
   waAiIntakeLogTable,
 } from "@workspace/db";
-import { eq, sql, desc, and, count, inArray, type SQL } from "drizzle-orm";
+import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postSalesInvoice } from "../lib/accounting.js";
@@ -175,12 +175,22 @@ router.get("/documents", async (req, res) => {
   const kind = req.query["kind"] as SalesDocKind | undefined;
   const invoiceStatus = req.query["invoiceStatus"] as SalesInvoiceStatus | undefined;
   const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
+  const statusFilter = req.query["status"] as string | undefined;
+  const search = typeof req.query["search"] === "string" ? req.query["search"].trim() : undefined;
   const conds: SQL[] = [];
   if (kind === "quote" || kind === "order") conds.push(eq(salesDocumentsTable.kind, kind));
+  if (["draft", "sent", "confirmed", "done", "cancelled"].includes(statusFilter ?? ""))
+    conds.push(eq(salesDocumentsTable.status, statusFilter as string));
   if (invoiceStatus === "none" || invoiceStatus === "to_invoice" || invoiceStatus === "invoiced")
     conds.push(eq(salesDocumentsTable.invoiceStatus, invoiceStatus));
   if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
     conds.push(eq(salesDocumentsTable.paymentStatus, paymentStatus));
+  if (search) {
+    conds.push(or(
+      ilike(salesDocumentsTable.docNumber, `%${search}%`),
+      ilike(salesDocumentsTable.customerName, `%${search}%`),
+    )!);
+  }
   const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
   const rows = where
     ? await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt))
