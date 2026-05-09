@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -366,6 +367,50 @@ export default function EmailInboxPage() {
   const syncImap = useSyncCorrespondencesImap();
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  const allIds = useMemo(() => emails.map((e) => e.id), [emails]);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+  const someSelected = selectedIds.size > 0;
+
+  function toggleSelect(id: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  }
+
+  async function handleBulkDelete() {
+    setIsBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    let successCount = 0;
+    for (const id of ids) {
+      await new Promise<void>((resolve) => {
+        deleteEmail.mutate({ id }, {
+          onSuccess: () => { successCount++; resolve(); },
+          onError: () => resolve(),
+        });
+      });
+    }
+    setSelectedIds(new Set());
+    setBulkDeleteOpen(false);
+    setIsBulkDeleting(false);
+    queryClient.invalidateQueries({ queryKey: getListEmailCorrespondencesQueryKey() });
+    toast({ title: `${successCount} email dihapus` });
+  }
 
   function openDetail(email: EmailCorrespondence) {
     setSelectedId(email.id);
@@ -609,6 +654,33 @@ export default function EmailInboxPage() {
           )}
         </div>
 
+        {/* Bulk action bar */}
+        {someSelected && (
+          <div className="flex items-center gap-3 px-3 py-2 bg-muted/60 border rounded-lg">
+            <Checkbox
+              checked={allSelected}
+              onCheckedChange={() => toggleSelectAll({ stopPropagation: () => {} } as React.MouseEvent)}
+              id="select-all-top"
+            />
+            <span className="text-sm font-medium flex-1">{selectedIds.size} email dipilih</span>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-1.5"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Hapus Dipilih
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Batal
+            </Button>
+          </div>
+        )}
+
         {/* Email List */}
         <div className="space-y-2">
           {isLoading ? (
@@ -624,47 +696,70 @@ export default function EmailInboxPage() {
               </CardContent>
             </Card>
           ) : (
-            emails.map((email) => (
-              <Card
-                key={email.id}
-                className={`hover:bg-muted/30 transition-colors cursor-pointer ${email.status === "new" ? "border-blue-200 dark:border-blue-800/50" : ""}`}
-                onClick={() => openDetail(email)}
-                data-testid={`card-email-${email.id}`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <StatusBadge status={email.status} />
-                        {email.fromEmail && (
-                          <span className="text-xs text-muted-foreground truncate max-w-[200px]">{email.fromEmail}</span>
+            <>
+              {/* Select all row */}
+              <div className="flex items-center gap-3 px-1 pb-1">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={() => toggleSelectAll({ stopPropagation: () => {} } as React.MouseEvent)}
+                  id="select-all"
+                />
+                <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer select-none">
+                  Pilih semua ({emails.length})
+                </label>
+              </div>
+              {emails.map((email) => (
+                <Card
+                  key={email.id}
+                  className={`hover:bg-muted/30 transition-colors cursor-pointer ${email.status === "new" ? "border-blue-200 dark:border-blue-800/50" : ""} ${selectedIds.has(email.id) ? "ring-2 ring-primary/40 bg-primary/5" : ""}`}
+                  onClick={() => openDetail(email)}
+                  data-testid={`card-email-${email.id}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="mt-0.5 shrink-0"
+                        onClick={(e) => toggleSelect(email.id, e)}
+                      >
+                        <Checkbox
+                          checked={selectedIds.has(email.id)}
+                          onCheckedChange={() => {}}
+                          className="pointer-events-none"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <StatusBadge status={email.status} />
+                          {email.fromEmail && (
+                            <span className="text-xs text-muted-foreground truncate max-w-[200px]">{email.fromEmail}</span>
+                          )}
+                        </div>
+                        <p className={`truncate ${email.status === "new" ? "font-semibold" : "font-medium"}`}>{email.subject}</p>
+                        {email.body && (
+                          <p className="text-sm text-muted-foreground truncate mt-0.5">
+                            {email.body.slice(0, 120)}
+                          </p>
                         )}
                       </div>
-                      <p className={`truncate ${email.status === "new" ? "font-semibold" : "font-medium"}`}>{email.subject}</p>
-                      {email.body && (
-                        <p className="text-sm text-muted-foreground truncate mt-0.5">
-                          {email.body.slice(0, 120)}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(email.receivedAt)}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          title="Hapus email"
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(email.id); }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(email.receivedAt)}
-                      </span>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        title="Hapus email"
-                        onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(email.id); }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                  </CardContent>
+                </Card>
+              ))}
+            </>
           )}
         </div>
       </div>
@@ -962,6 +1057,31 @@ export default function EmailInboxPage() {
             >
               {createLink.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
               Tautkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* BULK DELETE CONFIRM DIALOG */}
+      <Dialog open={bulkDeleteOpen} onOpenChange={(o) => { if (!o) setBulkDeleteOpen(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-4 w-4" /> Hapus {selectedIds.size} Email
+            </DialogTitle>
+            <DialogDescription>
+              {selectedIds.size} email yang dipilih akan dihapus permanen beserta semua tautan transaksinya. Tindakan ini tidak dapat dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)} disabled={isBulkDeleting}>Batal</Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+            >
+              {isBulkDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Ya, Hapus Semua
             </Button>
           </DialogFooter>
         </DialogContent>
