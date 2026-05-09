@@ -85,7 +85,7 @@ export default function SalesDocumentsListPage({ kind }: Props) {
     ...(!isQuote && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
   });
 
-  const draftDocs = (docs ?? []).filter((d) => d.status === "draft");
+  const allDocs = docs ?? [];
 
   const title = isQuote ? "Quotations" : "Sales Orders";
   const desc = isQuote ? "Penawaran ke pelanggan." : "Pesanan penjualan terkonfirmasi.";
@@ -99,13 +99,13 @@ export default function SalesDocumentsListPage({ kind }: Props) {
     });
   };
 
-  const allDraftSelected = draftDocs.length > 0 && draftDocs.every((d) => selectedIds.has(d.id));
+  const allSelected = allDocs.length > 0 && allDocs.every((d) => selectedIds.has(d.id));
 
   const toggleAll = () => {
-    if (allDraftSelected) {
+    if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(draftDocs.map((d) => d.id)));
+      setSelectedIds(new Set(allDocs.map((d) => d.id)));
     }
   };
 
@@ -221,11 +221,11 @@ export default function SalesDocumentsListPage({ kind }: Props) {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">
-                    {draftDocs.length > 0 && (
+                    {allDocs.length > 0 && (
                       <Checkbox
-                        checked={allDraftSelected}
+                        checked={allSelected}
                         onCheckedChange={toggleAll}
-                        aria-label="Pilih semua draft"
+                        aria-label="Pilih semua"
                       />
                     )}
                   </TableHead>
@@ -244,14 +244,12 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                 {(docs ?? []).map((d) => (
                   <TableRow key={d.id} className="cursor-pointer" data-testid={`row-doc-${d.id}`}>
                     <TableCell>
-                      {d.status === "draft" && (
-                        <Checkbox
-                          checked={selectedIds.has(d.id)}
-                          onCheckedChange={() => toggleSelect(d.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Pilih ${d.docNumber}`}
-                        />
-                      )}
+                      <Checkbox
+                        checked={selectedIds.has(d.id)}
+                        onCheckedChange={() => toggleSelect(d.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Pilih ${d.docNumber}`}
+                      />
                     </TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -269,18 +267,6 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                     <TableCell className="text-right font-medium">{idr(Number(d.totalAmount))}</TableCell>
                     <TableCell className="text-right text-sm text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("id-ID")}</TableCell>
                     <TableCell className="text-right">
-                      {d.status === "draft" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          title="Hapus"
-                          onClick={(e) => { e.stopPropagation(); void handleDelete(d.id); }}
-                          data-testid={`btn-delete-${d.id}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
                       {d.status !== "draft" && d.status !== "cancelled" && d.status !== "done" && (
                         <Button
                           size="sm"
@@ -293,6 +279,16 @@ export default function SalesDocumentsListPage({ kind }: Props) {
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        title="Hapus"
+                        onClick={(e) => { e.stopPropagation(); void handleDelete(d.id); }}
+                        data-testid={`btn-delete-${d.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
