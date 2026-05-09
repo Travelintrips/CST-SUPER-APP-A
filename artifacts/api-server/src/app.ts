@@ -70,6 +70,16 @@ app.use((req, res, next) => {
   return _clerkAuth(req, res, next);
 });
 
+// Redirect bizportal subdomain root to /bizportal/
+app.use((req, res, next) => {
+  const host = (req.headers["x-forwarded-host"] as string) || req.headers.host || "";
+  const hostname = host.split(":")[0];
+  if (hostname === "bizportal.cstlogistic.co.id" && req.path === "/") {
+    return res.redirect(301, "/bizportal/");
+  }
+  next();
+});
+
 app.use("/api", router);
 
 // Global error handler — logs unhandled errors and returns JSON
