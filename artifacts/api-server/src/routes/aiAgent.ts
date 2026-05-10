@@ -11,10 +11,21 @@ import {
 } from "@workspace/db";
 import { eq, asc, or, inArray, sql, and, gt, ilike } from "drizzle-orm";
 import { randomBytes } from "crypto";
+import { createRequire } from "node:module";
+import multer from "multer";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
 import { requireAdmin } from "../lib/requireAdmin";
 import { logger } from "../lib/logger";
+
+const _require = createRequire(import.meta.url);
+type PdfParseFn = (buf: Buffer) => Promise<{ text: string; numpages: number }>;
+const pdfParse = _require("pdf-parse/lib/pdf-parse.js") as PdfParseFn;
+
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -1042,6 +1053,117 @@ aiAgentRouter.put("/settings", async (req: Request, res: Response) => {
     });
   return res.json({ ok: true });
 });
+
+// ── POST /api/ai-agent/upload ─────────────────────────────────────────────────
+// Public: accepts image or PDF, runs OCR/vision, returns extracted text for chat context
+aiAgentRouter.post(
+  "/upload",
+  uploadMemory.single("file"),
+  async (req: Request, res: Response): Promise<void> => {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ message: "Tidak ada file yang diupload." });
+      return;
+    }
+
+    const mime = file.mimetype;
+    const isImage = mime.startsWith("image/");
+    const isPdf = mime === "application/pdf";
+
+    if (!isImage && !isPdf) {
+      res
+        .status(400)
+        .json({ message: "Hanya file gambar (JPG, PNG, WEBP, GIF) dan PDF yang didukung." });
+      return;
+    }
+
+    try {
+      let extractedText = "";
+
+      if (isPdf) {
+        let pdfText = "";
+        try {
+          const parsed = await pdfParse(file.buffer);
+          pdfText = (parsed.text ?? "").trim();
+        } catch {
+          /* ignore parse errors — fall through to vision */
+        }
+
+        if (pdfText.length >= 200) {
+          const resp = await getOpenAI().chat.completions.create({
+            model: "gpt-4o-mini",
+            max_completion_tokens: 800,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Kamu adalah asisten yang membantu menganalisis dokumen logistik. Jelaskan isi dokumen ini secara ringkas dalam Bahasa Indonesia. Sebutkan jenis dokumen, pihak-pihak yang terlibat, tanggal, angka/nilai penting, dan informasi utama lainnya.",
+              },
+              { role: "user", content: `Analisis dokumen ini:\n\n${pdfText.slice(0, 5000)}` },
+            ],
+          });
+          extractedText = resp.choices[0]?.message?.content ?? pdfText.slice(0, 2000);
+        } else {
+          const base64 = file.buffer.toString("base64");
+          const resp = await getOpenAI().chat.completions.create({
+            model: "gpt-4o",
+            max_completion_tokens: 800,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "Analisis dokumen PDF ini dan jelaskan isinya secara ringkas dalam Bahasa Indonesia. Sebutkan jenis dokumen, pihak terlibat, tanggal, nilai, dan informasi penting lainnya.",
+                  },
+                  {
+                    type: "image_url",
+                    image_url: { url: `data:application/pdf;base64,${base64}` },
+                  },
+                ],
+              },
+            ],
+          });
+          extractedText = resp.choices[0]?.message?.content ?? "Tidak dapat membaca isi dokumen.";
+        }
+      } else {
+        const base64 = file.buffer.toString("base64");
+        const resp = await getOpenAI().chat.completions.create({
+          model: "gpt-4o",
+          max_completion_tokens: 800,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Analisis gambar ini dan jelaskan isinya secara ringkas dalam Bahasa Indonesia. Jika ada teks dalam gambar, ekstrak semua teksnya. Jika ini adalah dokumen logistik (invoice, bill of lading, AWB, dll), sebutkan semua informasi pentingnya.",
+                },
+                { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } },
+              ],
+            },
+          ],
+        });
+        extractedText = resp.choices[0]?.message?.content ?? "Tidak dapat menganalisis gambar.";
+      }
+
+      const preview =
+        isImage && file.buffer.length < 2 * 1024 * 1024
+          ? `data:${mime};base64,${file.buffer.toString("base64")}`
+          : null;
+
+      res.json({
+        text: extractedText,
+        type: isImage ? "image" : "pdf",
+        filename: file.originalname,
+        preview,
+      });
+    } catch (err) {
+      logger.error({ err }, "AI agent file upload/OCR failed");
+      res.status(500).json({ message: "Gagal memproses file. Coba lagi." });
+    }
+  },
+);
 
 // ── POST /api/ai-agent/session/:token/admin-reply ────────────────────────────
 aiAgentRouter.post("/session/:token/admin-reply", async (req: Request, res: Response) => {

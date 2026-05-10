@@ -18,6 +18,9 @@ import {
   VolumeX,
   Bell,
   BellOff,
+  Paperclip,
+  FileText,
+  ImageIcon,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -26,6 +29,7 @@ interface ChatMessage {
   role: "user" | "assistant" | "admin";
   content: string;
   createdAt?: string;
+  attachment?: { type: "image" | "pdf"; name: string };
 }
 
 interface OrderCreated {
@@ -659,6 +663,12 @@ export function ChatWidget() {
   const [kbOffset, setKbOffset] = useState(0);
   /** True while the keyboard is actively animating — enables bottom transition */
   const [kbMoving, setKbMoving] = useState(false);
+  /** File selected by user, waiting to be sent */
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  /** Base64 preview URL for image attachments */
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  /** True while uploading+OCR-ing a file */
+  const [uploadingFile, setUploadingFile] = useState(false);
   const kbMoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Mirrors kbOffset without triggering re-renders — used for pure comparison in the viewport handler */
   const kbOffsetRef = useRef(0);
@@ -688,6 +698,10 @@ export function ChatWidget() {
   );
   /** Admin messages received while widget was closed — flushed to state on next open */
   const pendingAdminRef = useRef<ChatMessage[]>([]);
+  /** Hidden file input element */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** In-session image previews: message id → data URL (not persisted to localStorage) */
+  const imgPreviewsRef = useRef<Map<string, string>>(new Map());
 
   const isStreaming = streamingContent !== null;
 
@@ -981,27 +995,11 @@ export function ChatWidget() {
     });
   }
 
-  /** Core send logic — accepts text directly so push-to-talk and keyboard can share it */
-  async function doSend(text: string) {
-    if (!text.trim() || isStreaming) return;
-
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: text.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    playSound("sent");
-
-    // Reset streaming state, stale status cards, inline forms, and stop any TTS
-    streamBufferRef.current = "";
-    setStreamingContent("");
-    setOrderStatuses([]);
-    setShowForm(null);
-    setShowProductForm(null);
-    stopSpeaking();
-
+  /**
+   * Low-level: open the SSE stream with a given message string and handle all events.
+   * Caller must have already added the user bubble to messages and reset streaming state.
+   */
+  async function _executeStream(messageForAI: string) {
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -1009,7 +1007,7 @@ export function ChatWidget() {
       const res = await fetch("/api/ai-agent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionToken, message: text.trim() }),
+        body: JSON.stringify({ sessionToken, message: messageForAI }),
         signal: controller.signal,
       });
 
@@ -1186,12 +1184,94 @@ export function ChatWidget() {
     }
   }
 
-  /** Thin wrapper so the text input and Enter key still work */
+  /** Add a user text message to chat and stream AI response */
+  async function doSend(text: string) {
+    if (!text.trim() || isStreaming) return;
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: text.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    playSound("sent");
+    streamBufferRef.current = "";
+    setStreamingContent("");
+    setOrderStatuses([]);
+    setShowForm(null);
+    setShowProductForm(null);
+    stopSpeaking();
+    await _executeStream(text.trim());
+  }
+
+  /** Send handler: handles plain text OR file attachment */
   async function sendMessage() {
+    if (isStreaming || uploadingFile) return;
     const text = input.trim();
-    if (!text) return;
+    if (!text && !attachedFile) return;
     setInput("");
-    await doSend(text);
+
+    if (attachedFile) {
+      const file = attachedFile;
+      const preview = attachedPreview;
+      setAttachedFile(null);
+      setAttachedPreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+
+      const msgId = Date.now().toString();
+      const fileType: "image" | "pdf" = file.type.startsWith("image/") ? "image" : "pdf";
+      const userMsg: ChatMessage = {
+        id: msgId,
+        role: "user",
+        content: text || `📎 ${file.name}`,
+        createdAt: new Date().toISOString(),
+        attachment: { type: fileType, name: file.name },
+      };
+      if (preview) imgPreviewsRef.current.set(msgId, preview);
+      setMessages((prev) => [...prev, userMsg]);
+      playSound("sent");
+      streamBufferRef.current = "";
+      setStreamingContent("");
+      setOrderStatuses([]);
+      setShowForm(null);
+      setShowProductForm(null);
+      stopSpeaking();
+
+      setUploadingFile(true);
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const upRes = await fetch("/api/ai-agent/upload", { method: "POST", body: fd });
+        if (!upRes.ok) throw new Error(`HTTP ${upRes.status}`);
+        const data = (await upRes.json()) as {
+          text: string;
+          type: string;
+          filename: string;
+        };
+        setUploadingFile(false);
+        const label = data.type === "image" ? "gambar" : "dokumen PDF";
+        const aiCtx =
+          `[Pengguna mengirim ${label}: ${data.filename}]\n\nAnalisis AI:\n${data.text}` +
+          (text ? `\n\nPesan dari pengguna: ${text}` : "");
+        await _executeStream(aiCtx);
+      } catch {
+        setUploadingFile(false);
+        streamBufferRef.current = "";
+        setStreamingContent(null);
+        playSound("error");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 5).toString(),
+            role: "assistant",
+            content: "Maaf, gagal memproses file. Periksa koneksi dan coba lagi.",
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
+    } else {
+      await doSend(text);
+    }
   }
 
   function handleKey(e: React.KeyboardEvent) {
@@ -1536,6 +1616,29 @@ export function ChatWidget() {
                           Admin CST
                         </p>
                       )}
+                      {msg.attachment && (
+                        <div className="mb-1.5">
+                          {msg.attachment.type === "image" &&
+                          imgPreviewsRef.current.get(msg.id) ? (
+                            <img
+                              src={imgPreviewsRef.current.get(msg.id)}
+                              alt={msg.attachment.name}
+                              className="max-w-[180px] max-h-[160px] rounded-xl object-cover mb-1"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1.5 bg-white/20 rounded-lg px-2 py-1.5 mb-1">
+                              {msg.attachment.type === "pdf" ? (
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                              ) : (
+                                <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                              )}
+                              <span className="text-xs truncate max-w-[160px]">
+                                {msg.attachment.name}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {msg.content}
                     </div>
                     {msgTime && (
@@ -1715,6 +1818,73 @@ export function ChatWidget() {
                 : "calc(12px + env(safe-area-inset-bottom))",
             }}
           >
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setAttachedFile(f);
+                if (f.type.startsWith("image/")) {
+                  const reader = new FileReader();
+                  reader.onload = (ev) =>
+                    setAttachedPreview(ev.target?.result as string);
+                  reader.readAsDataURL(f);
+                } else {
+                  setAttachedPreview(null);
+                }
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+            />
+
+            {/* File attachment preview */}
+            {attachedFile && (
+              <div className="flex items-center gap-2 mb-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+                {attachedPreview ? (
+                  <img
+                    src={attachedPreview}
+                    alt={attachedFile.name}
+                    className="h-10 w-10 rounded-lg object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="h-10 w-10 rounded-lg bg-sky-100 flex items-center justify-center shrink-0">
+                    <FileText className="h-5 w-5 text-sky-600" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-sky-800 truncate">
+                    {attachedFile.name}
+                  </p>
+                  <p className="text-[10px] text-sky-600">
+                    {attachedFile.type.startsWith("image/") ? "Gambar" : "PDF"} ·{" "}
+                    {(attachedFile.size / 1024).toFixed(0)} KB
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setAttachedFile(null);
+                    setAttachedPreview(null);
+                  }}
+                  className="text-sky-400 hover:text-sky-600 shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Uploading indicator */}
+            {uploadingFile && (
+              <div className="flex items-center gap-2 mb-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                <div className="h-4 w-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                <p className="text-xs text-amber-700 font-medium">
+                  Menganalisis file dengan AI…
+                </p>
+              </div>
+            )}
+
             {isListening && (
               <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-medium mb-2">
                 <span className="flex gap-0.5 items-center">
@@ -1733,6 +1903,20 @@ export function ChatWidget() {
               </div>
             )}
             <div className="flex gap-2 items-center min-w-0">
+              {/* Attachment button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isStreaming || uploadingFile}
+                title="Upload gambar atau PDF"
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 ${
+                  attachedFile
+                    ? "bg-sky-100 text-sky-600"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                }`}
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
               <button
                 type="button"
                 onMouseDown={(e) => {
@@ -1743,7 +1927,7 @@ export function ChatWidget() {
                   e.preventDefault();
                   startListening();
                 }}
-                disabled={isStreaming}
+                disabled={isStreaming || uploadingFile}
                 title="Tahan untuk merekam suara, lepas untuk kirim"
                 className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200 shrink-0 disabled:opacity-40 select-none ${
                   isListening
@@ -1783,16 +1967,16 @@ export function ChatWidget() {
               />
               <button
                 onClick={() => void sendMessage()}
-                disabled={isStreaming || !input.trim()}
+                disabled={isStreaming || uploadingFile || (!input.trim() && !attachedFile)}
                 aria-label="Kirim pesan"
                 className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shrink-0"
                 style={{
                   background:
-                    isStreaming || !input.trim()
+                    isStreaming || uploadingFile || (!input.trim() && !attachedFile)
                       ? "linear-gradient(135deg, #93c5fd, #6366f1)"
                       : "linear-gradient(135deg, #0284c7, #1d4ed8)",
                   boxShadow: "0 2px 8px rgba(14,165,233,0.35)",
-                  opacity: isStreaming || !input.trim() ? 0.55 : 1,
+                  opacity: isStreaming || uploadingFile || (!input.trim() && !attachedFile) ? 0.55 : 1,
                 }}
               >
                 <Send className="h-4 w-4 text-white" />
