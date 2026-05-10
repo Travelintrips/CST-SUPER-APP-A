@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
 import { MapPin, Loader2 } from "lucide-react";
 
@@ -21,12 +22,26 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<GeoLocation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setQuery(value || "");
   }, [value]);
+
+  const updateDropdownPosition = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setDropdownStyle({
+      position: "fixed",
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 99999,
+    });
+  }, []);
 
   const search = useCallback(async (q: string) => {
     if (!q || q.length < 3) { setResults([]); return; }
@@ -48,12 +63,13 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [countryCode]);
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setQuery(val);
     onChange(val, undefined);
+    updateDropdownPosition();
     setOpen(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => search(val), 500);
@@ -69,7 +85,11 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        !(document.getElementById("loc-dropdown-portal")?.contains(target))
+      ) {
         setOpen(false);
       }
     }
@@ -77,7 +97,52 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    function handleScroll() { updateDropdownPosition(); }
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [open, updateDropdownPosition]);
+
   const showDropdown = open && (results.length > 0 || loading);
+
+  const dropdown = showDropdown ? createPortal(
+    <div
+      id="loc-dropdown-portal"
+      style={dropdownStyle}
+      className="bg-white border border-border rounded-xl shadow-lg overflow-hidden max-h-60 overflow-y-auto"
+    >
+      {loading && results.length === 0 && (
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Mencari lokasi...
+        </div>
+      )}
+      {results.map((geo, idx) => {
+        const parts = geo.label.split(",");
+        const title = parts.slice(0, 2).join(",");
+        const sub = parts.slice(2, 5).join(",");
+        return (
+          <button
+            key={idx}
+            type="button"
+            onMouseDown={() => handleSelect(geo)}
+            className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-accent/5 transition-colors border-b border-border/50 last:border-0"
+          >
+            <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">{title}</p>
+              {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
+            </div>
+          </button>
+        );
+      })}
+    </div>,
+    document.body
+  ) : null;
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ""}`}>
@@ -85,42 +150,20 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
         <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin pointer-events-none" />}
         <Input
+          ref={inputRef}
           value={query}
           onChange={handleInputChange}
-          onFocus={() => { setOpen(true); if (query.length >= 3) search(query); }}
+          onFocus={() => {
+            updateDropdownPosition();
+            setOpen(true);
+            if (query.length >= 3) search(query);
+          }}
           placeholder={placeholder}
           className="mt-1 pl-9"
           autoComplete="off"
         />
       </div>
-      {showDropdown && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-border rounded-xl shadow-lg overflow-hidden max-h-60 overflow-y-auto">
-          {loading && results.length === 0 && (
-            <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Mencari lokasi...
-            </div>
-          )}
-          {results.map((geo, idx) => {
-            const parts = geo.label.split(",");
-            const title = parts.slice(0, 2).join(",");
-            const sub = parts.slice(2, 5).join(",");
-            return (
-              <button
-                key={idx}
-                type="button"
-                onMouseDown={() => handleSelect(geo)}
-                className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-accent/5 transition-colors border-b border-border/50 last:border-0"
-              >
-                <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{title}</p>
-                  {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   ImageIcon,
 } from "lucide-react";
 import { Link } from "wouter";
+import { LocationCombobox } from "@/components/LocationCombobox";
 
 interface ChatMessage {
   id: string;
@@ -232,9 +233,9 @@ function OrderForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-white border border-sky-200 rounded-2xl shadow-sm overflow-hidden"
+      className="bg-white border border-sky-200 rounded-2xl shadow-sm"
     >
-      <div className="flex items-center gap-2 px-3 py-2 bg-sky-50 border-b border-sky-100">
+      <div className="flex items-center gap-2 px-3 py-2 bg-sky-50 border-b border-sky-100 rounded-t-2xl">
         <ClipboardList className="h-4 w-4 text-sky-600 shrink-0" />
         <p className="text-xs font-semibold text-sky-800 flex-1">
           Form Order Cepat
@@ -302,18 +303,20 @@ function OrderForm({
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={lbl}>Kota Asal *</label>
-            <input
-              className={inp}
+            <LocationCombobox
+              value={form.origin}
+              onChange={(label) => setForm((p) => ({ ...p, origin: label }))}
               placeholder="Surabaya"
-              {...field("origin")}
+              className="text-xs"
             />
           </div>
           <div>
             <label className={lbl}>Kota Tujuan *</label>
-            <input
-              className={inp}
+            <LocationCombobox
+              value={form.destination}
+              onChange={(label) => setForm((p) => ({ ...p, destination: label }))}
               placeholder="Jakarta"
-              {...field("destination")}
+              className="text-xs"
             />
           </div>
         </div>
