@@ -38,7 +38,7 @@ function scoreQuote(q: { vendorPrice: number; estimatedDays: number | null }, al
   // 20% delivery speed (lower days = better)
   const speedScore = q.estimatedDays == null || minDays == null ? 50
     : maxDays === minDays ? 100
-    : ((maxDays - q.estimatedDays) / (maxDays - minDays)) * 100;
+    : ((maxDays! - q.estimatedDays) / (maxDays! - minDays)) * 100;
 
   // 15% vendor rating (placeholder — no rating system yet)
   const ratingScore = 75;
@@ -169,7 +169,7 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
 
 // POST /api/logistic/orders/:id/rfq — create RFQ + send WA to vendors
 logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { vendorIds, notes } = req.body as { vendorIds: number[]; notes?: string };
@@ -231,7 +231,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
 // GET /api/logistic/orders/:id/rfq — list RFQs for order
 logisticRfqRouter.get("/:id/rfq", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
   const rfqs = await db.select().from(logisticOrderRfqsTable)
     .where(eq(logisticOrderRfqsTable.orderId, orderId))
@@ -245,7 +245,7 @@ logisticRfqRouter.get("/:id/rfq", async (req: Request, res: Response) => {
 
 // GET /api/logistic/orders/:id/quotes — list quotes with comparison
 logisticRfqRouter.get("/:id/quotes", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const rows = await db.select().from(logisticOrderQuotesTable)
@@ -277,7 +277,7 @@ logisticRfqRouter.get("/:id/quotes", async (req: Request, res: Response) => {
 
 // POST /api/logistic/orders/:id/quotes — manually add a quote
 logisticRfqRouter.post("/:id/quotes", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { rfqId, vendorId, vendorPrice, estimatedPickup, estimatedDelivery,
@@ -334,7 +334,7 @@ logisticRfqRouter.post("/:id/quotes", async (req: Request, res: Response) => {
 
 // PUT /api/logistic/orders/quotes/:quoteId — update a quote
 logisticRfqRouter.put("/quotes/:quoteId", async (req: Request, res: Response) => {
-  const quoteId = parseInt(req.params.quoteId, 10);
+  const quoteId = parseInt(String(req.params.quoteId), 10);
   if (isNaN(quoteId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { vendorPrice, estimatedPickup, estimatedDelivery, estimatedDays,
@@ -378,7 +378,7 @@ logisticRfqRouter.put("/quotes/:quoteId", async (req: Request, res: Response) =>
 
 // POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer
 logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { quoteId, sellingPrice: overrideSellingPrice } = req.body as { quoteId: number; sellingPrice?: number };

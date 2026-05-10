@@ -98,6 +98,7 @@ async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, i
     sendMail({
       to: order.email,
       subject: `Pesanan Anda Diterima — ${order.orderNumber}`,
+      text: `Terima kasih atas pesanan Anda! No. Order: ${order.orderNumber}`,
       html: `<h2>Terima kasih atas pesanan Anda!</h2>
 <p><strong>No. Order:</strong> ${order.orderNumber}</p>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -229,7 +230,7 @@ portalProductOrdersRouter.get("/orders", async (req: Request, res: Response) => 
 
 // DELETE /api/portal-product/orders/:id — delete order (admin)
 portalProductOrdersRouter.delete("/orders/:id", async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
   const [deleted] = await db
@@ -243,7 +244,7 @@ portalProductOrdersRouter.delete("/orders/:id", async (req: Request, res: Respon
 
 // PATCH /api/portal-product/orders/items/:itemId/link — re-link item to master product (admin)
 portalProductOrdersRouter.patch("/orders/items/:itemId/link", async (req: Request, res: Response) => {
-  const itemId = parseInt(req.params.itemId, 10);
+  const itemId = parseInt(String(req.params.itemId), 10);
   if (isNaN(itemId)) return res.status(400).json({ message: "Item ID tidak valid" });
 
   const { productId } = req.body as { productId?: number };
@@ -269,7 +270,7 @@ portalProductOrdersRouter.patch("/orders/items/:itemId/link", async (req: Reques
 
 // GET /api/portal-product/orders/:id — get order detail (admin)
 portalProductOrdersRouter.get("/orders/:id", async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
   const [order] = await db.select().from(portalProductOrdersTable).where(eq(portalProductOrdersTable.id, id));
@@ -282,7 +283,7 @@ portalProductOrdersRouter.get("/orders/:id", async (req: Request, res: Response)
 
 // PUT /api/portal-product/orders/:id/status — update status (admin)
 portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { status } = req.body as { status?: string };
