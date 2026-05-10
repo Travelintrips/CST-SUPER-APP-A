@@ -6,7 +6,7 @@ import { createHmac } from "crypto";
 import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTable, freightShipmentsTable } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
-import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage";
+import { ObjectStorageService } from "../lib/objectStorage";
 import { sendWhatsApp } from "../lib/fonnte";
 import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
@@ -119,16 +119,9 @@ function nextJobNumber(): string {
 
 async function uploadPhotoToStorage(buffer: Buffer, mimetype: string, jobId: number): Promise<string> {
   try {
-    const publicPaths = objectStorageService.getPublicObjectSearchPaths();
-    const basePath = publicPaths[0];
-    const parts = basePath.split("/");
-    const bucketName = parts[0];
-    const pathPrefix = parts.slice(1).join("/");
     const filename = `${randomUUID()}.jpg`;
-    const objectName = pathPrefix ? `${pathPrefix}/driver-photos/${jobId}/${filename}` : `driver-photos/${jobId}/${filename}`;
-    const bucket = objectStorageClient.bucket(bucketName);
-    const gcsFile = bucket.file(objectName);
-    await gcsFile.save(buffer, { contentType: mimetype });
+    const storagePath = `public/driver-photos/${jobId}/${filename}`;
+    await objectStorageService.uploadFile(buffer, storagePath, mimetype);
     return `/api/storage/public-objects/driver-photos/${jobId}/${filename}`;
   } catch {
     throw new Error("Photo upload failed");

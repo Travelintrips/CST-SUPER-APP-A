@@ -7,7 +7,7 @@ import {
   emailAttachmentsTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
-import { objectStorageClient } from "./objectStorage.js";
+import { ObjectStorageService } from "./objectStorage.js";
 import { logger } from "./logger.js";
 import { processEmailForAiIntake } from "./aiOrderIntake.js";
 
@@ -24,24 +24,16 @@ function isImapConfigured(): boolean {
   return !!(host && user && pass);
 }
 
+const _imapStorage = new ObjectStorageService();
+
 async function uploadAttachmentToStorage(
   buffer: Buffer,
-  fileName: string,
+  _fileName: string,
   mimeType: string,
 ): Promise<string> {
-  const privateObjectDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!privateObjectDir) throw new Error("PRIVATE_OBJECT_DIR not set");
-
   const objectId = randomUUID();
-  const fullPath = `${privateObjectDir}/email-attachments/${objectId}`;
-  const parts = fullPath.replace(/^\//, "").split("/");
-  const bucketName = parts[0]!;
-  const objectName = parts.slice(1).join("/");
-
-  const bucket = objectStorageClient.bucket(bucketName);
-  const file = bucket.file(objectName);
-  await file.save(buffer, { contentType: mimeType, resumable: false });
-
+  const storagePath = `private/email-attachments/${objectId}`;
+  await _imapStorage.uploadFile(buffer, storagePath, mimeType);
   return `/objects/email-attachments/${objectId}`;
 }
 

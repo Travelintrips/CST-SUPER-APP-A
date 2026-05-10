@@ -5,19 +5,31 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { createClient } from "@supabase/supabase-js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_UPLOAD_PREFIXES = ["image/", "application/pdf"];
+
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
+  return createClient(url, key);
+}
+
+function getBucket(): string {
+  const b = process.env.SUPABASE_STORAGE_BUCKET;
+  if (!b) throw new Error("SUPABASE_STORAGE_BUCKET must be set");
+  return b;
+}
 
 /**
  * POST /storage/uploads/request-url
  *
- * Request a presigned URL for file upload.
- * The client sends JSON metadata (name, size, contentType) — NOT the file.
- * Then uploads the file directly to the returned presigned URL.
+ * Returns a Supabase signed upload URL. Client uploads directly via PUT.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -66,31 +78,29 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 /**
  * GET /storage/public-objects/*
  *
- * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
- * These are unconditionally public — no authentication or ACL checks.
- * IMPORTANT: Always provide this endpoint when object storage is set up.
+ * Serve public assets — proxies from Supabase Storage public folder.
  */
 router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Response) => {
   try {
     const raw = req.params.filePath;
     const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-    const file = await objectStorageService.searchPublicObject(filePath);
-    if (!file) {
+    const supabase = getSupabase();
+    const bucket = getBucket();
+    const storagePath = `public/${filePath}`;
+
+    const { data, error } = await supabase.storage.from(bucket).download(storagePath);
+    if (error || !data) {
       res.status(404).json({ error: "File not found" });
       return;
     }
 
-    const response = await objectStorageService.downloadObject(file);
+    const contentType = data.type || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Content-Length", String(data.size));
 
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
+    const nodeStream = Readable.fromWeb(data.stream() as ReadableStream<Uint8Array>);
+    nodeStream.pipe(res);
   } catch (error) {
     req.log.error({ err: error }, "Error serving public object");
     res.status(500).json({ error: "Failed to serve public object" });
@@ -100,28 +110,33 @@ router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Resp
 /**
  * GET /storage/objects/*
  *
- * Serve object entities from PRIVATE_OBJECT_DIR.
- * These are served from a separate path from /public-objects and can optionally
- * be protected with authentication or ACL checks based on the use case.
+ * Serve private object entities from Supabase Storage private folder.
  */
 router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
+
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const supabase = getSupabase();
 
-    const response = await objectStorageService.downloadObject(objectFile);
+    const { data, error } = await supabase.storage
+      .from(objectFile.bucket)
+      .download(objectFile.path);
 
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
+    if (error || !data) {
+      res.status(404).json({ error: "Object not found" });
+      return;
     }
+
+    const contentType = data.type || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("Content-Length", String(data.size));
+
+    const nodeStream = Readable.fromWeb(data.stream() as ReadableStream<Uint8Array>);
+    nodeStream.pipe(res);
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
       req.log.warn({ err: error }, "Object not found");
