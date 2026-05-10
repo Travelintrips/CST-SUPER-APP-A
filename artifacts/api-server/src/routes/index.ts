@@ -25,6 +25,7 @@ import { driverRouter, driversAdminRouter } from "./driver";
 import webhooksRouter from "./webhooks";
 import { aiAgentRouter } from "./aiAgent";
 import { portalProductOrdersRouter } from "./portalProductOrders";
+import geocodeRouter from "./geocode";
 
 const router: IRouter = Router();
 
@@ -55,4 +56,5 @@ router.use(storageRouter);
 router.use(webhooksRouter);
 router.use("/ai-agent", aiAgentRouter);
 router.use("/portal-product", portalProductOrdersRouter);
+router.use(geocodeRouter);
 export default router;

@@ -24,7 +24,6 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
   const [loading, setLoading] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -47,9 +46,10 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
     if (!q || q.length < 3) { setResults([]); return; }
     setLoading(true);
     try {
-      const country = countryCode ? `&countrycodes=${countryCode}` : "";
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1&accept-language=id,en${country}`;
-      const res = await fetch(url, { headers: { "Accept-Language": "id,en" } });
+      const params = new URLSearchParams({ q });
+      if (countryCode) params.set("countrycodes", countryCode);
+      const res = await fetch(`/api/geocode?${params.toString()}`);
+      if (!res.ok) { setResults([]); return; }
       const data = await res.json();
       setResults(
         (data as Array<{ display_name: string; lat: string; lon: string }>).map((item) => ({
@@ -72,7 +72,7 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
     updateDropdownPosition();
     setOpen(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(val), 500);
+    debounceRef.current = setTimeout(() => search(val), 400);
   }
 
   function handleSelect(geo: GeoLocation) {
@@ -86,9 +86,10 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
+      const portal = document.getElementById("loc-dropdown-portal");
       if (
         containerRef.current && !containerRef.current.contains(target) &&
-        !(document.getElementById("loc-dropdown-portal")?.contains(target))
+        !(portal?.contains(target))
       ) {
         setOpen(false);
       }
@@ -150,7 +151,6 @@ export function LocationCombobox({ value, onChange, placeholder = "Ketik nama ko
         <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin pointer-events-none" />}
         <Input
-          ref={inputRef}
           value={query}
           onChange={handleInputChange}
           onFocus={() => {
