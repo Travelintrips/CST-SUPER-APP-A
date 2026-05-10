@@ -5,20 +5,23 @@ import * as schema from "./schema";
 const { Pool } = pg;
 
 function resolveConnectionString(): string {
-  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
-  const defaultUrl = process.env.DATABASE_URL;
+  // SUPABASE_PG_URL: plain env var with valid postgresql:// string (preferred)
+  // SUPABASE_DATABASE_URL: secret — only used if it's a valid pg string
+  // DATABASE_URL: Replit-managed Postgres (fallback)
+  const candidates = [
+    process.env.SUPABASE_PG_URL,
+    process.env.SUPABASE_DATABASE_URL,
+    process.env.DATABASE_URL,
+  ];
 
-  // SUPABASE_DATABASE_URL must be a valid PostgreSQL connection string (starts with postgres:// or postgresql://)
-  if (supabaseUrl && /^postgres(?:ql)?:\/\//i.test(supabaseUrl)) {
-    return supabaseUrl;
-  }
-
-  if (defaultUrl) {
-    return defaultUrl;
+  for (const url of candidates) {
+    if (url && /^postgres(?:ql)?:\/\//i.test(url)) {
+      return url;
+    }
   }
 
   throw new Error(
-    "No valid database connection string found. Set SUPABASE_DATABASE_URL (postgresql://...) or DATABASE_URL.",
+    "No valid PostgreSQL connection string found. Set SUPABASE_PG_URL (postgresql://...) or DATABASE_URL.",
   );
 }
 
