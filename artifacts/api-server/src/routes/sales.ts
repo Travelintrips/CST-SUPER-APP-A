@@ -75,7 +75,7 @@ function serializeLine(l: typeof salesDocumentLinesTable.$inferSelect) {
   };
 }
 
-async function nextDocNumber(kind: SalesDocKind): Promise<string> {
+async function nextDocNumber(kind: SalesDocKind, offset = 0): Promise<string> {
   const prefix = kind === "quote" ? "SQ" : "SO";
   const year = new Date().getFullYear();
   const pattern = `${prefix}/${year}/%`;
@@ -85,7 +85,7 @@ async function nextDocNumber(kind: SalesDocKind): Promise<string> {
     })
     .from(salesDocumentsTable)
     .where(sql`doc_number LIKE ${pattern}`);
-  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
+  const seq = (Number(row?.maxSeq ?? 0) + 1 + offset).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
 }
 
@@ -239,35 +239,47 @@ router.post("/documents", async (req, res) => {
     return res.status(400).json({ message: "At least one line required" });
 
   const docKind: SalesDocKind = kind === "order" ? "order" : "quote";
-  const docNumber = await nextDocNumber(docKind);
   const total = (lines as LineInput[]).reduce(
     (s, l) => s + Number(l.quantity) * Number(l.unitPrice),
     0,
   );
   const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
 
-  const [doc] = await db
-    .insert(salesDocumentsTable)
-    .values({
-      docNumber,
-      kind: docKind,
-      status: "draft",
-      customerId: customerId ?? null,
-      customerName,
-      totalAmount: String(total),
-      taxRateId: taxRateId ?? null,
-      taxAmount: String(taxAmount),
-      grandTotal: String(grandTotal),
-      validUntil: validUntil ? new Date(validUntil) : null,
-      expectedDate: expectedDate ? new Date(expectedDate) : null,
-      notes: notes ?? null,
-      origin: origin ?? null,
-      destination: destination ?? null,
-      transportMode: transportMode ?? null,
-      etd: etd ?? null,
-      eta: eta ?? null,
-    })
-    .returning();
+  let doc: typeof salesDocumentsTable.$inferSelect | undefined;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const docNumber = await nextDocNumber(docKind, attempt);
+    try {
+      const [inserted] = await db
+        .insert(salesDocumentsTable)
+        .values({
+          docNumber,
+          kind: docKind,
+          status: "draft",
+          customerId: customerId ?? null,
+          customerName,
+          totalAmount: String(total),
+          taxRateId: taxRateId ?? null,
+          taxAmount: String(taxAmount),
+          grandTotal: String(grandTotal),
+          validUntil: validUntil ? new Date(validUntil) : null,
+          expectedDate: expectedDate ? new Date(expectedDate) : null,
+          notes: notes ?? null,
+          origin: origin ?? null,
+          destination: destination ?? null,
+          transportMode: transportMode ?? null,
+          etd: etd ?? null,
+          eta: eta ?? null,
+        })
+        .returning();
+      doc = inserted;
+      break;
+    } catch (err: unknown) {
+      const code = (err as { cause?: { code?: string }; code?: string })?.cause?.code ?? (err as { code?: string })?.code;
+      if (code === "23505" && attempt < 4) continue;
+      throw err;
+    }
+  }
+  if (!doc) throw new Error("Failed to create sales document after retries");
 
   await db.insert(salesDocumentLinesTable).values(
     (lines as LineInput[]).map((l) => ({

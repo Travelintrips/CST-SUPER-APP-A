@@ -204,7 +204,7 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
           .from(logisticOrdersTable)
           .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
 
-  return res.json(rows.map(toOrder));
+  return res.json(rows.map((row) => toOrder(row)));
 });
 
 // GET /api/logistic/orders/summary — dashboard stats (admin)

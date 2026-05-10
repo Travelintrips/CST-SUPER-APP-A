@@ -156,7 +156,7 @@ function toShipmentType(mode: string | null | undefined): string {
   }
 }
 
-async function nextDocNumber(): Promise<string> {
+async function nextDocNumber(offset = 0): Promise<string> {
   const prefix = "SQ";
   const year = new Date().getFullYear();
   const pattern = `${prefix}/${year}/%`;
@@ -166,7 +166,7 @@ async function nextDocNumber(): Promise<string> {
     })
     .from(salesDocumentsTable)
     .where(sql`doc_number LIKE ${pattern}`);
-  const seq = (Number(row?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
+  const seq = (Number(row?.maxSeq ?? 0) + 1 + offset).toString().padStart(5, "0");
   return `${prefix}/${year}/${seq}`;
 }
 
@@ -504,7 +504,6 @@ async function createDraftQuotation(
   }
 
   const subtotal = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
-  const docNumber = await nextDocNumber();
 
   const notesParts: string[] = [];
   if (extracted.cargoDescription) notesParts.push(`Kargo: ${extracted.cargoDescription}`);
@@ -513,26 +512,38 @@ async function createDraftQuotation(
   if (extracted.requiredDate) notesParts.push(`Tgl Dibutuhkan: ${extracted.requiredDate}`);
   if (extracted.notes) notesParts.push(extracted.notes);
 
-  const [doc] = await db
-    .insert(salesDocumentsTable)
-    .values({
-      docNumber,
-      kind: "quote",
-      status: "draft",
-      customerName: extracted.customerName,
-      totalAmount: String(subtotal),
-      taxAmount: "0",
-      grandTotal: String(subtotal),
-      amountPaid: "0",
-      origin: extracted.origin ?? null,
-      destination: extracted.destination ?? null,
-      transportMode: toTransportMode(extracted.transportMode),
-      notes: notesParts.join("\n") || null,
-      aiGenerated: true,
-      aiSourceCorrespondenceId: opts.emailCorrespondenceId ?? null,
-      aiSourceWaPhone: opts.waPhone ?? null,
-    })
-    .returning();
+  let doc: typeof salesDocumentsTable.$inferSelect | undefined;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const docNumber = await nextDocNumber(attempt);
+    try {
+      const [inserted] = await db
+        .insert(salesDocumentsTable)
+        .values({
+          docNumber,
+          kind: "quote",
+          status: "draft",
+          customerName: extracted.customerName,
+          totalAmount: String(subtotal),
+          taxAmount: "0",
+          grandTotal: String(subtotal),
+          amountPaid: "0",
+          origin: extracted.origin ?? null,
+          destination: extracted.destination ?? null,
+          transportMode: toTransportMode(extracted.transportMode),
+          notes: notesParts.join("\n") || null,
+          aiGenerated: true,
+          aiSourceCorrespondenceId: opts.emailCorrespondenceId ?? null,
+          aiSourceWaPhone: opts.waPhone ?? null,
+        })
+        .returning();
+      doc = inserted;
+      break;
+    } catch (err: unknown) {
+      const code = (err as { cause?: { code?: string }; code?: string })?.cause?.code ?? (err as { code?: string })?.code;
+      if (code === "23505" && attempt < 4) continue;
+      throw err;
+    }
+  }
 
   if (!doc) return null;
 
