@@ -743,7 +743,7 @@ export default function SettingsPage() {
                   <p className="font-medium text-foreground">Replit Auth</p>
                   <p className="text-sm text-muted-foreground">Your account is managed via Replit authentication.</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => { window.location.href = "/api/logout"; }}>
+                <Button variant="outline" size="sm" onClick={() => { window.location.href = "/api/logout?redirect=/bizportal/"; }}>
                   Sign Out
                 </Button>
               </div>
