@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "fuser -k $PORT/tcp 2>/dev/null || true && export NODE_ENV=development && pnpm run build && pnpm run start",
+    "dev": "PORT=${PORT:-8080} fuser -k ${PORT:-8080}/tcp 2>/dev/null || true && export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
+    "@replit/object-storage": "^1.0.0",
     "@supabase/supabase-js": "^2.105.4",
     "@swc/helpers": "^0.5.21",
     "@types/bcryptjs": "^3.0.0",

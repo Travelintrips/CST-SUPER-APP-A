@@ -42,13 +42,54 @@ export function useAuth(): AuthState {
   }, []);
 
   const login = useCallback(() => {
-    const base = (typeof window !== "undefined" && (window as any).__BASE_PATH__) || "/";
-    window.location.href = `/api/login?returnTo=${encodeURIComponent(base)}`;
+    if (typeof window === "undefined") return;
+
+    // Prefer Vite's BASE_URL (set at build time), then window.__BASE_PATH__, then "/"
+    const base: string =
+      (window as any).__BASE_PATH__ ||
+      "/";
+
+    const returnTo = encodeURIComponent(base);
+
+    // Always use an absolute URL so the login + OIDC callback flow goes through
+    // the exact same origin (port) as this page. Without this, window.open() with
+    // a relative URL resolves through the Replit default external port which may
+    // map to a different service (e.g. Customer Portal) instead of BizPortal.
+    const origin = window.location.origin;
+    const loginUrl = `${origin}/api/login?returnTo=${returnTo}`;
+
+    const isInIframe = window !== window.top;
+    if (isInIframe) {
+      // When inside Replit's preview iframe, open login in a new tab to avoid
+      // Replit's OIDC page being blocked by X-Frame-Options.
+      const authWindow = window.open(loginUrl, "_blank", "noopener");
+      if (authWindow) {
+        // Poll until the session cookie is visible from this iframe, then reload.
+        const poll = setInterval(() => {
+          fetch("/api/auth/user", { credentials: "include" })
+            .then((r) => r.json())
+            .then((data: { user: AuthUser | null }) => {
+              if (data.user) {
+                clearInterval(poll);
+                window.location.reload();
+              }
+            })
+            .catch(() => {});
+        }, 2000);
+        setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+      } else {
+        // Pop-up was blocked — fall back to full navigation
+        window.location.href = loginUrl;
+      }
+    } else {
+      window.location.href = loginUrl;
+    }
   }, []);
 
   const logout = useCallback(() => {
-    const base = (typeof window !== "undefined" && (window as any).__BASE_PATH__) || "/";
-    window.location.href = `/api/logout?redirect=${encodeURIComponent(base)}`;
+    if (typeof window === "undefined") return;
+    const base: string = (window as any).__BASE_PATH__ || "/";
+    window.location.href = `${window.location.origin}/api/logout?redirect=${encodeURIComponent(base)}`;
   }, []);
 
   return {

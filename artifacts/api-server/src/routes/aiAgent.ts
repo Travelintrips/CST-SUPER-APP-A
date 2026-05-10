@@ -901,7 +901,8 @@ aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
   };
 
   if (!message || typeof message !== "string" || !message.trim()) {
-    return res.status(400).json({ message: "Pesan tidak boleh kosong" });
+    res.status(400).json({ message: "Pesan tidak boleh kosong" });
+    return;
   }
 
   // Set SSE headers before any async work so the client can start reading
@@ -952,7 +953,7 @@ aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
 // Optional ?since=ISO — only returns messages created strictly after that timestamp.
 // Used by ChatWidget to poll for new admin replies efficiently.
 aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
-  const { token } = req.params;
+  const token = String(req.params.token);
   const sinceParam = req.query.since as string | undefined;
 
   const [session] = await db
@@ -995,7 +996,7 @@ aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
 aiAgentRouter.get("/session/by-order/:orderId", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
-  const orderId = parseInt(req.params.orderId, 10);
+  const orderId = parseInt(String(req.params.orderId), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const [session] = await db
@@ -1169,7 +1170,7 @@ aiAgentRouter.post(
 aiAgentRouter.post("/session/:token/admin-reply", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
 
-  const { token } = req.params;
+  const token = String(req.params.token);
   const { message } = req.body as { message?: string };
 
   if (!message || typeof message !== "string" || !message.trim()) {

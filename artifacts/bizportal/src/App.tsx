@@ -76,8 +76,27 @@ function LoadingSpinner() {
   );
 }
 
+function LoginScreen() {
+  const { login } = useAuth();
+  return (
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-slate-950 text-white">
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-2xl font-bold shadow-lg">B</div>
+        <h1 className="text-2xl font-semibold tracking-tight">BizPortal</h1>
+        <p className="text-sm text-slate-400">Sistem ERP Internal CST Logistics</p>
+      </div>
+      <button
+        onClick={() => login()}
+        className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-500 active:scale-95 transition-all"
+      >
+        Masuk dengan Replit
+      </button>
+    </div>
+  );
+}
+
 function AuthRouteGuard() {
-  const { isAuthenticated, isLoading, login } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
@@ -92,8 +111,7 @@ function AuthRouteGuard() {
   }
 
   if (!isAuthenticated) {
-    login();
-    return <LoadingSpinner />;
+    return <LoginScreen />;
   }
 
   if (dbUser) {
@@ -111,13 +129,12 @@ function AuthRouteGuard() {
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated, isLoading, login } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return <LoadingSpinner />;
 
   if (!isAuthenticated) {
-    login();
-    return <LoadingSpinner />;
+    return <LoginScreen />;
   }
 
   return <Component />;

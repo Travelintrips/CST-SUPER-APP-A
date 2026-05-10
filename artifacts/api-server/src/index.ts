@@ -7,6 +7,7 @@ import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { runPortalMigration } from "./lib/portalMigration";
+import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 
 const rawPort = process.env["PORT"];
 
@@ -33,6 +34,11 @@ app.listen(port, (err) => {
   // Jalankan portal schema migration (idempotent — aman untuk prod)
   runPortalMigration().catch((err) => {
     logger.error({ err }, "Portal migration error");
+  });
+
+  // Enable Supabase Realtime on driver tables (idempotent)
+  enableRealtimeTables().catch((err) => {
+    logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
   });
 
   // Run idempotent accounting seed (no-op if accounts already exist)

@@ -71,7 +71,8 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
     try {
       // Only search the last 30 days — avoids fetching the entire mailbox on large inboxes
       const sinceDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const uids = await client.search({ since: sinceDate }, { uid: true });
+      const uidsResult = await client.search({ since: sinceDate }, { uid: true });
+      const uids: number[] = Array.isArray(uidsResult) ? uidsResult : [];
 
       if (uids.length === 0) {
         logger.info({ synced: 0, errors: 0 }, "IMAP sync completed (no recent emails)");
@@ -80,7 +81,7 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
 
       const recentUids = uids.slice(-200);
       // Skip UIDs already cached in memory from a previous sync run
-      const uncachedUids = recentUids.filter((uid) => !processedUids.has(uid));
+      const uncachedUids = recentUids.filter((uid: number) => !processedUids.has(uid));
 
       if (uncachedUids.length === 0) {
         logger.info({ synced: 0, errors: 0, cached: recentUids.length }, "IMAP sync completed (all UIDs cached)");
@@ -117,7 +118,7 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
       }
 
       // ── Phase 3: fetchOne only for truly new emails ──
-      const newUids = uncachedUids.filter((uid) => {
+      const newUids = uncachedUids.filter((uid: number) => {
         const msgId = uidToMsgId.get(uid);
         return msgId !== undefined && !existingSet.has(msgId);
       });
@@ -128,12 +129,12 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
         const messageId = uidToMsgId.get(uid)!;
         try {
           const msgData = await client.fetchOne(String(uid), { uid: true, source: true }, { uid: true });
-          if (!msgData?.source) {
+          if (!msgData || !("source" in msgData) || !msgData.source) {
             processedUids.add(uid);
             continue;
           }
 
-          const parsed = await simpleParser(msgData.source);
+          const parsed = await simpleParser(msgData.source as Buffer);
 
           const fromAddr = Array.isArray(parsed.from?.value)
             ? parsed.from!.value[0]
@@ -153,7 +154,7 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
           const toEmail = toList.map((a: any) => a.address).filter(Boolean).join(", ") || null;
           const ccEmail = ccList.map((a: any) => a.address).filter(Boolean).join(", ") || null;
 
-          const body = parsed.text ?? parsed.html?.replace(/<[^>]*>/g, "") ?? null;
+          const body = parsed.text ?? (typeof parsed.html === "string" ? parsed.html.replace(/<[^>]*>/g, "") : null) ?? null;
           const inReplyTo = (parsed as any).inReplyTo ?? null;
 
           const [saved] = await db

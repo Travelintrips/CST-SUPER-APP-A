@@ -111,6 +111,9 @@ importers:
       '@google-cloud/storage':
         specifier: ^7.19.0
         version: 7.19.0
+      '@replit/object-storage':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@supabase/supabase-js':
         specifier: ^2.105.4
         version: 2.105.4
@@ -445,6 +448,10 @@ importers:
         version: 3.25.76
 
   artifacts/cst-driver:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
     devDependencies:
       '@babel/core':
         specifier: ^7.25.2
@@ -3251,6 +3258,10 @@ packages:
 
   '@replit/connectors-sdk@0.4.0':
     resolution: {integrity: sha512-wRuktfdoBsM19NJUi24xzCkQ+idglmU4Cq2ZWvTAnNUVGdcMmn3rLN1F1/MNZCc2HdG+awcGa81XMLpZXZujUg==}
+
+  '@replit/object-storage@1.0.0':
+    resolution: {integrity: sha512-LmQjHioAI32TPiVSljtEkJRHk8XKsrwi4D0WvaKQ4RGA6TSStAjeI5Hm8ZQW0DiQI9PqXsiBXTb930SPqm7K8g==}
+    engines: {node: '>=18.0.0'}
 
   '@replit/vite-plugin-cartographer@0.5.1':
     resolution: {integrity: sha512-KiaQMx4ssTM8hSjMFscyIV1PN1bRVCWCFqN3fXOfXa39uFFCKUaeL3VvH/sxuy7S7ET+MCFOt+J7lLtL56bRrA==}
@@ -10526,6 +10537,13 @@ snapshots:
       nanoid: 3.3.11
 
   '@replit/connectors-sdk@0.4.0': {}
+
+  '@replit/object-storage@1.0.0':
+    dependencies:
+      '@google-cloud/storage': 7.19.0
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
 
   '@replit/vite-plugin-cartographer@0.5.1':
     dependencies:

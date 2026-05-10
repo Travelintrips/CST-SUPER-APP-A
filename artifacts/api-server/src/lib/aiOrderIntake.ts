@@ -513,8 +513,9 @@ async function createDraftQuotation(
   if (extracted.notes) notesParts.push(extracted.notes);
 
   let doc: typeof salesDocumentsTable.$inferSelect | undefined;
+  let docNumber = "";
   for (let attempt = 0; attempt < 5; attempt++) {
-    const docNumber = await nextDocNumber(attempt);
+    docNumber = await nextDocNumber(attempt);
     try {
       const [inserted] = await db
         .insert(salesDocumentsTable)

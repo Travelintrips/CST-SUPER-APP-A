@@ -18,38 +18,22 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start application"
+args = "Customer Portal"
 
 [[workflows.workflow]]
-name = "API Server"
+name = "Customer Portal"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=8080 pnpm --filter @workspace/api-server run dev"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
-name = "Start application"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=5000 BASE_PATH=/ pnpm --filter @workspace/customer-portal run dev"
-waitForPort = 5000
+args = "PORT=23434 BASE_PATH=/ pnpm --filter @workspace/customer-portal run dev"
+waitForPort = 23434
 
 [workflows.workflow.metadata]
 outputType = "webview"
 
 [agent]
-stack = "BEST_EFFORT_FALLBACK"
+stack = "PNPM_WORKSPACE"
 expertMode = true
 integrations = ["google-drive:1.0.0"]
 
@@ -78,12 +62,12 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
-localPort = 5000
-externalPort = 80
-
-[[ports]]
 localPort = 8080
 externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 80
 
 [[ports]]
 localPort = 8082
