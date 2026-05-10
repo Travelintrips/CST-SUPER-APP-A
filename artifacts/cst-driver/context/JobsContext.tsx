@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 import { api, API_BASE_URL } from '@/services/api';
-import { supabase } from '@/services/supabase';
+
 import { useAuth } from './AuthContext';
 import { Job, ShipmentStatus } from '@/types';
 import { notifyNewJob } from '@/services/notifications';
@@ -91,43 +91,6 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(pollInterval);
   }, [isAuthenticated, token, refreshJobs]);
 
-  // Supabase Realtime — subscribe to driver_jobs changes for this driver
-  useEffect(() => {
-    if (!isAuthenticated || !driver) return;
-    const driverIdNum = parseInt(driver.id, 10);
-    if (isNaN(driverIdNum)) return;
-
-    const channel = supabase
-      .channel(`driver-jobs-${driverIdNum}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'driver_jobs' },
-        (payload) => {
-          const record = (payload.new ?? payload.old) as Record<string, unknown>;
-          // Only react to changes for this driver
-          if (Number(record?.driver_id) === driverIdNum) {
-            refreshJobs();
-            // Notify for new ASSIGNED jobs
-            if (
-              payload.eventType === 'INSERT' &&
-              record.status === 'ASSIGNED' &&
-              record.job_number
-            ) {
-              notifyNewJob(
-                String(record.job_number),
-                String(record.customer_name ?? ''),
-                String(record.pickup_address ?? ''),
-              );
-            }
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [isAuthenticated, driver, refreshJobs]);
 
   useEffect(() => {
     if (!isAuthenticated || !token) {
