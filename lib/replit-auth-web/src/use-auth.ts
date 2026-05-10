@@ -43,7 +43,30 @@ export function useAuth(): AuthState {
 
   const login = useCallback(() => {
     const base = (typeof window !== "undefined" && (window as any).__BASE_PATH__) || "/";
-    window.location.href = `/api/login?returnTo=${encodeURIComponent(base)}`;
+    const loginUrl = `/api/login?returnTo=${encodeURIComponent(base)}`;
+
+    const isInIframe = typeof window !== "undefined" && window !== window.top;
+    if (isInIframe) {
+      const authWindow = window.open(loginUrl, "_blank", "noopener");
+      if (authWindow) {
+        const poll = setInterval(() => {
+          fetch("/api/auth/user", { credentials: "include" })
+            .then((r) => r.json())
+            .then((data: { user: AuthUser | null }) => {
+              if (data.user) {
+                clearInterval(poll);
+                window.location.reload();
+              }
+            })
+            .catch(() => {});
+        }, 2000);
+        setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+      } else {
+        window.location.href = loginUrl;
+      }
+    } else {
+      window.location.href = loginUrl;
+    }
   }, []);
 
   const logout = useCallback(() => {
