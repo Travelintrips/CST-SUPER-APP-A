@@ -77,6 +77,11 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      "/logistic-order": {
+        target: "http://localhost:19368",
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   preview: {
