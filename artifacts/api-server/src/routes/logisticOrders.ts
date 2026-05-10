@@ -339,7 +339,7 @@ logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
 
 // PUT /api/logistic/orders/vendors/:id
 logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { name, logo, eta, fee, note, phone, email, serviceType, isActive, sortOrder } = req.body as Record<string, unknown>;
   const patch: Record<string, unknown> = {};
@@ -361,7 +361,7 @@ logisticOrdersRouter.put("/vendors/:id", async (req: Request, res: Response) => 
 
 // DELETE /api/logistic/orders/vendors/:id
 logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const [deleted] = await db.delete(suppliersTable).where(eq(suppliersTable.id, id)).returning();
   if (!deleted) return res.status(404).json({ message: "Vendor tidak ditemukan" });
@@ -371,7 +371,7 @@ logisticOrdersRouter.delete("/vendors/:id", async (req: Request, res: Response) 
 // GET /api/logistic/orders/:id — get order detail (admin)
 logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
   const parsed = GetLogisticOrderParams.safeParse({
-    id: parseInt(req.params.id, 10),
+    id: parseInt(String(req.params.id), 10),
   });
   if (!parsed.success || isNaN(parsed.data.id))
     return res.status(400).json({ message: "ID tidak valid" });
@@ -401,7 +401,7 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
 // PUT /api/logistic/orders/:id/status — update status (admin)
 logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
   const paramsParsed = UpdateLogisticOrderStatusParams.safeParse({
-    id: parseInt(req.params.id, 10),
+    id: parseInt(String(req.params.id), 10),
   });
   const bodyParsed = UpdateLogisticOrderStatusBody.safeParse(req.body);
 

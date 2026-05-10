@@ -445,6 +445,10 @@ importers:
         version: 3.25.76
 
   artifacts/cst-driver:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
     devDependencies:
       '@babel/core':
         specifier: ^7.25.2

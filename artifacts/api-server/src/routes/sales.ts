@@ -180,7 +180,7 @@ router.get("/documents", async (req, res) => {
   const conds: SQL[] = [];
   if (kind === "quote" || kind === "order") conds.push(eq(salesDocumentsTable.kind, kind));
   if (["draft", "sent", "confirmed", "done", "cancelled"].includes(statusFilter ?? ""))
-    conds.push(eq(salesDocumentsTable.status, statusFilter as string));
+    conds.push(eq(salesDocumentsTable.status, statusFilter as "draft" | "sent" | "confirmed" | "done" | "cancelled"));
   if (invoiceStatus === "none" || invoiceStatus === "to_invoice" || invoiceStatus === "invoiced")
     conds.push(eq(salesDocumentsTable.invoiceStatus, invoiceStatus));
   if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
@@ -246,8 +246,9 @@ router.post("/documents", async (req, res) => {
   const { taxAmount, grandTotal } = await computeTax(total, taxRateId);
 
   let doc: typeof salesDocumentsTable.$inferSelect | undefined;
+  let docNumber = "";
   for (let attempt = 0; attempt < 5; attempt++) {
-    const docNumber = await nextDocNumber(docKind, attempt);
+    docNumber = await nextDocNumber(docKind, attempt);
     try {
       const [inserted] = await db
         .insert(salesDocumentsTable)

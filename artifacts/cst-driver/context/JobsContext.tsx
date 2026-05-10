@@ -2,10 +2,10 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 import { api, API_BASE_URL } from '@/services/api';
+import { supabase } from '@/services/supabase';
 import { useAuth } from './AuthContext';
 import { Job, ShipmentStatus } from '@/types';
 import { notifyNewJob } from '@/services/notifications';
-import { connectDriverSSE } from '@/services/sseClient';
 
 interface JobsContextType {
   jobs: Job[];
@@ -43,9 +43,10 @@ function toAbsoluteUrl(url: string): string {
 }
 
 const LOCATION_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 60_000; // reduced from 30s — realtime covers instant updates
 
 export function JobsProvider({ children }: { children: React.ReactNode }) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, driver, isAuthenticated } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,34 +83,51 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [token]);
 
-  // Polling fallback — runs every 30s as backstop
+  // Polling fallback — runs every 60s as backstop
   useEffect(() => {
     if (!isAuthenticated || !token) return;
     refreshJobs();
-    const pollInterval = setInterval(refreshJobs, 30_000);
+    const pollInterval = setInterval(refreshJobs, POLL_INTERVAL_MS);
     return () => clearInterval(pollInterval);
   }, [isAuthenticated, token, refreshJobs]);
 
-  // SSE real-time subscription — triggers immediate refresh on new_job event
+  // Supabase Realtime — subscribe to driver_jobs changes for this driver
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
-    const client = connectDriverSSE(token, {
-      new_job: (data) => {
-        const d = data as Record<string, unknown>;
-        // Immediately refresh to get full job details
-        refreshJobs();
-        // Also show local notification proactively from SSE data
-        if (d.jobNumber && d.pickupAddress) {
-          notifyNewJob(
-            String(d.jobNumber),
-            String(d.customerName ?? ''),
-            String(d.pickupAddress),
-          );
-        }
-      },
-    });
-    return () => client.close();
-  }, [isAuthenticated, token, refreshJobs]);
+    if (!isAuthenticated || !driver) return;
+    const driverIdNum = parseInt(driver.id, 10);
+    if (isNaN(driverIdNum)) return;
+
+    const channel = supabase
+      .channel(`driver-jobs-${driverIdNum}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'driver_jobs' },
+        (payload) => {
+          const record = (payload.new ?? payload.old) as Record<string, unknown>;
+          // Only react to changes for this driver
+          if (Number(record?.driver_id) === driverIdNum) {
+            refreshJobs();
+            // Notify for new ASSIGNED jobs
+            if (
+              payload.eventType === 'INSERT' &&
+              record.status === 'ASSIGNED' &&
+              record.job_number
+            ) {
+              notifyNewJob(
+                String(record.job_number),
+                String(record.customer_name ?? ''),
+                String(record.pickup_address ?? ''),
+              );
+            }
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAuthenticated, driver, refreshJobs]);
 
   useEffect(() => {
     if (!isAuthenticated || !token) {

@@ -225,7 +225,7 @@ export async function seedDemoData(): Promise<void> {
           email: "ops@ekspedisinusantara.co.id",
           phone: "+62-21-5555-1234",
           address: "Jl. Pelabuhan Raya No. 88, Tanjung Priok, Jakarta Utara",
-          npwp: "01.234.567.8-901.000",
+          taxId: "01.234.567.8-901.000",
         })
         .returning();
       customerId = newCustomer!.id;
