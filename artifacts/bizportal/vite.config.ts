@@ -23,6 +23,19 @@ const basePath = process.env.BASE_PATH ?? "/bizportal/";
 export default defineConfig({
   base: basePath,
   plugins: [
+    {
+      name: "redirect-root-to-base",
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url === "/" && basePath !== "/") {
+            _res.writeHead(302, { Location: basePath });
+            _res.end();
+            return;
+          }
+          next();
+        });
+      },
+    },
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
