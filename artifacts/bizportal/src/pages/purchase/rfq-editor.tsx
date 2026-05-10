@@ -411,7 +411,7 @@ export default function PurchaseDocumentEditorPage() {
   const confirmUpdateVendorAddress = async () => {
     if (supplierId === null) return;
     try {
-      await updateSupplierMut.mutateAsync({ id: supplierId, data: { address: pendingNewAddress } });
+      await updateSupplierMut.mutateAsync({ id: supplierId, data: { name: supplierName, address: pendingNewAddress } });
       setSupplierCatalogAddress(pendingNewAddress);
       setSupplierAddressAutoFilled(true);
       qc.invalidateQueries({ queryKey: getListSuppliersQueryKey() });

@@ -166,6 +166,7 @@ function VoidDialog({ payment, onVoided }: { payment: AccountingPayment; onVoide
 export default function PaymentsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [filter, setFilter] = useState<{
     paymentType?: "inbound" | "outbound";
     from?: string;

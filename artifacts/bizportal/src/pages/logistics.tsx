@@ -22,6 +22,7 @@ import {
   useUpdateShipmentStatus,
   getListShipmentsQueryKey,
   useListFreightShipments,
+  getListFreightShipmentsQueryKey,
 } from "@workspace/api-client-react";
 
 const FREIGHT_REFRESH_INTERVALS = [
@@ -74,7 +75,7 @@ export default function LogisticsPage() {
     isLoading: freightLoading,
     isFetching: freightFetching,
     refetch: refetchFreight,
-  } = useListFreightShipments({ query: { refetchInterval: refetchIntervalMs(freightRefreshInterval) } });
+  } = useListFreightShipments(undefined, { query: { queryKey: getListFreightShipmentsQueryKey(), refetchInterval: refetchIntervalMs(freightRefreshInterval) } });
 
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const wasFetchingRef = useRef(false);
@@ -531,7 +532,7 @@ export default function LogisticsPage() {
                     aria-label="Sampai tanggal"
                   />
                   {isCustomRangeInvalid && (
-                    <span className="text-xs text-destructive">{t.logistics.invalidDateRange}</span>
+                    <span className="text-xs text-destructive">{"Rentang tanggal tidak valid"}</span>
                   )}
                 </>
               )}
