@@ -11,7 +11,7 @@ import {
   type Product,
   type AccountingTax,
 } from "@workspace/api-client-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, Video, Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const DEFAULT_SUBCATEGORIES = [
@@ -89,6 +89,30 @@ function parseMediaItems(raw: unknown): MediaItem[] {
   } catch { return []; }
 }
 
+function resolveMediaUrl(url: string): string {
+  if (!url) return url;
+  if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  return url;
+}
+
+async function uploadMediaFiles(files: File[], type: "image" | "video"): Promise<MediaItem[]> {
+  const results: MediaItem[] = [];
+  for (const file of files) {
+    const res = await fetch("/api/storage/uploads/request-url", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    });
+    if (!res.ok) throw new Error(`Gagal mendapatkan URL upload untuk ${file.name}`);
+    const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
+    const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+    if (!putRes.ok) throw new Error(`Gagal mengunggah ${file.name}`);
+    results.push({ type, url: `/api/storage${objectPath}` });
+  }
+  return results;
+}
+
 function formFromProduct(p: Product): ItemForm {
   const pp = p as unknown as { unitOptions?: string[]; stock?: number; imageUrl?: string; mediaItems?: unknown };
   return {
@@ -136,6 +160,30 @@ export default function SalesItemsPage() {
   const [form, setForm] = useState<ItemForm>(emptyForm());
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const imgRef = useRef<HTMLInputElement>(null);
+  const vidRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadMedia = async (files: File[], type: "image" | "video") => {
+    setUploading(true);
+    try {
+      const newItems = await uploadMediaFiles(files, type);
+      setForm((f) => {
+        const updated = [...f.mediaItems, ...newItems];
+        const firstImage = updated.find((m) => m.type === "image");
+        return {
+          ...f,
+          mediaItems: updated,
+          imageUrl: firstImage ? firstImage.url : f.imageUrl,
+        };
+      });
+      toast({ title: `${newItems.length} ${type === "image" ? "foto" : "video"} berhasil diunggah` });
+    } catch (e) {
+      toast({ title: "Gagal mengunggah", description: String(e), variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Kumpulkan semua sub-kategori unik dari produk yang ada (+ default)
   const allSubcategories = useMemo(() => {
@@ -662,89 +710,162 @@ export default function SalesItemsPage() {
             <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-800/40 p-3">
               <Label className="text-slate-300 flex items-center gap-1.5">
                 <ImageIcon className="h-3.5 w-3.5 text-slate-400" />
-                Gambar &amp; Media (untuk Website Publik)
+                Foto &amp; Video Produk
+                <span className="text-xs font-normal text-slate-500 ml-1">(tampil di Website Publik)</span>
               </Label>
 
-              {/* Gambar utama */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-slate-400">URL Gambar Utama</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={form.imageUrl}
-                    onChange={(e) => setF("imageUrl", e.target.value)}
-                    placeholder="https://example.com/gambar.jpg"
-                    className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
-                  />
-                  {form.imageUrl && (
-                    <img
-                      src={form.imageUrl}
-                      alt="preview"
-                      className="h-9 w-9 rounded object-cover border border-slate-600 shrink-0"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  )}
-                </div>
-              </div>
+              {/* Hidden file inputs */}
+              <input ref={imgRef} type="file" accept="image/*" multiple className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length) void handleUploadMedia(files, "image");
+                  e.target.value = "";
+                }}
+              />
+              <input ref={vidRef} type="file" accept="video/*" className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length) void handleUploadMedia(files, "video");
+                  e.target.value = "";
+                }}
+              />
 
-              {/* Media tambahan */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-slate-400">
-                  Media Tambahan
-                  <span className="ml-1 font-normal text-slate-500">(gambar atau video ekstra untuk galeri)</span>
-                </Label>
-                <div className="space-y-2">
-                  {form.mediaItems.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <GripVertical className="h-4 w-4 text-slate-600 shrink-0" />
-                      <select
-                        value={item.type}
-                        onChange={(e) => {
-                          const updated = [...form.mediaItems];
-                          updated[idx] = { ...updated[idx], type: e.target.value as "image" | "video" };
-                          setF("mediaItems", updated);
-                        }}
-                        className="bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded px-2 py-1.5 shrink-0"
-                      >
-                        <option value="image">Gambar</option>
-                        <option value="video">Video</option>
-                      </select>
-                      <Input
-                        value={item.url}
-                        onChange={(e) => {
-                          const updated = [...form.mediaItems];
-                          updated[idx] = { ...updated[idx], url: e.target.value };
-                          setF("mediaItems", updated);
-                        }}
-                        placeholder="https://example.com/foto.jpg"
-                        className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
-                      />
-                      {item.url && item.type === "image" && (
+              {/* Media grid */}
+              {form.mediaItems.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {form.mediaItems.map((m, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-slate-600 bg-slate-900 group">
+                      {m.type === "video" ? (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                          <Video className="h-7 w-7 text-slate-400" />
+                        </div>
+                      ) : (
                         <img
-                          src={item.url}
-                          alt="preview"
-                          className="h-8 w-8 rounded object-cover border border-slate-600 shrink-0"
+                          src={resolveMediaUrl(m.url)}
+                          alt=""
+                          className="w-full h-full object-cover"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                         />
                       )}
                       <button
                         type="button"
-                        onClick={() => setF("mediaItems", form.mediaItems.filter((_, i) => i !== idx))}
-                        className="text-slate-500 hover:text-red-400 transition-colors shrink-0"
+                        onClick={() => {
+                          const updated = form.mediaItems.filter((_, i) => i !== idx);
+                          const firstImage = updated.find((x) => x.type === "image");
+                          setForm((f) => ({
+                            ...f,
+                            mediaItems: updated,
+                            imageUrl: firstImage ? firstImage.url : (updated.length === 0 ? "" : f.imageUrl),
+                          }));
+                        }}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        <X className="h-4 w-4" />
+                        <X className="h-3 w-3" />
                       </button>
+                      {idx === 0 && (
+                        <span className="absolute bottom-1 left-1 bg-blue-600 text-white text-[9px] px-1 rounded">Cover</span>
+                      )}
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => setF("mediaItems", [...form.mediaItems, { type: "image", url: "" }])}
-                    className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Tambah media
-                  </button>
                 </div>
+              ) : (
+                <div className="rounded-lg border-2 border-dashed border-slate-600 h-24 flex flex-col items-center justify-center text-slate-500 gap-1.5">
+                  <ImageIcon className="h-6 w-6" />
+                  <span className="text-xs">Belum ada media</span>
+                </div>
+              )}
+
+              {/* Upload buttons */}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm"
+                  className="gap-1.5 flex-1 border-slate-600 text-slate-300 hover:bg-slate-700"
+                  disabled={uploading}
+                  onClick={() => imgRef.current?.click()}
+                >
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                  Tambah Foto
+                </Button>
+                <Button type="button" variant="outline" size="sm"
+                  className="gap-1.5 flex-1 border-slate-600 text-slate-300 hover:bg-slate-700"
+                  disabled={uploading}
+                  onClick={() => vidRef.current?.click()}
+                >
+                  <Video className="h-3.5 w-3.5" />
+                  Tambah Video
+                </Button>
               </div>
+              <p className="text-xs text-slate-500">Foto pertama jadi cover. Bisa upload lebih dari satu foto.</p>
+
+              {/* URL alternatif */}
+              <details className="group">
+                <summary className="text-xs cursor-pointer hover:text-slate-300 transition-colors list-none">
+                  <span className="text-blue-400 underline-offset-2 hover:underline">atau masukkan URL gambar secara manual</span>
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      value={form.imageUrl}
+                      onChange={(e) => setF("imageUrl", e.target.value)}
+                      placeholder="https://example.com/gambar.jpg"
+                      className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
+                    />
+                    {form.imageUrl && (
+                      <img
+                        src={resolveMediaUrl(form.imageUrl)}
+                        alt="preview"
+                        className="h-9 w-9 rounded object-cover border border-slate-600 shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    {form.mediaItems.filter((m) => !m.url.startsWith("/api/storage")).map((item, rawIdx) => {
+                      const realIdx = form.mediaItems.indexOf(item);
+                      return (
+                        <div key={rawIdx} className="flex items-center gap-2">
+                          <select
+                            value={item.type}
+                            onChange={(e) => {
+                              const updated = [...form.mediaItems];
+                              updated[realIdx] = { ...updated[realIdx], type: e.target.value as "image" | "video" };
+                              setF("mediaItems", updated);
+                            }}
+                            className="bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded px-2 py-1.5 shrink-0"
+                          >
+                            <option value="image">Gambar</option>
+                            <option value="video">Video</option>
+                          </select>
+                          <Input
+                            value={item.url}
+                            onChange={(e) => {
+                              const updated = [...form.mediaItems];
+                              updated[realIdx] = { ...updated[realIdx], url: e.target.value };
+                              setF("mediaItems", updated);
+                            }}
+                            placeholder="https://..."
+                            className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setF("mediaItems", form.mediaItems.filter((_, i) => i !== realIdx))}
+                            className="text-slate-500 hover:text-red-400 transition-colors shrink-0"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setF("mediaItems", [...form.mediaItems, { type: "image", url: "" }])}
+                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Tambah URL media
+                    </button>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
           <DialogFooter>
