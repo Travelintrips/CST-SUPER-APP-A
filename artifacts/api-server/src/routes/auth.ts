@@ -1,5 +1,7 @@
 import * as oidc from "openid-client";
+import { OAuth2Client } from "google-auth-library";
 import { Router, type IRouter, type Request, type Response } from "express";
+import crypto from "crypto";
 import {
   GetCurrentAuthUserResponse,
   ExchangeMobileAuthorizationCodeBody,
@@ -20,6 +22,13 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
+
+function getGoogleOAuthClient(redirectUri: string) {
+  return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirectUri);
+}
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
@@ -215,6 +224,97 @@ router.get("/callback", async (req: Request, res: Response) => {
   setSessionCookie(res, sid);
   res.redirect(returnTo);
 });
+
+// ─── Google OAuth ─────────────────────────────────────────────────────────────
+
+router.get("/login/google", (req: Request, res: Response) => {
+  const origin = getOrigin(req);
+  const redirectUri = `${origin}/api/callback/google`;
+  const returnTo = getSafeReturnTo(req.query.returnTo);
+  const state = crypto.randomBytes(16).toString("hex");
+
+  const client = getGoogleOAuthClient(redirectUri);
+  const authUrl = client.generateAuthUrl({
+    access_type: "offline",
+    scope: ["openid", "email", "profile"],
+    state: `${state}:${Buffer.from(returnTo).toString("base64")}`,
+    prompt: "select_account",
+  });
+
+  setOidcCookie(res, "google_state", state);
+  res.redirect(authUrl);
+});
+
+router.get("/callback/google", async (req: Request, res: Response) => {
+  const { code, state, error } = req.query as Record<string, string>;
+
+  if (error || !code || !state) {
+    res.redirect("/api/login");
+    return;
+  }
+
+  const [stateToken, returnToB64] = state.split(":");
+  const savedState = req.cookies?.google_state;
+  res.clearCookie("google_state", { path: "/" });
+
+  if (!savedState || savedState !== stateToken) {
+    res.redirect("/api/login");
+    return;
+  }
+
+  const returnTo = getSafeReturnTo(
+    returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/"
+  );
+
+  const origin = getOrigin(req);
+  const redirectUri = `${origin}/api/callback/google`;
+  const client = getGoogleOAuthClient(redirectUri);
+
+  try {
+    const { tokens } = await client.getToken(code);
+    if (!tokens.id_token) throw new Error("No id_token");
+
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.sub) throw new Error("Invalid token payload");
+
+    const claims: Record<string, unknown> = {
+      sub: `google_${payload.sub}`,
+      email: payload.email,
+      first_name: payload.given_name || null,
+      last_name: payload.family_name || null,
+      picture: payload.picture || null,
+    };
+
+    const dbUser = await upsertUser(claims);
+
+    const now = Math.floor(Date.now() / 1000);
+    const sessionData: SessionData = {
+      user: {
+        id: dbUser.id,
+        email: dbUser.email,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+        profileImageUrl: dbUser.profileImageUrl,
+      },
+      access_token: tokens.access_token || "",
+      refresh_token: tokens.refresh_token || undefined,
+      expires_at: tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : now + 3600,
+    };
+
+    const sid = await createSession(sessionData);
+    setSessionCookie(res, sid);
+    res.redirect(returnTo);
+  } catch (err) {
+    req.log.error({ err }, "Google OAuth callback error");
+    res.redirect("/api/login");
+  }
+});
+
+// ─── Logout ───────────────────────────────────────────────────────────────────
 
 router.get("/logout", async (req: Request, res: Response) => {
   const config = await getOidcConfig();
