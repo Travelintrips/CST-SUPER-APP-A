@@ -448,40 +448,48 @@ export default function Jasa() {
 
           {/* Trucking & Container Service */}
           <div
-            className="rounded-2xl overflow-hidden flex flex-col sm:flex-row sm:items-stretch gap-0"
+            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5"
             style={{
+              background: [
+                "radial-gradient(ellipse at 8% 55%, rgba(71,85,105,0.10) 0%, transparent 52%)",
+                `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='1.8' height='1.8' rx='0.4' fill='%2394A3B8' fill-opacity='0.10'/%3E%3C/svg%3E")`,
+                "linear-gradient(130deg, #F8FAFC 0%, #F1F5F9 38%, #E9EFF6 76%, #F4F7FA 100%)",
+              ].join(", "),
               border: "1.5px solid rgba(100,116,139,0.20)",
-              boxShadow: "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05)",
-              transition: "box-shadow 0.2s",
+              boxShadow: "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05), inset 0 1px 0 rgba(255,255,255,0.95)",
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(71,85,105,0.16), 0 2px 8px rgba(71,85,105,0.07)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05)"; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(71,85,105,0.15), 0 2px 8px rgba(71,85,105,0.07), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
           >
-            {/* Banner image — left side on desktop, top on mobile */}
-            <div className="relative sm:w-48 sm:shrink-0 h-36 sm:h-auto overflow-hidden">
-              <img
-                src={`${import.meta.env.BASE_URL}images/banner-trucking-container.png`}
-                alt="Trucking & Container"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const el = e.currentTarget as HTMLImageElement;
-                  el.style.display = "none";
-                  const p = el.parentElement as HTMLElement | null;
-                  if (p) p.style.background = "linear-gradient(135deg,#0d1b2a,#1a2744)";
-                }}
-              />
-              <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(0,0,0,0.10) 0%, transparent 60%)" }} />
-            </div>
-
-            {/* Content */}
-            <div
-              className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 min-w-0 p-5 sm:p-6"
-              style={{ background: "linear-gradient(130deg,#F8FAFC 0%,#F1F5F9 38%,#E9EFF6 76%,#F4F7FA 100%)" }}
-            >
-              <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-4 flex-1 min-w-0">
+              <div className="flex gap-2 shrink-0">
+                <div
+                  className="w-11 h-11 rounded-xl overflow-hidden"
+                  style={{ boxShadow: "0 0 0 3px rgba(71,85,105,0.15), 0 2px 8px rgba(71,85,105,0.18)" }}
+                >
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/banner-trucking-container.png`}
+                    alt="Trucking"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      const p = el.parentElement as HTMLElement | null;
+                      if (p) { p.style.background = "linear-gradient(135deg,#F1F5F9,#CBD5E1)"; p.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 m-auto text-slate-600" style="margin:auto;display:block;margin-top:10px" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10l1 1h1m8-1V5h3l3 5v5h-1m0 0l-1 1H9m4 0H9m0 0l-1-1"/></svg>'; }
+                    }}
+                  />
+                </div>
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center"
+                  style={{ background: "linear-gradient(135deg,#EDE9FE,#DDD6FE)", boxShadow: "0 0 0 3px rgba(109,40,217,0.13), 0 2px 8px rgba(109,40,217,0.16)" }}
+                >
+                  <Container className="h-5 w-5 text-violet-600" />
+                </div>
+              </div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-bold text-slate-800 text-[15px] leading-tight">Trucking &amp; Container Service</p>
-                  <span className="text-[10px] text-slate-400 font-medium px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">Transportasi Darat &amp; Container</span>
+                  <p className="font-bold text-slate-800 text-[15px] leading-tight">Trucking & Container Service</p>
+                  <span className="text-[10px] text-slate-400 font-medium px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">Transportasi Darat & Container</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {([
@@ -500,22 +508,22 @@ export default function Jasa() {
                   ))}
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                <Button
-                  variant="outline"
-                  onClick={() => setActiveCategory("Trucking")}
-                  className="gap-2 text-slate-700 border-slate-300 hover:bg-slate-100 px-4 text-[12px] h-9"
-                >
-                  <Truck className="h-3.5 w-3.5" />
-                  Lihat Detail Layanan
-                </Button>
-                <Button
-                  onClick={() => setLocation("/jasa/trucking")}
-                  className="gap-2 shrink-0 bg-slate-700 hover:bg-slate-800 text-white shadow-md shadow-slate-200 px-5 text-[12px] h-9"
-                >
-                  {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <Button
+                variant="outline"
+                onClick={() => setActiveCategory("Trucking")}
+                className="gap-2 text-slate-700 border-slate-300 hover:bg-slate-100 px-4 text-[12px] h-9"
+              >
+                <Truck className="h-3.5 w-3.5" />
+                Lihat Detail Layanan
+              </Button>
+              <Button
+                onClick={() => setLocation("/jasa/trucking")}
+                className="gap-2 shrink-0 bg-slate-700 hover:bg-slate-800 text-white shadow-md shadow-slate-200 px-5 text-[12px] h-9"
+              >
+                {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
