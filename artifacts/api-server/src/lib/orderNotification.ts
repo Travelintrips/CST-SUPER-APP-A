@@ -118,7 +118,7 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     `📌 *Kirim penawaran harga:*\n` +
     `\`${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\`\n\n` +
     `_Contoh:_\n` +
-    `\`${order.orderNumber} 5500000 ${tgl || "DD-Bln"} ${tgl || "DD-Bln"}\`\n\n` +
+    `\`${order.orderNumber} 5500000 20-Mei 25-Mei\`\n\n` +
     `📌 *Terima pesanan (tanpa harga dulu):*\n` +
     `\`TERIMA ${order.orderNumber}\`\n\n` +
     `📌 *Tolak pesanan:*\n` +

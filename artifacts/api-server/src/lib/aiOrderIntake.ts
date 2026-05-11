@@ -1033,6 +1033,23 @@ export async function processWaMediaForAiIntake(
 ): Promise<AiMediaIntakeResult | null> {
   if (!(await isAiIntakeEnabled())) return null;
 
+  // Idempotency: skip if a draft from same phone was created in the last 10 minutes
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const [recentMedia] = await db
+    .select({ id: salesDocumentsTable.id })
+    .from(salesDocumentsTable)
+    .where(
+      and(
+        eq(salesDocumentsTable.aiSourceWaPhone, phone),
+        gt(salesDocumentsTable.createdAt, tenMinutesAgo),
+      ),
+    )
+    .limit(1);
+  if (recentMedia) {
+    logger.info({ phone, existingDocId: recentMedia.id }, "AI media intake: duplicate WA media skipped (recent draft exists)");
+    return null;
+  }
+
   const downloaded = await downloadFileBuffer(fileUrl);
   if (!downloaded) {
     await db.insert(waAiIntakeLogTable).values({
