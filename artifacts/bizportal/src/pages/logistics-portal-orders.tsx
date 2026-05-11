@@ -340,7 +340,7 @@ export default function LogisticsPortalOrdersPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {/* Show current value if not in standard list */}
-                          {!SHIPMENT_TYPE_OPTIONS.includes(o.shipmentType) && (
+                          {!!o.shipmentType && !SHIPMENT_TYPE_OPTIONS.includes(o.shipmentType) && (
                             <SelectItem value={o.shipmentType} className="text-xs">
                               {o.shipmentType}
                             </SelectItem>
@@ -459,7 +459,7 @@ export default function LogisticsPortalOrdersPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {!SHIPMENT_TYPE_OPTIONS.includes(detailDialog.shipmentType) && (
+                      {!!detailDialog.shipmentType && !SHIPMENT_TYPE_OPTIONS.includes(detailDialog.shipmentType) && (
                         <SelectItem value={detailDialog.shipmentType} className="text-xs">
                           {detailDialog.shipmentType}
                         </SelectItem>
