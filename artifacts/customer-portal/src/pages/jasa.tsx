@@ -458,7 +458,7 @@ export default function Jasa() {
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05)"; }}
           >
             {/* Banner image — left side on desktop, top on mobile */}
-            <div className="relative sm:w-44 sm:shrink-0 h-36 sm:h-auto overflow-hidden">
+            <div className="relative sm:w-48 sm:shrink-0 h-36 sm:h-auto overflow-hidden">
               <img
                 src={`${import.meta.env.BASE_URL}images/banner-trucking-container.png`}
                 alt="Trucking & Container"
@@ -474,13 +474,14 @@ export default function Jasa() {
             </div>
 
             {/* Content */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 min-w-0 p-5 sm:p-6" style={{ background: "linear-gradient(130deg,#F8FAFC 0%,#F1F5F9 38%,#E9EFF6 76%,#F4F7FA 100%)" }}>
-            <div className="flex items-start gap-4 flex-1 min-w-0">
-              <div className="min-w-0 flex-1">
-              <div className="min-w-0">
+            <div
+              className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 min-w-0 p-5 sm:p-6"
+              style={{ background: "linear-gradient(130deg,#F8FAFC 0%,#F1F5F9 38%,#E9EFF6 76%,#F4F7FA 100%)" }}
+            >
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-bold text-slate-800 text-[15px] leading-tight">Trucking & Container Service</p>
-                  <span className="text-[10px] text-slate-400 font-medium px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">Transportasi Darat & Container</span>
+                  <p className="font-bold text-slate-800 text-[15px] leading-tight">Trucking &amp; Container Service</p>
+                  <span className="text-[10px] text-slate-400 font-medium px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">Transportasi Darat &amp; Container</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {([
@@ -499,22 +500,22 @@ export default function Jasa() {
                   ))}
                 </div>
               </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-              <Button
-                variant="outline"
-                onClick={() => setActiveCategory("Trucking")}
-                className="gap-2 text-slate-700 border-slate-300 hover:bg-slate-100 px-4 text-[12px] h-9"
-              >
-                <Truck className="h-3.5 w-3.5" />
-                Lihat Detail Layanan
-              </Button>
-              <Button
-                onClick={() => setLocation("/jasa/trucking")}
-                className="gap-2 shrink-0 bg-slate-700 hover:bg-slate-800 text-white shadow-md shadow-slate-200 px-5 text-[12px] h-9"
-              >
-                {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  onClick={() => setActiveCategory("Trucking")}
+                  className="gap-2 text-slate-700 border-slate-300 hover:bg-slate-100 px-4 text-[12px] h-9"
+                >
+                  <Truck className="h-3.5 w-3.5" />
+                  Lihat Detail Layanan
+                </Button>
+                <Button
+                  onClick={() => setLocation("/jasa/trucking")}
+                  className="gap-2 shrink-0 bg-slate-700 hover:bg-slate-800 text-white shadow-md shadow-slate-200 px-5 text-[12px] h-9"
+                >
+                  {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
