@@ -37,7 +37,11 @@ timeoutMs = 20000
 
 [userenv.shared]
 ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com"
+<<<<<<< HEAD
 PORTAL_ADMIN_EMAILS = "admcst001@gmail.com"
+=======
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,divatranssoetta@gmail.com,divarestorxr@gmail.com"
+>>>>>>> 0a30d69 (Improve login process by fixing admin role assignment and token retrieval)
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com"

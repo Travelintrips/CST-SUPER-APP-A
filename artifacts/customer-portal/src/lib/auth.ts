@@ -75,7 +75,7 @@ export function isPortalAdmin(): boolean {
 }
 
 export async function fetchAndStoreProfile(): Promise<PortalProfile | null> {
-  const token = getAuthToken();
+  const token = await getAuthTokenAsync();
   if (!token) return null;
   try {
     const res = await fetch("/api/portal/auth/me", {
