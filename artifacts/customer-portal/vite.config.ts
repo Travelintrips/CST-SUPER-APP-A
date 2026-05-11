@@ -64,6 +64,16 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    watch: {
+      ignored: [
+        "**/node_modules/**",
+        path.resolve(import.meta.dirname, "../api-server/**"),
+        path.resolve(import.meta.dirname, "../bizportal/**"),
+        path.resolve(import.meta.dirname, "../cst-driver/**"),
+        path.resolve(import.meta.dirname, "../logistic-order/**"),
+        path.resolve(import.meta.dirname, "../mockup-sandbox/**"),
+      ],
+    },
     proxy: {
       "/api": {
         target: "http://localhost:8080",

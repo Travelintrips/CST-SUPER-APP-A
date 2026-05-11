@@ -64,6 +64,16 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    watch: {
+      ignored: [
+        "**/node_modules/**",
+        path.resolve(import.meta.dirname, "../api-server/**"),
+        path.resolve(import.meta.dirname, "../bizportal/**"),
+        path.resolve(import.meta.dirname, "../cst-driver/**"),
+        path.resolve(import.meta.dirname, "../customer-portal/**"),
+        path.resolve(import.meta.dirname, "../mockup-sandbox/**"),
+      ],
+    },
     fs: {
       strict: true,
     },
