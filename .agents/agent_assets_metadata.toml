@@ -72,6 +72,24 @@ uri = "file://artifacts/cst-driver/assets/truck-container-illustration.png"
 type = "image"
 title = "truck container isometric illustration"
 
+[[generated]]
+id = "Cn-cKfJin3rfAVzrG--HJ"
+uri = "file://artifacts/cst-driver/assets/hero-desktop.png"
+type = "image"
+title = "logistics desktop hero banner"
+
+[[generated]]
+id = "ndrwtC4ctYfkXm4PRpRlb"
+uri = "file://artifacts/cst-driver/assets/hero-mobile.png"
+type = "image"
+title = "logistics mobile hero banner"
+
+[[generated]]
+id = "hPxOxqMqEZp8srqlYpbCO"
+uri = "file://artifacts/cst-driver/assets/hero-square.png"
+type = "image"
+title = "logistics square hero image"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
@@ -131,3 +149,21 @@ id = "cpLpqmZ_LiqICE0Gn279b"
 uri = "file://artifacts/cst-driver/assets/truck-container-illustration.png"
 type = "image"
 title = "Premium Truck & Container Illustration (Transparent)"
+
+[[outputs]]
+id = "kBWbjklRg6-ScvpEB0WvS"
+uri = "file://artifacts/cst-driver/assets/hero-desktop.png"
+type = "image"
+title = "Desktop Banner (16:9)"
+
+[[outputs]]
+id = "Ed3wOgqPYdkPcCdcFCE9T"
+uri = "file://artifacts/cst-driver/assets/hero-mobile.png"
+type = "image"
+title = "Mobile Card (3:4)"
+
+[[outputs]]
+id = "ItRCirGsgE8V4NrDjqY59"
+uri = "file://artifacts/cst-driver/assets/hero-square.png"
+type = "image"
+title = "Square / Responsive (1:1)"
