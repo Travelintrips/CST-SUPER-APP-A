@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Search, ShoppingCart, Truck, ChevronRight, X, Container } from "lucide-react";
 import { resolveImageUrl } from "@/lib/utils";
+import { getServiceFallbackImage } from "@/lib/categoryImages";
 import { useState } from "react";
 import { useCart } from "@/lib/cart";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -38,25 +39,22 @@ type Service = {
 function ServiceImage({ service, className = "" }: { service: Service; className?: string }) {
   const [failed, setFailed] = useState(false);
   const resolved = resolveImageUrl(service.imageUrl ?? "");
-  if (!failed && service.imageUrl && resolved) {
-    return (
-      <img
-        src={resolved}
-        alt={service.name}
-        className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${className}`}
-        onError={() => setFailed(true)}
-        loading="lazy"
-      />
-    );
-  }
+  const fallbackSrc = getServiceFallbackImage(service.categories, service.name);
+  const src = (!failed && service.imageUrl && resolved) ? resolved : fallbackSrc;
+
   return (
-    <div className="w-full h-full flex items-center justify-center bg-gray-100">
-      <img
-        src={`${import.meta.env.BASE_URL}images/logo.png`}
-        alt="CST Logistics"
-        className="h-12 w-auto object-contain opacity-25"
-      />
-    </div>
+    <img
+      src={src}
+      alt={service.name}
+      className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${className}`}
+      onError={(e) => {
+        if (!failed) {
+          setFailed(true);
+          (e.currentTarget as HTMLImageElement).src = fallbackSrc;
+        }
+      }}
+      loading="lazy"
+    />
   );
 }
 

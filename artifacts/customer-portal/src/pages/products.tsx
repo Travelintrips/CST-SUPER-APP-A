@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
+import { getProductFallbackImage } from "@/lib/categoryImages";
 import {
   ShoppingBag, Search, ChevronLeft, ChevronRight,
   Play, Package, Star, Clock, Check, Layers, ExternalLink, Truck, ArrowRight,
@@ -138,12 +139,17 @@ function VideoThumb({ src, className }: { src: string; className?: string }) {
 function CardCarousel({ product }: { product: Product }) {
   const media = getMedia(product);
   const [idx, setIdx] = useState(0);
+  const [imgFailed, setImgFailed] = useState(false);
+  const fallbackSrc = getProductFallbackImage(product.categories, product.name, product.subcategory);
 
   if (media.length === 0) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-100">
-        <ShoppingBag className="h-12 w-12 text-gray-300" />
-      </div>
+      <img
+        src={fallbackSrc}
+        alt={product.name}
+        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+        loading="lazy"
+      />
     );
   }
 
@@ -157,9 +163,16 @@ function CardCarousel({ product }: { product: Product }) {
         </div>
       ) : (
         <img
-          src={resolveImageUrl(current.url) ?? ""}
+          src={imgFailed ? fallbackSrc : (resolveImageUrl(current.url) ?? fallbackSrc)}
           alt={product.name}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          onError={(e) => {
+            if (!imgFailed) {
+              setImgFailed(true);
+              (e.currentTarget as HTMLImageElement).src = fallbackSrc;
+            }
+          }}
+          loading="lazy"
         />
       )}
       {media.length > 1 && (
@@ -196,20 +209,22 @@ function MediaGallery({ product }: { product: Product }) {
   const media = getMedia(product);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [galleryFailed, setGalleryFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const fallbackSrc = getProductFallbackImage(product.categories, product.name, product.subcategory);
 
   const current = media[idx];
   const isVideo = current?.type === "video";
   const videoSrc = isVideo ? (resolveImageUrl(current.url) ?? null) : null;
   const videoPoster = useVideoThumbnail(videoSrc);
 
-  function prev() { setIdx((i) => (i - 1 + media.length) % media.length); setPlaying(false); }
-  function next() { setIdx((i) => (i + 1) % media.length); setPlaying(false); }
+  function prev() { setIdx((i) => (i - 1 + media.length) % media.length); setPlaying(false); setGalleryFailed(false); }
+  function next() { setIdx((i) => (i + 1) % media.length); setPlaying(false); setGalleryFailed(false); }
 
   if (media.length === 0) {
     return (
-      <div className="w-full aspect-square bg-gray-100 flex items-center justify-center rounded-xl">
-        <ShoppingBag className="h-20 w-20 text-gray-300" />
+      <div className="w-full aspect-square rounded-xl overflow-hidden">
+        <img src={fallbackSrc} alt={product.name} className="w-full h-full object-cover" />
       </div>
     );
   }
@@ -242,9 +257,15 @@ function MediaGallery({ product }: { product: Product }) {
           </div>
         ) : (
           <img
-            src={resolveImageUrl(current.url) ?? ""}
+            src={galleryFailed ? fallbackSrc : (resolveImageUrl(current.url) ?? fallbackSrc)}
             alt={product.name}
             className="w-full h-full object-contain"
+            onError={(e) => {
+              if (!galleryFailed) {
+                setGalleryFailed(true);
+                (e.currentTarget as HTMLImageElement).src = fallbackSrc;
+              }
+            }}
           />
         )}
         {media.length > 1 && (
@@ -800,7 +821,7 @@ export default function Products() {
             {filtered.map((product) => (
               <div
                 key={product.id}
-                className="bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col"
+                className="group bg-white rounded-2xl overflow-hidden cursor-pointer flex flex-col"
                 style={{
                   border: "1px solid #E2E8F0",
                   boxShadow: "0 1px 4px rgba(15,23,42,0.06)",
