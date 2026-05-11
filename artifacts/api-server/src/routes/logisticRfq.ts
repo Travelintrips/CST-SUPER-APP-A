@@ -222,6 +222,8 @@ logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
     grossWeight: order.grossWeight ?? null,
     volumeCbm: order.volumeCbm ?? null,
     requiredDate: order.requiredDate ?? null,
+    requestedPickup: (order as any).estimatedPickup ?? null,
+    requestedDelivery: (order as any).estimatedDelivery ?? null,
     createdAt: order.createdAt.toISOString(),
     vendorId: vendor.id,
     vendorName: vendor.name,
