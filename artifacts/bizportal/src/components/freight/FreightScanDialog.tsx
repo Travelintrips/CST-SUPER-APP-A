@@ -641,14 +641,18 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
           {/* JSON / AWB result (from QR scan or AI upload) */}
           {scanState.kind === "json" && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-green-600">
-                <CheckCircle className="h-4 w-4" />
-                {scanState.source === "upload"
-                  ? "Data berhasil diekstrak dari dokumen"
-                  : scanState.isAwb
-                  ? "Data AWB berhasil dibaca"
-                  : "QR berhasil dibaca"}{" "}
-                — {Object.keys(scanState.fields).length} field ditemukan
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-green-600">
+                  <CheckCircle className="h-4 w-4" />
+                  {scanState.source === "upload"
+                    ? "Data berhasil diekstrak dari dokumen"
+                    : scanState.isAwb
+                    ? "Data AWB berhasil dibaca"
+                    : "QR berhasil dibaca"}
+                </div>
+                <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-full px-2 py-0.5">
+                  {Object.keys(scanState.fields).length} field aktif
+                </span>
               </div>
               {lastTruncation && scanState.source === "upload" && (
                 <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
@@ -656,23 +660,12 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                   <span>Teks PDF dipotong di baris {lastTruncation.lineIndex + 1}: <span className="font-medium">"{lastTruncation.phrase}"</span></span>
                 </div>
               )}
-              <div className="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border p-3 bg-muted/30">
-                {(
-                  Object.entries(scanState.fields) as [
-                    keyof FreightFormFields,
-                    string
-                  ][]
-                ).map(([key, value]) => (
-                  <div key={key} className="flex items-start gap-2 text-sm">
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 text-xs font-normal"
-                    >
-                      {FIELD_LABELS[key]}
-                    </Badge>
-                    <span className="text-muted-foreground break-all">
-                      {value}
-                    </span>
+              <div className="max-h-60 overflow-y-auto space-y-1 rounded-lg border border-emerald-200 bg-emerald-50/40 p-2">
+                {(Object.entries(scanState.fields) as [keyof FreightFormFields, string][]).map(([key, value]) => (
+                  <div key={key} className="flex items-start gap-2 text-xs rounded-md bg-white/80 border border-emerald-100 px-2 py-1.5">
+                    <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                    <span className="font-medium text-foreground/60 min-w-[110px] shrink-0">{FIELD_LABELS[key]}</span>
+                    <span className="text-foreground font-medium break-all">{value}</span>
                   </div>
                 ))}
               </div>
