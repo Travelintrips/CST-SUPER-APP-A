@@ -3,11 +3,10 @@ import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Search, Ship, Plane, Package, Warehouse, Truck, Stamp,
-  Shield, FileText, ArrowRight, ChevronRight, Calculator,
+  Shield, FileText, ArrowRight, ChevronRight, Calculator, Container,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
@@ -62,11 +61,14 @@ const DEFAULT_ACCENT = { overlay: "rgba(59,130,246,0.20)", hoverShadow: "0 10px 
 
 const stripJasa = (name: string) => name.replace(/^Jasa\s+/i, "");
 
+const GROUPED_CATEGORIES = ["Trucking", "Container"];
+
 export default function Jasa() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const { t, locale } = useLanguage();
   const [activeCategory, setActiveCategory] = useState<string>("__all__");
+  const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
 
   const { data: servicesRaw, isLoading } = useListPortalServices({
     query: { queryKey: ["listPortalServicesJasa"] },
@@ -88,9 +90,11 @@ export default function Jasa() {
       (s.categories ?? []).some((c) =>
         c.toLowerCase().includes(q) || translateCategory(c, locale).toLowerCase().includes(q)
       );
+    const cats = s.categories ?? [];
     const matchCat =
-      activeCategory === "__all__" ||
-      (s.categories ?? []).includes(activeCategory);
+      activeCategory === "__all__"
+        ? !cats.some((c) => GROUPED_CATEGORIES.includes(c))
+        : cats.includes(activeCategory);
     return matchSearch && matchCat;
   });
 
@@ -441,6 +445,77 @@ export default function Jasa() {
               {t("jasa.submitService")} <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+
+          {/* Trucking & Container Service */}
+          <div
+            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5"
+            style={{
+              background: [
+                "radial-gradient(ellipse at 8% 55%, rgba(71,85,105,0.10) 0%, transparent 52%)",
+                `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='1.8' height='1.8' rx='0.4' fill='%2394A3B8' fill-opacity='0.10'/%3E%3C/svg%3E")`,
+                "linear-gradient(130deg, #F8FAFC 0%, #F1F5F9 38%, #E9EFF6 76%, #F4F7FA 100%)",
+              ].join(", "),
+              border: "1.5px solid rgba(100,116,139,0.20)",
+              boxShadow: "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05), inset 0 1px 0 rgba(255,255,255,0.95)",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(71,85,105,0.15), 0 2px 8px rgba(71,85,105,0.07), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
+          >
+            <div className="flex items-start gap-4 flex-1 min-w-0">
+              <div className="flex gap-2 shrink-0">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center"
+                  style={{ background: "linear-gradient(135deg,#F1F5F9,#CBD5E1)", boxShadow: "0 0 0 3px rgba(71,85,105,0.15), 0 2px 8px rgba(71,85,105,0.18)" }}
+                >
+                  <Truck className="h-5 w-5 text-slate-600" />
+                </div>
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center"
+                  style={{ background: "linear-gradient(135deg,#EDE9FE,#DDD6FE)", boxShadow: "0 0 0 3px rgba(109,40,217,0.13), 0 2px 8px rgba(109,40,217,0.16)" }}
+                >
+                  <Container className="h-5 w-5 text-violet-600" />
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-bold text-slate-800 text-[15px] leading-tight">Trucking & Container Service</p>
+                  <span className="text-[10px] text-slate-400 font-medium px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200">Transportasi Darat & Container</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {([
+                    { label: "Trucking Dalam Kota", slug: "trucking" },
+                    { label: "Trucking Antar Kota", slug: "trucking" },
+                    { label: "Sewa Container 20FT", slug: "container" },
+                    { label: "Sewa Container 40FT", slug: "container" },
+                  ] as Array<{ label: string; slug: string }>).map(({ label, slug }) => (
+                    <Badge
+                      key={label}
+                      className="text-[10px] px-1.5 py-0 bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 cursor-pointer transition-colors"
+                      onClick={() => setLocation(`/jasa/${slug}`)}
+                    >
+                      {label}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <Button
+                variant="outline"
+                onClick={() => setActiveCategory("Trucking")}
+                className="gap-2 text-slate-700 border-slate-300 hover:bg-slate-100 px-4 text-[12px] h-9"
+              >
+                <Truck className="h-3.5 w-3.5" />
+                Lihat Detail Layanan
+              </Button>
+              <Button
+                onClick={() => setLocation("/jasa/trucking")}
+                className="gap-2 shrink-0 bg-slate-700 hover:bg-slate-800 text-white shadow-md shadow-slate-200 px-5 text-[12px] h-9"
+              >
+                {t("jasa.createOrder")} <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
 
         {/* ── Service grid ── */}
@@ -483,14 +558,15 @@ export default function Jasa() {
                       (e.currentTarget as HTMLElement).style.borderColor = "#E8EDF3";
                     }}
                   >
-                    {imgUrl ? (
+                    {imgUrl && !failedImages.has(service.id) ? (
                       <div className="h-36 overflow-hidden relative">
                         <img
                           src={imgUrl}
                           alt={stripJasa(service.name)}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-400"
+                          loading="lazy"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={() => setFailedImages((prev) => new Set([...prev, service.id]))}
                         />
-                        {/* Subtle category-tinted gradient overlay on image */}
                         <div
                           aria-hidden="true"
                           style={{
