@@ -722,7 +722,7 @@ export default function EcommercePage() {
                                 data-testid={`create-cat-checkbox-${c.id}`}
                               />
                               <label htmlFor={`create-cat-${c.id}`} className="text-sm cursor-pointer">{c.name}</label>
-                              <span className="text-xs text-muted-foreground tabular-nums">({c.productCount})</span>
+                              <span className="text-xs text-muted-foreground tabular-nums">({c.productCount ?? 0})</span>
                             </div>
                           ))}
                           {productCategories.length === 0 && (
@@ -1634,7 +1634,7 @@ export default function EcommercePage() {
                           data-testid={`edit-cat-checkbox-${c.id}`}
                         />
                         <label htmlFor={`edit-cat-${c.id}`} className="text-sm cursor-pointer">{c.name}</label>
-                        <span className="text-xs text-muted-foreground tabular-nums">({c.productCount})</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">({c.productCount ?? 0})</span>
                       </div>
                     ))}
                     {productCategories.length === 0 && (
