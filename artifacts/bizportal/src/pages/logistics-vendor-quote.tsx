@@ -42,6 +42,7 @@ interface RfqFormData {
   createdAt: string;
   vendorId: number;
   vendorName: string;
+  vendorDefaultFee: number | null;
   alreadySubmitted: boolean;
   existingQuote: {
     vendorPrice: number;
@@ -107,6 +108,9 @@ export default function LogisticsVendorQuotePage() {
             setEstimatedDelivery(json.existingQuote.estimatedDelivery ?? "");
             setEstimatedDays(json.existingQuote.estimatedDays != null ? String(json.existingQuote.estimatedDays) : "");
             setNotes(json.existingQuote.vendorNotes ?? "");
+          } else if (!json.alreadySubmitted && json.vendorDefaultFee && json.vendorDefaultFee > 0) {
+            // Auto-populate with vendor's pre-set fee
+            setVendorPrice(String(json.vendorDefaultFee));
           }
         }
       })
@@ -278,6 +282,12 @@ export default function LogisticsVendorQuotePage() {
             <span className="font-medium text-slate-800 text-right font-mono">{data.orderNumber}</span>
             <span className="text-slate-500">Jenis Layanan</span>
             <span className="font-medium text-slate-800 text-right">{data.shipmentType}</span>
+            {data.commodity && (
+              <>
+                <span className="text-slate-500">Komoditi</span>
+                <span className="font-medium text-slate-800 text-right">{data.commodity}</span>
+              </>
+            )}
           </div>
 
           {/* Rute — highlight */}
@@ -292,30 +302,41 @@ export default function LogisticsVendorQuotePage() {
             </div>
           </div>
 
-          {/* Tanggal & Jam */}
-          {(data.requiredDate || data.jamOrder) && (
-            <div className="grid grid-cols-2 gap-3">
-              {data.requiredDate && (
+          {/* Tanggal & Jam — selalu tampil (fallback ke createdAt) */}
+          {(() => {
+            const orderDate = data.requiredDate
+              ? data.requiredDate
+              : new Intl.DateTimeFormat("id-ID", {
+                  timeZone: "Asia/Jakarta",
+                  day: "2-digit", month: "long", year: "numeric",
+                }).format(new Date(data.createdAt));
+            const orderTime = data.jamOrder
+              ? data.jamOrder
+              : new Intl.DateTimeFormat("id-ID", {
+                  timeZone: "Asia/Jakarta",
+                  hour: "2-digit", minute: "2-digit", hour12: false,
+                }).format(new Date(data.createdAt));
+            const dateLabel = data.requiredDate ? "Tgl Diperlukan" : "Tgl Order";
+            return (
+              <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-xl border border-slate-200 p-3">
                   <p className="text-xs text-slate-400 mb-1 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> Tanggal
+                    <Calendar className="w-3 h-3" /> {dateLabel}
                   </p>
-                  <p className="text-sm font-bold text-slate-800">{data.requiredDate}</p>
+                  <p className="text-sm font-bold text-slate-800">{orderDate}</p>
                 </div>
-              )}
-              {data.jamOrder && (
                 <div className="bg-slate-50 rounded-xl border border-slate-200 p-3">
                   <p className="text-xs text-slate-400 mb-1 flex items-center gap-1">
                     <Clock className="w-3 h-3" /> Jam
                   </p>
-                  <p className="text-sm font-bold text-slate-800">{data.jamOrder}</p>
+                  <p className="text-sm font-bold text-slate-800">{orderTime}</p>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {/* Informasi Barang */}
-          {(data.commodity || data.cargoDescription || data.grossWeight || data.volumeCbm || data.jumlahKoli) && (
+          {(data.cargoDescription || data.grossWeight || data.volumeCbm || data.jumlahKoli) && (
             <div className="border border-slate-100 rounded-xl overflow-hidden">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-100">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1">
@@ -323,12 +344,6 @@ export default function LogisticsVendorQuotePage() {
                 </p>
               </div>
               <div className="px-4 py-3 grid grid-cols-2 gap-y-2.5 text-sm">
-                {data.commodity && (
-                  <>
-                    <span className="text-slate-500">Komoditi</span>
-                    <span className="font-medium text-slate-800 text-right">{data.commodity}</span>
-                  </>
-                )}
                 {data.cargoDescription && (
                   <>
                     <span className="text-slate-500">Jenis Barang</span>
@@ -426,6 +441,11 @@ export default function LogisticsVendorQuotePage() {
             <Label htmlFor="vendorPrice" className="text-sm font-semibold text-slate-700">
               Harga Penawaran (Rp) <span className="text-red-500">*</span>
             </Label>
+            {!isAlreadySubmitted && data.vendorDefaultFee && data.vendorDefaultFee > 0 && (
+              <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
+                Terisi otomatis dari tarif standar Anda ({fmt(data.vendorDefaultFee)}). Sesuaikan jika perlu.
+              </p>
+            )}
             <Input
               id="vendorPrice"
               type="number"

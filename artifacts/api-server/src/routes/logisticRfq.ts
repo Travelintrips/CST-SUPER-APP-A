@@ -231,6 +231,7 @@ logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
     createdAt: order.createdAt.toISOString(),
     vendorId: vendor.id,
     vendorName: vendor.name,
+    vendorDefaultFee: vendor.fee != null ? Number(vendor.fee) : null,
     alreadySubmitted: !!existingQuote,
     existingQuote: existingQuote ? {
       vendorPrice: Number(existingQuote.vendorPrice),
