@@ -113,3 +113,9 @@ id = "awoYH-VDmxYEAbjXh3Sew"
 uri = "file://artifacts/customer-portal/public/images/customs-document.png"
 type = "image"
 title = "Dokumen Resmi"
+
+[[outputs]]
+id = "93ZnaeHRBG4D_6ynOqGNV"
+uri = "file://artifacts/cst-driver/assets/card-bg-premium.png"
+type = "image"
+title = "Premium Logistics Card Background"
