@@ -64,6 +64,7 @@ import ExpenseCategoriesPage from "@/pages/expense/categories";
 import ExpenseReportsPage from "@/pages/expense/reports";
 import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
+import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 
 const queryClient = new QueryClient();
 
@@ -190,6 +191,7 @@ function Router() {
       <Route path="/logistics/quotation-reply">
         <ProtectedRoute component={LogisticsQuotationReplyPage} />
       </Route>
+      <Route path="/logistics/vendor-quote" component={LogisticsVendorQuotePage} />
       <Route path="/pos">
         <ProtectedRoute component={PosPage} />
       </Route>

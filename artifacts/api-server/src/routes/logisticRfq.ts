@@ -69,7 +69,7 @@ function buildRfqWaMessage(order: {
   shipmentType: string; commodity?: string | null; cargoDescription?: string | null;
   grossWeight?: number | null; volumeCbm?: number | null; requiredDate?: string | null;
   notes?: string | null; jamOrder?: string | null; createdAt?: Date | string | null;
-}, rfqNumber: string, vendorName: string): string {
+}, rfqNumber: string, vendorName: string, formUrl?: string): string {
   const isFreight = isFreightWithDimensions(order.shipmentType);
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
@@ -101,8 +101,12 @@ function buildRfqWaMessage(order: {
     (order.notes ? `Catatan       : ${order.notes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
     freightHint +
-    `📝 *CARA MEMBALAS:*\n\n` +
-    `Balas pesan ini dengan format:\n` +
+    (formUrl
+      ? `📱 *CARA TERMUDAH — ISI FORM ONLINE:*\n${formUrl}\n\nKlik link di atas, isi harga & estimasi, lalu Submit.\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n\n`
+      : ``) +
+    `📝 *ATAU BALAS PESAN INI:*\n\n` +
+    `Format balasan:\n` +
     `\`\`\`${rfqNumber} HARGA ETA_PICKUP ETA_DELIVERY CATATAN\`\`\`\n\n` +
     `Contoh:\n` +
     `\`\`\`${rfqNumber} 5000000 besok 3hari muatan-aman\`\`\`\n` +
@@ -117,6 +121,12 @@ function getOrderUrl(orderId: number): string {
   const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
   if (!domain) return "";
   return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
+}
+
+function getVendorFormUrl(rfqNumber: string, vendorId: number): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/bizportal/logistics/vendor-quote?rfq=${rfqNumber}&v=${vendorId}`;
 }
 
 function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName: string, orderId: number, quote: {
@@ -167,6 +177,138 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
   createdAt: q.createdAt.toISOString(),
 });
 
+// GET /api/logistic/orders/vendor-form?rfq=RFQ-XXXXXX&v=vendorId — public vendor form data
+logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
+  const rfqNumber = String(req.query.rfq ?? "").trim();
+  const vendorId = parseInt(String(req.query.v ?? ""), 10);
+
+  if (!rfqNumber || isNaN(vendorId)) {
+    return res.status(400).json({ message: "Parameter rfq dan v wajib diisi" });
+  }
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.rfqNumber, rfqNumber));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const vendorIds = Array.isArray(rfq.vendorIds) ? rfq.vendorIds as number[] : [];
+  if (!vendorIds.includes(vendorId)) {
+    return res.status(403).json({ message: "Vendor tidak diundang dalam RFQ ini" });
+  }
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [vendor] = await db.select().from(suppliersTable)
+    .where(eq(suppliersTable.id, vendorId));
+  if (!vendor) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+
+  const [existingQuote] = await db.select().from(logisticOrderQuotesTable)
+    .where(and(
+      eq(logisticOrderQuotesTable.rfqId, rfq.id),
+      eq(logisticOrderQuotesTable.vendorId, vendorId)
+    ));
+
+  return res.json({
+    rfqNumber: rfq.rfqNumber,
+    rfqStatus: rfq.status,
+    rfqNotes: rfq.notes,
+    orderNumber: order.orderNumber,
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    cargoDescription: order.cargoDescription ?? null,
+    grossWeight: order.grossWeight ?? null,
+    volumeCbm: order.volumeCbm ?? null,
+    requiredDate: order.requiredDate ?? null,
+    createdAt: order.createdAt.toISOString(),
+    vendorId: vendor.id,
+    vendorName: vendor.name,
+    alreadySubmitted: !!existingQuote,
+    existingQuote: existingQuote ? {
+      vendorPrice: Number(existingQuote.vendorPrice),
+      estimatedPickup: existingQuote.estimatedPickup ?? null,
+      estimatedDelivery: existingQuote.estimatedDelivery ?? null,
+      estimatedDays: existingQuote.estimatedDays ?? null,
+      vendorNotes: existingQuote.vendorNotes ?? null,
+      quoteStatus: existingQuote.quoteStatus,
+    } : null,
+  });
+});
+
+// POST /api/logistic/orders/vendor-quote — public vendor submits quote via form
+logisticRfqRouter.post("/vendor-quote", async (req: Request, res: Response) => {
+  const { rfqNumber, vendorId, vendorPrice, estimatedPickup, estimatedDelivery, estimatedDays, notes } =
+    req.body as {
+      rfqNumber: string; vendorId: number; vendorPrice: number;
+      estimatedPickup?: string; estimatedDelivery?: string;
+      estimatedDays?: number; notes?: string;
+    };
+
+  if (!rfqNumber || !vendorId || vendorPrice == null) {
+    return res.status(400).json({ message: "rfqNumber, vendorId, vendorPrice wajib diisi" });
+  }
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.rfqNumber, rfqNumber));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const vendorIds = Array.isArray(rfq.vendorIds) ? rfq.vendorIds as number[] : [];
+  if (!vendorIds.includes(Number(vendorId))) {
+    return res.status(403).json({ message: "Vendor tidak diundang dalam RFQ ini" });
+  }
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [vendor] = await db.select().from(suppliersTable)
+    .where(eq(suppliersTable.id, Number(vendorId)));
+
+  const vp = Number(vendorPrice);
+  const [quote] = await db.insert(logisticOrderQuotesTable).values({
+    rfqId: rfq.id,
+    orderId: rfq.orderId,
+    vendorId: Number(vendorId),
+    vendorPrice: String(vp),
+    estimatedPickup: estimatedPickup?.trim() || null,
+    estimatedDelivery: estimatedDelivery?.trim() || null,
+    estimatedDays: estimatedDays != null ? Number(estimatedDays) : null,
+    vendorNotes: notes?.trim() || null,
+    markupType: "percentage",
+    markupPercentage: "0",
+    fixedSellingPrice: null,
+    sellingPrice: String(vp),
+    quoteStatus: "pending",
+    replySource: "vendor_form",
+    replyTimestamp: new Date(),
+  }).returning();
+
+  const adminWa = await getAdminWa();
+  if (adminWa) {
+    const allQuotes = await db.select().from(logisticOrderQuotesTable)
+      .where(and(eq(logisticOrderQuotesTable.orderId, rfq.orderId), eq(logisticOrderQuotesTable.quoteStatus, "pending")))
+      .orderBy(logisticOrderQuotesTable.createdAt);
+    const quotePosition = allQuotes.findIndex((q) => q.id === quote.id) + 1 || undefined;
+    sendWhatsApp(adminWa, buildAdminQuoteNotif(
+      rfq.rfqNumber, order.orderNumber, vendor?.name ?? `#${vendorId}`, rfq.orderId,
+      { vendorPrice: vp, estimatedPickup: quote.estimatedPickup, estimatedDelivery: quote.estimatedDelivery,
+        estimatedDays: quote.estimatedDays, vendorNotes: quote.vendorNotes },
+      quotePosition
+    )).catch((e: unknown) => logger.error({ e }, "WA admin vendor-form quote notif failed"));
+  }
+
+  logger.info({ rfqNumber, vendorId, vendorPrice: vp }, "Vendor submitted quote via form");
+
+  return res.status(201).json({
+    success: true,
+    rfqNumber,
+    vendorName: vendor?.name ?? `Vendor #${vendorId}`,
+    quoteId: quote.id,
+  });
+});
+
 // POST /api/logistic/orders/:id/rfq — create RFQ + send WA to vendors
 logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.params.id), 10);
@@ -209,7 +351,8 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
   for (const vendor of vendors) {
     if (vendor.phone) {
-      const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name);
+      const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
+      const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl);
       sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA RFQ send failed")
       );
