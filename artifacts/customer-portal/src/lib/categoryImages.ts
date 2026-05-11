@@ -29,31 +29,95 @@ const PRODUCT_SPECIFIC: Array<{ names: string[]; url: string }> = [
 ];
 
 // ── Service images (order: most-specific first) ──────────────────────────────
-// All service images use local HD photos — no external URL dependency.
+// HD premium images generated per-service — no external URL dependency.
+const SVCIMG = (path: string) => LOCAL(`services/${path}`);
+
 const SERVICE_IMAGES: Array<{ keywords: string[]; url: string }> = [
+  // ── Highly specific service names first ─────────────────────────────────
   {
-    keywords: ["trucking", "truck", "container", "angkut", "darat", "sewa container", "truk"],
-    url: LOCAL("banner-trucking-container.png"),
+    keywords: ["handling cargo laut", "cargo laut"],
+    url: SVCIMG("handling-cargo-laut.png"),
   },
   {
-    keywords: ["ocean freight", "sea freight", "freight laut", "laut lcl", "laut fcl", "laut", "kapal", "fcl", "lcl", "ocean"],
-    url: LOCAL("sea-freight.png"),
+    keywords: ["asuransi kargo", "asuransi cargo", "insurance cargo"],
+    url: SVCIMG("asuransi-kargo.png"),
   },
   {
-    keywords: ["air freight", "freight udara", "udara", "pesawat", "airfreight", "cargo udara", "handling cargo udara"],
-    url: LOCAL("air-freight.png"),
+    keywords: ["customs clearance", "customs management", "customs document", "pengurusan dokumen ppjk", "ppjk"],
+    url: SVCIMG("customs-clearance.png"),
   },
   {
-    keywords: ["handling", "bongkar", "muat", "warehouse", "gudang", "biaya storage", "storage", "depo", "depot", "penyimpanan"],
-    url: LOCAL("warehouse.png"),
+    keywords: ["emkl", "ekspedisi muatan kapal laut"],
+    url: SVCIMG("emkl.png"),
   },
   {
-    keywords: ["pabean", "customs", "ppjk", "kepabeanan", "bea cukai", "clearance", "dokumen", "pengurusan"],
-    url: LOCAL("customs.png"),
+    keywords: ["freight laut fcl", "freight fcl", "laut fcl", "fcl 20ft", "fcl 40ft", "full container load"],
+    url: SVCIMG("freight-laut-fcl.png"),
   },
   {
-    keywords: ["freight forwarding", "forwarding", "ekspor", "impor", "international", "internasional", "port", "pelabuhan"],
-    url: LOCAL("port-operations.png"),
+    keywords: ["freight laut lcl", "freight lcl", "laut lcl", "less container load", "lcl"],
+    url: SVCIMG("freight-laut-lcl.png"),
+  },
+  {
+    keywords: ["freight udara", "udara lcl", "udara fcl"],
+    url: SVCIMG("freight-udara.png"),
+  },
+  {
+    keywords: ["handling cargo udara", "cargo udara handling"],
+    url: SVCIMG("handling-cargo-udara.png"),
+  },
+  {
+    keywords: ["ocean freight", "ocean"],
+    url: SVCIMG("ocean-freight.png"),
+  },
+  {
+    keywords: ["pengurusan dokumen", "urus dokumen ppjk", "dokumen ppjk"],
+    url: SVCIMG("pengurusan-dokumen-ppjk.png"),
+  },
+  {
+    keywords: ["port charges", "port charge", "biaya pelabuhan", "terminal handling charge", "thc"],
+    url: SVCIMG("port-charges.png"),
+  },
+  {
+    keywords: ["biaya storage", "storage fee", "biaya penyimpanan"],
+    url: SVCIMG("biaya-storage.png"),
+  },
+  {
+    keywords: ["urus dokumen pabean", "dokumen pabean"],
+    url: SVCIMG("urus-dokumen-pabean.png"),
+  },
+  {
+    keywords: ["storage demurrage", "demurrage", "storage / demurrage", "detention"],
+    url: SVCIMG("storage-demurrage.png"),
+  },
+  {
+    keywords: ["air freight", "airfreight"],
+    url: SVCIMG("air-freight.png"),
+  },
+  // ── Broader category matches ─────────────────────────────────────────────
+  {
+    keywords: ["trucking", "truck", "container", "angkut darat", "sewa container", "truk"],
+    url: SVCIMG("trucking-container.png"),
+  },
+  {
+    keywords: ["sea freight", "freight laut", "laut", "kapal"],
+    url: SVCIMG("ocean-freight.png"),
+  },
+  {
+    keywords: ["udara", "pesawat", "airfreight", "cargo udara"],
+    url: SVCIMG("freight-udara.png"),
+  },
+  {
+    keywords: ["handling", "bongkar", "muat", "warehouse", "gudang", "storage", "depo", "penyimpanan"],
+    url: SVCIMG("biaya-storage.png"),
+  },
+  {
+    keywords: ["pabean", "customs", "kepabeanan", "bea cukai", "clearance", "dokumen", "pengurusan"],
+    url: SVCIMG("customs-clearance.png"),
+  },
+  {
+    keywords: ["freight forwarding", "forwarding", "ekspor", "impor", "port", "pelabuhan", "port charges"],
+    url: SVCIMG("port-charges.png"),
   },
 ];
 

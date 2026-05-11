@@ -96,6 +96,102 @@ uri = "file://artifacts/customer-portal/public/images/banner-trucking-container.
 type = "image"
 title = "trucking container service banner"
 
+[[generated]]
+id = "gUfjycLWBKTNcVakixX6r"
+uri = "file://artifacts/customer-portal/public/images/services/handling-cargo-laut.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "pTZEEC219fxc7bEWyXZRr"
+uri = "file://artifacts/customer-portal/public/images/services/asuransi-kargo.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "3pYyYvv4zMjC42FJMFOij"
+uri = "file://artifacts/customer-portal/public/images/services/customs-clearance.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "WJDJpH1WaPQLOz_7FzdaE"
+uri = "file://artifacts/customer-portal/public/images/services/emkl.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "SPG1iJ8ZdCsvTLIDrWO4S"
+uri = "file://artifacts/customer-portal/public/images/services/freight-laut-fcl.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "sKIgkG1hX7Sm4a8tW1QTI"
+uri = "file://artifacts/customer-portal/public/images/services/freight-laut-lcl.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "7JpTVaKQ6Bh4UmP0U-cq1"
+uri = "file://artifacts/customer-portal/public/images/services/freight-udara.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "20FkEEDNkZW10kyyRnMcG"
+uri = "file://artifacts/customer-portal/public/images/services/handling-cargo-udara.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "x-KQWitc7j8G9wlJLitJz"
+uri = "file://artifacts/customer-portal/public/images/services/ocean-freight.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "xXZN1ylQY9Gx2WlQdTmPL"
+uri = "file://artifacts/customer-portal/public/images/services/pengurusan-dokumen-ppjk.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "atIp5IAHvXqQB-ILdRT_B"
+uri = "file://artifacts/customer-portal/public/images/services/port-charges.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "AAYq3m6jGaL2TkIWg5Qpc"
+uri = "file://artifacts/customer-portal/public/images/services/biaya-storage.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "ZiZGUdXfDMwJ64yclwKWg"
+uri = "file://artifacts/customer-portal/public/images/services/urus-dokumen-pabean.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "CAwX7mlX6aAA0LwDSuQHc"
+uri = "file://artifacts/customer-portal/public/images/services/storage-demurrage.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "XTvGh4yE7QLQPSdQirZQ2"
+uri = "file://artifacts/customer-portal/public/images/services/air-freight.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "hBp6toufQJ3arVuFAhaLd"
+uri = "file://artifacts/customer-portal/public/images/services/trucking-container.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
