@@ -150,7 +150,15 @@ export function getProductFallbackImage(
   name = "",
   subcategory: string | null = null
 ): string {
-  // Name + subcategory first (more specific), then categories
+  // 1. Check exact product name first (highest priority)
+  const lowerName = name.toLowerCase();
+  for (const entry of PRODUCT_SPECIFIC) {
+    if (entry.names.some((n) => lowerName.includes(n))) {
+      return entry.url;
+    }
+  }
+
+  // 2. Fall back to keyword matching by name + subcategory + categories
   const haystack = [name, subcategory ?? "", ...categories].join(" ");
   return matchKeywords(PRODUCT_IMAGES, haystack) ?? DEFAULT_PRODUCT;
 }
