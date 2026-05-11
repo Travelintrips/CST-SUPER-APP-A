@@ -21,7 +21,7 @@ const registerSchema = z.object({
   password: z.string().min(8),
   phone: z.string().optional(),
   company: z.string().optional(),
-  serviceIds: z.array(z.number()).default([]),
+  serviceIds: z.array(z.number()),
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -66,7 +66,7 @@ export default function Register() {
   const allItems: SimpleItem[] = [...services, ...products];
   const registerMutation = usePortalRegister();
 
-  const form = useForm<RegisterFormValues>({
+  const form = useForm<RegisterFormValues, unknown, RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: { name: "", email: "", password: "", phone: "", company: "", serviceIds: [] },
   });

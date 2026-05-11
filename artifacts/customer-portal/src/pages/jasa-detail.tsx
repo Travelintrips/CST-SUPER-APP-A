@@ -463,10 +463,10 @@ export default function JasaDetail() {
   function handleOptimizeToggle(on: boolean) {
     setOptimizeRoute(on);
     if (!on || !pickupGeo) return;
-    type Dest = { id: string; city: string; geo?: GeoLocation; isMain?: true };
+    type Dest = { id: string; city: string; geo?: GeoLocation; isMain?: true; receiverName: string; receiverPhone: string };
     const allDests: Dest[] = [
-      ...truckingStops.map(s => ({ id: s.id, city: s.city, geo: s.geo })),
-      ...(state.destCity ? [{ id: "__dest__", city: state.destCity, geo: destGeo, isMain: true as const }] : []),
+      ...truckingStops.map(s => ({ id: s.id, city: s.city, geo: s.geo, receiverName: s.receiverName, receiverPhone: s.receiverPhone })),
+      ...(state.destCity ? [{ id: "__dest__", city: state.destCity, geo: destGeo, isMain: true as const, receiverName: "", receiverPhone: "" }] : []),
     ];
     if (allDests.length < 2) return;
     const remaining = [...allDests];
@@ -487,11 +487,11 @@ export default function JasaDetail() {
     const newDestEntry = ordered[ordered.length - 1];
     const newStopEntries = ordered.slice(0, -1);
     if (newDestEntry.isMain) {
-      setTruckingStops(newStopEntries.map(s => ({ id: s.id, city: s.city, geo: s.geo })));
+      setTruckingStops(newStopEntries.map(s => ({ id: s.id, city: s.city, geo: s.geo, receiverName: s.receiverName, receiverPhone: s.receiverPhone })));
     } else {
       set("destCity", newDestEntry.city);
       setDestGeo(newDestEntry.geo);
-      setTruckingStops(newStopEntries.map(s => ({ id: s.id, city: s.city, geo: s.geo })));
+      setTruckingStops(newStopEntries.map(s => ({ id: s.id, city: s.city, geo: s.geo, receiverName: s.receiverName, receiverPhone: s.receiverPhone })));
     }
     toast({ title: "Rute dioptimalkan", description: "Urutan stop disusun ulang secara otomatis." });
   }

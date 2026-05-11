@@ -92,7 +92,7 @@ export default function Login() {
 
   const loginMutation = usePortalLogin();
 
-  const form = useForm<LoginFormValues>({
+  const form = useForm<LoginFormValues, unknown, LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
