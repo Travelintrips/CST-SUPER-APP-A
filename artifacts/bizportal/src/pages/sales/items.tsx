@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Boxes, Package, Wrench, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, GripVertical } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const DEFAULT_SUBCATEGORIES = [
@@ -38,6 +38,11 @@ const UNITS = ["pcs", "kg", "cbm", "container", "shipment", "dokumen", "trip", "
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+
+interface MediaItem {
+  type: "image" | "video";
+  url: string;
+}
 
 interface ItemForm {
   name: string;
@@ -53,6 +58,8 @@ interface ItemForm {
   defaultPurchaseTaxId: string;
   isActive: boolean;
   description: string;
+  imageUrl: string;
+  mediaItems: MediaItem[];
 }
 
 const emptyForm = (): ItemForm => ({
@@ -69,9 +76,21 @@ const emptyForm = (): ItemForm => ({
   defaultPurchaseTaxId: "",
   isActive: true,
   description: "",
+  imageUrl: "",
+  mediaItems: [],
 });
 
+function parseMediaItems(raw: unknown): MediaItem[] {
+  if (!raw) return [];
+  try {
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x) => x && typeof x.url === "string");
+  } catch { return []; }
+}
+
 function formFromProduct(p: Product): ItemForm {
+  const pp = p as unknown as { unitOptions?: string[]; stock?: number; imageUrl?: string; mediaItems?: unknown };
   return {
     name: p.name,
     sku: p.sku,
@@ -79,15 +98,15 @@ function formFromProduct(p: Product): ItemForm {
     categories: p.categories ?? [],
     subcategory: p.subcategory ?? "",
     unit: p.unit,
-    unitOptions: Array.isArray((p as unknown as { unitOptions?: string[] }).unitOptions)
-      ? ((p as unknown as { unitOptions?: string[] }).unitOptions ?? [])
-      : [],
+    unitOptions: Array.isArray(pp.unitOptions) ? (pp.unitOptions ?? []) : [],
     price: String(p.price),
-    stock: String((p as unknown as { stock?: number }).stock ?? 0),
+    stock: String(pp.stock ?? 0),
     defaultSalesTaxId: p.defaultSalesTaxId ? String(p.defaultSalesTaxId) : "",
     defaultPurchaseTaxId: p.defaultPurchaseTaxId ? String(p.defaultPurchaseTaxId) : "",
     isActive: p.isActive,
     description: p.description ?? "",
+    imageUrl: pp.imageUrl ?? "",
+    mediaItems: parseMediaItems(pp.mediaItems),
   };
 }
 
@@ -181,6 +200,8 @@ export default function SalesItemsPage() {
       isActive: form.isActive,
       defaultSalesTaxId: form.defaultSalesTaxId ? Number(form.defaultSalesTaxId) : null,
       defaultPurchaseTaxId: form.defaultPurchaseTaxId ? Number(form.defaultPurchaseTaxId) : null,
+      imageUrl: form.imageUrl.trim() || null,
+      mediaItems: form.mediaItems.filter((m) => m.url.trim()),
     };
 
     try {
@@ -343,11 +364,20 @@ export default function SalesItemsPage() {
                     {filtered.map((p) => (
                       <TableRow key={p.id} className="border-slate-700/50">
                         <TableCell className="text-slate-200 font-medium">
-                          <div className="flex items-center gap-2">
-                            {p.itemType === "jasa" ? (
-                              <Wrench className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                          <div className="flex items-center gap-2.5">
+                            {(p as unknown as { imageUrl?: string }).imageUrl ? (
+                              <img
+                                src={(p as unknown as { imageUrl: string }).imageUrl}
+                                alt={p.name}
+                                className="h-8 w-8 rounded object-cover shrink-0 border border-slate-700"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              />
                             ) : (
-                              <Package className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                              p.itemType === "jasa" ? (
+                                <Wrench className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                              ) : (
+                                <Package className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                              )
                             )}
                             {p.name}
                           </div>
@@ -626,6 +656,95 @@ export default function SalesItemsPage() {
                 placeholder="Deskripsi item (opsional)"
                 className="bg-slate-800 border-slate-600 text-slate-200 min-h-[70px]"
               />
+            </div>
+
+            {/* Gambar / Media */}
+            <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-800/40 p-3">
+              <Label className="text-slate-300 flex items-center gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5 text-slate-400" />
+                Gambar &amp; Media (untuk Website Publik)
+              </Label>
+
+              {/* Gambar utama */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-400">URL Gambar Utama</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={form.imageUrl}
+                    onChange={(e) => setF("imageUrl", e.target.value)}
+                    placeholder="https://example.com/gambar.jpg"
+                    className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
+                  />
+                  {form.imageUrl && (
+                    <img
+                      src={form.imageUrl}
+                      alt="preview"
+                      className="h-9 w-9 rounded object-cover border border-slate-600 shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Media tambahan */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-400">
+                  Media Tambahan
+                  <span className="ml-1 font-normal text-slate-500">(gambar atau video ekstra untuk galeri)</span>
+                </Label>
+                <div className="space-y-2">
+                  {form.mediaItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <GripVertical className="h-4 w-4 text-slate-600 shrink-0" />
+                      <select
+                        value={item.type}
+                        onChange={(e) => {
+                          const updated = [...form.mediaItems];
+                          updated[idx] = { ...updated[idx], type: e.target.value as "image" | "video" };
+                          setF("mediaItems", updated);
+                        }}
+                        className="bg-slate-900 border border-slate-600 text-slate-300 text-xs rounded px-2 py-1.5 shrink-0"
+                      >
+                        <option value="image">Gambar</option>
+                        <option value="video">Video</option>
+                      </select>
+                      <Input
+                        value={item.url}
+                        onChange={(e) => {
+                          const updated = [...form.mediaItems];
+                          updated[idx] = { ...updated[idx], url: e.target.value };
+                          setF("mediaItems", updated);
+                        }}
+                        placeholder="https://example.com/foto.jpg"
+                        className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
+                      />
+                      {item.url && item.type === "image" && (
+                        <img
+                          src={item.url}
+                          alt="preview"
+                          className="h-8 w-8 rounded object-cover border border-slate-600 shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setF("mediaItems", form.mediaItems.filter((_, i) => i !== idx))}
+                        className="text-slate-500 hover:text-red-400 transition-colors shrink-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setF("mediaItems", [...form.mediaItems, { type: "image", url: "" }])}
+                    className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Tambah media
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
