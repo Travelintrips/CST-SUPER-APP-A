@@ -60,6 +60,12 @@ uri = "file://artifacts/customer-portal/public/images/customs-document.png"
 type = "image"
 title = "customs official document"
 
+[[generated]]
+id = "tZ94-h311WeI77jJ_l30i"
+uri = "file://artifacts/cst-driver/assets/card-bg-premium.png"
+type = "image"
+title = "premium logistics card background"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
