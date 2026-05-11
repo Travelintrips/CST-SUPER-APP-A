@@ -59,10 +59,22 @@ export class ObjectStorageService {
     });
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
+  /**
+   * Generate an internal upload URL for private file storage.
+   * @param folder One of: documents, customer-attachments, ocr-temp
+   */
+  async getObjectEntityUploadURL(folder: "documents" | "customer-attachments" | "ocr-temp" = "documents"): Promise<string> {
     const objectId = randomUUID();
-    const objectPath = `private/uploads/${objectId}`;
-    return `/api/storage/internal-upload/${objectPath}`;
+    return `/api/storage/internal-upload/private/${folder}/${objectId}`;
+  }
+
+  /**
+   * Generate an internal upload URL for public asset storage (portal CMS images).
+   * Stored under public/public-assets/ — accessible without auth.
+   */
+  async getPublicAssetUploadURL(): Promise<string> {
+    const objectId = randomUUID();
+    return `/api/storage/internal-upload/public/public-assets/${objectId}`;
   }
 
   normalizeObjectEntityPath(rawPath: string): string {
@@ -75,6 +87,10 @@ export class ObjectStorageService {
     if (rawPath.startsWith("/api/storage/internal-upload/private/")) {
       const entityId = rawPath.replace("/api/storage/internal-upload/private/", "");
       return `/objects/${entityId}`;
+    }
+    if (rawPath.startsWith("/api/storage/internal-upload/public/")) {
+      const filePath = rawPath.replace("/api/storage/internal-upload/public/", "");
+      return `/api/storage/public-objects/${filePath}`;
     }
     throw new Error("Invalid object path: must be /objects/* or an internal upload path");
   }
