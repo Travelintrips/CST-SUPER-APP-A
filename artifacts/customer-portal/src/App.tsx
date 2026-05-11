@@ -48,7 +48,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 }
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/"];
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/"];
 
 function AppShell() {
   const [location] = useLocation();
@@ -63,6 +63,7 @@ function AppShell() {
       <Route path="/services" component={Services} />
       <Route path="/products" component={Products} />
       <Route path="/jasa" component={Jasa} />
+      <Route path="/jasa/trucking" component={JasaDetail} />
       <Route path="/jasa/:id" component={JasaDetail} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />

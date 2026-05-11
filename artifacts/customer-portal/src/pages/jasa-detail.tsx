@@ -297,7 +297,9 @@ export default function JasaDetail() {
       const raw = sessionStorage.getItem("pendingJasaReview");
       if (raw) {
         const parsed = JSON.parse(raw) as { serviceId: number; productId: number; productName: string; qty?: number };
-        if (String(parsed.serviceId) === params.id) {
+        const idMatch = String(parsed.serviceId) === params.id;
+        const slugMatch = slugCategory != null && dbService != null && parsed.serviceId === dbService.id;
+        if (idMatch || slugMatch) {
           setPendingOrder({ serviceId: parsed.serviceId, productName: parsed.productName });
           // Prefill quantity into calculator form
           if (parsed.qty && parsed.qty >= 1) {
@@ -323,8 +325,25 @@ export default function JasaDetail() {
   });
   const allServices = Array.isArray(servicesRaw) ? servicesRaw : [];
 
-  const dbService = allServices.find((s) => String(s.id) === params.id);
-  const primaryCat = (dbService?.categories ?? [])[0] ?? "";
+  const SLUG_TO_CATEGORY: Record<string, string> = {
+    "trucking": "Trucking",
+    "freight":  "Freight Forwarding",
+    "pabean":   "Pabean",
+    "udara":    "Udara",
+    "laut":     "Laut",
+    "container":"Container",
+    "handling": "Handling",
+    "storage":  "Storage",
+  };
+
+  const isSlug = params.id && isNaN(Number(params.id));
+  const slugCategory = isSlug ? (SLUG_TO_CATEGORY[params.id.toLowerCase()] ?? null) : null;
+
+  const dbService = allServices.find((s) => {
+    if (slugCategory) return (s.categories ?? []).includes(slugCategory);
+    return String(s.id) === params.id;
+  });
+  const primaryCat = (dbService?.categories ?? [])[0] ?? slugCategory ?? "";
   const serviceCategory: ServiceCategory = CAT_TO_SERVICE_CAT[primaryCat] ?? "Freight";
   const calculatorType: CalculatorType = CAT_TO_CALC[primaryCat] ?? "generic";
 
