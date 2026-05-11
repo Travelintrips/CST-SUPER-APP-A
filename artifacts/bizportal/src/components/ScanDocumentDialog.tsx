@@ -59,6 +59,7 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
   const [fileName, setFileName] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<ScannedDocumentData | null>(null);
   const [truncation, setTruncation] = useState<{ phrase: string; lineIndex: number } | null>(null);
+  const [charLimitHit, setCharLimitHit] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,6 +68,7 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
     setFileName(null);
     setExtracted(null);
     setTruncation(null);
+    setCharLimitHit(false);
   };
 
   const handleFile = async (file: File) => {
@@ -96,9 +98,11 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
         data: ScannedDocumentData;
         mode?: string;
         truncation?: { phrase: string; lineIndex: number } | null;
+        charLimitHit?: boolean;
       };
       setExtracted(json.data);
       setTruncation(json.truncation ?? null);
+      setCharLimitHit(json.charLimitHit ?? false);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Gagal memproses dokumen");
     } finally {
@@ -225,9 +229,15 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
                 )}
 
                 {truncation && (
-                  <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1">
-                    <AlertCircle className="h-3 w-3 shrink-0 text-amber-500" />
-                    <span>Dipotong di: <span className="font-medium">"{truncation.phrase}"</span> (baris {truncation.lineIndex + 1})</span>
+                  <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+                    <AlertCircle className="h-3 w-3 shrink-0 text-amber-500 mt-0.5" />
+                    <span>Teks PDF dipotong di baris {truncation.lineIndex + 1} (<span className="font-medium">"{truncation.phrase}"</span>) — data setelahnya tidak dikirim ke AI. Periksa field yang mungkin kosong.</span>
+                  </div>
+                )}
+                {charLimitHit && !truncation && (
+                  <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+                    <AlertCircle className="h-3 w-3 shrink-0 text-amber-500 mt-0.5" />
+                    <span>Dokumen panjang — teks dipotong di 5.000 karakter pertama. Data di halaman akhir mungkin tidak terbaca. Periksa field yang kosong.</span>
                   </div>
                 )}
               </div>

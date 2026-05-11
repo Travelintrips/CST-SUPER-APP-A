@@ -486,6 +486,8 @@ interface FormDialogProps {
 function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, isSaving }: FormDialogProps) {
   const [mode, setMode] = useState<"form" | "scan">(initialDoc ? "form" : "form");
   const [scanState, setScanState] = useState<ScanState>({ kind: "idle" });
+  const [scanTruncation, setScanTruncation] = useState<{ phrase: string; lineIndex: number } | null>(null);
+  const [scanCharLimitHit, setScanCharLimitHit] = useState(false);
 
   function buildInitialForm() {
     if (!initialDoc) return emptyForm();
@@ -526,6 +528,8 @@ function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, isSaving
 
   const handleScan = useCallback(async (file: File) => {
     setScanState({ kind: "uploading", fileName: file.name });
+    setScanTruncation(null);
+    setScanCharLimitHit(false);
     setMode("form");
     try {
       const fd = new FormData();
@@ -537,6 +541,8 @@ function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, isSaving
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
+      if (result.truncation) setScanTruncation(result.truncation as { phrase: string; lineIndex: number });
+      if (result.charLimitHit) setScanCharLimitHit(true);
 
       if (result.docType !== "customs") {
         toast.warning("Dokumen yang di-scan bukan dokumen kepabeanan. Data tidak dapat diekstrak otomatis.");
@@ -627,9 +633,23 @@ function CustomsDocFormDialog({ open, onOpenChange, initialDoc, onSave, isSaving
                 </p>
               )}
               {scanState.kind === "done" && (
-                <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  Data berhasil diekstrak — silakan periksa form di bawah
+                <div className="space-y-1.5 mt-2">
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Data berhasil diekstrak — silakan periksa form di bawah
+                  </div>
+                  {scanTruncation && (
+                    <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-500 mt-0.5" />
+                      <span>Teks PDF dipotong di baris {scanTruncation.lineIndex + 1} (<span className="font-medium">"{scanTruncation.phrase}"</span>) — data setelahnya tidak dikirim ke AI. Periksa field yang mungkin kosong.</span>
+                    </div>
+                  )}
+                  {scanCharLimitHit && !scanTruncation && (
+                    <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-500 mt-0.5" />
+                      <span>Dokumen panjang — teks dipotong di 5.000 karakter pertama. Data di halaman akhir mungkin tidak terbaca. Periksa field yang kosong.</span>
+                    </div>
+                  )}
                 </div>
               )}
               {scanState.kind === "error" && (

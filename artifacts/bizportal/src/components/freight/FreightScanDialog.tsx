@@ -308,6 +308,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
   const [applied, setApplied] = useState(false);
   const [showFormat, setShowFormat] = useState(false);
   const [lastTruncation, setLastTruncation] = useState<{ phrase: string; lineIndex: number } | null>(null);
+  const [lastCharLimitHit, setLastCharLimitHit] = useState(false);
 
   const stopCamera = useCallback(() => {
     try {
@@ -447,6 +448,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
     setApplied(false);
     setCameraError(null);
     setLastTruncation(null);
+    setLastCharLimitHit(false);
   }
 
   async function handleFileUpload(file: File) {
@@ -454,6 +456,7 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
     setApplied(false);
     setCameraError(null);
     setLastTruncation(null);
+    setLastCharLimitHit(false);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -470,8 +473,10 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
         data: Record<string, unknown>;
         mode?: string;
         truncation?: { phrase: string; lineIndex: number } | null;
+        charLimitHit?: boolean;
       };
       if (json.truncation) setLastTruncation(json.truncation);
+      if (json.charLimitHit) setLastCharLimitHit(true);
       const text = JSON.stringify(json.data ?? {});
       const matched = parseResultFromUpload(text);
       if (!matched) {
@@ -655,9 +660,15 @@ export function FreightScanDialog({ open, onOpenChange, onApply }: Props) {
                 </span>
               </div>
               {lastTruncation && scanState.source === "upload" && (
-                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                  <span>Teks PDF dipotong di baris {lastTruncation.lineIndex + 1}: <span className="font-medium">"{lastTruncation.phrase}"</span></span>
+                <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-amber-500 mt-0.5" />
+                  <span>Teks PDF dipotong di baris {lastTruncation.lineIndex + 1} (<span className="font-medium">"{lastTruncation.phrase}"</span>) — data setelahnya tidak dikirim ke AI. Periksa field yang mungkin kosong.</span>
+                </div>
+              )}
+              {lastCharLimitHit && !lastTruncation && scanState.source === "upload" && (
+                <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-amber-500 mt-0.5" />
+                  <span>Dokumen panjang — teks dipotong di 5.000 karakter pertama. Data di halaman akhir mungkin tidak terbaca. Periksa field yang kosong.</span>
                 </div>
               )}
               <div className="max-h-60 overflow-y-auto space-y-1 rounded-lg border border-emerald-200 bg-emerald-50/40 p-2">
