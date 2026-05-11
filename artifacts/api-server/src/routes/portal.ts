@@ -408,6 +408,7 @@ router.get("/auth/me", requirePortalAuth, async (req, res) => {
 // ── OAuth helpers ─────────────────────────────────────────────────────────
 
 function getRequestOrigin(req: Request): string {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   const proto = req.headers["x-forwarded-proto"] || "https";
   const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
   return `${proto}://${host}`;
