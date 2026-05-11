@@ -1,14 +1,17 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-function isValidUrl(url: string | undefined): url is string {
-  if (!url) return false;
-  try { new URL(url); return true; } catch { return false; }
+function normalizeSupabaseUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith("https://") || url.startsWith("http://")) return url;
+  return `https://${url}.supabase.co`;
 }
 
-export const supabase: SupabaseClient | null = isValidUrl(supabaseUrl) && supabaseAnonKey
+const supabaseUrl = normalizeSupabaseUrl(rawUrl);
+
+export const supabase: SupabaseClient | null = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: true, autoRefreshToken: true },
     })
