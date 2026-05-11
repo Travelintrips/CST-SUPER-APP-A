@@ -901,6 +901,46 @@ export default function Products() {
             </p>
           </div>
         )}
+        {/* ── CTA — Pemesanan Jasa ──────────────────────────────────── */}
+        <div
+          className="mt-14 mb-2 rounded-2xl overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-5 px-7 py-6"
+          style={{
+            background: "linear-gradient(110deg,#0B5CAD 0%,#1D6FD8 60%,#0EA5E9 100%)",
+            boxShadow: "0 8px 32px rgba(11,92,173,0.22)",
+          }}
+        >
+          <div className="flex items-center gap-4">
+            <div
+              className="shrink-0 flex items-center justify-center rounded-xl"
+              style={{ width: 48, height: 48, background: "rgba(255,255,255,0.18)" }}
+            >
+              <Truck className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-white font-bold text-[15px] leading-snug">
+                Ingin memesan layanan pengiriman?
+              </p>
+              <p className="text-blue-100 text-[13px] mt-0.5">
+                Pilih jasa pengiriman kami — Domestik, Trucking, Freight &amp; Customs.
+              </p>
+            </div>
+          </div>
+          <a
+            href={`${import.meta.env.BASE_URL}jasa`}
+            className="shrink-0 flex items-center gap-2 font-semibold text-[13.5px] rounded-xl px-5 py-2.5 transition-all duration-200 whitespace-nowrap"
+            style={{
+              background: "rgba(255,255,255,0.18)",
+              color: "white",
+              border: "1.5px solid rgba(255,255,255,0.32)",
+              backdropFilter: "blur(8px)",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.28)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.18)"; }}
+          >
+            Buka Jasa/Services
+            <ChevronRight className="h-4 w-4" />
+          </a>
+        </div>
       </div>
 
       {/* Product detail modal */}
