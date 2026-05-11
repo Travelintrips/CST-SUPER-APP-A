@@ -18,8 +18,6 @@ import {
   Loader2,
 } from "lucide-react";
 
-const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 interface RfqFormData {
   rfqNumber: string;
   rfqStatus: string;
@@ -84,7 +82,7 @@ export default function LogisticsVendorQuotePage() {
       return;
     }
 
-    fetch(`${BASE_URL}/api/logistic/orders/vendor-form?rfq=${encodeURIComponent(rfq)}&v=${encodeURIComponent(v)}`)
+    fetch(`/api/logistic/orders/vendor-form?rfq=${encodeURIComponent(rfq)}&v=${encodeURIComponent(v)}`)
       .then((res) => res.json())
       .then((json: RfqFormData & { message?: string }) => {
         if (json.message) {
@@ -114,7 +112,7 @@ export default function LogisticsVendorQuotePage() {
 
     setSending(true);
     try {
-      const res = await fetch(`${BASE_URL}/api/logistic/orders/vendor-quote`, {
+      const res = await fetch(`/api/logistic/orders/vendor-quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
