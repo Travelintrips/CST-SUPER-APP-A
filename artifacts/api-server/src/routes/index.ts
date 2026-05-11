@@ -26,6 +26,7 @@ import webhooksRouter from "./webhooks";
 import { aiAgentRouter } from "./aiAgent";
 import { portalProductOrdersRouter } from "./portalProductOrders";
 import geocodeRouter from "./geocode";
+import { whatsappRouter } from "./whatsapp";
 
 const router: IRouter = Router();
 
@@ -57,4 +58,5 @@ router.use(webhooksRouter);
 router.use("/ai-agent", aiAgentRouter);
 router.use("/portal-product", portalProductOrdersRouter);
 router.use(geocodeRouter);
+router.use("/whatsapp", whatsappRouter);
 export default router;

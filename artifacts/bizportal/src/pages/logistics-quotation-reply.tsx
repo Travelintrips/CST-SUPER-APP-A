@@ -1,0 +1,647 @@
+import { useState, useEffect } from "react";
+import { AppShell } from "@/components/layout/AppShell";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import {
+  MessageCircle,
+  Send,
+  Save,
+  Eye,
+  RefreshCw,
+  Users,
+  CheckCircle,
+  XCircle,
+  Clock,
+} from "lucide-react";
+
+const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+interface ReplyLog {
+  id: number;
+  rfqId: string | null;
+  orderId: number | null;
+  customerName: string;
+  customerPhone: string;
+  vendorName: string | null;
+  serviceType: string | null;
+  route: string | null;
+  vendorPrice: number | null;
+  finalPrice: number | null;
+  status: string;
+  sentStatus: string;
+  sentToAdmin: boolean;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+const idr = (n: number | null | undefined) =>
+  n == null
+    ? "—"
+    : new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        maximumFractionDigits: 0,
+      }).format(n);
+
+const STATUS_COLORS: Record<string, string> = {
+  Ready: "bg-green-100 text-green-800 border-green-200",
+  "Need Info": "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "Not Available": "bg-red-100 text-red-800 border-red-200",
+};
+
+const SENT_STATUS_COLORS: Record<string, string> = {
+  draft: "bg-slate-100 text-slate-600 border-slate-200",
+  sent: "bg-green-100 text-green-800 border-green-200",
+  failed: "bg-red-100 text-red-800 border-red-200",
+};
+
+export default function LogisticsQuotationReplyPage() {
+  const { toast } = useToast();
+
+  const [form, setForm] = useState({
+    rfqId: "",
+    orderId: "",
+    customerName: "",
+    customerPhone: "",
+    vendorName: "",
+    vendorPhone: "",
+    serviceType: "",
+    route: "",
+    vendorPrice: "",
+    markupType: "percentage",
+    markupValue: "",
+    finalPrice: "",
+    pickupDate: "",
+    deliveryDate: "",
+    notes: "",
+    status: "Ready",
+  });
+
+  const [preview, setPreview] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<ReplyLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  function calcFinalPrice(vendorPrice: string, markupType: string, markupValue: string): number {
+    const vp = parseFloat(vendorPrice.replace(/\./g, "").replace(",", ".")) || 0;
+    const mv = parseFloat(markupValue.replace(/\./g, "").replace(",", ".")) || 0;
+    if (markupType === "percentage") return vp + (vp * mv) / 100;
+    return vp + mv;
+  }
+
+  useEffect(() => {
+    if (form.vendorPrice !== "" && form.markupValue !== "") {
+      const fp = calcFinalPrice(form.vendorPrice, form.markupType, form.markupValue);
+      setForm((prev) => ({ ...prev, finalPrice: Math.round(fp).toString() }));
+    }
+  }, [form.vendorPrice, form.markupType, form.markupValue]);
+
+  function buildPreview(): string {
+    const fp = parseFloat(form.finalPrice) || 0;
+    const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+    return (
+      `Halo ${form.customerName || "{customerName}"},\n\n` +
+      `Berikut quotation layanan CST Logistics:\n\n` +
+      `No. RFQ       : ${form.rfqId || "-"}\n` +
+      `Layanan       : ${form.serviceType || "-"}\n` +
+      `Rute          : ${form.route || "-"}\n` +
+      (form.pickupDate ? `Estimasi Pickup   : ${form.pickupDate}\n` : "") +
+      (form.deliveryDate ? `Estimasi Delivery : ${form.deliveryDate}\n` : "") +
+      `Harga Final   : ${fmt(fp)}\n` +
+      `Status        : ${form.status}\n` +
+      (form.notes ? `\nCatatan:\n${form.notes}\n` : "") +
+      `\nSilakan konfirmasi apabila quotation ini disetujui.\n\n` +
+      `Terima kasih,\nCST Logistics`
+    );
+  }
+
+  function handlePreview() {
+    setPreview(buildPreview());
+    setShowPreview(true);
+  }
+
+  async function fetchLogs() {
+    setLogsLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/whatsapp/quotation-logs`);
+      if (res.ok) {
+        const data = await res.json() as ReplyLog[];
+        setLogs(data);
+      }
+    } catch {
+      // silent
+    } finally {
+      setLogsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchLogs();
+  }, []);
+
+  async function submit(isDraft: boolean, sendToAdminGroup = false) {
+    if (!form.customerName.trim() || !form.customerPhone.trim()) {
+      toast({ title: "Nama dan nomor WhatsApp customer wajib diisi", variant: "destructive" });
+      return;
+    }
+    if (!form.finalPrice || parseFloat(form.finalPrice) <= 0) {
+      toast({ title: "Harga final customer wajib diisi", variant: "destructive" });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/whatsapp/send-quotation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rfqId: form.rfqId || null,
+          orderId: form.orderId ? parseInt(form.orderId) : null,
+          customerName: form.customerName,
+          customerPhone: form.customerPhone,
+          vendorName: form.vendorName || null,
+          vendorPhone: form.vendorPhone || null,
+          serviceType: form.serviceType || null,
+          route: form.route || null,
+          vendorPrice: form.vendorPrice ? parseFloat(form.vendorPrice) : null,
+          markupType: form.markupType,
+          markupValue: parseFloat(form.markupValue) || 0,
+          finalPrice: parseFloat(form.finalPrice),
+          pickupDate: form.pickupDate || null,
+          deliveryDate: form.deliveryDate || null,
+          notes: form.notes || null,
+          status: form.status,
+          sendToAdminGroup,
+          isDraft,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json() as { message?: string };
+        throw new Error(err.message ?? "Gagal mengirim");
+      }
+
+      const data = await res.json() as { sentStatus: string; sentToAdmin: boolean };
+
+      if (isDraft) {
+        toast({ title: "Draft disimpan", description: "Log tersimpan tanpa pengiriman WA." });
+      } else if (data.sentStatus === "sent") {
+        toast({
+          title: "Berhasil dikirim!",
+          description: sendToAdminGroup && data.sentToAdmin
+            ? "Quotation dikirim ke customer dan admin group."
+            : "Quotation dikirim ke customer via WhatsApp.",
+        });
+      } else {
+        toast({
+          title: "Pengiriman gagal",
+          description: "Pesan tersimpan sebagai log, tapi gagal terkirim via Fonnte.",
+          variant: "destructive",
+        });
+      }
+
+      await fetchLogs();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resetForm() {
+    setForm({
+      rfqId: "",
+      orderId: "",
+      customerName: "",
+      customerPhone: "",
+      vendorName: "",
+      vendorPhone: "",
+      serviceType: "",
+      route: "",
+      vendorPrice: "",
+      markupType: "percentage",
+      markupValue: "",
+      finalPrice: "",
+      pickupDate: "",
+      deliveryDate: "",
+      notes: "",
+      status: "Ready",
+    });
+  }
+
+  function field(label: string, key: keyof typeof form, opts?: { placeholder?: string; type?: string }) {
+    return (
+      <div className="space-y-1.5">
+        <Label>{label}</Label>
+        <Input
+          type={opts?.type ?? "text"}
+          placeholder={opts?.placeholder ?? ""}
+          value={form[key]}
+          onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <AppShell>
+      <div className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <MessageCircle className="h-6 w-6 text-green-600" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Balasan Quotation via WhatsApp</h1>
+            <p className="text-sm text-muted-foreground">
+              Buat balasan quotation ke customer dan kirim via Fonnte WhatsApp
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* === FORM === */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Identitas Order */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Identitas Order / RFQ</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                {field("No. RFQ / Order ID", "rfqId", { placeholder: "RFQ-250511-12345" })}
+                {field("Order ID (angka)", "orderId", { placeholder: "123", type: "number" })}
+              </CardContent>
+            </Card>
+
+            {/* Customer */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Data Customer</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                {field("Nama Customer *", "customerName", { placeholder: "PT. Maju Bersama" })}
+                {field("No. WhatsApp Customer *", "customerPhone", { placeholder: "08123456789" })}
+              </CardContent>
+            </Card>
+
+            {/* Vendor */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Data Vendor</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                {field("Nama Vendor", "vendorName", { placeholder: "CV. Ekspres Jaya" })}
+                {field("No. WhatsApp Vendor", "vendorPhone", { placeholder: "08119876543" })}
+              </CardContent>
+            </Card>
+
+            {/* Layanan */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Detail Layanan</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                {field("Jenis Layanan", "serviceType", { placeholder: "Trucking Lokal / Sea Freight / dll." })}
+                {field("Rute / Tujuan", "route", { placeholder: "Jakarta → Surabaya" })}
+                {field("Estimasi Pickup", "pickupDate", { placeholder: "Besok / 13 Mei 2025" })}
+                {field("Estimasi Delivery", "deliveryDate", { placeholder: "3-5 hari / 16 Mei 2025" })}
+              </CardContent>
+            </Card>
+
+            {/* Harga */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Harga & Markup</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                {field("Harga Vendor (Rp)", "vendorPrice", { placeholder: "5000000", type: "number" })}
+
+                <div className="space-y-1.5">
+                  <Label>Tipe Markup</Label>
+                  <Select
+                    value={form.markupType}
+                    onValueChange={(v) => setForm((p) => ({ ...p, markupType: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="percentage">Persen (%)</SelectItem>
+                      <SelectItem value="nominal">Nominal (Rp)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>
+                    Markup{" "}
+                    {form.markupType === "percentage" ? "(%" : "(Rp)"}
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder={form.markupType === "percentage" ? "10" : "500000"}
+                    value={form.markupValue}
+                    onChange={(e) => setForm((p) => ({ ...p, markupValue: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="font-semibold text-green-700">Harga Final Customer (Rp) *</Label>
+                  <Input
+                    type="number"
+                    placeholder="Dihitung otomatis"
+                    value={form.finalPrice}
+                    onChange={(e) => setForm((p) => ({ ...p, finalPrice: e.target.value }))}
+                    className="border-green-300 focus:border-green-500 font-semibold"
+                  />
+                  {form.vendorPrice && form.markupValue && (
+                    <p className="text-xs text-muted-foreground">
+                      {idr(parseFloat(form.vendorPrice))} + {form.markupType === "percentage" ? `${form.markupValue}%` : `Rp ${parseFloat(form.markupValue).toLocaleString("id-ID")}`}
+                      {" "}= <span className="text-green-700 font-semibold">{idr(parseFloat(form.finalPrice))}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <Select
+                    value={form.status}
+                    onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Ready">Ready</SelectItem>
+                      <SelectItem value="Need Info">Need Info</SelectItem>
+                      <SelectItem value="Not Available">Not Available</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Catatan */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Catatan Vendor/Admin</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  rows={3}
+                  placeholder="Catatan tambahan untuk customer..."
+                  value={form.notes}
+                  onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Tombol Aksi */}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => submit(true)}
+                disabled={loading}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                Save Draft
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handlePreview}
+                disabled={loading}
+              >
+                <Eye className="mr-2 h-4 w-4" />
+                Preview WA
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => submit(false, false)}
+                disabled={loading}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Kirim ke Customer
+              </Button>
+              <Button
+                variant="outline"
+                className="border-green-600 text-green-700 hover:bg-green-50"
+                onClick={() => submit(false, true)}
+                disabled={loading}
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Kirim ke Customer + Admin Group
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={resetForm}
+                disabled={loading}
+                className="ml-auto text-slate-500"
+              >
+                Reset Form
+              </Button>
+            </div>
+          </div>
+
+          {/* === PREVIEW PANEL === */}
+          <div className="space-y-4">
+            <Card className="sticky top-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4 text-green-600" />
+                  Preview Pesan WA
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="bg-white rounded p-3 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed min-h-[200px] border border-slate-100 shadow-sm">
+                    {buildPreview()}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                  <MessageCircle className="h-3 w-3" />
+                  Ini adalah preview pesan yang akan dikirim ke customer. Harga vendor tidak ditampilkan ke customer.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* === LOG TABLE === */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-base">Riwayat Pengiriman Quotation</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={fetchLogs}
+              disabled={logsLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${logsLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {logs.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Belum ada riwayat pengiriman quotation.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Waktu</TableHead>
+                      <TableHead>RFQ / Order</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>No. HP</TableHead>
+                      <TableHead>Layanan</TableHead>
+                      <TableHead>Rute</TableHead>
+                      <TableHead className="text-right">Harga Final</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Kirim</TableHead>
+                      <TableHead>Admin</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(log.createdAt).toLocaleString("id-ID", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {log.rfqId ?? log.orderId ?? "—"}
+                        </TableCell>
+                        <TableCell className="font-medium text-sm">{log.customerName}</TableCell>
+                        <TableCell className="text-xs text-slate-600">{log.customerPhone}</TableCell>
+                        <TableCell className="text-xs">{log.serviceType ?? "—"}</TableCell>
+                        <TableCell className="text-xs">{log.route ?? "—"}</TableCell>
+                        <TableCell className="text-right font-semibold text-sm">
+                          {idr(log.finalPrice)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={STATUS_COLORS[log.status] ?? "bg-slate-100 text-slate-600"}
+                          >
+                            {log.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={SENT_STATUS_COLORS[log.sentStatus] ?? "bg-slate-100"}
+                          >
+                            {log.sentStatus === "sent" ? (
+                              <><CheckCircle className="mr-1 h-3 w-3" />Terkirim</>
+                            ) : log.sentStatus === "failed" ? (
+                              <><XCircle className="mr-1 h-3 w-3" />Gagal</>
+                            ) : (
+                              <><Clock className="mr-1 h-3 w-3" />Draft</>
+                            )}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {log.sentToAdmin ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Dialog preview */}
+        <Dialog open={showPreview} onOpenChange={setShowPreview}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-green-600" />
+                Preview Pesan WhatsApp
+              </DialogTitle>
+            </DialogHeader>
+            <div className="bg-green-50 rounded-lg p-4">
+              <div className="bg-white rounded p-3 text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed border border-slate-100 shadow-sm">
+                {preview}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pesan ini akan dikirim ke {form.customerPhone ? normalizePhoneDisplay(form.customerPhone) : "customer"} via Fonnte WhatsApp.
+            </p>
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setShowPreview(false)}>
+                Tutup
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={async () => {
+                  setShowPreview(false);
+                  await submit(false, false);
+                }}
+                disabled={loading}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Kirim ke Customer
+              </Button>
+              <Button
+                variant="outline"
+                className="border-green-600 text-green-700 hover:bg-green-50"
+                onClick={async () => {
+                  setShowPreview(false);
+                  await submit(false, true);
+                }}
+                disabled={loading}
+              >
+                <Users className="mr-2 h-4 w-4" />
+                + Admin Group
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </AppShell>
+  );
+}
+
+function normalizePhoneDisplay(raw: string): string {
+  let digits = raw.replace(/[^\d]/g, "");
+  if (digits.startsWith("62")) return "+" + digits;
+  if (digits.startsWith("0")) return "+62" + digits.slice(1);
+  return "+62" + digits;
+}

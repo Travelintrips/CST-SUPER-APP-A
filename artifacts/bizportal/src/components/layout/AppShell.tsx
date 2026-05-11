@@ -33,6 +33,7 @@ import {
   GitMerge,
   Bot,
   ScanLine,
+  MessageCircle,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -184,6 +185,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship },
+        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
       ],
     },
     { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
