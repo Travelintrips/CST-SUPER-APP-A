@@ -18,19 +18,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Customer Portal"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "Customer Portal"
+name = "Start application"
 author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=23434 BASE_PATH=/ pnpm --filter @workspace/customer-portal run dev"
-waitForPort = 23434
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start-all.sh"
+waitForPort = 5000
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -62,6 +62,13 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
+<<<<<<< HEAD
+=======
+localPort = 5000
+externalPort = 8008
+
+[[ports]]
+>>>>>>> 329592e7252aadef5f3b9cb1d66e71a90db57d82
 localPort = 8080
 externalPort = 8080
 
@@ -90,24 +97,8 @@ localPort = 8086
 externalPort = 4200
 
 [[ports]]
-localPort = 8087
-externalPort = 8008
-
-[[ports]]
-localPort = 8088
-externalPort = 8081
-
-[[ports]]
-localPort = 8089
-externalPort = 9000
-
-[[ports]]
 localPort = 18442
 externalPort = 3000
-
-[[ports]]
-localPort = 19326
-externalPort = 8008
 
 [[ports]]
 localPort = 19368
@@ -116,10 +107,6 @@ externalPort = 6000
 [[ports]]
 localPort = 21170
 externalPort = 8000
-
-[[ports]]
-localPort = 21171
-externalPort = 6800
 
 [[ports]]
 localPort = 23434

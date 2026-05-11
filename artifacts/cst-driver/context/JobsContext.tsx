@@ -43,7 +43,7 @@ function toAbsoluteUrl(url: string): string {
 }
 
 const LOCATION_INTERVAL_MS = 60_000;
-const POLL_INTERVAL_MS = 60_000; // reduced from 30s — realtime covers instant updates
+const POLL_INTERVAL_MS = 60_000;
 
 export function JobsProvider({ children }: { children: React.ReactNode }) {
   const { token, driver, isAuthenticated } = useAuth();
@@ -91,9 +91,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(pollInterval);
   }, [isAuthenticated, token, refreshJobs]);
 
-  // Supabase Realtime — subscribe to driver_jobs changes for this driver
+  // Supabase Realtime — subscribe to driver_jobs changes for this driver (optional, only when configured)
   useEffect(() => {
-    if (!isAuthenticated || !driver) return;
+    if (!isAuthenticated || !driver || !supabase) return;
     const driverIdNum = parseInt(driver.id, 10);
     if (isNaN(driverIdNum)) return;
 
@@ -104,10 +104,8 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         { event: '*', schema: 'public', table: 'driver_jobs' },
         (payload) => {
           const record = (payload.new ?? payload.old) as Record<string, unknown>;
-          // Only react to changes for this driver
           if (Number(record?.driver_id) === driverIdNum) {
             refreshJobs();
-            // Notify for new ASSIGNED jobs
             if (
               payload.eventType === 'INSERT' &&
               record.status === 'ASSIGNED' &&
