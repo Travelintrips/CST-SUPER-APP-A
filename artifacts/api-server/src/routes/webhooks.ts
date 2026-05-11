@@ -8,6 +8,22 @@ import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiI
 
 const router = Router();
 
+// ── In-memory dedup cache: prevent processing the same Fonnte webhook twice ──
+// Key = sender + "|" + message (first 100 chars) + "|" + mediaUrl
+// Entries expire after DEDUP_TTL_MS (2 minutes)
+const DEDUP_TTL_MS = 2 * 60 * 1000;
+const dedupCache = new Map<string, number>();
+function isDuplicate(key: string): boolean {
+  const now = Date.now();
+  // Evict expired entries
+  for (const [k, ts] of dedupCache) {
+    if (now - ts > DEDUP_TTL_MS) dedupCache.delete(k);
+  }
+  if (dedupCache.has(key)) return true;
+  dedupCache.set(key, now);
+  return false;
+}
+
 function normalizePhone(raw: string): string {
   let digits = raw.replace(/[^\d]/g, "");
   if (digits.startsWith("62")) return digits;
@@ -280,6 +296,13 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
 
     if (!sender) {
       logger.warn({ body }, "Fonnte webhook: missing sender");
+      return;
+    }
+
+    // ── Dedup: reject if exact same message from same sender already seen within 2 min ──
+    const dedupKey = `${sender}|${message.slice(0, 120)}|${typeof body.url === "string" ? body.url.slice(0, 80) : ""}`;
+    if (isDuplicate(dedupKey)) {
+      logger.info({ sender }, "Fonnte webhook: duplicate message ignored");
       return;
     }
 

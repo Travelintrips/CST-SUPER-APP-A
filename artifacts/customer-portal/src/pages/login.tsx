@@ -128,12 +128,19 @@ export default function Login() {
   }
 
   async function handleGoogleLogin() {
-    if (!supabase) return;
+    if (!supabase) {
+      setErrorMsg("Layanan autentikasi tidak tersedia. Silakan hubungi administrator.");
+      return;
+    }
+    setErrorMsg("");
     const redirectTo = `${window.location.origin}${BASE}/`;
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
     });
+    if (error) {
+      setErrorMsg(error.message);
+    }
   }
 
   return (

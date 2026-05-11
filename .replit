@@ -9,11 +9,33 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=23434 BASE_PATH=/ pnpm --filter @workspace/customer-portal run dev"
+waitForPort = 23434
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
-stack = "BEST_EFFORT_FALLBACK"
+stack = "PNPM_WORKSPACE"
 expertMode = true
-integrations = ["google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
+integrations = ["google-drive:1.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
@@ -23,13 +45,11 @@ timeoutMs = 20000
 
 [userenv.shared]
 ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,divatranssoetta@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"

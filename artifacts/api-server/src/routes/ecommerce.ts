@@ -160,7 +160,7 @@ router.get("/products", async (req, res) => {
 // POST /api/ecommerce/products
 router.post("/products", async (req, res) => {
   const {
-    name, sku, price, stock, categories, description, imageUrl,
+    name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
   } = req.body;
@@ -184,6 +184,7 @@ router.post("/products", async (req, res) => {
       name, sku, price: String(price), stock: stock ?? 0,
       description: description ?? null,
       imageUrl: normalizeImage(imageUrl),
+      mediaItems: Array.isArray(mediaItems) ? JSON.stringify(mediaItems) : "[]",
       defaultSalesTaxId: defaultSalesTaxId ?? null,
       defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
       itemType: itemType ?? "barang",
@@ -216,7 +217,7 @@ router.get("/products/:id", async (req, res) => {
 router.put("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   const {
-    name, sku, price, stock, categories, description, imageUrl,
+    name, sku, price, stock, categories, description, imageUrl, mediaItems,
     defaultSalesTaxId, defaultPurchaseTaxId,
     itemType, unit, unitOptions, subcategory, isActive,
   } = req.body;
@@ -239,6 +240,7 @@ router.put("/products/:id", async (req, res) => {
       name, sku, price: String(price), stock: stock ?? 0,
       description: description ?? null,
       imageUrl: normalizeImage(imageUrl),
+      mediaItems: Array.isArray(mediaItems) ? JSON.stringify(mediaItems) : "[]",
       defaultSalesTaxId: defaultSalesTaxId ?? null,
       defaultPurchaseTaxId: defaultPurchaseTaxId ?? null,
       itemType: itemType ?? "barang",
