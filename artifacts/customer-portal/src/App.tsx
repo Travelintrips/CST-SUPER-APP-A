@@ -53,24 +53,39 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
 const NO_SHELL_PREFIXES = ["/jasa/", "/services/"];
 
+const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function currentPortalPath() {
+  return window.location.pathname.replace(BASE_PREFIX, "") || "/";
+}
+
+function redirectByRole(role: string, setLocation: (path: string) => void) {
+  if (role === "admin") setLocation("/admin");
+  else if (role === "vendor") setLocation("/vendor-dashboard");
+  else setLocation("/dashboard");
+}
+
 function OAuthRedirectHandler() {
   const [, setLocation] = useLocation();
   useEffect(() => {
     if (!supabase) return;
+
+    // Check existing session immediately on mount (handles refresh after OAuth)
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const path = currentPortalPath();
+      if (path !== "/" && path !== "/login") return;
+      const profile = await fetchAndStoreProfile();
+      if (profile) redirectByRole(profile.role, setLocation);
+    });
+
+    // Also listen for new sign-in events (handles fresh OAuth flow)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session) {
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+        const path = currentPortalPath();
+        if (path !== "/" && path !== "/login") return;
         const profile = await fetchAndStoreProfile();
-        if (!profile) return;
-        const currentPath = window.location.pathname.replace(import.meta.env.BASE_URL.replace(/\/$/, ""), "") || "/";
-        if (currentPath === "/login" || currentPath === "/") {
-          if (profile.role === "admin") {
-            setLocation("/admin");
-          } else if (profile.role === "vendor") {
-            setLocation("/vendor-dashboard");
-          } else {
-            setLocation("/dashboard");
-          }
-        }
+        if (profile) redirectByRole(profile.role, setLocation);
       }
     });
     return () => subscription.unsubscribe();
