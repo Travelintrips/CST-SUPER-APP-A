@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { ScanLine, Save, Loader2, CheckCircle2, Info, X, Plus, RotateCcw, FileSearch, FlaskConical, ChevronDown, ChevronUp, Scissors, CheckCircle } from "lucide-react";
+import { ScanLine, Save, Loader2, CheckCircle2, Info, X, Plus, RotateCcw, FileSearch, FlaskConical, ChevronDown, ChevronUp, Scissors, CheckCircle, Upload, FileText } from "lucide-react";
 
 type DocGroup = "sales" | "freight" | "customs";
 
@@ -60,6 +60,9 @@ export default function AiScanSettingsPage() {
   // ── Boilerplate test panel ─────────────────────────────────────────────────
   const [testOpen, setTestOpen] = useState(false);
   const [testText, setTestText] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfFileName, setPdfFileName] = useState<string | null>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   const testResult = useMemo(() => {
     if (!testText.trim() || bpPhrases.length === 0) return null;
@@ -179,6 +182,35 @@ export default function AiScanSettingsPage() {
 
   function handleResetBoilerplate() {
     setBpPhrases(bpDefaults);
+  }
+
+  async function handlePdfUpload(file: File) {
+    setPdfLoading(true);
+    setPdfFileName(file.name);
+    setTestText("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/scan-document/extract-text", {
+        method: "POST",
+        body: form,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(err.message ?? `Error ${res.status}`);
+      }
+      const data = await res.json() as { text: string; pages?: number; charCount: number };
+      setTestText(data.text);
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Gagal mengekstrak teks PDF",
+        variant: "destructive",
+      });
+      setPdfFileName(null);
+    } finally {
+      setPdfLoading(false);
+    }
   }
 
   function toggleField(group: DocGroup, key: string, value: boolean) {
@@ -460,18 +492,64 @@ export default function AiScanSettingsPage() {
                     <span className="flex items-center gap-2">
                       <FlaskConical className="h-4 w-4 text-violet-500" />
                       Uji Coba Frasa
-                      <span className="text-xs font-normal text-gray-400">— tempel teks PDF untuk melihat di mana pemotongan terjadi</span>
+                      <span className="text-xs font-normal text-gray-400">— upload PDF atau tempel teks untuk melihat di mana pemotongan terjadi</span>
                     </span>
                     {testOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                   </button>
 
                   {testOpen && (
                     <div className="p-3 space-y-3 border-t bg-white">
+                      {/* PDF upload row */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input
+                          ref={pdfInputRef}
+                          type="file"
+                          accept="application/pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void handlePdfUpload(f);
+                            e.target.value = "";
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-xs h-8 shrink-0"
+                          disabled={pdfLoading}
+                          onClick={() => pdfInputRef.current?.click()}
+                        >
+                          {pdfLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="h-3.5 w-3.5" />
+                          )}
+                          {pdfLoading ? "Mengekstrak teks..." : "Upload PDF"}
+                        </Button>
+                        {pdfFileName ? (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 border border-violet-200 rounded-md text-xs text-violet-700 min-w-0">
+                            <FileText className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+                            <span className="truncate max-w-[220px]">{pdfFileName}</span>
+                            <button
+                              type="button"
+                              onClick={() => { setTestText(""); setPdfFileName(null); }}
+                              className="rounded-full hover:bg-violet-200 p-0.5 transition-colors shrink-0 ml-0.5"
+                              aria-label="Hapus teks dari PDF"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">atau tempel teks di kotak bawah</span>
+                        )}
+                      </div>
+
                       <Textarea
                         value={testText}
-                        onChange={(e) => setTestText(e.target.value)}
+                        onChange={(e) => { setTestText(e.target.value); if (pdfFileName) setPdfFileName(null); }}
                         placeholder={"Tempel teks PDF di sini...\n\nCth:\nSHIPPER: PT EXAMPLE\nCONSIGNEE: PT TUJUAN\n\nTERMS AND CONDITIONS\nAll shipments are subject to..."}
-                        className="text-xs font-mono resize-none h-32"
+                        className="text-xs font-mono resize-none h-36"
                       />
 
                       {testText.trim() && testResult && (
