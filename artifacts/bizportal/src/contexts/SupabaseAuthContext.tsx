@@ -18,9 +18,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function getRedirectTo(): string {
-  const devDomain = import.meta.env.VITE_REPLIT_DEV_DOMAIN as string;
   const base = import.meta.env.BASE_URL || "/bizportal/";
-  if (devDomain) {
+  const devDomain = import.meta.env.VITE_REPLIT_DEV_DOMAIN as string;
+  if (import.meta.env.DEV && devDomain) {
     return `https://${devDomain}${base}`;
   }
   return window.location.origin + base;
