@@ -58,12 +58,12 @@ export default function Home() {
   ];
 
   const whyCards = [
-    { titleKey: "why.card1Title", descKey: "why.card1Desc", href: "/services" },
-    { titleKey: "why.card2Title", descKey: "why.card2Desc", href: "/services" },
-    { titleKey: "why.card3Title", descKey: "why.card3Desc", href: "/services" },
-    { titleKey: "why.card4Title", descKey: "why.card4Desc", href: "/services" },
-    { titleKey: "why.card5Title", descKey: "why.card5Desc", href: "/services" },
-    { titleKey: "why.card6Title", descKey: "why.card6Desc", href: "/services" },
+    { titleKey: "why.card1Title", descKey: "why.card1Desc", href: "/jasa" },
+    { titleKey: "why.card2Title", descKey: "why.card2Desc", href: "/jasa" },
+    { titleKey: "why.card3Title", descKey: "why.card3Desc", href: "/jasa" },
+    { titleKey: "why.card4Title", descKey: "why.card4Desc", href: "/jasa" },
+    { titleKey: "why.card5Title", descKey: "why.card5Desc", href: "/jasa" },
+    { titleKey: "why.card6Title", descKey: "why.card6Desc", href: "/jasa" },
   ];
 
   const aboutPoints = [
@@ -273,7 +273,7 @@ export default function Home() {
           </div>
 
           <div className="text-center">
-            <Link href="/services">
+            <Link href="/jasa">
               <Button size="lg" className="h-12 px-8 gap-2 bg-sky-500 hover:bg-sky-400 text-white border-0 rounded-xl">
                 {t("homePromo.services.cta")} <ChevronRight className="h-4 w-4" />
               </Button>
