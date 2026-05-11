@@ -471,7 +471,7 @@ async function extractOrderFromText(content: string): Promise<ExtractedOrder | n
   const openai = buildOpenAi();
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 1200,
       messages: [
         { role: "system", content: AI_INTAKE_PROMPT },
