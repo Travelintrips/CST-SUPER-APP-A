@@ -1441,10 +1441,10 @@ export function ChatWidget() {
                   right: 0,
                   width: "100%",
                   height: kbOffset > 0
-                    ? `calc(min(92dvh, 92vh) - ${kbOffset}px)`
+                    ? `max(320px, calc(min(92dvh, 92vh) - ${kbOffset}px))`
                     : `min(92dvh, 92vh)`,
                   maxHeight: kbOffset > 0
-                    ? `calc(min(92dvh, 92vh) - ${kbOffset}px)`
+                    ? `max(320px, calc(min(92dvh, 92vh) - ${kbOffset}px))`
                     : `min(92dvh, 92vh)`,
                   borderRadius: "20px 20px 0 0",
                   border: "1px solid rgba(0,0,0,0.06)",
