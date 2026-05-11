@@ -538,9 +538,14 @@ function ItemEditCard({
   const [description, setDescription] = useState(item.description ?? "");
   const [price, setPrice] = useState(String(item.price));
   const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl);
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>(
-    type === "products" ? (item as Product).mediaItems ?? [] : []
-  );
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>(() => {
+    if (type !== "products") return [];
+    const existing = (item as Product).mediaItems ?? [];
+    if (existing.length > 0) return existing;
+    // Jika mediaItems kosong tapi imageUrl ada, tampilkan imageUrl sebagai cover
+    if (item.imageUrl) return [{ type: "image" as const, url: item.imageUrl }];
+    return [];
+  });
   const [unit, setUnit] = useState(type === "products" ? (item as Product).unit ?? "pcs" : "pcs");
   const [unitOptionsRaw, setUnitOptionsRaw] = useState(
     type === "products" ? ((item as Product).unitOptions ?? []).join(", ") : ""
