@@ -120,7 +120,7 @@ function nextJobNumber(): string {
 
 async function uploadPhotoToStorage(buffer: Buffer, mimetype: string, jobId: number): Promise<string> {
   try {
-    const { buffer: compressed, contentType } = await compressImageBuffer(buffer, mimetype);
+    const { buffer: compressed, contentType } = await compressImageBuffer(buffer, mimetype, "photo");
     const filename = `${randomUUID()}.jpg`;
     const storagePath = `public/cargo-photos/${jobId}/${filename}`;
     await objectStorageService.uploadFile(compressed, storagePath, contentType);

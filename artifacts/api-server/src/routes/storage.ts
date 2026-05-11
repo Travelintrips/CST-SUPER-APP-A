@@ -112,7 +112,7 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
     }
 
     let finalContentType = contentType;
-    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType));
+    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType, "ocr-doc"));
 
     const { error } = await supabase.storage
       .from(bucket)
@@ -153,6 +153,10 @@ router.put("/storage/internal-upload/{*uploadPath}", async (req: Request, res: R
     return;
   }
 
+  // Determine compression mode by folder
+  const compressMode: import("../lib/imageCompress.js").ImageCompressMode =
+    folder === "cargo-photos" || folder === "public-assets" ? "photo" : "ocr-doc";
+
   try {
     const supabase = getSupabase();
     const bucket = getBucket();
@@ -171,7 +175,7 @@ router.put("/storage/internal-upload/{*uploadPath}", async (req: Request, res: R
     }
 
     let finalContentType = contentType;
-    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType));
+    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType, compressMode));
 
     const { error } = await supabase.storage
       .from(bucket)

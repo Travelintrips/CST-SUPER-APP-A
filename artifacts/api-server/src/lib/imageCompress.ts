@@ -1,8 +1,11 @@
 import sharp from "sharp";
 
-const MAX_WIDTH = 1600;
-const JPEG_QUALITY = 75;
-const WEBP_QUALITY = 75;
+export type ImageCompressMode = "photo" | "ocr-doc";
+
+const MODES = {
+  photo: { maxWidth: 1600, quality: 80 },
+  "ocr-doc": { maxWidth: 2000, quality: 85 },
+} satisfies Record<ImageCompressMode, { maxWidth: number; quality: number }>;
 
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
@@ -22,38 +25,48 @@ export function isCompressibleImage(contentType: string): boolean {
 
 /**
  * Compress an image buffer using sharp.
- * - Resizes to max 1600px width (maintains aspect ratio)
- * - Outputs JPEG at 75% quality
- * - Skips compression if not an image (PDF, etc.)
- * Returns { buffer, contentType } — use these for the final upload.
+ *
+ * Mode "photo"   → WebP, max 1600 px wide, quality 80 (operational / cargo photos)
+ * Mode "ocr-doc" → JPEG mozjpeg, max 2000 px wide, quality 85 (documents / OCR scans)
+ *
+ * In both modes:
+ *  - EXIF rotation is applied automatically
+ *  - Upscaling is disabled (withoutEnlargement)
+ *  - Falls back to original if compression fails
  */
 export async function compressImageBuffer(
   buffer: Buffer,
   contentType: string,
+  mode: ImageCompressMode = "photo",
 ): Promise<{ buffer: Buffer; contentType: string }> {
   if (!isCompressibleImage(contentType)) {
     return { buffer, contentType };
   }
+
+  const { maxWidth, quality } = MODES[mode];
 
   try {
     const image = sharp(buffer, { failOn: "none" });
     const meta = await image.metadata();
 
     const width = meta.width ?? 0;
-    const needsResize = width > MAX_WIDTH;
 
     let pipeline = image.rotate();
 
-    if (needsResize) {
-      pipeline = pipeline.resize({ width: MAX_WIDTH, withoutEnlargement: true });
+    if (width > maxWidth) {
+      pipeline = pipeline.resize({ width: maxWidth, withoutEnlargement: true });
     }
 
-    if (contentType === "image/webp") {
-      const compressed = await pipeline.webp({ quality: WEBP_QUALITY }).toBuffer();
+    if (mode === "photo") {
+      const compressed = await pipeline
+        .webp({ quality, effort: 4, smartSubsample: true })
+        .toBuffer();
       return { buffer: compressed, contentType: "image/webp" };
     }
 
-    const compressed = await pipeline.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
+    const compressed = await pipeline
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer();
     return { buffer: compressed, contentType: "image/jpeg" };
   } catch {
     return { buffer, contentType };
