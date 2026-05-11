@@ -1,6 +1,12 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const url = process.env.SUPABASE_URL ?? "";
+function normalizeSupabaseUrl(raw: string): string {
+  if (!raw) return "";
+  if (raw.startsWith("https://") || raw.startsWith("http://")) return raw;
+  return `https://${raw}.supabase.co`;
+}
+
+const url = normalizeSupabaseUrl(process.env.SUPABASE_URL ?? "");
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 let _client: SupabaseClient | null = null;
