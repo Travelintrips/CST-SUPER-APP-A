@@ -66,6 +66,12 @@ uri = "file://artifacts/cst-driver/assets/card-bg-premium.png"
 type = "image"
 title = "premium logistics card background"
 
+[[generated]]
+id = "KhYZk_l1XTLRfgk0OL2L8"
+uri = "file://artifacts/cst-driver/assets/truck-container-illustration.png"
+type = "image"
+title = "truck container isometric illustration"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
@@ -119,3 +125,9 @@ id = "93ZnaeHRBG4D_6ynOqGNV"
 uri = "file://artifacts/cst-driver/assets/card-bg-premium.png"
 type = "image"
 title = "Premium Logistics Card Background"
+
+[[outputs]]
+id = "cpLpqmZ_LiqICE0Gn279b"
+uri = "file://artifacts/cst-driver/assets/truck-container-illustration.png"
+type = "image"
+title = "Premium Truck & Container Illustration (Transparent)"
