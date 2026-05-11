@@ -1,25 +1,4 @@
-import nodemailer from "nodemailer";
-
-function createTransport() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT ?? "587");
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM ?? user ?? "noreply@bizportal.app";
-
-  if (!host || !user || !pass) {
-    throw new Error("SMTP configuration missing. Set SMTP_HOST, SMTP_USER, and SMTP_PASS environment variables.");
-  }
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-  });
-
-  return { transporter, from };
-}
+import { Resend } from "resend";
 
 export interface SendMailOptions {
   to: string;
@@ -33,18 +12,39 @@ export interface SendMailOptions {
   }>;
 }
 
+function getResend(): { client: Resend; from: string } {
+  const apiKey = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM ?? "noreply@cstlogistic.co.id";
+
+  if (!apiKey) {
+    throw new Error("Resend API key missing. Set SMTP_PASS environment variable.");
+  }
+
+  return { client: new Resend(apiKey), from };
+}
+
 export async function sendMail(opts: SendMailOptions): Promise<void> {
-  const { transporter, from } = createTransport();
-  await transporter.sendMail({
+  const { client, from } = getResend();
+
+  const attachments = opts.attachments?.map((a) => ({
+    filename: a.filename,
+    content: a.content,
+  }));
+
+  const { error } = await client.emails.send({
     from,
     to: opts.to,
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
-    attachments: opts.attachments,
+    attachments,
   });
+
+  if (error) {
+    throw new Error(`Resend error: ${error.message}`);
+  }
 }
 
 export function isSmtpConfigured(): boolean {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return !!(process.env.SMTP_PASS && process.env.SMTP_FROM);
 }
