@@ -14,6 +14,9 @@ import { BackToTopButton } from "@/components/BackToTopButton";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { ChatWidget } from "@/components/ChatWidget";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { fetchAndStoreProfile } from "@/lib/auth";
 
 // Portal pages
 import Home from "@/pages/home";
@@ -49,6 +52,31 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
 const NO_SHELL_PREFIXES = ["/jasa/", "/services/"];
+
+function OAuthRedirectHandler() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        const profile = await fetchAndStoreProfile();
+        if (!profile) return;
+        const currentPath = window.location.pathname.replace(import.meta.env.BASE_URL.replace(/\/$/, ""), "") || "/";
+        if (currentPath === "/login" || currentPath === "/") {
+          if (profile.role === "admin") {
+            setLocation("/admin");
+          } else if (profile.role === "vendor") {
+            setLocation("/vendor-dashboard");
+          } else {
+            setLocation("/dashboard");
+          }
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [setLocation]);
+  return null;
+}
 
 function AppShell() {
   const [location] = useLocation();
@@ -112,6 +140,7 @@ function App() {
           <CartProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <EditModeProvider>
+                <OAuthRedirectHandler />
                 <AppShell />
               </EditModeProvider>
             </WouterRouter>
