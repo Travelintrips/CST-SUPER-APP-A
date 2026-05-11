@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable } from "@workspace/db";
+import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -209,12 +209,31 @@ logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
       eq(logisticOrderQuotesTable.vendorId, vendorId)
     ));
 
+  // Get vehicle type from the first trucking item
+  const orderItems = await db.select().from(logisticOrderItemsTable)
+    .where(eq(logisticOrderItemsTable.orderId, order.id));
+  const truckingItem = orderItems.find((it) => it.calculatorType === "trucking");
+  const vehicleType = truckingItem
+    ? (truckingItem.inputData as Record<string, unknown>)?.vehicleType as string | null ?? null
+    : null;
+
+  // Get vendor's base price from catalog (first active item matching vehicleType, or first active)
+  const catalogItems = await db.select().from(vendorCatalogItemsTable)
+    .where(and(eq(vendorCatalogItemsTable.vendorId, vendorId), eq(vendorCatalogItemsTable.isActive, true)));
+  const matchingItem = vehicleType
+    ? catalogItems.find((c) => c.name.toLowerCase().includes(vehicleType.toLowerCase()))
+    : null;
+  const vendorBasePrice = matchingItem
+    ? Number(matchingItem.priceBase)
+    : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
+
   return res.json({
     rfqNumber: rfq.rfqNumber,
     rfqStatus: rfq.status,
     rfqNotes: rfq.notes,
     orderNumber: order.orderNumber,
     shipmentType: order.shipmentType,
+    vehicleType,
     origin: order.origin,
     destination: order.destination,
     commodity: order.commodity ?? null,
@@ -231,7 +250,7 @@ logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
     createdAt: order.createdAt.toISOString(),
     vendorId: vendor.id,
     vendorName: vendor.name,
-    vendorDefaultFee: vendor.fee != null ? Number(vendor.fee) : null,
+    vendorBasePrice,
     alreadySubmitted: !!existingQuote,
     existingQuote: existingQuote ? {
       vendorPrice: Number(existingQuote.vendorPrice),

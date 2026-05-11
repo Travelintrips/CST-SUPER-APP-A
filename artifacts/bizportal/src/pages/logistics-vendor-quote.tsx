@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +25,7 @@ interface RfqFormData {
   rfqNotes: string | null;
   orderNumber: string;
   shipmentType: string;
+  vehicleType: string | null;
   origin: string;
   destination: string;
   commodity: string | null;
@@ -42,7 +42,7 @@ interface RfqFormData {
   createdAt: string;
   vendorId: number;
   vendorName: string;
-  vendorDefaultFee: number | null;
+  vendorBasePrice: number | null;
   alreadySubmitted: boolean;
   existingQuote: {
     vendorPrice: number;
@@ -72,7 +72,6 @@ function isTruckingType(shipmentType: string) {
 
 export default function LogisticsVendorQuotePage() {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<RfqFormData | null>(null);
@@ -80,9 +79,6 @@ export default function LogisticsVendorQuotePage() {
   const [submitted, setSubmitted] = useState(false);
 
   const [vendorPrice, setVendorPrice] = useState("");
-  const [estimatedPickup, setEstimatedPickup] = useState("");
-  const [estimatedDelivery, setEstimatedDelivery] = useState("");
-  const [estimatedDays, setEstimatedDays] = useState("");
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -104,13 +100,9 @@ export default function LogisticsVendorQuotePage() {
           setData(json);
           if (json.alreadySubmitted && json.existingQuote) {
             setVendorPrice(String(json.existingQuote.vendorPrice));
-            setEstimatedPickup(json.existingQuote.estimatedPickup ?? "");
-            setEstimatedDelivery(json.existingQuote.estimatedDelivery ?? "");
-            setEstimatedDays(json.existingQuote.estimatedDays != null ? String(json.existingQuote.estimatedDays) : "");
             setNotes(json.existingQuote.vendorNotes ?? "");
-          } else if (!json.alreadySubmitted && json.vendorDefaultFee && json.vendorDefaultFee > 0) {
-            // Auto-populate with vendor's pre-set fee
-            setVendorPrice(String(json.vendorDefaultFee));
+          } else if (json.vendorBasePrice && json.vendorBasePrice > 0) {
+            setVendorPrice(String(json.vendorBasePrice));
           }
         }
       })
@@ -137,13 +129,9 @@ export default function LogisticsVendorQuotePage() {
           rfqNumber: rfq,
           vendorId: Number(v),
           vendorPrice: price,
-          estimatedPickup: isTrucking
-            ? (data?.requestedPickup ?? null)
-            : (estimatedPickup.trim() || null),
-          estimatedDelivery: isTrucking
-            ? (data?.requestedDelivery ?? null)
-            : (estimatedDelivery.trim() || null),
-          estimatedDays: isTrucking ? null : (estimatedDays ? Number(estimatedDays) : null),
+          estimatedPickup: null,
+          estimatedDelivery: null,
+          estimatedDays: null,
           notes: notes.trim() || null,
         }),
       });
@@ -233,6 +221,9 @@ export default function LogisticsVendorQuotePage() {
 
   const isTrucking = isTruckingType(data.shipmentType);
   const isAlreadySubmitted = data.alreadySubmitted;
+  const jenisLayanan = data.vehicleType
+    ? `${data.shipmentType} — ${data.vehicleType}`
+    : data.shipmentType;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -281,7 +272,7 @@ export default function LogisticsVendorQuotePage() {
             <span className="text-slate-500">No. Order</span>
             <span className="font-medium text-slate-800 text-right font-mono">{data.orderNumber}</span>
             <span className="text-slate-500">Jenis Layanan</span>
-            <span className="font-medium text-slate-800 text-right">{data.shipmentType}</span>
+            <span className="font-medium text-slate-800 text-right">{jenisLayanan}</span>
             {data.commodity && (
               <>
                 <span className="text-slate-500">Komoditi</span>
@@ -441,9 +432,9 @@ export default function LogisticsVendorQuotePage() {
             <Label htmlFor="vendorPrice" className="text-sm font-semibold text-slate-700">
               Harga Penawaran (Rp) <span className="text-red-500">*</span>
             </Label>
-            {!isAlreadySubmitted && data.vendorDefaultFee && data.vendorDefaultFee > 0 && (
-              <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
-                Terisi otomatis dari tarif standar Anda ({fmt(data.vendorDefaultFee)}). Sesuaikan jika perlu.
+            {data.vendorBasePrice && data.vendorBasePrice > 0 && !isAlreadySubmitted && (
+              <p className="text-xs text-slate-500">
+                Harga dasar vendor: <span className="font-medium text-slate-700">{fmt(data.vendorBasePrice)}</span>
               </p>
             )}
             <Input
@@ -463,54 +454,6 @@ export default function LogisticsVendorQuotePage() {
             )}
           </div>
 
-          {/* ETA fields — hanya untuk non-Trucking */}
-          {!isTrucking && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="etaPickup" className="text-sm text-slate-600">
-                    ETA Pickup
-                  </Label>
-                  <Input
-                    id="etaPickup"
-                    placeholder="Besok / 13 Mei"
-                    value={estimatedPickup}
-                    onChange={(e) => setEstimatedPickup(e.target.value)}
-                    className="border-slate-300"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="etaDelivery" className="text-sm text-slate-600">
-                    ETA Delivery
-                  </Label>
-                  <Input
-                    id="etaDelivery"
-                    placeholder="3-5 hari / 16 Mei"
-                    value={estimatedDelivery}
-                    onChange={(e) => setEstimatedDelivery(e.target.value)}
-                    className="border-slate-300"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="estDays" className="text-sm text-slate-600">
-                  Estimasi Hari (angka)
-                </Label>
-                <Input
-                  id="estDays"
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="Contoh: 3"
-                  value={estimatedDays}
-                  onChange={(e) => setEstimatedDays(e.target.value)}
-                  className="border-slate-300"
-                />
-              </div>
-            </>
-          )}
-
-          {/* Catatan — selalu ada */}
           <div className="space-y-1.5">
             <Label htmlFor="notes" className="text-sm text-slate-600">
               {isTrucking ? "Catatan Tambahan (opsional)" : "Catatan / Syarat Tambahan"}
