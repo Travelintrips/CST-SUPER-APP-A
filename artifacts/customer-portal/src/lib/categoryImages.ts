@@ -33,7 +33,7 @@ const PRODUCT_SPECIFIC: Array<{ names: string[]; url: string }> = [
 const SERVICE_IMAGES: Array<{ keywords: string[]; url: string }> = [
   {
     keywords: ["trucking", "truck", "container", "angkut", "darat", "sewa container", "truk"],
-    url: `${BASE}1558618666-fcd25c85cd64${W}`,
+    url: LOCAL("banner-trucking-container.png"),
   },
   {
     keywords: ["ocean freight", "sea freight", "freight laut", "laut lcl", "laut fcl", "laut", "kapal", "fcl", "lcl", "ocean"],

@@ -448,34 +448,35 @@ export default function Jasa() {
 
           {/* Trucking & Container Service */}
           <div
-            className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5"
+            className="rounded-2xl overflow-hidden flex flex-col sm:flex-row sm:items-stretch gap-0"
             style={{
-              background: [
-                "radial-gradient(ellipse at 8% 55%, rgba(71,85,105,0.10) 0%, transparent 52%)",
-                `url("data:image/svg+xml,%3Csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='1.8' height='1.8' rx='0.4' fill='%2394A3B8' fill-opacity='0.10'/%3E%3C/svg%3E")`,
-                "linear-gradient(130deg, #F8FAFC 0%, #F1F5F9 38%, #E9EFF6 76%, #F4F7FA 100%)",
-              ].join(", "),
               border: "1.5px solid rgba(100,116,139,0.20)",
-              boxShadow: "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05), inset 0 1px 0 rgba(255,255,255,0.95)",
+              boxShadow: "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05)",
+              transition: "box-shadow 0.2s",
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(71,85,105,0.15), 0 2px 8px rgba(71,85,105,0.07), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05), inset 0 1px 0 rgba(255,255,255,0.95)"; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 38px rgba(71,85,105,0.16), 0 2px 8px rgba(71,85,105,0.07)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 6px 28px rgba(71,85,105,0.09), 0 1px 4px rgba(71,85,105,0.05)"; }}
           >
+            {/* Banner image — left side on desktop, top on mobile */}
+            <div className="relative sm:w-44 sm:shrink-0 h-36 sm:h-auto overflow-hidden">
+              <img
+                src={`${import.meta.env.BASE_URL}images/banner-trucking-container.png`}
+                alt="Trucking & Container"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement;
+                  el.style.display = "none";
+                  const p = el.parentElement as HTMLElement | null;
+                  if (p) p.style.background = "linear-gradient(135deg,#0d1b2a,#1a2744)";
+                }}
+              />
+              <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(0,0,0,0.10) 0%, transparent 60%)" }} />
+            </div>
+
+            {/* Content */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 min-w-0 p-5 sm:p-6" style={{ background: "linear-gradient(130deg,#F8FAFC 0%,#F1F5F9 38%,#E9EFF6 76%,#F4F7FA 100%)" }}>
             <div className="flex items-start gap-4 flex-1 min-w-0">
-              <div className="flex gap-2 shrink-0">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ background: "linear-gradient(135deg,#F1F5F9,#CBD5E1)", boxShadow: "0 0 0 3px rgba(71,85,105,0.15), 0 2px 8px rgba(71,85,105,0.18)" }}
-                >
-                  <Truck className="h-5 w-5 text-slate-600" />
-                </div>
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center"
-                  style={{ background: "linear-gradient(135deg,#EDE9FE,#DDD6FE)", boxShadow: "0 0 0 3px rgba(109,40,217,0.13), 0 2px 8px rgba(109,40,217,0.16)" }}
-                >
-                  <Container className="h-5 w-5 text-violet-600" />
-                </div>
-              </div>
+              <div className="min-w-0 flex-1">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-bold text-slate-800 text-[15px] leading-tight">Trucking & Container Service</p>
