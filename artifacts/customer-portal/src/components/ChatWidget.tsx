@@ -1440,15 +1440,19 @@ export function ChatWidget() {
                   left: 0,
                   right: 0,
                   width: "100%",
-                  height: `min(92dvh, 92vh)`,
-                  maxHeight: `min(92dvh, 92vh)`,
+                  height: kbOffset > 0
+                    ? `calc(min(92dvh, 92vh) - ${kbOffset}px)`
+                    : `min(92dvh, 92vh)`,
+                  maxHeight: kbOffset > 0
+                    ? `calc(min(92dvh, 92vh) - ${kbOffset}px)`
+                    : `min(92dvh, 92vh)`,
                   borderRadius: "20px 20px 0 0",
                   border: "1px solid rgba(0,0,0,0.06)",
                   boxShadow: "0 -4px 24px rgba(0,0,0,0.14), 0 -1px 4px rgba(0,0,0,0.06)",
                   fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                   WebkitTapHighlightColor: "transparent",
                   animation: "chatSheetIn 0.32s cubic-bezier(0.32, 0.72, 0, 1)",
-                  transition: kbMoving ? "bottom 0.2s ease" : undefined,
+                  transition: kbMoving ? "bottom 0.2s ease, height 0.2s ease, max-height 0.2s ease" : undefined,
                 }
               : {
                   top: "50%",
