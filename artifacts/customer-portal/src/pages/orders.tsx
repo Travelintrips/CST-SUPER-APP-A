@@ -11,6 +11,21 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { useLanguage } from "@/i18n/LanguageContext";
 
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 text-yellow-900 rounded-sm px-0.5 not-italic">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 const STATUS_COLOR: Record<string, string> = {
   pending:    "bg-yellow-100 text-yellow-800",
   processing: "bg-blue-100 text-blue-800",
@@ -234,11 +249,11 @@ export default function Orders() {
                           </div>
                           <div>
                             <div className="font-semibold text-primary flex items-center gap-1.5">
-                              {order.displayNumber}
+                              <Highlight text={order.displayNumber} query={search} />
                               {order.trackUrl && <ExternalLink className="h-3 w-3 text-muted-foreground" />}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">
-                              {order.subtitle}
+                              <Highlight text={order.subtitle} query={search} />
                             </div>
                           </div>
                         </div>
