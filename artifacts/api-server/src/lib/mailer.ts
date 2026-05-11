@@ -13,8 +13,8 @@ export interface SendMailOptions {
 }
 
 function getResend(): { client: Resend; from: string } {
-  const apiKey = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM ?? "noreply@cstlogistic.co.id";
+  const apiKey = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM ?? "noreply@cstlogistic.co.id").trim();
 
   if (!apiKey) {
     throw new Error("Resend API key missing. Set SMTP_PASS environment variable.");
@@ -46,5 +46,5 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
 }
 
 export function isSmtpConfigured(): boolean {
-  return !!(process.env.SMTP_PASS && process.env.SMTP_FROM);
+  return !!(process.env.SMTP_PASS?.trim());
 }

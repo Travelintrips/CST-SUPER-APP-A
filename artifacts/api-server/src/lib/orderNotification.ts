@@ -365,7 +365,8 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
         `Rute: ${order.origin} → ${order.destination}\n` +
         `Total: Rp ${formatRupiah(order.grandTotal)}\n\n` +
         `Tim kami akan segera menghubungi Anda.`,
-    }).catch((err: unknown) => logger.error({ err, email: order.email }, "Email customer notification failed"));
+    }).then(() => logger.info({ email: order.email, orderNumber: order.orderNumber }, "Customer email sent successfully"))
+      .catch((err: unknown) => logger.error({ err, email: order.email }, "Email customer notification failed"));
   } else {
     logger.warn("SMTP not configured — skipping customer email");
   }
