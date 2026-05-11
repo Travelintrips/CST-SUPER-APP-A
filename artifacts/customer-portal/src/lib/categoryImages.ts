@@ -4,6 +4,30 @@ const W = "?w=800&q=80&auto=format&fit=crop";
 // Local HD images bundled with the app (always available, no external dependency)
 const LOCAL = (path: string) => `${import.meta.env.BASE_URL}images/${path}`;
 
+// ── Product-specific images (exact product name match, case-insensitive) ─────
+const PRODUCT_SPECIFIC: Array<{ names: string[]; url: string }> = [
+  {
+    names: ["samsung galaxy a54", "galaxy a54"],
+    url: LOCAL("products/samsung-galaxy-a54.png"),
+  },
+  {
+    names: ["meja kerja standing desk", "standing desk"],
+    url: LOCAL("products/meja-kerja-standing-desk.png"),
+  },
+  {
+    names: ["kursi kantor ergonomis", "kursi ergonomis"],
+    url: LOCAL("products/kursi-kantor-ergonomis.png"),
+  },
+  {
+    names: ["printer hp laserjet", "hp laserjet"],
+    url: LOCAL("products/printer-hp-laserjet.png"),
+  },
+  {
+    names: ["green bean arabica", "arabica green bean", "sumatra grande"],
+    url: LOCAL("products/green-bean-arabica.png"),
+  },
+];
+
 // ── Service images (order: most-specific first) ──────────────────────────────
 // All service images use local HD photos — no external URL dependency.
 const SERVICE_IMAGES: Array<{ keywords: string[]; url: string }> = [
