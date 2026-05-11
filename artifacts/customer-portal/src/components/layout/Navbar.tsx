@@ -276,7 +276,7 @@ export function Navbar() {
                       ))}
                     </div>
                     <div className="px-3 pb-3">
-                      <Link href="/jasa" onClick={() => setServicesOpen(false)}>
+                      <Link href="/services" onClick={() => setServicesOpen(false)}>
                         <div className="flex items-center justify-between px-4 py-2.5 rounded-[14px] bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 transition-all cursor-pointer">
                           <span className="text-[13px] font-semibold">{t("servicesMenu.viewAll")}</span>
                           <ChevronRight className="h-4 w-4" />
@@ -495,7 +495,7 @@ export function Navbar() {
                       </div>
                     </Link>
                   ))}
-                  <Link href="/jasa" onClick={() => setIsOpen(false)}>
+                  <Link href="/services" onClick={() => setIsOpen(false)}>
                     <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-[14px] font-semibold text-sky-600 hover:bg-sky-50 cursor-pointer">
                       <ChevronRight className="h-3.5 w-3.5" />
                       {t("servicesMenu.viewAll")}

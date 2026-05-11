@@ -60,7 +60,7 @@ function AppShell() {
   const routes = (
     <Switch>
       <Route path="/" component={Home} />
-      <Route path="/services">{() => { window.location.replace("/jasa"); return null; }}</Route>
+      <Route path="/services" component={Services} />
       <Route path="/products" component={Products} />
       <Route path="/jasa" component={Jasa} />
       <Route path="/jasa/:id" component={JasaDetail} />

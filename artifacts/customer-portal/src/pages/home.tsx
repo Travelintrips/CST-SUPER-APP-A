@@ -58,12 +58,12 @@ export default function Home() {
   ];
 
   const whyCards = [
-    { titleKey: "why.card1Title", descKey: "why.card1Desc", href: "/jasa" },
-    { titleKey: "why.card2Title", descKey: "why.card2Desc", href: "/jasa" },
-    { titleKey: "why.card3Title", descKey: "why.card3Desc", href: "/jasa" },
-    { titleKey: "why.card4Title", descKey: "why.card4Desc", href: "/jasa" },
-    { titleKey: "why.card5Title", descKey: "why.card5Desc", href: "/jasa" },
-    { titleKey: "why.card6Title", descKey: "why.card6Desc", href: "/jasa" },
+    { titleKey: "why.card1Title", descKey: "why.card1Desc", href: "/services" },
+    { titleKey: "why.card2Title", descKey: "why.card2Desc", href: "/services" },
+    { titleKey: "why.card3Title", descKey: "why.card3Desc", href: "/services" },
+    { titleKey: "why.card4Title", descKey: "why.card4Desc", href: "/services" },
+    { titleKey: "why.card5Title", descKey: "why.card5Desc", href: "/services" },
+    { titleKey: "why.card6Title", descKey: "why.card6Desc", href: "/services" },
   ];
 
   const aboutPoints = [
@@ -78,7 +78,7 @@ export default function Home() {
     { icon: Ship,        titleKey: "homePromo.services.item1Title", descKey: "homePromo.services.item1Desc", color: "from-sky-500 to-blue-600",     href: "/freight-forwarding" },
     { icon: FileCheck,   titleKey: "homePromo.services.item2Title", descKey: "homePromo.services.item2Desc", color: "from-emerald-500 to-teal-600",  href: "/pabean" },
     { icon: ShieldCheck, titleKey: "homePromo.services.item3Title", descKey: "homePromo.services.item3Desc", color: "from-amber-500 to-orange-600",  href: "/jasa/8" },
-    { icon: Truck,       titleKey: "homePromo.services.item4Title", descKey: "homePromo.services.item4Desc", color: "from-rose-500 to-red-600",      href: "/jasa" },
+    { icon: Truck,       titleKey: "homePromo.services.item4Title", descKey: "homePromo.services.item4Desc", color: "from-rose-500 to-red-600",      href: "/services" },
   ];
 
   const promoCards = [
@@ -273,7 +273,7 @@ export default function Home() {
           </div>
 
           <div className="text-center">
-            <Link href="/jasa">
+            <Link href="/services">
               <Button size="lg" className="h-12 px-8 gap-2 bg-sky-500 hover:bg-sky-400 text-white border-0 rounded-xl">
                 {t("homePromo.services.cta")} <ChevronRight className="h-4 w-4" />
               </Button>
