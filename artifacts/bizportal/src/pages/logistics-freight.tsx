@@ -198,7 +198,7 @@ export default function LogisticsFreightPage() {
     isLoading,
     isFetching,
     refetch,
-  } = useListFreightShipments({ query: { refetchInterval: refetchIntervalMs(refreshInterval) } });
+  } = useListFreightShipments(undefined, { query: { queryKey: getListFreightShipmentsQueryKey(), refetchInterval: refetchIntervalMs(refreshInterval) } });
 
   useEffect(() => {
     if (wasFetchingRef.current && !isFetching) {

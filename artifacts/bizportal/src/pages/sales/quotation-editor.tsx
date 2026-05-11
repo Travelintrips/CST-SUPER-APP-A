@@ -569,7 +569,7 @@ export default function SalesDocumentEditorPage() {
       notes: notes || null,
       origin: origin || null,
       destination: destination || null,
-      transportMode: transportMode || null,
+      transportMode: (transportMode || null) as import("@workspace/api-client-react").CreateSalesDocumentBodyTransportMode | undefined,
       etd: etd || null,
       eta: eta || null,
       lines: lines.map((l) => ({

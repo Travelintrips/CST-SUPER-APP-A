@@ -371,6 +371,7 @@ export default function ExpenseEditorPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = useLanguage();
 
   const expId = isNew ? 0 : Number(id);
   const { data: expense, isLoading } = useGetExpense(

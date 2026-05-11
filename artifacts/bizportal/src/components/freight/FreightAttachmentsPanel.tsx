@@ -437,7 +437,7 @@ function DocumentRow({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Status</Label>
-            <Select value={docStatus} onValueChange={setDocStatus}>
+            <Select value={docStatus} onValueChange={(v) => setDocStatus(v as typeof docStatus)}>
               <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.entries(DOC_STATUS_LABELS).map(([k, v]) => (
@@ -519,7 +519,7 @@ function BarcodeScanner({ onResult }: { onResult: (value: string) => void }) {
           setResult(text);
           onResult(text);
           setScanning(false);
-          reader.reset();
+          (reader as any).reset?.();
         }
         if (err && !(err instanceof Error && err.message.includes("No MultiFormat Readers"))) {
         }
@@ -531,13 +531,13 @@ function BarcodeScanner({ onResult }: { onResult: (value: string) => void }) {
   }, [onResult]);
 
   const stopScan = useCallback(() => {
-    readerRef.current?.reset();
+    (readerRef.current as any)?.reset?.();
     setScanning(false);
   }, []);
 
   useEffect(() => {
     return () => {
-      readerRef.current?.reset();
+      (readerRef.current as any)?.reset?.();
     };
   }, []);
 

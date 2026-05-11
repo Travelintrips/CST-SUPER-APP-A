@@ -1,4 +1,4 @@
-import { Client } from "@replit/object-storage";
+import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 
 export class ObjectNotFoundError extends Error {
@@ -9,8 +9,15 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
-function getClient() {
-  return new Client();
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
+  return createClient(url, key);
+}
+
+function getBucket() {
+  return process.env.SUPABASE_STORAGE_BUCKET ?? "bizportal";
 }
 
 export class ObjectStorageService {
@@ -23,27 +30,31 @@ export class ObjectStorageService {
   }
 
   async searchPublicObject(filePath: string): Promise<{ bucket: string; path: string } | null> {
-    const client = getClient();
+    const supabase = getSupabase();
+    const bucket = getBucket();
     const objectPath = `public/${filePath}`;
-    const result = await client.exists(objectPath);
-    if (!result.ok || !result.value) return null;
-    return { bucket: "default", path: objectPath };
+    const { data, error } = await supabase.storage.from(bucket).list(
+      objectPath.substring(0, objectPath.lastIndexOf("/")),
+      { search: objectPath.substring(objectPath.lastIndexOf("/") + 1) },
+    );
+    if (error || !data || data.length === 0) return null;
+    return { bucket, path: objectPath };
   }
 
   async downloadObject(
     obj: { bucket: string; path: string },
     cacheTtlSec: number = 3600,
   ): Promise<Response> {
-    const client = getClient();
-    const result = await client.downloadAsBytes(obj.path);
-    if (!result.ok || !result.value) throw new ObjectNotFoundError();
-    const bytes = result.value;
+    const supabase = getSupabase();
+    const { data, error } = await supabase.storage.from(obj.bucket).download(obj.path);
+    if (error || !data) throw new ObjectNotFoundError();
+    const buffer = Buffer.from(await data.arrayBuffer());
     const isPublic = obj.path.startsWith("public/");
-    return new Response(Buffer.from(bytes), {
+    return new Response(buffer, {
       headers: {
-        "Content-Type": "application/octet-stream",
+        "Content-Type": data.type || "application/octet-stream",
         "Cache-Control": `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
-        "Content-Length": String(bytes.length),
+        "Content-Length": String(buffer.length),
       },
     });
   }
@@ -87,12 +98,16 @@ export class ObjectStorageService {
 
   async getObjectEntityFile(objectPath: string): Promise<{ bucket: string; path: string }> {
     if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
-    const client = getClient();
+    const supabase = getSupabase();
+    const bucket = getBucket();
     const entityId = objectPath.slice("/objects/".length);
     const storagePath = `private/${entityId}`;
-    const result = await client.exists(storagePath);
-    if (!result.ok || !result.value) throw new ObjectNotFoundError();
-    return { bucket: "default", path: storagePath };
+    const { data, error } = await supabase.storage.from(bucket).list(
+      storagePath.substring(0, storagePath.lastIndexOf("/")),
+      { search: storagePath.substring(storagePath.lastIndexOf("/") + 1) },
+    );
+    if (error || !data || data.length === 0) throw new ObjectNotFoundError();
+    return { bucket, path: storagePath };
   }
 
   async uploadFile(
@@ -100,11 +115,12 @@ export class ObjectStorageService {
     storagePath: string,
     contentType: string,
   ): Promise<string> {
-    const client = getClient();
-    const result = await client.uploadFromBytes(storagePath, buffer, {
-      contentType,
-    });
-    if (!result.ok) throw new Error(`Upload failed: ${result.error?.message}`);
+    const supabase = getSupabase();
+    const bucket = getBucket();
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(storagePath, buffer, { contentType, upsert: true });
+    if (error) throw new Error(`Upload failed: ${error.message}`);
     return storagePath;
   }
 

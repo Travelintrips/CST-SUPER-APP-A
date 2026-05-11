@@ -365,7 +365,7 @@ export function AppShell({ children }: AppShellProps) {
                   </Badge>
                 </div>
                 <DropdownMenuItem
-                  onClick={() => { window.location.href = "/api/logout"; }}
+                  onClick={() => { window.location.href = "/api/logout?redirect=/bizportal/"; }}
                   className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
                 >
                   <LogOut className="mr-2 h-4 w-4" />

@@ -88,7 +88,8 @@ export function useAuth(): AuthState {
 
   const logout = useCallback(() => {
     if (typeof window === "undefined") return;
-    window.location.href = `${window.location.origin}/api/logout`;
+    const base: string = (window as any).__BASE_PATH__ || "/";
+    window.location.href = `${window.location.origin}/api/logout?redirect=${encodeURIComponent(base)}`;
   }, []);
 
   return {

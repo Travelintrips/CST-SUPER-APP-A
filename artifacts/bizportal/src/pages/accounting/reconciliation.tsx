@@ -92,9 +92,9 @@ export default function ReconciliationPage() {
   const selectedAccount = accounts?.find((a) => a.id === accountId);
 
   function handleExportXlsx() {
-    exportXlsx("Rekonsiliasi_" + (selectedAccount?.code ?? ""), [
+    exportXlsx("Rekonsiliasi_" + (selectedAccount?.code ?? ""),
       ["No. Entry", "Tanggal", "Sumber", "Referensi", "Deskripsi", "Debit", "Kredit", "Status"],
-    ], rows.map((l) => [
+      rows.map((l) => [
       l.entryNumber,
       new Date(l.entryDate).toLocaleDateString("id-ID"),
       l.entrySource,

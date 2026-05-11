@@ -437,7 +437,7 @@ export default function TradingPage() {
       <AlertDialog open={!!confirmDeleteStock} onOpenChange={(o) => !o && setConfirmDeleteStock(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t.common.confirmDelete}</AlertDialogTitle>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDeleteStock && `"${confirmDeleteStock.productName}" ${t.common.confirmDeleteDesc}`}
             </AlertDialogDescription>
@@ -473,7 +473,7 @@ export default function TradingPage() {
       <AlertDialog open={!!confirmDeleteSupplier} onOpenChange={(o) => !o && setConfirmDeleteSupplier(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t.common.confirmDelete}</AlertDialogTitle>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDeleteSupplier && `"${confirmDeleteSupplier.name}" ${t.common.confirmDeleteDesc}`}
             </AlertDialogDescription>

@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { Readable } from "stream";
-import { Client } from "@replit/object-storage";
+import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import {
   RequestUploadUrlBody,
@@ -14,8 +13,15 @@ const objectStorageService = new ObjectStorageService();
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_UPLOAD_PREFIXES = ["image/", "application/pdf"];
 
-function getClient() {
-  return new Client();
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
+  return createClient(url, key);
+}
+
+function getBucket() {
+  return process.env.SUPABASE_STORAGE_BUCKET ?? "bizportal";
 }
 
 /**
@@ -52,7 +58,6 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
     }
 
     const objectId = randomUUID();
-    const storagePath = `private/uploads/${objectId}`;
     const proto = req.headers["x-forwarded-proto"] || "https";
     const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
     const uploadURL = `${proto}://${host}/api/storage/upload/${objectId}`;
@@ -74,7 +79,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 /**
  * PUT /storage/upload/:objectId
  *
- * Receives file body and stores in Replit Object Storage.
+ * Receives file body and stores in Supabase Storage (private/uploads/).
  */
 router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -82,14 +87,15 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
     return;
   }
 
-  const { objectId } = req.params;
+  const objectId = String(req.params.objectId);
   if (!objectId) {
     res.status(400).json({ error: "Missing objectId" });
     return;
   }
 
   try {
-    const client = getClient();
+    const supabase = getSupabase();
+    const bucket = getBucket();
     const storagePath = `private/uploads/${objectId}`;
     const contentType = req.headers["content-type"] || "application/octet-stream";
 
@@ -104,9 +110,12 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await client.uploadFromBytes(storagePath, buffer, { contentType });
-    if (!result.ok) {
-      req.log.error({ err: result.error }, "Replit Object Storage upload failed");
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(storagePath, buffer, { contentType, upsert: true });
+
+    if (error) {
+      req.log.error({ err: error }, "Supabase Storage upload failed");
       res.status(500).json({ error: "Upload failed" });
       return;
     }
@@ -121,25 +130,27 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
 /**
  * GET /storage/public-objects/*
  *
- * Serve public assets from Replit Object Storage public folder.
+ * Serve public assets from Supabase Storage public/ folder.
  */
 router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Response) => {
   try {
     const raw = req.params.filePath;
     const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-    const client = getClient();
+    const supabase = getSupabase();
+    const bucket = getBucket();
     const storagePath = `public/${filePath}`;
 
-    const result = await client.downloadAsBytes(storagePath);
-    if (!result.ok || !result.value) {
+    const { data, error } = await supabase.storage.from(bucket).download(storagePath);
+    if (error || !data) {
       res.status(404).json({ error: "File not found" });
       return;
     }
 
-    res.setHeader("Content-Type", "application/octet-stream");
+    const buffer = Buffer.from(await data.arrayBuffer());
+    res.setHeader("Content-Type", data.type || "application/octet-stream");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    res.setHeader("Content-Length", String(result.value.length));
-    res.end(Buffer.from(result.value));
+    res.setHeader("Content-Length", String(buffer.length));
+    res.end(buffer);
   } catch (error) {
     req.log.error({ err: error }, "Error serving public object");
     res.status(500).json({ error: "Failed to serve public object" });
@@ -149,7 +160,7 @@ router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Resp
 /**
  * GET /storage/objects/*
  *
- * Serve private object entities from Replit Object Storage private folder.
+ * Serve private object entities from Supabase Storage private/ folder.
  */
 router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
   try {
@@ -157,20 +168,22 @@ router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
 
-    const client = getClient();
+    const supabase = getSupabase();
+    const bucket = getBucket();
     const entityId = objectPath.slice("/objects/".length);
     const storagePath = `private/${entityId}`;
 
-    const result = await client.downloadAsBytes(storagePath);
-    if (!result.ok || !result.value) {
+    const { data, error } = await supabase.storage.from(bucket).download(storagePath);
+    if (error || !data) {
       res.status(404).json({ error: "Object not found" });
       return;
     }
 
-    res.setHeader("Content-Type", "application/octet-stream");
+    const buffer = Buffer.from(await data.arrayBuffer());
+    res.setHeader("Content-Type", data.type || "application/octet-stream");
     res.setHeader("Cache-Control", "private, max-age=3600");
-    res.setHeader("Content-Length", String(result.value.length));
-    res.end(Buffer.from(result.value));
+    res.setHeader("Content-Length", String(buffer.length));
+    res.end(buffer);
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
       req.log.warn({ err: error }, "Object not found");
