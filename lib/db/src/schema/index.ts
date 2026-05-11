@@ -27,3 +27,4 @@ export * from "./aiChat";
 export * from "./waAiIntakeLog";
 export * from "./portalProductOrders";
 export * from "./quotationReplyLogs";
+export * from "./waIncomingMessages";

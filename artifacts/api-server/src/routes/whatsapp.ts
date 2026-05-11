@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { db, quotationReplyLogsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { db, quotationReplyLogsTable, waIncomingMessagesTable } from "@workspace/db";
+import { desc, eq } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
@@ -194,4 +194,127 @@ whatsappRouter.get("/quotation-logs", async (_req: Request, res: Response) => {
       createdAt: l.createdAt.toISOString(),
     })),
   );
+});
+
+// POST /api/whatsapp/webhook  — dipanggil oleh Fonnte saat ada pesan masuk
+// Fonnte mengirim form-urlencoded atau JSON dengan field: sender, message, name, device, type
+whatsappRouter.post("/webhook", async (req: Request, res: Response) => {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const sender = String(body.sender ?? body.from ?? "");
+    const message = String(body.message ?? body.text ?? body.body ?? "");
+    const senderName = body.name ? String(body.name) : null;
+    const deviceId = body.device ? String(body.device) : null;
+    const messageType = body.type ? String(body.type) : "text";
+
+    if (!sender || !message) {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
+
+    await db.insert(waIncomingMessagesTable).values({
+      sender: normalizePhone(sender),
+      senderName,
+      message,
+      deviceId,
+      messageType,
+      rawPayload: body,
+    });
+
+    logger.info({ sender, senderName }, "WA incoming message saved from webhook");
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "Error saving WA webhook message");
+    return res.status(200).json({ ok: true });
+  }
+});
+
+// GET /api/whatsapp/inbox — daftar pesan masuk dari vendor/customer
+whatsappRouter.get("/inbox", async (req: Request, res: Response) => {
+  const unreadOnly = req.query.unread === "true";
+  let query = db
+    .select()
+    .from(waIncomingMessagesTable)
+    .orderBy(desc(waIncomingMessagesTable.receivedAt))
+    .limit(100);
+
+  if (unreadOnly) {
+    const rows = await db
+      .select()
+      .from(waIncomingMessagesTable)
+      .where(eq(waIncomingMessagesTable.isRead, false))
+      .orderBy(desc(waIncomingMessagesTable.receivedAt))
+      .limit(100);
+    return res.json(rows.map(mapIncoming));
+  }
+
+  const rows = await query;
+  return res.json(rows.map(mapIncoming));
+});
+
+function mapIncoming(r: typeof waIncomingMessagesTable.$inferSelect) {
+  return {
+    id: r.id,
+    sender: r.sender,
+    senderName: r.senderName,
+    message: r.message,
+    messageType: r.messageType,
+    isRead: r.isRead,
+    repliedAt: r.repliedAt?.toISOString() ?? null,
+    replyMessage: r.replyMessage,
+    receivedAt: r.receivedAt.toISOString(),
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+// PATCH /api/whatsapp/inbox/:id/read — tandai sudah dibaca
+whatsappRouter.patch("/inbox/:id/read", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  await db
+    .update(waIncomingMessagesTable)
+    .set({ isRead: true })
+    .where(eq(waIncomingMessagesTable.id, id));
+
+  return res.json({ ok: true });
+});
+
+// POST /api/whatsapp/inbox/:id/reply — balas pesan masuk
+whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const { message } = req.body as { message?: string };
+  if (!message?.trim()) return res.status(400).json({ message: "Pesan balasan wajib diisi" });
+
+  const [row] = await db
+    .select()
+    .from(waIncomingMessagesTable)
+    .where(eq(waIncomingMessagesTable.id, id))
+    .limit(1);
+
+  if (!row) return res.status(404).json({ message: "Pesan tidak ditemukan" });
+
+  let sentStatus = "failed";
+  try {
+    const fRes = await fetch("https://api.fonnte.com/send", {
+      method: "POST",
+      headers: {
+        Authorization: process.env.FONNTE_TOKEN ?? "",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ target: row.sender, message: message.trim() }).toString(),
+    });
+    if (fRes.ok) sentStatus = "sent";
+    logger.info({ sender: row.sender, sentStatus }, "WA inbox reply sent");
+  } catch (err) {
+    logger.error({ err }, "Failed to send WA inbox reply");
+  }
+
+  await db
+    .update(waIncomingMessagesTable)
+    .set({ isRead: true, repliedAt: new Date(), replyMessage: message.trim() })
+    .where(eq(waIncomingMessagesTable.id, id));
+
+  return res.json({ ok: true, sentStatus });
 });
