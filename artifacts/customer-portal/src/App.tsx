@@ -48,7 +48,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 }
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/"];
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/"];
 
 function AppShell() {
   const [location] = useLocation();
