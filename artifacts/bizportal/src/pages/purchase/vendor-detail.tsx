@@ -51,6 +51,7 @@ import { ArrowLeft, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 
 const SERVICE_TYPES = [
+  "Import", "Export", "Domestic", "Door to Door",
   "Air Freight", "Sea Freight", "Domestic Freight",
   "Import Customs", "Export Customs", "Trucking", "Handling",
 ];

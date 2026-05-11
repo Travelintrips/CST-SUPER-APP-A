@@ -49,6 +49,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const SERVICE_TYPES = [
+  "Import", "Export", "Domestic", "Door to Door",
   "Air Freight", "Sea Freight", "Domestic Freight",
   "Import Customs", "Export Customs", "Trucking", "Handling",
 ];
