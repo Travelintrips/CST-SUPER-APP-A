@@ -29,6 +29,7 @@ export function getAuthToken(): string | null {
 }
 
 export async function getAuthTokenAsync(): Promise<string | null> {
+  if (!supabase) return null;
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token ?? null;
 }
@@ -37,7 +38,7 @@ export function setAuthToken(_token: string): void {
 }
 
 export function removeAuthToken(): void {
-  supabase.auth.signOut();
+  if (supabase) supabase.auth.signOut();
   localStorage.removeItem(PROFILE_KEY);
 }
 

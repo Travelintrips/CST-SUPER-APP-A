@@ -21,6 +21,7 @@ export default function ResetPassword() {
   const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
+    if (!supabase) return;
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY" && session) {
         setSessionReady(true);
@@ -36,6 +37,10 @@ export default function ResetPassword() {
     e.preventDefault();
     setError("");
 
+    if (!supabase) {
+      setError("Layanan autentikasi tidak tersedia.");
+      return;
+    }
     if (password.length < 8) {
       setError("Password minimal 8 karakter.");
       return;

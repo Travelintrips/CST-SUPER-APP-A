@@ -38,6 +38,7 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!supabase) return;
     supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
         const profile = await fetchAndStoreProfile();
@@ -68,6 +69,11 @@ export default function Login() {
   const onSubmit = async (data: LoginFormValues) => {
     setErrorMsg("");
     setIsSubmitting(true);
+    if (!supabase) {
+      setErrorMsg("Layanan autentikasi tidak tersedia.");
+      setIsSubmitting(false);
+      return;
+    }
     const { error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
@@ -106,6 +112,11 @@ export default function Login() {
     }
 
     setForgotLoading(true);
+    if (!supabase) {
+      setForgotMsg({ type: "err", text: "Layanan autentikasi tidak tersedia." });
+      setForgotLoading(false);
+      return;
+    }
     const redirectTo = `${window.location.origin}${BASE}/reset-password`;
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) {
@@ -117,6 +128,7 @@ export default function Login() {
   }
 
   async function handleGoogleLogin() {
+    if (!supabase) return;
     const redirectTo = `${window.location.origin}${BASE}/`;
     await supabase.auth.signInWithOAuth({
       provider: "google",

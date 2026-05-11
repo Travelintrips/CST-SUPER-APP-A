@@ -31,6 +31,10 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!supabase) {
+      setIsLoading(false);
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setIsLoading(false);
@@ -46,14 +50,16 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
+    if (!supabase) return;
     setAuthTokenGetter(async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase!.auth.getSession();
       return session?.access_token ?? null;
     });
     return () => setAuthTokenGetter(null);
   }, []);
 
   const signInWithGoogle = async () => {
+    if (!supabase) return;
     const redirectTo = getRedirectTo();
     console.log("[BizPortal Auth] Google OAuth redirectTo:", redirectTo);
     const { error } = await supabase.auth.signInWithOAuth({
@@ -66,12 +72,13 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
+    if (!supabase) return { error: "Supabase not configured" };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message ?? null };
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (supabase) await supabase.auth.signOut();
     setSession(null);
   };
 
