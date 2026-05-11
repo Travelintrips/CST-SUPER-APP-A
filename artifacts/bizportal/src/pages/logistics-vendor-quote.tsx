@@ -32,7 +32,11 @@ interface RfqFormData {
   cargoDescription: string | null;
   grossWeight: string | null;
   volumeCbm: string | null;
+  jumlahKoli: number | null;
   requiredDate: string | null;
+  jamOrder: string | null;
+  namaPenerima: string | null;
+  nomorPenerima: string | null;
   requestedPickup: string | null;
   requestedDelivery: string | null;
   createdAt: string;
@@ -259,7 +263,7 @@ export default function LogisticsVendorQuotePage() {
         )}
 
         {/* Detail Order */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ClipboardList className="w-4 h-4 text-blue-600" />
@@ -267,50 +271,116 @@ export default function LogisticsVendorQuotePage() {
             </div>
             <Badge variant="outline" className="text-xs font-mono">{data.rfqNumber}</Badge>
           </div>
+
+          {/* Info dasar */}
           <div className="grid grid-cols-2 gap-y-2.5 text-sm">
             <span className="text-slate-500">No. Order</span>
             <span className="font-medium text-slate-800 text-right font-mono">{data.orderNumber}</span>
             <span className="text-slate-500">Jenis Layanan</span>
             <span className="font-medium text-slate-800 text-right">{data.shipmentType}</span>
-            <span className="text-slate-500 flex items-center gap-1"><MapPin className="w-3 h-3" /> Rute</span>
-            <span className="font-semibold text-blue-700 text-right">{data.origin} → {data.destination}</span>
-            {data.commodity && (
-              <>
-                <span className="text-slate-500 flex items-center gap-1"><Package className="w-3 h-3" /> Komoditi</span>
-                <span className="font-medium text-slate-800 text-right">{data.commodity}</span>
-              </>
-            )}
-            {data.cargoDescription && (
-              <>
-                <span className="text-slate-500">Deskripsi</span>
-                <span className="font-medium text-slate-800 text-right">{data.cargoDescription}</span>
-              </>
-            )}
-            {data.grossWeight && (
-              <>
-                <span className="text-slate-500">Berat</span>
-                <span className="font-medium text-slate-800 text-right">{data.grossWeight} kg</span>
-              </>
-            )}
-            {data.volumeCbm && (
-              <>
-                <span className="text-slate-500">Volume</span>
-                <span className="font-medium text-slate-800 text-right">{data.volumeCbm} CBM</span>
-              </>
-            )}
-            {data.requiredDate && (
-              <>
-                <span className="text-slate-500 flex items-center gap-1"><Calendar className="w-3 h-3" /> Tgl Butuh</span>
-                <span className="font-medium text-slate-800 text-right">{data.requiredDate}</span>
-              </>
-            )}
-            {data.rfqNotes && (
-              <>
-                <span className="text-slate-500">Catatan Order</span>
-                <span className="font-medium text-slate-800 text-right">{data.rfqNotes}</span>
-              </>
-            )}
           </div>
+
+          {/* Rute — highlight */}
+          <div className="bg-blue-50 rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-xs text-blue-500 font-semibold uppercase tracking-wide flex items-center gap-1">
+              <MapPin className="w-3 h-3" /> Rute Pengiriman
+            </p>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-semibold text-slate-800">{data.origin}</span>
+              <span className="text-blue-400">→</span>
+              <span className="font-bold text-blue-700">{data.destination}</span>
+            </div>
+          </div>
+
+          {/* Tanggal & Jam */}
+          {(data.requiredDate || data.jamOrder) && (
+            <div className="grid grid-cols-2 gap-3">
+              {data.requiredDate && (
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-3">
+                  <p className="text-xs text-slate-400 mb-1 flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> Tanggal
+                  </p>
+                  <p className="text-sm font-bold text-slate-800">{data.requiredDate}</p>
+                </div>
+              )}
+              {data.jamOrder && (
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-3">
+                  <p className="text-xs text-slate-400 mb-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Jam
+                  </p>
+                  <p className="text-sm font-bold text-slate-800">{data.jamOrder}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Informasi Barang */}
+          {(data.commodity || data.cargoDescription || data.grossWeight || data.volumeCbm || data.jumlahKoli) && (
+            <div className="border border-slate-100 rounded-xl overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 border-b border-slate-100">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                  <Package className="w-3 h-3" /> Informasi Barang
+                </p>
+              </div>
+              <div className="px-4 py-3 grid grid-cols-2 gap-y-2.5 text-sm">
+                {data.commodity && (
+                  <>
+                    <span className="text-slate-500">Komoditi</span>
+                    <span className="font-medium text-slate-800 text-right">{data.commodity}</span>
+                  </>
+                )}
+                {data.cargoDescription && (
+                  <>
+                    <span className="text-slate-500">Jenis Barang</span>
+                    <span className="font-medium text-slate-800 text-right">{data.cargoDescription}</span>
+                  </>
+                )}
+                {data.jumlahKoli != null && (
+                  <>
+                    <span className="text-slate-500">Jumlah Koli</span>
+                    <span className="font-medium text-slate-800 text-right">{data.jumlahKoli} koli</span>
+                  </>
+                )}
+                {data.grossWeight && (
+                  <>
+                    <span className="text-slate-500">Berat</span>
+                    <span className="font-bold text-slate-800 text-right">{data.grossWeight} kg</span>
+                  </>
+                )}
+                {data.volumeCbm && (
+                  <>
+                    <span className="text-slate-500">Volume</span>
+                    <span className="font-medium text-slate-800 text-right">{data.volumeCbm} CBM</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Penerima */}
+          {(data.namaPenerima || data.nomorPenerima) && (
+            <div className="grid grid-cols-2 gap-y-2.5 text-sm">
+              {data.namaPenerima && (
+                <>
+                  <span className="text-slate-500">Nama Penerima</span>
+                  <span className="font-medium text-slate-800 text-right">{data.namaPenerima}</span>
+                </>
+              )}
+              {data.nomorPenerima && (
+                <>
+                  <span className="text-slate-500">No. Penerima</span>
+                  <span className="font-medium text-slate-800 text-right">{data.nomorPenerima}</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {data.rfqNotes && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm">
+              <p className="text-xs text-yellow-600 font-semibold mb-1">Catatan Order</p>
+              <p className="text-slate-700">{data.rfqNotes}</p>
+            </div>
+          )}
         </div>
 
         {/* Jadwal Permintaan Customer — khusus Trucking */}
