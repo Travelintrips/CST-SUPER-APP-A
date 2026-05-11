@@ -5,28 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Search, Ship, Plane, Package, Warehouse, Truck, Stamp,
-  Shield, FileText, ArrowRight, ChevronRight, Calculator, Container,
+  Search, Truck, ArrowRight, ChevronRight, Calculator, Container,
 } from "lucide-react";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { resolveImageUrl } from "@/lib/utils";
-import type { LucideIcon } from "lucide-react";
+import { getServiceFallbackImage } from "@/lib/categoryImages";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
-
-const ICON_BY_CATEGORY: Record<string, LucideIcon> = {
-  "Udara": Plane,
-  "Laut": Ship,
-  "Trucking": Truck,
-  "Container": Package,
-  "Pabean": Stamp,
-  "Handling": Package,
-  "Storage": Warehouse,
-  "Document": FileText,
-  "Additional": Shield,
-  "Freight Forwarding": Ship,
-  "Lainnya": Shield,
-};
 
 const COLOR_BY_CATEGORY: Record<string, { bg: string; text: string; badge: string }> = {
   "Udara":             { bg: "bg-blue-50",    text: "text-blue-700",   badge: "bg-blue-100 text-blue-700" },
@@ -546,10 +531,10 @@ export default function Jasa() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {filtered.map((service) => {
               const primaryCat = (service.categories ?? [])[0] ?? "";
-              const Icon = ICON_BY_CATEGORY[primaryCat] ?? Package;
-              const colors = COLOR_BY_CATEGORY[primaryCat] ?? DEFAULT_COLOR;
               const accent = CARD_ACCENT[primaryCat] ?? DEFAULT_ACCENT;
-              const imgUrl = resolveImageUrl(service.imageUrl);
+              const apiImgUrl = resolveImageUrl(service.imageUrl);
+              const fallbackImg = getServiceFallbackImage(service.categories ?? [], service.name);
+              const bannerSrc = (apiImgUrl && !failedImages.has(service.id)) ? apiImgUrl : fallbackImg;
               return (
                 <Link key={service.id} href={`/jasa/${service.id}`} className="block group">
                   <Card
@@ -568,51 +553,47 @@ export default function Jasa() {
                       (e.currentTarget as HTMLElement).style.borderColor = "#E8EDF3";
                     }}
                   >
-                    {imgUrl && !failedImages.has(service.id) ? (
-                      <div className="h-36 overflow-hidden relative">
-                        <img
-                          src={imgUrl}
-                          alt={stripJasa(service.name)}
-                          loading="lazy"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          onError={() => setFailedImages((prev) => new Set([...prev, service.id]))}
-                        />
-                        <div
-                          aria-hidden="true"
-                          style={{
-                            position: "absolute", inset: 0, pointerEvents: "none",
-                            background: `linear-gradient(to bottom, transparent 40%, ${accent.overlay} 100%)`,
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          height: "112px",
-                          background: accent.iconBg,
-                          borderBottom: "1px solid rgba(0,0,0,0.05)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                    {/* Banner image — always shown, API upload takes priority over local fallback */}
+                    <div className="h-36 overflow-hidden relative">
+                      <img
+                        src={bannerSrc}
+                        alt={stripJasa(service.name)}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        onError={() => {
+                          setFailedImages((prev) => new Set([...prev, service.id]));
+                          // If fallback also fails, try a neutral placeholder
                         }}
-                      >
-                        {Icon === Package
-                          ? <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="CST Logistics" className="h-11 w-auto max-w-[80px] object-contain opacity-70" />
-                          : <Icon className={`h-11 w-11 ${colors.text} opacity-55`} />}
-                      </div>
-                    )}
-
-                    <CardHeader className="pb-1.5 pt-3.5 px-4">
-                      <div className="flex flex-wrap gap-1 mb-1.5">
+                      />
+                      {/* Cinematic gradient overlay — darkens bottom for text readability */}
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          position: "absolute", inset: 0, pointerEvents: "none",
+                          background: "linear-gradient(to bottom, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.22) 75%, rgba(0,0,0,0.38) 100%)",
+                        }}
+                      />
+                      {/* Category badges overlaid on image bottom-left */}
+                      <div className="absolute bottom-2.5 left-3 flex flex-wrap gap-1">
                         {(service.categories ?? []).map((cat) => (
-                          <Badge
+                          <span
                             key={cat}
-                            className={`text-[9.5px] px-1.5 py-0 font-semibold ${COLOR_BY_CATEGORY[cat]?.badge ?? DEFAULT_COLOR.badge}`}
+                            className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+                            style={{
+                              background: "rgba(255,255,255,0.18)",
+                              backdropFilter: "blur(8px)",
+                              WebkitBackdropFilter: "blur(8px)",
+                              color: "rgba(255,255,255,0.95)",
+                              border: "1px solid rgba(255,255,255,0.25)",
+                            }}
                           >
                             {translateCategory(cat, locale)}
-                          </Badge>
+                          </span>
                         ))}
                       </div>
+                    </div>
+
+                    <CardHeader className="pb-1.5 pt-3 px-4">
                       <CardTitle className="text-[13.5px] font-bold leading-snug text-slate-800">
                         {translateServiceName(stripJasa(service.name), locale)}
                       </CardTitle>
