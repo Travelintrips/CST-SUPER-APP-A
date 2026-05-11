@@ -90,6 +90,12 @@ uri = "file://artifacts/cst-driver/assets/hero-square.png"
 type = "image"
 title = "logistics square hero image"
 
+[[generated]]
+id = "xKuU-0e-il-eIJch2_aS1"
+uri = "file://artifacts/customer-portal/public/images/banner-trucking-container.png"
+type = "image"
+title = "trucking container service banner"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"
