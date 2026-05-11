@@ -6,13 +6,15 @@ export const portalCustomersTable = pgTable("portal_customers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   phone: text("phone"),
   company: text("company"),
   role: text("role").notNull().default("customer"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   resetPasswordToken: text("reset_password_token"),
   resetPasswordExpiry: timestamp("reset_password_expiry"),
+  oauthProvider: text("oauth_provider"),
+  oauthId: text("oauth_id"),
 });
 
 export const portalCustomerServicesTable = pgTable("portal_customer_services", {

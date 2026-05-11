@@ -405,6 +405,228 @@ router.get("/auth/me", requirePortalAuth, async (req, res) => {
   });
 });
 
+// ── OAuth helpers ─────────────────────────────────────────────────────────
+
+function getRequestOrigin(req: Request): string {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
+  return `${proto}://${host}`;
+}
+
+async function upsertOAuthCustomer(opts: {
+  provider: string;
+  oauthId: string;
+  email: string;
+  name: string;
+}): Promise<string> {
+  const { provider, oauthId, email, name } = opts;
+  const emailLower = email.toLowerCase().trim();
+
+  // Try to find by oauth_id first, then by email
+  let [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.oauthId, oauthId));
+
+  if (!customer) {
+    [customer] = await db
+      .select()
+      .from(portalCustomersTable)
+      .where(eq(portalCustomersTable.email, emailLower));
+  }
+
+  // Determine role
+  const isAdmin = PORTAL_ADMIN_EMAILS.includes(emailLower);
+  const role = isAdmin ? "admin" : (customer?.role ?? "customer");
+
+  if (customer) {
+    // Update oauth fields if needed
+    await db
+      .update(portalCustomersTable)
+      .set({ oauthProvider: provider, oauthId, role })
+      .where(eq(portalCustomersTable.id, customer.id));
+    customer = { ...customer, oauthProvider: provider, oauthId, role };
+  } else {
+    [customer] = await db
+      .insert(portalCustomersTable)
+      .values({
+        name,
+        email: emailLower,
+        passwordHash: null,
+        oauthProvider: provider,
+        oauthId,
+        role,
+      })
+      .returning();
+  }
+
+  return signToken({ customerId: customer!.id, role: customer!.role });
+}
+
+// GET /api/portal/auth/google
+router.get("/auth/google", (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return res.status(503).json({ message: "Google OAuth belum dikonfigurasi" });
+
+  const origin = getRequestOrigin(req);
+  const redirectUri = `${origin}/api/portal/auth/google/callback`;
+  const state = crypto.randomBytes(16).toString("hex");
+
+  res.cookie("oauth_state_g", state, {
+    httpOnly: true, secure: true, sameSite: "none", path: "/", maxAge: 10 * 60 * 1000,
+  });
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    state,
+    access_type: "online",
+  });
+
+  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+// GET /api/portal/auth/google/callback
+router.get("/auth/google/callback", async (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return res.redirect("/login?oauth_error=not_configured");
+
+  const { code, state } = req.query as Record<string, string>;
+  const expectedState = req.cookies?.oauth_state_g;
+  res.clearCookie("oauth_state_g", { path: "/" });
+
+  if (!code || !state || state !== expectedState) {
+    return res.redirect("/login?oauth_error=state_mismatch");
+  }
+
+  const origin = getRequestOrigin(req);
+  const redirectUri = `${origin}/api/portal/auth/google/callback`;
+
+  try {
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
+    const tokenData = await tokenRes.json() as Record<string, unknown>;
+    if (!tokenData.access_token) {
+      req.log?.warn({ tokenData }, "Google token exchange failed");
+      return res.redirect("/login?oauth_error=token_failed");
+    }
+
+    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    const user = await userRes.json() as Record<string, string>;
+    if (!user.email) return res.redirect("/login?oauth_error=no_email");
+
+    const jwtToken = await upsertOAuthCustomer({
+      provider: "google",
+      oauthId: user.sub,
+      email: user.email,
+      name: user.name ?? user.email,
+    });
+
+    return res.redirect(`/login?oauth_token=${encodeURIComponent(jwtToken)}`);
+  } catch (err) {
+    req.log?.error({ err }, "Google OAuth callback error");
+    return res.redirect("/login?oauth_error=server_error");
+  }
+});
+
+// GET /api/portal/auth/github
+router.get("/auth/github", (req, res) => {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  if (!clientId) return res.status(503).json({ message: "GitHub OAuth belum dikonfigurasi" });
+
+  const origin = getRequestOrigin(req);
+  const redirectUri = `${origin}/api/portal/auth/github/callback`;
+  const state = crypto.randomBytes(16).toString("hex");
+
+  res.cookie("oauth_state_gh", state, {
+    httpOnly: true, secure: true, sameSite: "none", path: "/", maxAge: 10 * 60 * 1000,
+  });
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: "user:email",
+    state,
+  });
+
+  return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+});
+
+// GET /api/portal/auth/github/callback
+router.get("/auth/github/callback", async (req, res) => {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return res.redirect("/login?oauth_error=not_configured");
+
+  const { code, state } = req.query as Record<string, string>;
+  const expectedState = req.cookies?.oauth_state_gh;
+  res.clearCookie("oauth_state_gh", { path: "/" });
+
+  if (!code || !state || state !== expectedState) {
+    return res.redirect("/login?oauth_error=state_mismatch");
+  }
+
+  try {
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    });
+    const tokenData = await tokenRes.json() as Record<string, unknown>;
+    if (!tokenData.access_token) {
+      req.log?.warn({ tokenData }, "GitHub token exchange failed");
+      return res.redirect("/login?oauth_error=token_failed");
+    }
+
+    const accessToken = String(tokenData.access_token);
+
+    // Get user profile
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
+    });
+    const user = await userRes.json() as Record<string, unknown>;
+
+    // Get email — may be null if user keeps it private
+    let email = user.email as string | null;
+    if (!email) {
+      const emailRes = await fetch("https://api.github.com/user/emails", {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
+      });
+      const emails = await emailRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
+      const primary = emails.find((e) => e.primary && e.verified);
+      email = primary?.email ?? emails[0]?.email ?? null;
+    }
+
+    if (!email) return res.redirect("/login?oauth_error=no_email");
+
+    const jwtToken = await upsertOAuthCustomer({
+      provider: "github",
+      oauthId: String(user.id),
+      email,
+      name: (user.name as string) || (user.login as string) || email,
+    });
+
+    return res.redirect(`/login?oauth_token=${encodeURIComponent(jwtToken)}`);
+  } catch (err) {
+    req.log?.error({ err }, "GitHub OAuth callback error");
+    return res.redirect("/login?oauth_error=server_error");
+  }
+});
+
 // ── VENDOR PORTAL ─────────────────────────────────────────────────────────
 // GET /api/portal/vendor/profile — returns linked supplier + RFQs + quotes for a vendor user
 router.get("/vendor/profile", requirePortalAuth, async (req, res) => {
