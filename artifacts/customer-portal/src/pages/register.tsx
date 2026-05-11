@@ -89,6 +89,12 @@ export default function Register() {
     setErrorMsg("");
     setIsSubmitting(true);
 
+    if (!supabase) {
+      setErrorMsg("Layanan autentikasi tidak tersedia.");
+      setIsSubmitting(false);
+      return;
+    }
+
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
