@@ -63,7 +63,6 @@ function AppShell() {
       <Route path="/services" component={Services} />
       <Route path="/products" component={Products} />
       <Route path="/jasa" component={Jasa} />
-      <Route path="/jasa/trucking" component={JasaDetail} />
       <Route path="/jasa/:id" component={JasaDetail} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
