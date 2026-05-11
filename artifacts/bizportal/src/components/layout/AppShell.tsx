@@ -107,6 +107,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "overview", href: "/dashboard", icon: LayoutDashboard },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
+        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
         { titleKey: "portalProductOrders", href: "/portal-product-orders", icon: PackageOpen },
       ],
     },
