@@ -6,10 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function ResetPassword() {
   const [, setLocation] = useLocation();
-  const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -18,10 +18,19 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
-    if (!token) setError("Link reset password tidak valid. Silakan minta ulang.");
-  }, [token]);
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY" && session) {
+        setSessionReady(true);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) setSessionReady(true);
+    });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,24 +46,15 @@ export default function ResetPassword() {
     }
 
     setLoading(true);
-    try {
-      const res = await fetch(`/api/portal/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      const data = await res.json() as { message?: string };
-      if (!res.ok) {
-        setError(data.message ?? "Terjadi kesalahan. Coba lagi.");
-      } else {
-        setSuccess(true);
-        setTimeout(() => setLocation("/login"), 3000);
-      }
-    } catch {
-      setError("Gagal terhubung ke server. Periksa koneksi Anda.");
-    } finally {
-      setLoading(false);
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setSuccess(true);
+      await supabase.auth.signOut();
+      setTimeout(() => setLocation("/login"), 3000);
     }
+    setLoading(false);
   }
 
   return (
@@ -82,6 +82,14 @@ export default function ResetPassword() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
+              {!sessionReady && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    Menunggu sesi reset password... Pastikan Anda membuka link dari email.
+                  </AlertDescription>
+                </Alert>
+              )}
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -98,7 +106,7 @@ export default function ResetPassword() {
                     placeholder="Minimal 8 karakter"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    disabled={!token || loading}
+                    disabled={!sessionReady || loading}
                     className="pr-10"
                   />
                   <button
@@ -124,7 +132,7 @@ export default function ResetPassword() {
                     placeholder="Ulangi password baru"
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
-                    disabled={!token || loading}
+                    disabled={!sessionReady || loading}
                     className="pr-10"
                   />
                   <button
@@ -144,7 +152,7 @@ export default function ResetPassword() {
               <Button
                 type="submit"
                 className="w-full h-11"
-                disabled={!token || loading}
+                disabled={!sessionReady || loading}
               >
                 {loading ? "Menyimpan..." : "Simpan Password Baru"}
               </Button>

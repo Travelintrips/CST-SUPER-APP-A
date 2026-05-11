@@ -73,5 +73,8 @@
     "vite": "catalog:",
     "wouter": "^3.3.5",
     "zod": "^3.25.76"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4"
   }
 }

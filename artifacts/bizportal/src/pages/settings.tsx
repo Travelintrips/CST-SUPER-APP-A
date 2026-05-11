@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
-import { useAuth } from "@workspace/replit-auth-web";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -619,7 +619,7 @@ function WhatsAppNotificationCard() {
 }
 
 export default function SettingsPage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useSupabaseAuth();
   const { data: dbUser, isLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,

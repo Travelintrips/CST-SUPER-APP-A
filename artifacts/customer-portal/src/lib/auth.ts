@@ -1,22 +1,49 @@
-export const TOKEN_KEY = "portal_token";
+import { supabase } from "./supabase";
 
-export function getAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+export const TOKEN_KEY = "portal_token";
+const PROFILE_KEY = "portal_profile";
+
+interface PortalProfile {
+  customerId: number;
+  role: string;
+  name: string;
+  email: string;
 }
 
-export function setAuthToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+function getSupabaseSessionSync(): { access_token: string } | null {
+  try {
+    const key = Object.keys(localStorage).find(
+      (k) => k.startsWith("sb-") && k.endsWith("-auth-token"),
+    );
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as { access_token: string };
+  } catch {
+    return null;
+  }
+}
+
+export function getAuthToken(): string | null {
+  return getSupabaseSessionSync()?.access_token ?? null;
+}
+
+export async function getAuthTokenAsync(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
+
+export function setAuthToken(_token: string): void {
 }
 
 export function removeAuthToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  supabase.auth.signOut();
+  localStorage.removeItem(PROFILE_KEY);
 }
 
 export function getAuthHeaders(): { Authorization?: string } {
   const token = getAuthToken();
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
+  if (token) return { Authorization: `Bearer ${token}` };
   return {};
 }
 
@@ -24,27 +51,46 @@ export function isAuthenticated(): boolean {
   return !!getAuthToken();
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
+export function getPortalProfile(): PortalProfile | null {
   try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const payload = parts[1];
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    const decoded = atob(padded);
-    return JSON.parse(decoded) as Record<string, unknown>;
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PortalProfile;
   } catch {
     return null;
   }
 }
 
+export function setPortalProfile(profile: PortalProfile): void {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
 export function getPortalRole(): string {
-  const token = getAuthToken();
-  if (!token) return "guest";
-  const payload = decodeJwtPayload(token);
-  if (!payload) return "guest";
-  return typeof payload.role === "string" ? payload.role : "customer";
+  return getPortalProfile()?.role ?? "guest";
 }
 
 export function isPortalAdmin(): boolean {
   return getPortalRole() === "admin";
+}
+
+export async function fetchAndStoreProfile(): Promise<PortalProfile | null> {
+  const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const res = await fetch("/api/portal/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { id: number; role: string; name: string; email: string };
+    const profile: PortalProfile = {
+      customerId: data.id,
+      role: data.role,
+      name: data.name,
+      email: data.email,
+    };
+    setPortalProfile(profile);
+    return profile;
+  } catch {
+    return null;
+  }
 }

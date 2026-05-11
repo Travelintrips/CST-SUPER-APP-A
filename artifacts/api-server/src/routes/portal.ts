@@ -1,79 +1,13 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable } from "@workspace/db";
 import { eq, inArray, and, sql, desc } from "drizzle-orm";
-import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
+import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 
 const router = Router();
-
-const JWT_SECRET = process.env.SESSION_SECRET ?? "portal-dev-secret";
-
-function hashPassword(password: string): string {
-  return crypto.createHmac("sha256", JWT_SECRET).update(password).digest("hex");
-}
-
-function signToken(payload: Record<string, unknown>): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const body = Buffer.from(JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 })).toString("base64url");
-  const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
-  return `${header}.${body}.${sig}`;
-}
-
-function verifyToken(token: string): Record<string, unknown> | null {
-  try {
-    const [header, body, sig] = token.split(".");
-    const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
-    if (sig !== expected) return null;
-    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Record<string, unknown>;
-    if (typeof payload.exp === "number" && payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-type PortalAuthReq = Request & { portalCustomerId: number; portalRole: string };
-
-function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
-  const auth = req.headers["authorization"];
-  if (!auth?.startsWith("Bearer ")) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-  const token = auth.slice(7);
-  const payload = verifyToken(token);
-  if (!payload || typeof payload.customerId !== "number") {
-    res.status(401).json({ message: "Invalid or expired token" });
-    return;
-  }
-  (req as PortalAuthReq).portalCustomerId = payload.customerId;
-  (req as PortalAuthReq).portalRole = (payload.role as string) ?? "customer";
-  next();
-}
-
-function requirePortalAdmin(req: Request, res: Response, next: NextFunction) {
-  const auth = req.headers["authorization"];
-  if (!auth?.startsWith("Bearer ")) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-  const token = auth.slice(7);
-  const payload = verifyToken(token);
-  if (!payload || typeof payload.customerId !== "number") {
-    res.status(401).json({ message: "Invalid or expired token" });
-    return;
-  }
-  if (payload.role !== "admin") {
-    res.status(403).json({ message: "Akses admin diperlukan" });
-    return;
-  }
-  (req as PortalAuthReq).portalCustomerId = payload.customerId;
-  (req as PortalAuthReq).portalRole = "admin";
-  next();
-}
 
 async function getServiceIds(customerId: number): Promise<number[]> {
   const rows = await db.select().from(portalCustomerServicesTable).where(eq(portalCustomerServicesTable.customerId, customerId));
@@ -229,162 +163,56 @@ const PORTAL_ADMIN_EMAILS = (process.env.PORTAL_ADMIN_EMAILS ?? "")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-// POST /api/portal/auth/login
-router.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body ?? {};
-  if (!email || !password) {
-    return res.status(400).json({ message: "Email dan password wajib diisi" });
-  }
-  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, String(email)));
-  if (!customer || customer.passwordHash !== hashPassword(String(password))) {
-    return res.status(401).json({ message: "Email atau password tidak valid" });
+// POST /api/portal/auth/login — deprecated, login sekarang via Supabase Auth langsung
+router.post("/auth/login", (_req, res) => {
+  res.status(410).json({ message: "Login sekarang menggunakan Supabase Auth. Gunakan /api/portal/auth/me setelah login via Supabase." });
+});
+
+// POST /api/portal/auth/register — sync profil ke DB setelah supabase.auth.signUp
+router.post("/auth/register", requirePortalAuth, async (req, res) => {
+  const customerId = (req as PortalAuthReq).portalCustomerId;
+  const { name, phone, company, role: requestedRole, serviceIds } = req.body ?? {};
+
+  const patch: Record<string, unknown> = {};
+  if (name) patch.name = String(name);
+  if (phone !== undefined) patch.phone = phone ? String(phone) : null;
+  if (company !== undefined) patch.company = company ? String(company) : null;
+  if (requestedRole && requestedRole !== "admin") patch.role = String(requestedRole);
+
+  if (Object.keys(patch).length > 0) {
+    await db.update(portalCustomersTable).set(patch).where(eq(portalCustomersTable.id, customerId));
   }
 
-  // Auto-promote ke admin jika email ada di daftar PORTAL_ADMIN_EMAILS
-  let effectiveRole = customer.role;
-  if (PORTAL_ADMIN_EMAILS.includes(String(email).toLowerCase()) && customer.role !== "admin") {
-    await db.update(portalCustomersTable).set({ role: "admin" }).where(eq(portalCustomersTable.id, customer.id));
-    effectiveRole = "admin";
+  if (Array.isArray(serviceIds)) {
+    await db.delete(portalCustomerServicesTable).where(eq(portalCustomerServicesTable.customerId, customerId));
+    if (serviceIds.length > 0) {
+      await db.insert(portalCustomerServicesTable).values(
+        (serviceIds as number[]).map((sid) => ({ customerId, serviceId: Number(sid) }))
+      ).onConflictDoNothing();
+    }
   }
 
-  const serviceIds = await getServiceIds(customer.id);
-  const token = signToken({ customerId: customer.id, role: effectiveRole });
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
+  const finalServiceIds = await getServiceIds(customerId);
   return res.json({
-    token,
-    customer: {
-      id: customer.id,
-      name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      company: customer.company,
-      role: effectiveRole,
-      serviceIds,
-      createdAt: customer.createdAt.toISOString(),
-    },
+    id: customer!.id,
+    name: customer!.name,
+    email: customer!.email,
+    phone: customer!.phone,
+    company: customer!.company,
+    role: customer!.role,
+    serviceIds: finalServiceIds,
   });
 });
 
-// POST /api/portal/auth/register
-router.post("/auth/register", async (req, res) => {
-  const { name, email, password, phone, company, serviceIds, role: requestedRole } = req.body ?? {};
-  if (!name || !email || !password) {
-    return res.status(400).json({ message: "Nama, email, dan password wajib diisi" });
-  }
-  const existing = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, String(email)));
-  if (existing.length > 0) {
-    return res.status(409).json({ message: "Email sudah terdaftar" });
-  }
-  // Role priority: admin email list > requested role (customer/vendor) > default customer
-  let initialRole = "customer";
-  if (PORTAL_ADMIN_EMAILS.includes(String(email).toLowerCase())) {
-    initialRole = "admin";
-  } else if (requestedRole === "vendor") {
-    initialRole = "vendor";
-  }
-
-  const [customer] = await db.insert(portalCustomersTable).values({
-    name: String(name),
-    email: String(email),
-    passwordHash: hashPassword(String(password)),
-    phone: phone ? String(phone) : null,
-    company: company ? String(company) : null,
-    role: initialRole,
-  }).returning();
-  if (Array.isArray(serviceIds) && serviceIds.length > 0) {
-    await db.insert(portalCustomerServicesTable).values(
-      (serviceIds as number[]).map((sid) => ({ customerId: customer!.id, serviceId: Number(sid) }))
-    );
-  }
-  const selectedServiceIds = Array.isArray(serviceIds) ? (serviceIds as number[]).map(Number) : [];
-  const token = signToken({ customerId: customer!.id, role: customer!.role });
-  return res.status(201).json({
-    token,
-    customer: {
-      id: customer!.id,
-      name: customer!.name,
-      email: customer!.email,
-      phone: customer!.phone,
-      company: customer!.company,
-      role: customer!.role,
-      serviceIds: selectedServiceIds,
-      createdAt: customer!.createdAt.toISOString(),
-    },
-  });
+// POST /api/portal/auth/forgot-password — deprecated, gunakan Supabase resetPasswordForEmail
+router.post("/auth/forgot-password", (_req, res) => {
+  res.status(410).json({ message: "Gunakan Supabase Auth resetPasswordForEmail dari frontend." });
 });
 
-// POST /api/portal/auth/forgot-password
-router.post("/auth/forgot-password", async (req, res) => {
-  const genericMsg = { message: "Jika email terdaftar, link reset password telah dikirim." };
-  const { email } = req.body ?? {};
-  if (!email || typeof email !== "string" || !email.includes("@")) return res.json(genericMsg);
-
-  const [customer] = await db
-    .select()
-    .from(portalCustomersTable)
-    .where(eq(portalCustomersTable.email, email.toLowerCase().trim()));
-  if (!customer) return res.json(genericMsg);
-
-  const token = crypto.randomBytes(32).toString("hex");
-  const expiry = new Date(Date.now() + 30 * 60 * 1000);
-  await db
-    .update(portalCustomersTable)
-    .set({ resetPasswordToken: token, resetPasswordExpiry: expiry })
-    .where(eq(portalCustomersTable.id, customer.id));
-
-  const appUrl =
-    process.env.APP_URL ??
-    `https://${(process.env.REPLIT_DOMAINS ?? "localhost").split(",")[0]}`;
-  const resetUrl = `${appUrl}/reset-password?token=${token}`;
-
-  if (isSmtpConfigured()) {
-    sendMail({
-      to: customer.email,
-      subject: "Reset Password — CST Logistics",
-      text: `Halo ${customer.name},\n\nKlik link berikut untuk reset password Anda (berlaku 30 menit):\n\n${resetUrl}\n\nJika Anda tidak meminta reset password, abaikan email ini.`,
-      html: `<p>Halo <strong>${customer.name}</strong>,</p>
-<p>Klik link berikut untuk reset password Anda (berlaku <strong>30 menit</strong>):</p>
-<p><a href="${resetUrl}" style="background:#0ea5e9;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block;">Reset Password</a></p>
-<p style="color:#888;font-size:12px;">Atau salin link ini: ${resetUrl}</p>
-<p style="color:#888;font-size:12px;">Jika Anda tidak meminta reset password, abaikan email ini.</p>`,
-    }).catch((err: unknown) => {
-      req.log.error({ err, email: customer.email }, "Failed to send reset password email");
-    });
-  } else {
-    req.log.warn("SMTP not configured — reset password email not sent");
-  }
-
-  return res.json(genericMsg);
-});
-
-// POST /api/portal/auth/reset-password
-router.post("/auth/reset-password", async (req, res) => {
-  const { token, password } = req.body ?? {};
-  if (!token || !password) {
-    return res.status(400).json({ message: "Token dan password wajib diisi" });
-  }
-  if (typeof password !== "string" || password.length < 8) {
-    return res.status(400).json({ message: "Password minimal 8 karakter" });
-  }
-
-  const [customer] = await db
-    .select()
-    .from(portalCustomersTable)
-    .where(eq(portalCustomersTable.resetPasswordToken, String(token)));
-
-  if (!customer || !customer.resetPasswordExpiry || customer.resetPasswordExpiry < new Date()) {
-    return res.status(400).json({ message: "Token tidak valid atau sudah kedaluwarsa" });
-  }
-
-  await db
-    .update(portalCustomersTable)
-    .set({
-      passwordHash: hashPassword(String(password)),
-      resetPasswordToken: null,
-      resetPasswordExpiry: null,
-    })
-    .where(eq(portalCustomersTable.id, customer.id));
-
-  return res.json({ message: "Password berhasil diubah. Silakan login kembali." });
+// POST /api/portal/auth/reset-password — deprecated, gunakan Supabase updateUser
+router.post("/auth/reset-password", (_req, res) => {
+  res.status(410).json({ message: "Gunakan Supabase Auth updateUser dari frontend." });
 });
 
 // GET /api/portal/auth/me
@@ -405,228 +233,6 @@ router.get("/auth/me", requirePortalAuth, async (req, res) => {
   });
 });
 
-// ── OAuth helpers ─────────────────────────────────────────────────────────
-
-function getRequestOrigin(req: Request): string {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
-  return `${proto}://${host}`;
-}
-
-async function upsertOAuthCustomer(opts: {
-  provider: string;
-  oauthId: string;
-  email: string;
-  name: string;
-}): Promise<string> {
-  const { provider, oauthId, email, name } = opts;
-  const emailLower = email.toLowerCase().trim();
-
-  // Try to find by oauth_id first, then by email
-  let [customer] = await db
-    .select()
-    .from(portalCustomersTable)
-    .where(eq(portalCustomersTable.oauthId, oauthId));
-
-  if (!customer) {
-    [customer] = await db
-      .select()
-      .from(portalCustomersTable)
-      .where(eq(portalCustomersTable.email, emailLower));
-  }
-
-  // Determine role
-  const isAdmin = PORTAL_ADMIN_EMAILS.includes(emailLower);
-  const role = isAdmin ? "admin" : (customer?.role ?? "customer");
-
-  if (customer) {
-    // Update oauth fields if needed
-    await db
-      .update(portalCustomersTable)
-      .set({ oauthProvider: provider, oauthId, role })
-      .where(eq(portalCustomersTable.id, customer.id));
-    customer = { ...customer, oauthProvider: provider, oauthId, role };
-  } else {
-    [customer] = await db
-      .insert(portalCustomersTable)
-      .values({
-        name,
-        email: emailLower,
-        passwordHash: null,
-        oauthProvider: provider,
-        oauthId,
-        role,
-      })
-      .returning();
-  }
-
-  return signToken({ customerId: customer!.id, role: customer!.role });
-}
-
-// GET /api/portal/auth/google
-router.get("/auth/google", (req, res) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId) return res.status(503).json({ message: "Google OAuth belum dikonfigurasi" });
-
-  const origin = getRequestOrigin(req);
-  const redirectUri = `${origin}/api/portal/auth/google/callback`;
-  const state = crypto.randomBytes(16).toString("hex");
-
-  res.cookie("oauth_state_g", state, {
-    httpOnly: true, secure: true, sameSite: "none", path: "/", maxAge: 10 * 60 * 1000,
-  });
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope: "openid email profile",
-    state,
-    access_type: "online",
-  });
-
-  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
-});
-
-// GET /api/portal/auth/google/callback
-router.get("/auth/google/callback", async (req, res) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return res.redirect("/login?oauth_error=not_configured");
-
-  const { code, state } = req.query as Record<string, string>;
-  const expectedState = req.cookies?.oauth_state_g;
-  res.clearCookie("oauth_state_g", { path: "/" });
-
-  if (!code || !state || state !== expectedState) {
-    return res.redirect("/login?oauth_error=state_mismatch");
-  }
-
-  const origin = getRequestOrigin(req);
-  const redirectUri = `${origin}/api/portal/auth/google/callback`;
-
-  try {
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
-        grant_type: "authorization_code",
-      }),
-    });
-    const tokenData = await tokenRes.json() as Record<string, unknown>;
-    if (!tokenData.access_token) {
-      req.log?.warn({ tokenData }, "Google token exchange failed");
-      return res.redirect("/login?oauth_error=token_failed");
-    }
-
-    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    });
-    const user = await userRes.json() as Record<string, string>;
-    if (!user.email) return res.redirect("/login?oauth_error=no_email");
-
-    const jwtToken = await upsertOAuthCustomer({
-      provider: "google",
-      oauthId: user.sub,
-      email: user.email,
-      name: user.name ?? user.email,
-    });
-
-    return res.redirect(`/login?oauth_token=${encodeURIComponent(jwtToken)}`);
-  } catch (err) {
-    req.log?.error({ err }, "Google OAuth callback error");
-    return res.redirect("/login?oauth_error=server_error");
-  }
-});
-
-// GET /api/portal/auth/github
-router.get("/auth/github", (req, res) => {
-  const clientId = process.env.GITHUB_CLIENT_ID;
-  if (!clientId) return res.status(503).json({ message: "GitHub OAuth belum dikonfigurasi" });
-
-  const origin = getRequestOrigin(req);
-  const redirectUri = `${origin}/api/portal/auth/github/callback`;
-  const state = crypto.randomBytes(16).toString("hex");
-
-  res.cookie("oauth_state_gh", state, {
-    httpOnly: true, secure: true, sameSite: "none", path: "/", maxAge: 10 * 60 * 1000,
-  });
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    scope: "user:email",
-    state,
-  });
-
-  return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
-});
-
-// GET /api/portal/auth/github/callback
-router.get("/auth/github/callback", async (req, res) => {
-  const clientId = process.env.GITHUB_CLIENT_ID;
-  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return res.redirect("/login?oauth_error=not_configured");
-
-  const { code, state } = req.query as Record<string, string>;
-  const expectedState = req.cookies?.oauth_state_gh;
-  res.clearCookie("oauth_state_gh", { path: "/" });
-
-  if (!code || !state || state !== expectedState) {
-    return res.redirect("/login?oauth_error=state_mismatch");
-  }
-
-  try {
-    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
-    });
-    const tokenData = await tokenRes.json() as Record<string, unknown>;
-    if (!tokenData.access_token) {
-      req.log?.warn({ tokenData }, "GitHub token exchange failed");
-      return res.redirect("/login?oauth_error=token_failed");
-    }
-
-    const accessToken = String(tokenData.access_token);
-
-    // Get user profile
-    const userRes = await fetch("https://api.github.com/user", {
-      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
-    });
-    const user = await userRes.json() as Record<string, unknown>;
-
-    // Get email — may be null if user keeps it private
-    let email = user.email as string | null;
-    if (!email) {
-      const emailRes = await fetch("https://api.github.com/user/emails", {
-        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json" },
-      });
-      const emails = await emailRes.json() as Array<{ email: string; primary: boolean; verified: boolean }>;
-      const primary = emails.find((e) => e.primary && e.verified);
-      email = primary?.email ?? emails[0]?.email ?? null;
-    }
-
-    if (!email) return res.redirect("/login?oauth_error=no_email");
-
-    const jwtToken = await upsertOAuthCustomer({
-      provider: "github",
-      oauthId: String(user.id),
-      email,
-      name: (user.name as string) || (user.login as string) || email,
-    });
-
-    return res.redirect(`/login?oauth_token=${encodeURIComponent(jwtToken)}`);
-  } catch (err) {
-    req.log?.error({ err }, "GitHub OAuth callback error");
-    return res.redirect("/login?oauth_error=server_error");
-  }
-});
 
 // ── VENDOR PORTAL ─────────────────────────────────────────────────────────
 // GET /api/portal/vendor/profile — returns linked supplier + RFQs + quotes for a vendor user
@@ -828,9 +434,7 @@ router.post("/admin/claim", requirePortalAuth, async (req, res) => {
   }
   const customerId = (req as PortalAuthReq).portalCustomerId;
   await db.update(portalCustomersTable).set({ role: "admin" }).where(eq(portalCustomersTable.id, customerId));
-  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.id, customerId));
-  const token = signToken({ customerId: customer!.id, role: "admin" });
-  return res.json({ token, role: "admin" });
+  return res.json({ role: "admin" });
 });
 
 // PUT /api/portal/admin/content  — update CMS content (admin only)

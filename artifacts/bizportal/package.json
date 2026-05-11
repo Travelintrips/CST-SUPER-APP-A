@@ -75,16 +75,17 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@workspace/replit-auth-web": "workspace:*",
+    "@supabase/supabase-js": "^2.105.4",
     "@uppy/aws-s3": "^5.1.0",
     "@uppy/core": "^5.2.0",
     "@uppy/dashboard": "^5.1.1",
     "@uppy/react": "^5.2.0",
     "@workspace/object-storage-web": "workspace:*",
+    "@workspace/replit-auth-web": "workspace:*",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
+    "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.1",
-    "exceljs": "^4.4.0"
+    "jspdf": "^4.2.1"
   }
 }

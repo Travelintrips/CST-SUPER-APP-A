@@ -1,14 +1,8 @@
-import * as oidc from "openid-client";
 import { type Request, type Response, type NextFunction } from "express";
 import type { AuthUser } from "../lib/auth";
-import {
-  clearSession,
-  getOidcConfig,
-  getSessionId,
-  getSession,
-  updateSession,
-  type SessionData,
-} from "../lib/auth";
+import { db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { verifySupabaseToken } from "../lib/supabaseAdmin";
 
 declare global {
   namespace Express {
@@ -26,62 +20,76 @@ declare global {
   }
 }
 
-async function refreshIfExpired(
-  sid: string,
-  session: SessionData,
-): Promise<SessionData | null> {
-  const now = Math.floor(Date.now() / 1000);
-  if (!session.expires_at || now <= session.expires_at) return session;
-
-  if (!session.refresh_token) return null;
-
-  try {
-    const config = await getOidcConfig();
-    const tokens = await oidc.refreshTokenGrant(
-      config,
-      session.refresh_token,
-    );
-    session.access_token = tokens.access_token;
-    session.refresh_token = tokens.refresh_token ?? session.refresh_token;
-    session.expires_at = tokens.expiresIn()
-      ? now + tokens.expiresIn()!
-      : session.expires_at;
-    await updateSession(sid, session);
-    return session;
-  } catch {
-    return null;
-  }
-}
-
 export async function authMiddleware(
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
 ) {
   req.isAuthenticated = function (this: Request) {
     return this.user != null;
   } as Request["isAuthenticated"];
 
-  const sid = getSessionId(req);
-  if (!sid) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
     next();
     return;
   }
 
-  const session = await getSession(sid);
-  if (!session?.user?.id) {
-    await clearSession(res, sid);
+  const token = auth.slice(7);
+  const supabaseUser = await verifySupabaseToken(token);
+  if (!supabaseUser?.email) {
     next();
     return;
   }
 
-  const refreshed = await refreshIfExpired(sid, session);
-  if (!refreshed) {
-    await clearSession(res, sid);
-    next();
-    return;
+  let [dbUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, supabaseUser.email));
+
+  if (!dbUser) {
+    const meta = supabaseUser.user_metadata ?? {};
+    const firstName =
+      (meta.given_name as string) ||
+      (meta.full_name as string)?.split(" ")[0] ||
+      null;
+    const lastName =
+      (meta.family_name as string) ||
+      (meta.full_name as string)?.split(" ").slice(1).join(" ") ||
+      null;
+    const profileImageUrl = (meta.avatar_url as string) || null;
+
+    const adminEmails = (process.env.ADMIN_EMAIL ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const isAdmin = adminEmails.includes(supabaseUser.email.toLowerCase());
+
+    const [created] = await db
+      .insert(usersTable)
+      .values({
+        id: supabaseUser.id,
+        email: supabaseUser.email,
+        firstName,
+        lastName,
+        profileImageUrl,
+        role: isAdmin ? "admin" : "admin",
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    dbUser = created;
   }
 
-  req.user = refreshed.user;
+  if (dbUser) {
+    req.user = {
+      id: dbUser.id,
+      email: dbUser.email ?? supabaseUser.email,
+      firstName: dbUser.firstName ?? null,
+      lastName: dbUser.lastName ?? null,
+      profileImageUrl: dbUser.profileImageUrl ?? null,
+    };
+  }
+
   next();
 }

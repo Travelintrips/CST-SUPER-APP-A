@@ -226,6 +226,9 @@ importers:
 
   artifacts/bizportal:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
       '@uppy/aws-s3':
         specifier: ^5.1.0
         version: 5.1.0(@uppy/core@5.2.0)
@@ -590,6 +593,10 @@ importers:
         version: 3.5.4(zod@3.25.76)
 
   artifacts/customer-portal:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
     devDependencies:
       '@hookform/resolvers':
         specifier: ^5.2.2

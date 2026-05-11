@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
-import { useAuth } from "@workspace/replit-auth-web";
+import { SupabaseAuthProvider, useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 import NotFound from "@/pages/not-found";
@@ -79,12 +79,19 @@ function LoadingSpinner() {
 }
 
 function LoginScreen() {
-  const { login } = useAuth();
-  const apiBase = import.meta.env.VITE_API_URL ?? "/api";
+  const { signInWithGoogle, signInWithEmail } = useSupabaseAuth();
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
 
-  function loginWithGoogle() {
-    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = `${apiBase}/login/google?returnTo=${returnTo}`;
+  async function handleEmailLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const { error: err } = await signInWithEmail(email, password);
+    if (err) setError(err);
+    setLoading(false);
   }
 
   return (
@@ -94,9 +101,9 @@ function LoginScreen() {
         <h1 className="text-2xl font-semibold tracking-tight">BizPortal</h1>
         <p className="text-sm text-slate-400">Sistem ERP Internal CST Logistics</p>
       </div>
-      <div className="flex flex-col gap-3 w-64">
+      <div className="flex flex-col gap-3 w-72">
         <button
-          onClick={loginWithGoogle}
+          onClick={signInWithGoogle}
           className="flex items-center justify-center gap-3 rounded-lg bg-white px-6 py-2.5 text-sm font-medium text-slate-800 shadow hover:bg-slate-100 active:scale-95 transition-all"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -109,22 +116,42 @@ function LoginScreen() {
         </button>
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-slate-700" />
-          <span className="text-xs text-slate-500">atau</span>
+          <span className="text-xs text-slate-500">atau email</span>
           <div className="flex-1 h-px bg-slate-700" />
         </div>
-        <button
-          onClick={() => login()}
-          className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-500 active:scale-95 transition-all"
-        >
-          Masuk dengan Replit
-        </button>
+        <form onSubmit={handleEmailLogin} className="flex flex-col gap-2">
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="rounded-lg bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="rounded-lg bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-60"
+          >
+            {loading ? "Masuk..." : "Masuk"}
+          </button>
+        </form>
       </div>
     </div>
   );
 }
 
 function AuthRouteGuard() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useSupabaseAuth();
   const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
@@ -157,7 +184,7 @@ function AuthRouteGuard() {
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useSupabaseAuth();
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -384,12 +411,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
-        <TooltipProvider>
-          <Router />
-          <Toaster />
-        </TooltipProvider>
-      </LanguageProvider>
+      <SupabaseAuthProvider>
+        <LanguageProvider>
+          <TooltipProvider>
+            <Router />
+            <Toaster />
+          </TooltipProvider>
+        </LanguageProvider>
+      </SupabaseAuthProvider>
     </QueryClientProvider>
   );
 }

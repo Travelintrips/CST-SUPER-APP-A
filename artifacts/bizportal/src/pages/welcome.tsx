@@ -3,10 +3,10 @@ import { Building2, ShoppingCart, Truck, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
-import { useAuth } from "@workspace/replit-auth-web";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 export default function WelcomePage() {
-  const { logout } = useAuth();
+  const { logout } = useSupabaseAuth();
   const { t } = useLanguage();
 
   return (

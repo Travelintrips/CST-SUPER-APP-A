@@ -3,8 +3,9 @@ import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { usePortalRegister, useListPortalServices } from "@workspace/api-client-react";
-import { setAuthToken } from "@/lib/auth";
+import { useListPortalServices } from "@workspace/api-client-react";
+import { supabase } from "@/lib/supabase";
+import { setPortalProfile } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
@@ -32,6 +33,8 @@ interface SimpleItem {
   itemType: "jasa" | "barang";
 }
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export default function Register() {
   const [, setLocation] = useLocation();
   const [errorMsg, setErrorMsg] = useState("");
@@ -39,6 +42,7 @@ export default function Register() {
   const [step, setStep] = useState<1 | 2>(1);
   const [role, setRole] = useState<UserRole>("customer");
   const [products, setProducts] = useState<SimpleItem[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { t } = useLanguage();
 
   const { data: servicesData } = useListPortalServices({
@@ -51,7 +55,7 @@ export default function Register() {
   }));
 
   useEffect(() => {
-    fetch("/api/portal/products")
+    fetch(`${BASE}/api/portal/products`)
       .then((r) => r.json())
       .then((data) =>
         setProducts(
@@ -64,7 +68,6 @@ export default function Register() {
   }, []);
 
   const allItems: SimpleItem[] = [...services, ...products];
-  const registerMutation = usePortalRegister();
 
   const form = useForm<RegisterFormValues, unknown, RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -82,28 +85,72 @@ export default function Register() {
     );
   };
 
-  const onSubmit = (data: RegisterFormValues) => {
+  const onSubmit = async (data: RegisterFormValues) => {
     setErrorMsg("");
-    registerMutation.mutate({ data: { ...data, role } as any }, {
-      onSuccess: (res: any) => {
-        const token = res?.token;
-        const resRole = res?.customer?.role ?? role;
-        if (token) {
-          setAuthToken(token);
-          const rt = new URLSearchParams(window.location.search).get("returnTo");
-          if (rt) {
-            setLocation(rt);
-          } else if (resRole === "vendor") {
-            setLocation("/vendor-dashboard");
-          } else {
-            setLocation("/dashboard");
-          }
-        }
+    setIsSubmitting(true);
+
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          name: data.name,
+          phone: data.phone ?? null,
+          company: data.company ?? null,
+          role,
+        },
       },
-      onError: (err: any) => {
-        setErrorMsg(err?.message || t("common.error"));
-      }
     });
+
+    if (signUpError) {
+      setErrorMsg(signUpError.message);
+      setIsSubmitting(false);
+      return;
+    }
+
+    const session = signUpData.session;
+    if (!session) {
+      setErrorMsg("Pendaftaran berhasil! Silakan cek email untuk konfirmasi, lalu login.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${BASE}/api/portal/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          name: data.name,
+          phone: data.phone ?? null,
+          company: data.company ?? null,
+          role,
+          serviceIds: data.serviceIds,
+        }),
+      });
+
+      const profile = await res.json() as { id: number; role: string; name: string; email: string };
+      setPortalProfile({
+        customerId: profile.id,
+        role: profile.role,
+        name: profile.name,
+        email: profile.email,
+      });
+
+      const rt = new URLSearchParams(window.location.search).get("returnTo");
+      if (rt) {
+        setLocation(rt);
+      } else if (profile.role === "vendor") {
+        setLocation("/vendor-dashboard");
+      } else {
+        setLocation("/dashboard");
+      }
+    } catch {
+      setErrorMsg("Akun dibuat, tapi gagal sinkronisasi profil. Silakan login kembali.");
+    }
+    setIsSubmitting(false);
   };
 
   const handleNextStep = async () => {
@@ -333,8 +380,8 @@ export default function Register() {
                   <Button type="button" variant="outline" className="w-1/3 h-12" onClick={() => setStep(1)}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> {t("register.back")}
                   </Button>
-                  <Button type="submit" className="w-2/3 h-12" disabled={registerMutation.isPending}>
-                    {registerMutation.isPending ? t("register.creatingAccount") : t("register.createAccount")}
+                  <Button type="submit" className="w-2/3 h-12" disabled={isSubmitting}>
+                    {isSubmitting ? t("register.creatingAccount") : t("register.createAccount")}
                   </Button>
                 </div>
               </div>
