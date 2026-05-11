@@ -7,8 +7,9 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { resolveImageUrl } from "@/lib/utils";
 import {
   ShoppingBag, Search, ChevronLeft, ChevronRight,
-  Play, Package, Star, Clock, Check, Layers, ExternalLink, Truck,
+  Play, Package, Star, Clock, Check, Layers, ExternalLink, Truck, ArrowRight,
 } from "lucide-react";
+import { Link } from "wouter";
 import { useCart } from "@/lib/cart";
 import { useLanguage } from "@/i18n/LanguageContext";
 
@@ -676,6 +677,50 @@ export default function Products() {
 
       {/* ── Content ───────────────────────────────────────────────────── */}
       <div className="mx-auto px-4 md:px-6 lg:px-10 mt-10" style={{ maxWidth: "1320px" }}>
+
+        {/* CTA Banner — redirect ke Jasa/Services */}
+        <div
+          className="flex items-center justify-between gap-4 px-5 py-4 rounded-2xl mb-8"
+          style={{
+            background: "linear-gradient(135deg,rgba(14,165,233,0.08) 0%,rgba(11,92,173,0.06) 100%)",
+            border: "1.5px solid rgba(14,165,233,0.20)",
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: "rgba(14,165,233,0.12)" }}
+            >
+              <Truck className="h-4.5 w-4.5 text-sky-600" style={{ width: "18px", height: "18px" }} />
+            </div>
+            <div>
+              <p className="text-[13.5px] font-semibold text-slate-800 leading-tight">
+                Ingin memesan layanan pengiriman?
+              </p>
+              <p className="text-[12px] text-slate-500 mt-0.5">
+                Temukan layanan Freight, Trucking, dan lainnya di halaman Jasa/Services.
+              </p>
+            </div>
+          </div>
+          <Link href="/jasa">
+            <button
+              className="shrink-0 flex items-center gap-1.5 font-semibold whitespace-nowrap transition-all duration-200"
+              style={{
+                padding: "9px 18px",
+                borderRadius: "12px",
+                fontSize: "13px",
+                background: "linear-gradient(135deg,#0B5CAD 0%,#0EA5E9 100%)",
+                color: "white",
+                boxShadow: "0 2px 10px rgba(11,92,173,0.25)",
+                border: "none",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 16px rgba(11,92,173,0.38)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 10px rgba(11,92,173,0.25)"; }}
+            >
+              Lihat Jasa/Services <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </Link>
+        </div>
 
         {/* Category filter chips */}
         {allCategories.length > 0 && (
