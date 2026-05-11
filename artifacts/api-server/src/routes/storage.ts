@@ -6,6 +6,7 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { compressImageBuffer } from "../lib/imageCompress";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -103,16 +104,19 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
     for await (const chunk of req) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
     }
-    const buffer = Buffer.concat(chunks);
+    let buffer = Buffer.concat(chunks);
 
     if (buffer.length > MAX_UPLOAD_BYTES) {
       res.status(413).json({ error: "File too large (max 10MB)" });
       return;
     }
 
+    let finalContentType = contentType;
+    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType));
+
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(storagePath, buffer, { contentType, upsert: true });
+      .upload(storagePath, buffer, { contentType: finalContentType, upsert: true });
 
     if (error) {
       req.log.error({ err: error }, "Supabase Storage upload failed");

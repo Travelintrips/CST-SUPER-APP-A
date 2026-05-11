@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type { UppyFile } from "@uppy/core";
+import { compressImageFile } from "./compressImage";
 
 interface UploadMetadata {
   name: string;
@@ -128,11 +129,14 @@ export function useUpload(options: UseUploadOptions = {}) {
       setProgress(0);
 
       try {
+        setProgress(5);
+        const compressedFile = await compressImageFile(file);
+
         setProgress(10);
-        const uploadResponse = await requestUploadUrl(file);
+        const uploadResponse = await requestUploadUrl(compressedFile);
 
         setProgress(30);
-        await uploadToPresignedUrl(file, uploadResponse.uploadURL);
+        await uploadToPresignedUrl(compressedFile, uploadResponse.uploadURL);
 
         setProgress(100);
         options.onSuccess?.(uploadResponse);

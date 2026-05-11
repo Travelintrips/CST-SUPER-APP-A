@@ -3,6 +3,7 @@ import multer from "multer";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { createHmac } from "crypto";
+import { compressImageBuffer } from "../lib/imageCompress";
 import { db, driversTable, driverJobsTable, driverJobLogsTable, driverPhotosTable, freightShipmentsTable } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
@@ -119,9 +120,10 @@ function nextJobNumber(): string {
 
 async function uploadPhotoToStorage(buffer: Buffer, mimetype: string, jobId: number): Promise<string> {
   try {
+    const { buffer: compressed, contentType } = await compressImageBuffer(buffer, mimetype);
     const filename = `${randomUUID()}.jpg`;
     const storagePath = `public/driver-photos/${jobId}/${filename}`;
-    await objectStorageService.uploadFile(buffer, storagePath, mimetype);
+    await objectStorageService.uploadFile(compressed, storagePath, contentType);
     return `/api/storage/public-objects/driver-photos/${jobId}/${filename}`;
   } catch {
     throw new Error("Photo upload failed");
