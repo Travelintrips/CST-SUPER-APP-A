@@ -280,6 +280,9 @@ function Router() {
         <ProtectedRoute component={ReportsApAgingPage} />
       </Route>
 
+      <Route path="/accounting">
+        <Redirect to="/accounting/accounts" />
+      </Route>
       <Route path="/accounting/accounts">
         <ProtectedRoute component={AccountingAccountsPage} />
       </Route>
