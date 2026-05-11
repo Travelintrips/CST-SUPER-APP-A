@@ -17,6 +17,15 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function getRedirectTo(): string {
+  const devDomain = import.meta.env.VITE_REPLIT_DEV_DOMAIN as string;
+  const base = import.meta.env.BASE_URL || "/bizportal/";
+  if (devDomain) {
+    return `https://${devDomain}${base}`;
+  }
+  return window.location.origin + base;
+}
+
 export function SupabaseAuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,7 +36,8 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       setIsLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[BizPortal Auth] event:", event, "session:", !!session);
       setSession(session);
       setIsLoading(false);
     });
@@ -44,8 +54,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const signInWithGoogle = async () => {
-    const redirectTo = window.location.origin + (import.meta.env.BASE_URL || "/bizportal/");
-    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
+    const redirectTo = getRedirectTo();
+    console.log("[BizPortal Auth] Google OAuth redirectTo:", redirectTo);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+    if (error) {
+      console.error("[BizPortal Auth] OAuth error:", error.message);
+    }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
