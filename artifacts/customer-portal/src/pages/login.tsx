@@ -46,6 +46,8 @@ export default function Login() {
         const rt = new URLSearchParams(window.location.search).get("returnTo");
         if (rt) {
           setLocation(rt);
+        } else if (profile.role === "admin") {
+          setLocation("/admin");
         } else if (profile.role === "vendor") {
           setLocation("/vendor-dashboard");
         } else {
@@ -88,6 +90,8 @@ export default function Login() {
       const rt = new URLSearchParams(window.location.search).get("returnTo");
       if (rt) {
         setLocation(rt);
+      } else if (profile.role === "admin") {
+        setLocation("/admin");
       } else if (profile.role === "vendor") {
         setLocation("/vendor-dashboard");
       } else {
