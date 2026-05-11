@@ -50,6 +50,16 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
   window.location.replace("https://cstlogistic.co.id/bizportal/");
 }
 
+// If Supabase OAuth redirected here (root) instead of /bizportal/, forward the hash to BizPortal.
+// This happens when the /bizportal/ URL is not yet whitelisted in Supabase Redirect URLs.
+if (typeof window !== "undefined") {
+  const hash = window.location.hash;
+  if (hash && hash.includes("access_token=") && hash.includes("token_type=bearer")) {
+    const bizportalBase = window.location.origin + "/bizportal/";
+    window.location.replace(bizportalBase + hash);
+  }
+}
+
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
 const NO_SHELL_PREFIXES = ["/jasa/", "/services/"];
 
