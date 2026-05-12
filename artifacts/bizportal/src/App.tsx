@@ -93,7 +93,7 @@ const IS_DEV = import.meta.env.DEV;
 
 function LoginScreen() {
   const { signInWithGoogle } = useSupabaseAuth();
-  const [devEmail, setDevEmail] = React.useState("wangsamasindo@gmail.com");
+  const [devEmail, setDevEmail] = React.useState("elmiraratuabadi@gmail.com");
   const [devError, setDevError] = React.useState("");
   const [devLoading, setDevLoading] = React.useState(false);
 
