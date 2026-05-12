@@ -278,8 +278,13 @@ function returnToFromState(state: string | undefined): string {
 router.get("/callback/google", async (req: Request, res: Response) => {
   const { code, state, error } = req.query as Record<string, string>;
 
+  req.log.info(
+    { hasCode: !!code, hasState: !!state, error: error ?? null, savedStateCookie: req.cookies?.google_state ?? null },
+    "[Google OAuth] callback received"
+  );
+
   if (error || !code || !state) {
-    req.log.warn({ error }, "[Google OAuth] callback error from Google — redirecting to login");
+    req.log.warn({ error, hasCode: !!code, hasState: !!state }, "[Google OAuth] callback error from Google — redirecting to login");
     res.clearCookie("google_state", { path: "/" });
     res.redirect(returnToFromState(state));
     return;
@@ -290,7 +295,7 @@ router.get("/callback/google", async (req: Request, res: Response) => {
   res.clearCookie("google_state", { path: "/" });
 
   if (!savedState || savedState !== stateToken) {
-    req.log.warn("[Google OAuth] state mismatch — redirecting to login");
+    req.log.warn({ savedState: savedState ?? null, stateToken }, "[Google OAuth] state mismatch — redirecting to login");
     res.redirect(returnToFromState(state));
     return;
   }
