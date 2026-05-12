@@ -88,6 +88,7 @@ export async function authMiddleware(
       firstName: dbUser.firstName ?? null,
       lastName: dbUser.lastName ?? null,
       profileImageUrl: dbUser.profileImageUrl ?? null,
+      role: dbUser.role ?? null,
     };
   }
 

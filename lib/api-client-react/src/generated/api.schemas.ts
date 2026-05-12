@@ -19,6 +19,7 @@ export interface AuthUser {
   firstName?: string | null;
   lastName?: string | null;
   profileImageUrl?: string | null;
+  role?: string | null;
 }
 
 export interface GetCurrentAuthUserResponse {
