@@ -49,8 +49,6 @@ export async function authMiddleware(
 
   // ── 2. Supabase Bearer token (legacy / mobile) ───────────────────────────────
   const auth = req.headers.authorization;
-
-  // ── 1. Bearer token (Supabase) ────────────────────────────────────────────
   if (auth?.startsWith("Bearer ")) {
     const token = auth.slice(7);
     const supabaseUser = await verifySupabaseToken(token);
@@ -105,15 +103,6 @@ export async function authMiddleware(
       }
     }
     return next();
-  }
-
-  // ── 2. Cookie session (Google OAuth / Replit OIDC) ────────────────────────
-  const sid = getSessionId(req);
-  if (sid) {
-    const session = await getSession(sid);
-    if (session?.user) {
-      req.user = session.user;
-    }
   }
 
   next();
