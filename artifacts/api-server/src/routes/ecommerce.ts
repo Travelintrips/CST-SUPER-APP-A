@@ -12,6 +12,8 @@ const objectStorageService = new ObjectStorageService();
 function normalizeImage(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value !== "string") return null;
+  // Allow external HTTP/HTTPS URLs to pass through as-is
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
   try {
     return objectStorageService.normalizeObjectEntityPath(value);
   } catch {

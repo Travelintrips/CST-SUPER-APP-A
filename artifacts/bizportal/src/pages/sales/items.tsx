@@ -842,7 +842,7 @@ export default function SalesItemsPage() {
               <p className="text-xs text-slate-500">Foto pertama jadi cover. Bisa upload lebih dari satu foto.</p>
 
               {/* URL alternatif */}
-              <details className="group">
+              <details className="group" open={!!form.imageUrl && form.mediaItems.length === 0}>
                 <summary className="text-xs cursor-pointer hover:text-slate-300 transition-colors list-none">
                   <span className="text-blue-400 underline-offset-2 hover:underline">atau masukkan URL gambar secara manual</span>
                 </summary>

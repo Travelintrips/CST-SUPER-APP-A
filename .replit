@@ -20,22 +20,6 @@ author = "agent"
 task = "workflow.run"
 args = "Customer Portal"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && PORT=8080 pnpm run dev"
-waitForPort = 8080
-
 [[workflows.workflow]]
 name = "Customer Portal"
 author = "agent"
@@ -64,7 +48,7 @@ ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gma
 PORTAL_ADMIN_EMAILS = "admcst001@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
-ADMIN_EMAIL = "admcst001@gmail.com,divatranssoetta@gmail.com,divarestoxr@gmail.com"
+ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 
 [userenv.development]
@@ -79,7 +63,7 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 5000
-externalPort = 80
+externalPort = 8008
 
 [[ports]]
 localPort = 8080
@@ -87,7 +71,7 @@ externalPort = 8080
 
 [[ports]]
 localPort = 8081
-externalPort = 8081
+externalPort = 80
 
 [[ports]]
 localPort = 8082
