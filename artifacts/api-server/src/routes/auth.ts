@@ -255,11 +255,25 @@ router.get("/login/google", (req: Request, res: Response) => {
   res.redirect(authUrl);
 });
 
+// Helper: extract a safe returnTo from the Google OAuth state param (stateToken:returnToB64)
+function returnToFromState(state: string | undefined): string {
+  if (!state) return "/bizportal/";
+  const [, returnToB64] = state.split(":");
+  if (!returnToB64) return "/bizportal/";
+  try {
+    return getSafeReturnTo(Buffer.from(returnToB64, "base64").toString());
+  } catch {
+    return "/bizportal/";
+  }
+}
+
 router.get("/callback/google", async (req: Request, res: Response) => {
   const { code, state, error } = req.query as Record<string, string>;
 
   if (error || !code || !state) {
-    res.redirect("/api/login");
+    req.log.warn({ error }, "[Google OAuth] callback error from Google — redirecting to login");
+    res.clearCookie("google_state", { path: "/" });
+    res.redirect(returnToFromState(state));
     return;
   }
 
@@ -268,12 +282,13 @@ router.get("/callback/google", async (req: Request, res: Response) => {
   res.clearCookie("google_state", { path: "/" });
 
   if (!savedState || savedState !== stateToken) {
-    res.redirect("/api/login");
+    req.log.warn("[Google OAuth] state mismatch — redirecting to login");
+    res.redirect(returnToFromState(state));
     return;
   }
 
   const returnTo = getSafeReturnTo(
-    returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/"
+    returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/bizportal/"
   );
 
   const callbackOrigin = getGoogleCallbackOrigin(req);
@@ -319,8 +334,8 @@ router.get("/callback/google", async (req: Request, res: Response) => {
     setSessionCookie(res, sid);
     res.redirect(returnTo);
   } catch (err) {
-    req.log.error({ err }, "Google OAuth callback error");
-    res.redirect("/api/login");
+    req.log.error({ err }, "[Google OAuth] callback token exchange error");
+    res.redirect(returnTo);
   }
 });
 
