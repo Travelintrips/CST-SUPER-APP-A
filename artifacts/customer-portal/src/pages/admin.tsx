@@ -174,6 +174,7 @@ type Service = {
   description: string | null;
   price: number;
   imageUrl: string | null;
+  mediaItems?: MediaItem[];
 };
 
 type MediaItem = { type: "image" | "video"; url: string };
@@ -537,7 +538,8 @@ function ItemEditCard({
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
   const [price, setPrice] = useState(String(item.price));
-  const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl);
+  const firstMediaImage = (item as Service | Product).mediaItems?.find((m) => m.type === "image")?.url ?? null;
+  const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl ?? firstMediaImage);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(
     type === "products" ? (item as Product).mediaItems ?? [] : []
   );
