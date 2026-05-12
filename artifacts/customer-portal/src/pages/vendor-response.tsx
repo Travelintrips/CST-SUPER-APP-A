@@ -104,11 +104,23 @@ export default function VendorResponsePage() {
   const [submitted, setSubmitted] = useState(false);
   const [existingResponse, setExistingResponse] = useState<VendorResponseData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [networkError, setNetworkError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function loadOrder(signal?: AbortSignal) {
     if (!orderNumber) { setLoading(false); setNotFound(true); return; }
-    fetch(apiUrl(`/api/vendor-response/${orderNumber}`))
+    setLoading(true);
+    setNetworkError(null);
+    setNotFound(false);
+    const timeoutId = setTimeout(() => {
+      if (signal && !signal.aborted) {
+        setLoading(false);
+        setNetworkError("Koneksi timeout (>15 detik). Periksa internet Anda lalu coba lagi.");
+      }
+    }, 15000);
+    fetch(apiUrl(`/api/vendor-response/${orderNumber}`), { signal })
       .then(async (r) => {
+        clearTimeout(timeoutId);
+        setNetworkError(null);
         if (r.status === 404) { setNotFound(true); return; }
         const data: OrderInfo = await r.json();
         setOrder(data);
@@ -118,8 +130,18 @@ export default function VendorResponsePage() {
           setSubmitted(true);
         }
       })
-      .catch(() => setNotFound(true))
+      .catch((err) => {
+        clearTimeout(timeoutId);
+        if (err?.name === "AbortError") return;
+        setNetworkError("Gagal memuat data. Periksa koneksi internet Anda.");
+      })
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadOrder(controller.signal);
+    return () => controller.abort();
   }, [orderNumber]);
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -193,6 +215,29 @@ export default function VendorResponsePage() {
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-slate-400 text-sm">Memuat data order...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (networkError) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <div className="text-center space-y-5 max-w-sm">
+          <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-9 h-9 text-orange-400" />
+          </div>
+          <div>
+            <h2 className="text-white text-xl font-bold mb-2">Gagal Memuat</h2>
+            <p className="text-slate-400 text-sm">{networkError}</p>
+          </div>
+          <button
+            onClick={() => loadOrder()}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+          >
+            Coba Lagi
+          </button>
+          <p className="text-slate-600 text-xs">No. order: <span className="font-mono text-slate-500">{orderNumber}</span></p>
         </div>
       </div>
     );
