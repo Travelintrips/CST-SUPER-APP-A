@@ -22,6 +22,20 @@ function getPortalDomain(): string {
   return domains[0] ?? "cstlogistic.co.id";
 }
 
+function nowWIB(): string {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta", day: "2-digit", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(now);
+  const day  = parts.find(p => p.type === "day")?.value ?? "";
+  const mon  = parts.find(p => p.type === "month")?.value ?? "";
+  const year = parts.find(p => p.type === "year")?.value ?? "";
+  const hour = parts.find(p => p.type === "hour")?.value ?? "";
+  const min  = parts.find(p => p.type === "minute")?.value ?? "";
+  return `${day} ${mon} ${year}, ${hour}:${min} WIB`;
+}
+
 function formatWaAdminNotification(response: {
   orderNumber: string;
   vendorName: string | null;
@@ -57,6 +71,7 @@ function formatWaAdminNotification(response: {
   if (response.notes) lines.push(`Catatan: ${response.notes}`);
   lines.push(`━━━━━━━━━━━━━━━━━━`);
   if (response.orderId) lines.push(`🔗 Lihat Detail:\n${adminUrl}`);
+  lines.push(`\n_Dikirim: ${nowWIB()}_`);
 
   return lines.join("\n");
 }

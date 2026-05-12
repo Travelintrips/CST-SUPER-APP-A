@@ -33,6 +33,20 @@ export interface LogisticOrderData {
 const BULAN_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agt","Sep","Okt","Nov","Des"];
 const TZ = "Asia/Jakarta";
 
+function nowWIB(): string {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("id-ID", {
+    timeZone: TZ, day: "2-digit", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(now);
+  const day  = parts.find(p => p.type === "day")?.value ?? "";
+  const mon  = parts.find(p => p.type === "month")?.value ?? "";
+  const year = parts.find(p => p.type === "year")?.value ?? "";
+  const hour = parts.find(p => p.type === "hour")?.value ?? "";
+  const min  = parts.find(p => p.type === "minute")?.value ?? "";
+  return `${day} ${mon} ${year}, ${hour}:${min} WIB`;
+}
+
 function formatTanggal(dt: Date | string): string {
   const d = new Date(dt);
   const parts = new Intl.DateTimeFormat("id-ID", { timeZone: TZ, day: "2-digit", month: "long", year: "numeric" }).formatToParts(d);
@@ -106,7 +120,8 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     (orderUrl ? `🔗 *Buka & Approve di BizPortal:*\n${orderUrl}\n\n` : ``) +
     `💬 *Approve via WA* (setelah vendor balas harga):\n` +
     `\`\`\`APPROVE ${order.orderNumber} [harga_jual]\`\`\`\n` +
-    `_Cek penawaran vendor: \`QUOTES ${order.orderNumber}\`_`
+    `_Cek penawaran vendor: \`QUOTES ${order.orderNumber}\`_\n\n` +
+    `_Dikirim: ${nowWIB()}_`
   );
 }
 
@@ -141,7 +156,8 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     `📌 *Tolak pesanan:*\n` +
     `\`TOLAK ${order.orderNumber}\`\n\n` +
     `_Balas pesan ini langsung dengan salah satu format di atas._\n` +
-    `Terima kasih 🙏`
+    `Terima kasih 🙏\n\n` +
+    `_Dikirim: ${nowWIB()}_`
   );
 }
 
@@ -186,7 +202,8 @@ function buildTruckingVendorWaMessage(
     `📋 *Isi form response vendor di sini:*\n` +
     `${responseUrl}\n\n` +
     `_Klik link di atas, isi status & info armada, lalu submit._\n` +
-    `Terima kasih 🙏`
+    `Terima kasih 🙏\n\n` +
+    `_Dikirim: ${nowWIB()}_`
   );
 }
 
@@ -211,7 +228,8 @@ function buildCustomerWaMessage(order: LogisticOrderData): string {
     (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
     `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n` +
-    `📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234`
+    `📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234\n\n` +
+    `_Dikirim: ${nowWIB()}_`
   );
 }
 

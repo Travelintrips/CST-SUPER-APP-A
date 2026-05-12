@@ -106,17 +106,27 @@ export default function VendorResponsePage() {
   const [error, setError] = useState<string | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
 
-  function loadOrder(signal?: AbortSignal) {
+  function loadOrder(externalSignal?: AbortSignal) {
     if (!orderNumber) { setLoading(false); setNotFound(true); return; }
     setLoading(true);
     setNetworkError(null);
     setNotFound(false);
+
+    const localController = new AbortController();
+    const signal = externalSignal ?? localController.signal;
+
     const timeoutId = setTimeout(() => {
-      if (signal && !signal.aborted) {
+      localController.abort();
+      if (!signal.aborted) {
         setLoading(false);
         setNetworkError("Koneksi timeout (>15 detik). Periksa internet Anda lalu coba lagi.");
       }
     }, 15000);
+
+    if (externalSignal) {
+      externalSignal.addEventListener("abort", () => localController.abort(), { once: true });
+    }
+
     fetch(apiUrl(`/api/vendor-response/${orderNumber}`), { signal })
       .then(async (r) => {
         clearTimeout(timeoutId);
