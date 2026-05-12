@@ -47,6 +47,13 @@ function getGoogleOrigin(req: Request): string {
   if (override) {
     return override.replace(/\/$/, "");
   }
+  // In Replit dev, use the stable dev domain automatically
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
+  // Use APP_URL if set (e.g. https://cstlogistic.co.id)
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/\/$/, "");
   }
   return getOrigin(req);
 }
