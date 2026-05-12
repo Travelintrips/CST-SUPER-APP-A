@@ -145,6 +145,11 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
   );
 }
 
+function getVendorResponseUrl(orderNumber: string): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim() || "cstlogistic.co.id";
+  return `https://${domain}/vendor-response/${orderNumber}`;
+}
+
 function buildTruckingVendorWaMessage(
   order: LogisticOrderData,
   vendorName: string,
@@ -164,10 +169,12 @@ function buildTruckingVendorWaMessage(
     ? `Rp ${Math.round(contractRate).toLocaleString("id-ID")}`
     : null;
 
+  const responseUrl = getVendorResponseUrl(order.orderNumber);
+
   return (
-    `🚛 *TRUCKING REQUEST FORM*\n` +
+    `🚛 *TRUCKING REQUEST — CST LOGISTICS*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `${order.orderNumber}\n` +
+    `No. Order: *${order.orderNumber}*\n` +
     `Customer: ${order.companyName || order.customerName}\n` +
     `Route: ${order.origin} → ${order.destination}\n` +
     `Kategori Barang: ${order.commodity || order.cargoDescription || "Umum"}\n` +
@@ -176,10 +183,10 @@ function buildTruckingVendorWaMessage(
     `Pickup Schedule: ${pickupSchedule}\n` +
     (contractRateStr ? `Vendor Contract Rate: ${contractRateStr}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `[ RESPONSE FORM ]\n` +
-    `Status: ☐ READY\n` +
-    `Estimated Pickup Time: / Driver Name: / Driver Phone: / Plate Number: / Unit Type: / Notes:\n` +
-    `Balas pesan ini dengan format di atas.`
+    `📋 *Isi form response vendor di sini:*\n` +
+    `${responseUrl}\n\n` +
+    `_Klik link di atas, isi status & info armada, lalu submit._\n` +
+    `Terima kasih 🙏`
   );
 }
 
