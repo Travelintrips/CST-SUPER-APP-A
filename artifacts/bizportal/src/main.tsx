@@ -4,7 +4,7 @@ import "./index.css";
 
 (window as any).__BASE_PATH__ = import.meta.env.BASE_URL || "/bizportal/";
 
-// If Supabase OAuth redirected to /bizportal/ with customer portal tokens, forward to root.
+// If Supabase OAuth redirected to /bizportal/ with customer portal tokens, forward to /customer-portal/.
 // This happens because Supabase only has /bizportal/ whitelisted as a redirect URL.
 if (typeof window !== "undefined") {
   const hash = window.location.hash;
@@ -13,7 +13,7 @@ if (typeof window !== "undefined") {
     (hash && hash.includes("access_token=") && hash.includes("token_type=bearer")) ||
     params.get("portal") === "customer"
   ) {
-    window.location.replace(window.location.origin + "/" + hash);
+    window.location.replace(window.location.origin + "/customer-portal/" + hash);
   }
 }
 
