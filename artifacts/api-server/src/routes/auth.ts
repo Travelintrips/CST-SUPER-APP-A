@@ -41,6 +41,14 @@ function getOrigin(req: Request): string {
   return `${proto}://${host}`;
 }
 
+function getGoogleCallbackOrigin(req: Request): string {
+  // Allow explicit override via env var (useful for production deployments)
+  if (process.env.GOOGLE_CALLBACK_ORIGIN) {
+    return process.env.GOOGLE_CALLBACK_ORIGIN.replace(/\/$/, "");
+  }
+  return getOrigin(req);
+}
+
 function setSessionCookie(res: Response, sid: string) {
   res.cookie(SESSION_COOKIE, sid, {
     httpOnly: true,
@@ -228,10 +236,12 @@ router.get("/callback", async (req: Request, res: Response) => {
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
 router.get("/login/google", (req: Request, res: Response) => {
-  const origin = getOrigin(req);
-  const redirectUri = `${origin}/api/callback/google`;
+  const callbackOrigin = getGoogleCallbackOrigin(req);
+  const redirectUri = `${callbackOrigin}/api/callback/google`;
   const returnTo = getSafeReturnTo(req.query.returnTo);
   const state = crypto.randomBytes(16).toString("hex");
+
+  req.log.info({ redirectUri }, "[Google OAuth] initiating login, redirect_uri");
 
   const client = getGoogleOAuthClient(redirectUri);
   const authUrl = client.generateAuthUrl({
@@ -266,8 +276,8 @@ router.get("/callback/google", async (req: Request, res: Response) => {
     returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/"
   );
 
-  const origin = getOrigin(req);
-  const redirectUri = `${origin}/api/callback/google`;
+  const callbackOrigin = getGoogleCallbackOrigin(req);
+  const redirectUri = `${callbackOrigin}/api/callback/google`;
   const client = getGoogleOAuthClient(redirectUri);
 
   try {
