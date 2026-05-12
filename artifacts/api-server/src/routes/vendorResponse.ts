@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import { db } from "@workspace/db";
@@ -7,6 +7,8 @@ import {
   vendorResponsesTable,
   logisticOrdersTable,
   logisticOrderItemsTable,
+  suppliersTable,
+  vendorCatalogItemsTable,
 } from "@workspace/db";
 import { sendWhatsApp } from "../lib/fonnte";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -78,6 +80,8 @@ function formatWaAdminNotification(response: {
 
 router.get("/:orderNumber", async (req: Request, res: Response) => {
   const { orderNumber } = req.params;
+  const vendorId = req.query.v ? parseInt(String(req.query.v), 10) : null;
+
   try {
     const [order] = await db
       .select()
@@ -103,6 +107,32 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
       .from(vendorResponsesTable)
       .where(eq(vendorResponsesTable.orderNumber, orderNumber));
 
+    // Fetch vendor base price from catalog if vendorId provided
+    let vendorBasePrice: number | null = null;
+    let vendorNameFromDb: string | null = null;
+    if (vendorId && !isNaN(vendorId)) {
+      const [vendor] = await db
+        .select({ name: suppliersTable.name })
+        .from(suppliersTable)
+        .where(eq(suppliersTable.id, vendorId));
+      if (vendor) vendorNameFromDb = vendor.name;
+
+      const catalogItems = await db
+        .select()
+        .from(vendorCatalogItemsTable)
+        .where(and(
+          eq(vendorCatalogItemsTable.vendorId, vendorId),
+          eq(vendorCatalogItemsTable.isActive, true)
+        ));
+
+      const matchingItem = vehicleType
+        ? catalogItems.find((c) => c.name.toLowerCase().includes(vehicleType.toLowerCase()))
+        : null;
+      vendorBasePrice = matchingItem
+        ? Number(matchingItem.priceBase)
+        : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
+    }
+
     res.json({
       orderNumber: order.orderNumber,
       companyName: order.companyName,
@@ -115,6 +145,8 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
       requiredDate: order.requiredDate,
       jamOrder: order.jamOrder,
       shipmentType: order.shipmentType,
+      vendorBasePrice,
+      vendorNameFromDb,
       existingResponse: existing ?? null,
     });
   } catch (err) {

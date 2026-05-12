@@ -16,13 +16,13 @@ const mockOrder = {
   jamOrder: "09.00",
 };
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoRow({ icon, label, value, highlight }: { icon: React.ReactNode; label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-white/10 last:border-0">
+    <div className={`flex items-start gap-3 py-2.5 border-b border-white/10 last:border-0 ${highlight ? "bg-emerald-500/5 -mx-4 px-4 rounded" : ""}`}>
       <span className="text-blue-300 mt-0.5 shrink-0">{icon}</span>
       <div className="min-w-0">
         <p className="text-xs text-slate-400 uppercase tracking-wide font-medium">{label}</p>
-        <p className="text-sm text-white font-semibold mt-0.5 break-words">{value}</p>
+        <p className={`text-sm font-semibold mt-0.5 break-words ${highlight ? "text-emerald-300" : "text-white"}`}>{value}</p>
       </div>
     </div>
   );
@@ -94,6 +94,12 @@ export default function VendorResponseForm() {
             <InfoRow icon={<Package className="w-4 h-4" />} label="Kategori Barang" value={mockOrder.commodity} />
             <InfoRow icon={<Weight className="w-4 h-4" />} label="Gross Weight" value={`${parseFloat(mockOrder.grossWeight).toLocaleString("id-ID")} KG`} />
             <InfoRow icon={<Truck className="w-4 h-4" />} label="Vehicle Type" value={mockOrder.vehicleType} />
+            <InfoRow
+              icon={<span className="text-lg leading-none">💰</span>}
+              label="Harga Vendor (Referensi)"
+              value="Rp 3.500.000"
+              highlight
+            />
             <InfoRow icon={<Calendar className="w-4 h-4" />} label="Jadwal Pickup" value={`14 Mei 2026 | 09:00 WIB`} />
           </div>
         </div>

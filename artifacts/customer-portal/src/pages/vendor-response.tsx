@@ -19,6 +19,8 @@ interface OrderInfo {
   requiredDate: string | null;
   jamOrder: string | null;
   shipmentType: string;
+  vendorBasePrice: number | null;
+  vendorNameFromDb: string | null;
   existingResponse: VendorResponseData | null;
 }
 
@@ -44,13 +46,13 @@ function formatDateID(dateStr: string | null): string {
   }
 }
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoRow({ icon, label, value, highlight }: { icon: React.ReactNode; label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-white/10 last:border-0">
+    <div className={`flex items-start gap-3 py-2.5 border-b border-white/10 last:border-0 ${highlight ? "bg-emerald-500/5 -mx-4 px-4 rounded" : ""}`}>
       <span className="text-blue-300 mt-0.5 shrink-0">{icon}</span>
       <div className="min-w-0">
         <p className="text-xs text-slate-400 uppercase tracking-wide font-medium">{label}</p>
-        <p className="text-sm text-white font-semibold mt-0.5 break-words">{value}</p>
+        <p className={`text-sm font-semibold mt-0.5 break-words ${highlight ? "text-emerald-300" : "text-white"}`}>{value}</p>
       </div>
     </div>
   );
@@ -82,6 +84,9 @@ function InputField({
 export default function VendorResponsePage() {
   const params = useParams<{ orderNumber: string }>();
   const orderNumber = params.orderNumber ?? "";
+  const vendorIdParam = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("v") ?? ""
+    : "";
 
   const [order, setOrder] = useState<OrderInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,7 +132,8 @@ export default function VendorResponsePage() {
       externalSignal.addEventListener("abort", () => localController.abort(), { once: true });
     }
 
-    fetch(apiUrl(`/api/vendor-response/${orderNumber}`), { signal })
+    const qs = vendorIdParam ? `?v=${encodeURIComponent(vendorIdParam)}` : "";
+    fetch(apiUrl(`/api/vendor-response/${orderNumber}${qs}`), { signal })
       .then(async (r) => {
         clearTimeout(timeoutId);
         setNetworkError(null);
@@ -135,6 +141,7 @@ export default function VendorResponsePage() {
         const data: OrderInfo = await r.json();
         setOrder(data);
         if (data.vehicleType) setVehicleType(data.vehicleType);
+        if (data.vendorNameFromDb) setVendorName(data.vendorNameFromDb);
         if (data.existingResponse) {
           setExistingResponse(data.existingResponse);
           setSubmitted(true);
@@ -374,6 +381,14 @@ export default function VendorResponsePage() {
             )}
             {order?.vehicleType && (
               <InfoRow icon={<Truck className="w-4 h-4" />} label="Vehicle Type" value={order.vehicleType} />
+            )}
+            {order?.vendorBasePrice != null && (
+              <InfoRow
+                icon={<span className="text-lg leading-none">💰</span>}
+                label="Harga Vendor (Referensi)"
+                value={`Rp ${Math.round(order.vendorBasePrice).toLocaleString("id-ID")}`}
+                highlight
+              />
             )}
             {(order?.requiredDate || order?.jamOrder) && (
               <InfoRow
