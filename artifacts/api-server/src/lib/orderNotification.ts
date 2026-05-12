@@ -1,4 +1,4 @@
-import { db, suppliersTable } from "@workspace/db";
+import { db, suppliersTable, vendorCatalogItemsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminWa } from "./adminWa";
@@ -26,6 +26,7 @@ export interface LogisticOrderData {
   requiredDate?: string | null;
   notes?: string | null;
   jamOrder?: string | null;
+  vehicleType?: string | null;
   createdAt?: Date | string | null;
 }
 
@@ -43,6 +44,22 @@ function formatTanggal(dt: Date | string): string {
 
 function formatJam(dt: Date | string): string {
   return new Intl.DateTimeFormat("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(dt));
+}
+
+/** Format ISO date string "2026-05-14" → "14 Mei 2026" */
+function formatISODate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00+07:00");
+  if (isNaN(d.getTime())) return dateStr;
+  const parts = new Intl.DateTimeFormat("id-ID", { timeZone: TZ, day: "2-digit", month: "long", year: "numeric" }).formatToParts(d);
+  const day  = parts.find(p => p.type === "day")?.value ?? "";
+  const mon  = parts.find(p => p.type === "month")?.value ?? "";
+  const year = parts.find(p => p.type === "year")?.value ?? "";
+  return `${day} ${mon} ${year}`;
+}
+
+/** Format jam_order "16.13" or "16:13" → "16:13" */
+function formatJamOrder(jam: string): string {
+  return jam.replace(".", ":");
 }
 
 function getOrderUrl(orderId: number): string {
@@ -125,6 +142,50 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
     `\`TOLAK ${order.orderNumber}\`\n\n` +
     `_Balas pesan ini langsung dengan salah satu format di atas._\n` +
     `Terima kasih 🙏`
+  );
+}
+
+function buildTruckingVendorWaMessage(
+  order: LogisticOrderData,
+  vendorName: string,
+  contractRate?: number | null,
+): string {
+  const pickupDate = order.requiredDate ? formatISODate(order.requiredDate) : "";
+  const pickupTime = order.jamOrder ? formatJamOrder(order.jamOrder) : "";
+  const pickupSchedule = pickupDate
+    ? `${pickupDate}${pickupTime ? ` | ${pickupTime} WIB` : ""}`
+    : pickupTime ? `${pickupTime} WIB` : "-";
+
+  const grossWeightStr = order.grossWeight
+    ? `${order.grossWeight.toLocaleString("id-ID")} KG`
+    : "-";
+
+  const contractRateStr = contractRate
+    ? `Rp ${Math.round(contractRate).toLocaleString("id-ID")}`
+    : null;
+
+  return (
+    `🚛 *TRUCKING REQUEST FORM*\n\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `${order.orderNumber}\n\n` +
+    `Customer:\n${order.companyName || order.customerName}\n\n` +
+    `Route:\n${order.origin} → ${order.destination}\n\n` +
+    `Kategori Barang:\n${order.commodity || order.cargoDescription || "Umum"}\n\n` +
+    `Gross Weight:\n${grossWeightStr}\n\n` +
+    (order.vehicleType ? `Vehicle Type:\n${order.vehicleType}\n\n` : ``) +
+    `Pickup Schedule:\n${pickupSchedule}\n\n` +
+    (contractRateStr ? `Vendor Contract Rate:\n${contractRateStr}\n` : ``) +
+    `━━━━━━━━━━━━━━━━━━\n\n` +
+    `Mohon isi form berikut:\n\n` +
+    `[ RESPONSE FORM ]\n\n` +
+    `Status:\n☐ READY\n\n` +
+    `Estimated Pickup Time:\n\n` +
+    `Driver Name:\n\n` +
+    `Driver Phone:\n\n` +
+    `Plate Number:\n\n` +
+    `Unit Type:\n\n` +
+    `Notes:\n\n` +
+    `Balas pesan ini dengan format di atas.`
   );
 }
 
@@ -244,6 +305,8 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 }
 
 async function notifyVendors(order: LogisticOrderData): Promise<void> {
+  const isTrucking = order.shipmentType?.toLowerCase().includes("trucking");
+
   // Only notify vendors who explicitly have a matching serviceType.
   // Vendors with serviceType = null are purchase-only suppliers and must NOT receive logistics notifications.
   const vendors = await db
@@ -275,52 +338,77 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
     ...(order.cargoDescription ? [["Deskripsi", order.cargoDescription] as [string, string]] : []),
     ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
     ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
+    ...(order.vehicleType ? [["Vehicle Type", order.vehicleType] as [string, string]] : []),
     ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
-    ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
+    ...(order.requiredDate ? [["Tgl Pickup", formatISODate(order.requiredDate)] as [string, string]] : []),
     ...(order.notes ? [["Catatan", order.notes] as [string, string]] : []),
   ];
 
   for (const vendor of eligible) {
+    // Fetch vendor catalog price (for trucking: match by vehicle type name)
+    let contractRate: number | null = null;
+    if (isTrucking) {
+      const catalogItems = await db
+        .select()
+        .from(vendorCatalogItemsTable)
+        .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+      const match = order.vehicleType
+        ? catalogItems.find((c) => c.name.toLowerCase().includes(order.vehicleType!.toLowerCase()))
+        : null;
+      contractRate = match
+        ? Number(match.priceBase)
+        : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
+    }
+
     if (vendor.phone) {
-      sendWhatsApp(vendor.phone, buildVendorWaMessage(order, vendor.name)).catch((err: unknown) =>
+      const msg = isTrucking
+        ? buildTruckingVendorWaMessage(order, vendor.name, contractRate)
+        : buildVendorWaMessage(order, vendor.name);
+      sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA vendor notification failed")
       );
     }
 
     if (vendor.contactEmail && isSmtpConfigured()) {
-      const draftReplyHtml =
-        `<div style="margin-top:24px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:16px 20px">` +
-        `<p style="margin:0 0 12px;font-weight:700;color:#0369a1;font-size:14px">✏️ Draft Balasan — Tinggal Copy, Isi Harga, Lalu Balas Email Ini</p>` +
-        `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 1 — Kirim Penawaran Harga:</strong></p>` +
-        `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 12px">${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\n\nContoh:\n${order.orderNumber} 5500000 15-Mei 20-Mei</pre>` +
-        `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 2 — Terima Pesanan (tanpa harga dulu):</strong></p>` +
-        `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 12px">TERIMA ${order.orderNumber}</pre>` +
-        `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 3 — Tolak Pesanan:</strong></p>` +
-        `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0">TOLAK ${order.orderNumber}</pre>` +
-        `</div>`;
+      const draftReplyHtml = isTrucking
+        ? `<div style="margin-top:24px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:16px 20px">` +
+          `<p style="margin:0 0 12px;font-weight:700;color:#0369a1;font-size:14px">📋 Response Form — Isi dan Balas Email Ini</p>` +
+          `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0">` +
+          `Status: READY\nEstimated Pickup Time: \nDriver Name: \nDriver Phone: \nPlate Number: \nUnit Type: \nNotes: ` +
+          `</pre></div>`
+        : `<div style="margin-top:24px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:16px 20px">` +
+          `<p style="margin:0 0 12px;font-weight:700;color:#0369a1;font-size:14px">✏️ Draft Balasan — Tinggal Copy, Isi Harga, Lalu Balas Email Ini</p>` +
+          `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 1 — Kirim Penawaran Harga:</strong></p>` +
+          `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 12px">${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\n\nContoh:\n${order.orderNumber} 5500000 15-Mei 20-Mei</pre>` +
+          `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 2 — Terima Pesanan:</strong></p>` +
+          `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 12px">TERIMA ${order.orderNumber}</pre>` +
+          `<p style="margin:0 0 8px;color:#374151;font-size:13px"><strong>Opsi 3 — Tolak Pesanan:</strong></p>` +
+          `<pre style="background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:4px;font-size:13px;margin:0">TOLAK ${order.orderNumber}</pre>` +
+          `</div>`;
 
       sendMail({
         to: vendor.contactEmail,
-        subject: `[PERMINTAAN ORDER] ${order.orderNumber} — ${order.shipmentType}`,
+        subject: isTrucking
+          ? `[TRUCKING REQUEST] ${order.orderNumber} — ${order.origin} → ${order.destination}`
+          : `[PERMINTAAN ORDER] ${order.orderNumber} — ${order.shipmentType}`,
         html: buildEmailHtml(
-          "Permintaan Order Baru dari CST Logistics",
-          `Kepada Yth. <strong>${vendor.name}</strong>,<br><br>Anda mendapat permintaan pengiriman baru dari CST Logistics. Silakan balas email ini dengan salah satu format di bawah.`,
+          isTrucking ? "Trucking Request Form" : "Permintaan Order Baru dari CST Logistics",
+          `Kepada Yth. <strong>${vendor.name}</strong>,<br><br>${isTrucking ? "Ada permintaan trucking baru. Mohon lengkapi form di bawah dan balas email ini." : "Anda mendapat permintaan pengiriman baru dari CST Logistics. Silakan balas email ini dengan salah satu format di bawah."}`,
           rows,
-          `Balas email ini langsung dengan format penawaran di bawah ini. Sistem kami akan membaca balasan Anda secara otomatis.`
+          isTrucking ? "Balas email ini dengan form response yang sudah diisi." : "Balas email ini langsung dengan format penawaran di bawah ini."
         ).replace(
           `</td></tr>\n    </table>\n  </td></tr>`,
           `${draftReplyHtml}</td></tr>\n    </table>\n  </td></tr>`
         ),
-        text:
-          `PERMINTAAN ORDER: ${order.orderNumber}\n` +
-          `Jenis: ${order.shipmentType}\n` +
-          `Rute: ${order.origin} → ${order.destination}\n\n` +
-          `=== DRAFT BALASAN — tinggal copy, isi harga, balas email ini ===\n\n` +
-          `Opsi 1 - Kirim Penawaran Harga:\n` +
-          `${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\n` +
-          `Contoh: ${order.orderNumber} 5500000 15-Mei 20-Mei\n\n` +
-          `Opsi 2 - Terima Pesanan:\nTERIMA ${order.orderNumber}\n\n` +
-          `Opsi 3 - Tolak Pesanan:\nTOLAK ${order.orderNumber}`,
+        text: isTrucking
+          ? `TRUCKING REQUEST: ${order.orderNumber}\nRute: ${order.origin} → ${order.destination}\n` +
+            (order.vehicleType ? `Vehicle: ${order.vehicleType}\n` : ``) +
+            (contractRate ? `Contract Rate: Rp ${Math.round(contractRate).toLocaleString("id-ID")}\n` : ``) +
+            `\n=== RESPONSE FORM ===\nStatus: READY\nEstimated Pickup Time:\nDriver Name:\nDriver Phone:\nPlate Number:\nUnit Type:\nNotes:`
+          : `PERMINTAAN ORDER: ${order.orderNumber}\nJenis: ${order.shipmentType}\nRute: ${order.origin} → ${order.destination}\n\n` +
+            `Opsi 1 - Kirim Penawaran Harga:\n${order.orderNumber} [HARGA] [TGL_PICKUP] [TGL_KIRIM]\n` +
+            `Opsi 2 - Terima Pesanan:\nTERIMA ${order.orderNumber}\n` +
+            `Opsi 3 - Tolak Pesanan:\nTOLAK ${order.orderNumber}`,
       }).catch((err: unknown) => logger.error({ err, vendorId: vendor.id }, "Email vendor notification failed"));
     } else if (vendor.contactEmail) {
       logger.warn({ vendorId: vendor.id }, "SMTP not configured — skipping vendor email");
