@@ -46,6 +46,10 @@ function getGoogleCallbackOrigin(req: Request): string {
   if (process.env.GOOGLE_CALLBACK_ORIGIN) {
     return process.env.GOOGLE_CALLBACK_ORIGIN.replace(/\/$/, "");
   }
+  // Use APP_URL if set (e.g. https://cstlogistic.co.id) — ensures consistent callback URI
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/\/$/, "");
+  }
   return getOrigin(req);
 }
 
