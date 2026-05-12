@@ -26,6 +26,13 @@ import {
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
+// Startup diagnostic — shows secret length & suffix to verify correct value is loaded
+console.log(
+  `[Google OAuth] client_id suffix: ...${(GOOGLE_CLIENT_ID ?? "").slice(-20)}` +
+  ` | secret length: ${(GOOGLE_CLIENT_SECRET ?? "").length}` +
+  ` | secret suffix: ...${(GOOGLE_CLIENT_SECRET ?? "").slice(-4)}`
+);
+
 function getGoogleOAuthClient(redirectUri: string) {
   return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, redirectUri);
 }
