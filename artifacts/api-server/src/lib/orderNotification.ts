@@ -165,26 +165,20 @@ function buildTruckingVendorWaMessage(
     : null;
 
   return (
-    `🚛 *TRUCKING REQUEST FORM*\n\n` +
+    `🚛 *TRUCKING REQUEST FORM*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `${order.orderNumber}\n\n` +
-    `Customer:\n${order.companyName || order.customerName}\n\n` +
-    `Route:\n${order.origin} → ${order.destination}\n\n` +
-    `Kategori Barang:\n${order.commodity || order.cargoDescription || "Umum"}\n\n` +
-    `Gross Weight:\n${grossWeightStr}\n\n` +
-    (order.vehicleType ? `Vehicle Type:\n${order.vehicleType}\n\n` : ``) +
-    `Pickup Schedule:\n${pickupSchedule}\n\n` +
-    (contractRateStr ? `Vendor Contract Rate:\n${contractRateStr}\n` : ``) +
-    `━━━━━━━━━━━━━━━━━━\n\n` +
-    `Mohon isi form berikut:\n\n` +
-    `[ RESPONSE FORM ]\n\n` +
-    `Status:\n☐ READY\n\n` +
-    `Estimated Pickup Time:\n\n` +
-    `Driver Name:\n\n` +
-    `Driver Phone:\n\n` +
-    `Plate Number:\n\n` +
-    `Unit Type:\n\n` +
-    `Notes:\n\n` +
+    `${order.orderNumber}\n` +
+    `Customer: ${order.companyName || order.customerName}\n` +
+    `Route: ${order.origin} → ${order.destination}\n` +
+    `Kategori Barang: ${order.commodity || order.cargoDescription || "Umum"}\n` +
+    `Gross Weight: ${grossWeightStr}\n` +
+    (order.vehicleType ? `Vehicle Type: ${order.vehicleType}\n` : ``) +
+    `Pickup Schedule: ${pickupSchedule}\n` +
+    (contractRateStr ? `Vendor Contract Rate: ${contractRateStr}\n` : ``) +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `[ RESPONSE FORM ]\n` +
+    `Status: ☐ READY\n` +
+    `Estimated Pickup Time: / Driver Name: / Driver Phone: / Plate Number: / Unit Type: / Notes:\n` +
     `Balas pesan ini dengan format di atas.`
   );
 }
