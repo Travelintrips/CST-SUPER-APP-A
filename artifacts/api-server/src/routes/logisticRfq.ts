@@ -69,10 +69,11 @@ function buildRfqWaMessage(order: {
   shipmentType: string; commodity?: string | null; cargoDescription?: string | null;
   grossWeight?: number | null; volumeCbm?: number | null; requiredDate?: string | null;
   notes?: string | null; jamOrder?: string | null; createdAt?: Date | string | null;
-}, rfqNumber: string, vendorName: string, formUrl?: string): string {
+}, rfqNumber: string, vendorName: string, formUrl?: string, vendorBasePrice?: number | null): string {
   const isFreight = isFreightWithDimensions(order.shipmentType);
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
+  const fmtPrice = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 
   const freightHint = isFreight
     ? (
@@ -96,23 +97,15 @@ function buildRfqWaMessage(order: {
     (order.commodity ? `Komoditi      : ${order.commodity}\n` : "") +
     (order.cargoDescription ? `Deskripsi     : ${order.cargoDescription}\n` : "") +
     (order.grossWeight ? `Berat         : ${order.grossWeight} kg\n` : "") +
+    (vendorBasePrice != null ? `Harga Vendor  : *${fmtPrice(vendorBasePrice)}*\n` : "") +
     (order.volumeCbm ? `Volume        : ${order.volumeCbm} CBM\n` : "") +
     (order.requiredDate ? `Tgl Butuh     : ${order.requiredDate}\n` : "") +
     (order.notes ? `Catatan       : ${order.notes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
     freightHint +
     (formUrl
-      ? `📱 *CARA TERMUDAH — ISI FORM ONLINE:*\n${formUrl}\n\nKlik link di atas, isi harga & estimasi, lalu Submit.\n\n` +
-        `━━━━━━━━━━━━━━━━━━\n\n`
+      ? `📱 *CARA TERMUDAH — ISI FORM ONLINE:*\n${formUrl}\n\nKlik link di atas, isi harga & estimasi, lalu Submit.\n\n`
       : ``) +
-    `📝 *ATAU BALAS PESAN INI:*\n\n` +
-    `Format balasan:\n` +
-    `\`\`\`${rfqNumber} HARGA ETA_PICKUP ETA_DELIVERY CATATAN\`\`\`\n\n` +
-    `Contoh:\n` +
-    `\`\`\`${rfqNumber} 5000000 besok 3hari muatan-aman\`\`\`\n` +
-    `\`\`\`${rfqNumber} 3500000\`\`\`\n\n` +
-    `⚠️ Nomor RFQ *${rfqNumber}* wajib ada di awal pesan.\n` +
-    `   Isi harga *tanpa titik/koma* pemisah ribuan.\n\n` +
     `Terima kasih 🙏`
   );
 }
@@ -360,6 +353,14 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
   const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds));
 
+  // Get vehicleType from order items (trucking orders)
+  const orderItems = await db.select().from(logisticOrderItemsTable)
+    .where(eq(logisticOrderItemsTable.orderId, orderId));
+  const truckingItem = orderItems.find((it) => it.calculatorType === "trucking");
+  const vehicleType = truckingItem
+    ? (truckingItem.inputData as Record<string, unknown>)?.vehicleType as string | null ?? null
+    : null;
+
   const orderData = {
     orderNumber: order.orderNumber,
     origin: order.origin,
@@ -377,8 +378,18 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
 
   for (const vendor of vendors) {
     if (vendor.phone) {
+      // Look up vendor's catalog price for this vehicle type
+      const catalogItems = await db.select().from(vendorCatalogItemsTable)
+        .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+      const matchingCatalog = vehicleType
+        ? catalogItems.find((c) => c.name.toLowerCase().includes(vehicleType.toLowerCase()))
+        : null;
+      const vendorBasePrice = matchingCatalog
+        ? Number(matchingCatalog.priceBase)
+        : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
+
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
-      const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl);
+      const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl, vendorBasePrice);
       sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA RFQ send failed")
       );

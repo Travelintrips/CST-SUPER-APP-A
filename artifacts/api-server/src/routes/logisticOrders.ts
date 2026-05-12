@@ -141,6 +141,11 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
 
   const serviceList = body.items.map((i) => `• ${i.serviceName}`).join("\n");
 
+  const vehicleType =
+    (body.items.find((i) => i.calculatorType === "trucking")
+      ?.inputData as Record<string, unknown> | undefined)
+      ?.vehicleType as string ?? null;
+
   // Fire-and-forget: notify admin + vendors + customer via WA & email
   sendLogisticOrderNotification({
     id: order.id,
@@ -161,6 +166,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     requiredDate: body.requiredDate ?? null,
     notes: body.notes ?? null,
     jamOrder: body.jamOrder ?? null,
+    vehicleType,
     createdAt: order.createdAt,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");

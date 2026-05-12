@@ -123,3 +123,23 @@ export const logisticOrderQuotesRelations = relations(logisticOrderQuotesTable, 
     references: [suppliersTable.id],
   }),
 }));
+
+export const vendorResponsesTable = pgTable("vendor_responses", {
+  id: serial("id").primaryKey(),
+  orderNumber: text("order_number").notNull(),
+  orderId: integer("order_id").references(() => logisticOrdersTable.id, { onDelete: "set null" }),
+  vendorName: text("vendor_name"),
+  status: text("status").notNull(),
+  estimatedPickupTime: text("estimated_pickup_time"),
+  driverName: text("driver_name"),
+  driverPhone: text("driver_phone"),
+  plateNumber: text("plate_number"),
+  vehicleType: text("vehicle_type"),
+  notes: text("notes"),
+  unitPhotoUrl: text("unit_photo_url"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type VendorResponse = typeof vendorResponsesTable.$inferSelect;
+export type InsertVendorResponse = typeof vendorResponsesTable.$inferInsert;

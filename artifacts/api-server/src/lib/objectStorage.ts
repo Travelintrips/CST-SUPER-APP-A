@@ -17,7 +17,10 @@ function getSupabase() {
 }
 
 function getBucket() {
-  return process.env.SUPABASE_STORAGE_BUCKET ?? "bizportal";
+  const val = process.env.SUPABASE_STORAGE_BUCKET ?? "";
+  // If env var is a URL (S3 endpoint), ignore it and use default bucket name
+  if (!val || val.startsWith("http")) return "bizportal";
+  return val;
 }
 
 export class ObjectStorageService {

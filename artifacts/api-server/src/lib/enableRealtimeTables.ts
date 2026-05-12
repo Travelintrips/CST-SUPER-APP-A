@@ -2,7 +2,7 @@ import { logger } from "./logger";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
-const TABLES = ["driver_jobs", "driver_job_logs"];
+const TABLES = ["driver_jobs", "driver_job_logs", "vendor_responses"];
 
 export async function enableRealtimeTables(): Promise<void> {
   for (const table of TABLES) {
