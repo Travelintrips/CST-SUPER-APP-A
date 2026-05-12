@@ -305,6 +305,12 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
 }
 
 async function notifyVendors(order: LogisticOrderData): Promise<void> {
+  // Guard: skip if shipmentType is empty — ilike('%%') would match ALL vendors
+  if (!order.shipmentType || !order.shipmentType.trim()) {
+    logger.warn({ orderNumber: order.orderNumber }, "notifyVendors: shipmentType is empty — skipping vendor notification to prevent all-vendor spam");
+    return;
+  }
+
   const isTrucking = order.shipmentType?.toLowerCase().includes("trucking");
 
   // Only notify vendors who explicitly have a matching serviceType.

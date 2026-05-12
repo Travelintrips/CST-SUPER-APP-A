@@ -669,6 +669,23 @@ export async function processEmailForAiIntake(
 ): Promise<AiIntakeResult | null> {
   if (!(await isAiIntakeEnabled())) return null;
 
+  // ── Skip emails FROM internal/admin addresses — prevents self-processing loops ──
+  if (fromEmail) {
+    const internalAddresses = [
+      process.env.IMAP_USER,
+      process.env.ADMIN_EMAIL,
+      process.env.SMTP_FROM,
+    ].filter(Boolean).map((a) => a!.trim().toLowerCase());
+    if (internalAddresses.includes(fromEmail.trim().toLowerCase())) {
+      await db
+        .update(emailCorrespondencesTable)
+        .set({ aiProcessed: true, aiSkipReason: "internal_email", emailRole: "other" })
+        .where(eq(emailCorrespondencesTable.id, emailCorrespondenceId));
+      logger.info({ emailCorrespondenceId, fromEmail }, "AI intake: skipping email from internal address");
+      return null;
+    }
+  }
+
   // ── Threading: check if this email is a reply to a known quotation thread ──
   if (inReplyTo && fromEmail) {
     const thread = await findLinkedSalesDocByReplyTo(inReplyTo);
@@ -761,6 +778,16 @@ export async function processWaForAiIntake(
   senderName?: string | null,
 ): Promise<AiIntakeResult | null> {
   if (!(await isAiIntakeEnabled())) return null;
+
+  // ── Skip WA from known vendor phone numbers — vendor replies are NOT new customer orders ──
+  const normalizePhone = (p: string) => p.replace(/\D/g, "").replace(/^0/, "62");
+  const normalizedIncoming = normalizePhone(phone);
+  const vendors = await db.select({ phone: suppliersTable.phone }).from(suppliersTable).where(eq(suppliersTable.isActive, true));
+  const vendorPhones = vendors.map((v) => v.phone ? normalizePhone(v.phone) : "").filter(Boolean);
+  if (vendorPhones.includes(normalizedIncoming)) {
+    logger.info({ phone, normalizedIncoming }, "AI intake: WA from known vendor number — skipping order intake");
+    return null;
+  }
 
   // Idempotency: skip if a draft from same phone was created in the last 10 minutes
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
