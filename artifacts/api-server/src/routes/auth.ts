@@ -47,6 +47,11 @@ function getGoogleOrigin(req: Request): string {
   if (override) {
     return override.replace(/\/$/, "");
   }
+  // In Replit dev, use the stable dev domain automatically so the registered
+  // redirect URI stays current without needing to update env vars every session.
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
   return getOrigin(req);
 }
 
