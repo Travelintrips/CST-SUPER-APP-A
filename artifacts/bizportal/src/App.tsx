@@ -189,7 +189,7 @@ function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
   const cachedRole = readRoleCache();
 
-  const { data: dbUser } = useGetCurrentUser({
+  const { data: dbUser, isLoading: dbUserLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
       queryKey: getGetCurrentUserQueryKey(),
@@ -213,6 +213,8 @@ function AuthRouteGuard() {
 
   // Use live role if available, fall back to cached role immediately (no second spinner)
   const role = dbUser?.role ?? cachedRole;
+  // Wait for role from DB before redirecting if no cached role — prevents landing on /welcome
+  if (!role && dbUserLoading) return <LoadingSpinner />;
   return <Redirect to={roleToPath(role)} />;
 }
 
