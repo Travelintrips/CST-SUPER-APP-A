@@ -44,22 +44,12 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com"
+ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-APP_URL = "https://cstlogistic.co.id"
-IMAP_HOST = "imap.gmail.com"
-IMAP_PASSWORD = "iqibfqthqudbrbyc"
-IMAP_PORT = "993"
-IMAP_USER = "admcst001@gmail.com"
-SMTP_FROM = " info@cstlogistic.co.id"
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PASS = "re_FyQZpWJF_4HKbSZmh7n9wVjP3nPJdYsx9"
-SMTP_PORT = "587"
-SMTP_USER = "admcst001@gmail.com"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"

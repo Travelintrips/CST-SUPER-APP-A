@@ -41,10 +41,11 @@ function getOrigin(req: Request): string {
   return `${proto}://${host}`;
 }
 
-function getGoogleCallbackOrigin(req: Request): string {
-  // Allow explicit override via env var (useful for production deployments)
-  if (process.env.GOOGLE_CALLBACK_ORIGIN) {
-    return process.env.GOOGLE_CALLBACK_ORIGIN.replace(/\/$/, "");
+function getGoogleOrigin(req: Request): string {
+  // Support both env var names for backward compatibility
+  const override = process.env.GOOGLE_REDIRECT_BASE_URL || process.env.GOOGLE_CALLBACK_ORIGIN;
+  if (override) {
+    return override.replace(/\/$/, "");
   }
   // Use APP_URL if set (e.g. https://cstlogistic.co.id) — ensures consistent callback URI
   if (process.env.APP_URL) {
@@ -240,8 +241,7 @@ router.get("/callback", async (req: Request, res: Response) => {
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
 router.get("/login/google", (req: Request, res: Response) => {
-  const callbackOrigin = getGoogleCallbackOrigin(req);
-  const redirectUri = `${callbackOrigin}/api/callback/google`;
+  const redirectUri = `${getGoogleOrigin(req)}/api/callback/google`;
   const returnTo = getSafeReturnTo(req.query.returnTo);
   const state = crypto.randomBytes(16).toString("hex");
 
@@ -295,8 +295,7 @@ router.get("/callback/google", async (req: Request, res: Response) => {
     returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/bizportal/"
   );
 
-  const callbackOrigin = getGoogleCallbackOrigin(req);
-  const redirectUri = `${callbackOrigin}/api/callback/google`;
+  const redirectUri = `${getGoogleOrigin(req)}/api/callback/google`;
   const client = getGoogleOAuthClient(redirectUri);
 
   try {

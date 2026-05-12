@@ -66,7 +66,7 @@ app.use("/api", authRouter);
 
 const BIZPORTAL_DIST = path.resolve(
   process.cwd(),
-  "artifacts/bizportal/dist/public",
+  "../bizportal/dist/public",
 );
 
 // Serve static assets at /bizportal/* (strips /bizportal prefix internally)
