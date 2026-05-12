@@ -176,7 +176,7 @@ function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
   const cachedRole = readRoleCache();
 
-  const { data: dbUser } = useGetCurrentUser({
+  const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
       queryKey: getGetCurrentUserQueryKey(),
@@ -190,7 +190,7 @@ function AuthRouteGuard() {
     if (dbUser?.role) writeRoleCache(dbUser.role);
   }, [dbUser?.role]);
 
-  // Still loading auth — only show spinner if no cached state at all
+  // Auth state loading
   if (isLoading) return <LoadingSpinner />;
 
   if (!isAuthenticated) {
@@ -198,9 +198,16 @@ function AuthRouteGuard() {
     return <LoginScreen />;
   }
 
-  // Use live role if available, fall back to cached role immediately (no second spinner)
-  const role = dbUser?.role ?? cachedRole;
-  return <Redirect to={roleToPath(role)} />;
+  // Use cached role for instant redirect on revisit.
+  // On first login (no cache), wait briefly for dbUser to load so we get the real role.
+  if (cachedRole) {
+    const role = dbUser?.role ?? cachedRole;
+    return <Redirect to={roleToPath(role)} />;
+  }
+
+  if (dbLoading) return <LoadingSpinner />;
+
+  return <Redirect to={roleToPath(dbUser?.role)} />;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
