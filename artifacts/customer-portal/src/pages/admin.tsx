@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated, isPortalAdmin, getAuthHeaders, setAuthToken } from "@/lib/auth";
 import { resolveImageUrl } from "@/lib/utils";
+import { getProductFallbackImage } from "@/lib/categoryImages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -188,6 +189,8 @@ type Product = {
   mediaItems: MediaItem[];
   unit: string;
   unitOptions: string[];
+  categories?: string[];
+  subcategory?: string | null;
 };
 
 type ContentMap = Record<string, string>;
@@ -419,9 +422,11 @@ function ContentTab() {
 function MediaUploader({
   mediaItems,
   onChange,
+  fallbackSrc,
 }: {
   mediaItems: MediaItem[];
   onChange: (items: MediaItem[]) => void;
+  fallbackSrc?: string | null;
 }) {
   const { toast } = useToast();
   const imgRef = useRef<HTMLInputElement>(null);
@@ -486,10 +491,26 @@ function MediaUploader({
         </div>
       )}
       {mediaItems.length === 0 && (
-        <div className="rounded-lg border-2 border-dashed border-border h-28 flex flex-col items-center justify-center text-muted-foreground gap-2">
-          <ImageIcon className="h-7 w-7" />
-          <span className="text-xs">Belum ada media</span>
-        </div>
+        fallbackSrc ? (
+          <div className="relative rounded-lg overflow-hidden border border-dashed border-amber-300 bg-amber-50">
+            <img
+              src={fallbackSrc}
+              alt="Gambar otomatis"
+              className="w-full h-32 object-cover opacity-60"
+            />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/20">
+              <span className="text-xs font-medium text-white bg-amber-500/90 px-2 py-0.5 rounded-full">
+                Gambar otomatis — belum ada foto asli
+              </span>
+              <span className="text-[10px] text-white/80">Ini yang tampil di halaman produk saat ini</span>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border-2 border-dashed border-border h-28 flex flex-col items-center justify-center text-muted-foreground gap-2">
+            <ImageIcon className="h-7 w-7" />
+            <span className="text-xs">Belum ada media</span>
+          </div>
+        )
       )}
 
       {/* Upload buttons */}
@@ -649,7 +670,15 @@ function ItemEditCard({
             {type === "products" ? (
               <>
                 <Label className="text-sm">Foto & Video Produk</Label>
-                <MediaUploader mediaItems={mediaItems} onChange={setMediaItems} />
+                <MediaUploader
+                  mediaItems={mediaItems}
+                  onChange={setMediaItems}
+                  fallbackSrc={getProductFallbackImage(
+                    (item as Product).categories ?? [],
+                    item.name,
+                    (item as Product).subcategory ?? null
+                  )}
+                />
               </>
             ) : (
               <>

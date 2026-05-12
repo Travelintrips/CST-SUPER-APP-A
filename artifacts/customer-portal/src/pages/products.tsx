@@ -73,13 +73,46 @@ interface Product {
 const formatIDR = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
 
+const formatUSD = (v: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+
 function isUsdProduct(product: Product): boolean {
   return product.subcategory === "Green Bean";
 }
 
-function formatProductPrice(product: Product): string {
-  if (isUsdProduct(product)) return `USD ${product.price}`;
-  return formatIDR(product.price);
+// ── USD/IDR exchange rate — cached in localStorage for 6 h ─────────────────
+const _USD_IDR_KEY = "cst_usd_idr_rate";
+const _USD_IDR_TTL = 6 * 60 * 60 * 1000;
+const _USD_IDR_FALLBACK = 16_300;
+
+function _readCachedRate(): { rate: number; fresh: boolean } {
+  try {
+    const raw = localStorage.getItem(_USD_IDR_KEY);
+    if (raw) {
+      const { rate, ts } = JSON.parse(raw) as { rate: number; ts: number };
+      if (rate > 1000) return { rate, fresh: Date.now() - ts < _USD_IDR_TTL };
+    }
+  } catch { /* ignore */ }
+  return { rate: _USD_IDR_FALLBACK, fresh: false };
+}
+
+function useUsdIdrRate(): number {
+  const [rate, setRate] = useState<number>(() => _readCachedRate().rate);
+  useEffect(() => {
+    const { fresh } = _readCachedRate();
+    if (fresh) return;
+    fetch("https://open.er-api.com/v6/latest/USD")
+      .then((r) => r.json())
+      .then((data) => {
+        const idr = (data?.rates?.IDR as number) ?? 0;
+        if (idr > 1000) {
+          localStorage.setItem(_USD_IDR_KEY, JSON.stringify({ rate: idr, ts: Date.now() }));
+          setRate(idr);
+        }
+      })
+      .catch(() => { /* keep fallback */ });
+  }, []);
+  return rate;
 }
 
 function getMedia(product: Product): MediaItem[] {
@@ -318,6 +351,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const { addItemSilent } = useCart();
   const [, setLocation] = useLocation();
   const { t } = useLanguage();
+  const usdIdrRate = useUsdIdrRate();
 
   // Effective unit options: combine unitOptions + default unit, deduplicate
   const effectiveUnitOptions = Array.from(
@@ -394,7 +428,19 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
           {/* Price */}
           <div className="bg-primary/5 rounded-xl px-4 py-3 border border-primary/10">
             {product.price > 0 ? (
-              <p className="text-2xl font-bold text-primary">{formatProductPrice(product)}</p>
+              <div>
+                {isUsdProduct(product) ? (
+                  <>
+                    <p className="text-2xl font-bold text-primary">USD {product.price.toLocaleString()}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">≈ {formatIDR(Math.round(product.price * usdIdrRate))}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold text-primary">{formatIDR(product.price)}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">≈ {formatUSD(product.price / usdIdrRate)}</p>
+                  </>
+                )}
+              </div>
             ) : (
               <p className="text-lg font-semibold text-amber-600">{t("products.negotiable")}</p>
             )}
@@ -574,6 +620,7 @@ export default function Products() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const { t } = useLanguage();
+  const usdIdrRate = useUsdIdrRate();
 
   useEffect(() => {
     fetch("/api/portal/products")
@@ -883,29 +930,45 @@ export default function Products() {
                   )}
 
                   {/* Price */}
-                  <div className="flex items-baseline gap-2 mb-2">
+                  <div className="mb-2">
                     {product.price > 0 ? (
-                      <p className="font-bold text-[#0B5CAD]" style={{ fontSize: "15px", lineHeight: 1 }}>
-                        {formatProductPrice(product)}
-                      </p>
+                      <>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="font-bold text-[#0B5CAD]" style={{ fontSize: "15px", lineHeight: 1 }}>
+                            {isUsdProduct(product)
+                              ? `USD ${product.price.toLocaleString()}`
+                              : formatIDR(product.price)}
+                          </span>
+                          {product.unit && (
+                            <span className="text-[10.5px] text-slate-400 font-medium">/{product.unit}</span>
+                          )}
+                          {(product.unitOptions ?? []).length > 1 && (
+                            <span
+                              className="ml-auto text-[10px] font-semibold text-amber-700"
+                              style={{
+                                background: "#FFFBEB",
+                                border: "1px solid #FCD34D",
+                                padding: "1.5px 6px",
+                                borderRadius: "5px",
+                              }}
+                            >
+                              {product.unitOptions.length} satuan
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-none">
+                          {isUsdProduct(product)
+                            ? `≈ ${formatIDR(Math.round(product.price * usdIdrRate))}`
+                            : `≈ ${formatUSD(product.price / usdIdrRate)}`}
+                        </p>
+                      </>
                     ) : (
-                      <p className="text-sm font-bold text-amber-600 leading-none">{t("products.negotiable")}</p>
-                    )}
-                    {product.unit && (
-                      <span className="text-[10.5px] text-slate-400 font-medium">/{product.unit}</span>
-                    )}
-                    {(product.unitOptions ?? []).length > 1 && (
-                      <span
-                        className="ml-auto text-[10px] font-semibold text-amber-700"
-                        style={{
-                          background: "#FFFBEB",
-                          border: "1px solid #FCD34D",
-                          padding: "1.5px 6px",
-                          borderRadius: "5px",
-                        }}
-                      >
-                        {product.unitOptions.length} satuan
-                      </span>
+                      <div className="flex items-baseline gap-1.5">
+                        <p className="text-sm font-bold text-amber-600 leading-none">{t("products.negotiable")}</p>
+                        {product.unit && (
+                          <span className="text-[10.5px] text-slate-400 font-medium">/{product.unit}</span>
+                        )}
+                      </div>
                     )}
                   </div>
 

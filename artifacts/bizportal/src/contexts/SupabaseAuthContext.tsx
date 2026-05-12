@@ -67,7 +67,13 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         }, 2000);
         setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
       } else {
-        window.location.href = loginUrl;
+        // Popup blocked — try navigating top frame, fallback to current frame
+        try {
+          if (window.top) window.top.location.href = loginUrl;
+          else window.location.href = loginUrl;
+        } catch {
+          window.location.href = loginUrl;
+        }
       }
     } else {
       window.location.href = loginUrl;
