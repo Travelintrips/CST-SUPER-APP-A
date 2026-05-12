@@ -7,6 +7,17 @@ import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-cli
 import { SupabaseAuthProvider, useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
+const ROLE_CACHE_KEY = "biz_user_role_v1";
+function readRoleCache(): string | null {
+  try { return sessionStorage.getItem(ROLE_CACHE_KEY); } catch { return null; }
+}
+function writeRoleCache(role: string | null) {
+  try {
+    if (role) sessionStorage.setItem(ROLE_CACHE_KEY, role);
+    else sessionStorage.removeItem(ROLE_CACHE_KEY);
+  } catch {}
+}
+
 import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
@@ -150,37 +161,46 @@ function LoginScreen() {
   );
 }
 
+function roleToPath(role: string | null | undefined): string {
+  switch (role) {
+    case "admin": return "/dashboard";
+    case "ecommerce": return "/ecommerce";
+    case "trading": return "/trading";
+    case "logistics": return "/logistics";
+    case "pos": return "/pos";
+    default: return "/welcome";
+  }
+}
+
 function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
-  const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
+  const cachedRole = readRoleCache();
+
+  const { data: dbUser } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
       queryKey: getGetCurrentUserQueryKey(),
-      staleTime: Infinity,
+      staleTime: 5 * 60 * 1000,
       retry: 1,
     }
   });
 
-  if (isLoading || (isAuthenticated && dbLoading)) {
-    return <LoadingSpinner />;
-  }
+  // Persist fetched role for next visit
+  React.useEffect(() => {
+    if (dbUser?.role) writeRoleCache(dbUser.role);
+  }, [dbUser?.role]);
+
+  // Still loading auth — only show spinner if no cached state at all
+  if (isLoading) return <LoadingSpinner />;
 
   if (!isAuthenticated) {
+    writeRoleCache(null);
     return <LoginScreen />;
   }
 
-  if (dbUser) {
-    switch (dbUser.role) {
-      case "admin": return <Redirect to="/dashboard" />;
-      case "ecommerce": return <Redirect to="/ecommerce" />;
-      case "trading": return <Redirect to="/trading" />;
-      case "logistics": return <Redirect to="/logistics" />;
-      case "pos": return <Redirect to="/pos" />;
-      default: return <Redirect to="/welcome" />;
-    }
-  }
-
-  return <Redirect to="/welcome" />;
+  // Use live role if available, fall back to cached role immediately (no second spinner)
+  const role = dbUser?.role ?? cachedRole;
+  return <Redirect to={roleToPath(role)} />;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {

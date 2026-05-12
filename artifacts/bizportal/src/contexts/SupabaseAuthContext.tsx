@@ -15,6 +15,22 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const CACHE_KEY = "biz_auth_user_v1";
+
+function readCache(): AuthUser | null {
+  try {
+    const v = sessionStorage.getItem(CACHE_KEY);
+    return v ? (JSON.parse(v) as AuthUser) : null;
+  } catch { return null; }
+}
+
+function writeCache(u: AuthUser | null) {
+  try {
+    if (u) sessionStorage.setItem(CACHE_KEY, JSON.stringify(u));
+    else sessionStorage.removeItem(CACHE_KEY);
+  } catch {}
+}
+
 function getBase(): string {
   return (window as any).__BASE_PATH__ || import.meta.env.BASE_URL || "/bizportal/";
 }
@@ -24,17 +40,21 @@ function getOrigin(): string {
 }
 
 export function SupabaseAuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const cached = readCache();
+  const [user, setUser] = useState<AuthUser | null>(cached);
+  const [isLoading, setIsLoading] = useState(!cached);
 
   const fetchUser = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/user", { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { user: AuthUser | null };
-      setUser(data.user ?? null);
+      const u = data.user ?? null;
+      setUser(u);
+      writeCache(u);
     } catch {
       setUser(null);
+      writeCache(null);
     } finally {
       setIsLoading(false);
     }
@@ -60,6 +80,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
             .then((data: { user: AuthUser | null }) => {
               if (data.user) {
                 clearInterval(poll);
+                writeCache(data.user);
                 setUser(data.user);
               }
             })
@@ -67,7 +88,6 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         }, 2000);
         setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
       } else {
-        // Popup blocked — try navigating top frame, fallback to current frame
         try {
           if (window.top) window.top.location.href = loginUrl;
           else window.location.href = loginUrl;
@@ -85,6 +105,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const signOut = useCallback(() => {
+    writeCache(null);
     const base = getBase();
     window.location.href = `${getOrigin()}/api/logout?redirect=${encodeURIComponent(base)}`;
   }, []);
