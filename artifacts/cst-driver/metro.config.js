@@ -15,7 +15,11 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
-// Disallow any temp expo-notifications directories
-config.resolver.blockList = /expo-notifications_tmp_[^/]+\/.*/;
+// Block temp/transient directories that may appear and disappear during development
+// Prevents Metro ENOENT crash when watching directories that get deleted
+config.resolver.blockList = [
+  /expo-notifications_tmp_[^/]+\/.*/,
+  /[/\\]\.local[/\\].*/,
+];
 
 module.exports = config;
