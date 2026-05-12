@@ -346,6 +346,50 @@ router.get("/callback/google", async (req: Request, res: Response) => {
   }
 });
 
+// ─── Dev Login (development only) ─────────────────────────────────────────────
+
+router.post("/dev-login", async (req: Request, res: Response) => {
+  if (process.env.NODE_ENV !== "development") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const { email } = req.body as { email?: string };
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    res.status(400).json({ error: "Valid email required" });
+    return;
+  }
+
+  const id = `dev_${email.replace(/[^a-z0-9]/gi, "_")}`;
+  const claims: Record<string, unknown> = {
+    sub: id,
+    email,
+    first_name: email.split("@")[0],
+    last_name: null,
+    picture: null,
+  };
+
+  const dbUser = await upsertUser(claims);
+  const now = Math.floor(Date.now() / 1000);
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+    },
+    access_token: "dev",
+    refresh_token: undefined,
+    expires_at: now + 86400,
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+  req.log.info({ email }, "[Dev Login] session created");
+  res.json({ ok: true, email: dbUser.email, role: dbUser.role });
+});
+
 // ─── Logout ───────────────────────────────────────────────────────────────────
 
 router.get("/logout", async (req: Request, res: Response) => {
