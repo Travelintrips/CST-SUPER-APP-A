@@ -3,6 +3,7 @@ import type { AuthUser } from "../lib/auth";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { verifySupabaseToken } from "../lib/supabaseAdmin";
+import { getSessionId, getSession } from "../lib/auth";
 
 declare global {
   namespace Express {
@@ -29,6 +30,24 @@ export async function authMiddleware(
     return this.user != null;
   } as Request["isAuthenticated"];
 
+  // ── 1. Session cookie (Google OAuth / Replit OIDC) ──────────────────────────
+  const sid = getSessionId(req);
+  if (sid && !req.headers.authorization?.startsWith("Bearer ")) {
+    const session = await getSession(sid);
+    if (session?.user) {
+      req.user = {
+        id: session.user.id,
+        email: session.user.email ?? null,
+        firstName: session.user.firstName ?? null,
+        lastName: session.user.lastName ?? null,
+        profileImageUrl: session.user.profileImageUrl ?? null,
+      };
+      next();
+      return;
+    }
+  }
+
+  // ── 2. Supabase Bearer token (legacy / mobile) ───────────────────────────────
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     next();
