@@ -509,6 +509,121 @@ adminRouter.get("/geofence-alerts", (_req, res) => {
   res.json(getActiveAlerts());
 });
 
+// GET /api/drivers/performance?from=&to=&driverId=
+adminRouter.get("/performance", async (req, res) => {
+  const fromRaw = req.query.from as string | undefined;
+  const toRaw = req.query.to as string | undefined;
+  const driverIdFilter = req.query.driverId ? Number(req.query.driverId) : undefined;
+
+  const fromDate = fromRaw ? new Date(fromRaw) : (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; })();
+  const toDate = toRaw ? new Date(toRaw + "T23:59:59") : new Date();
+
+  const { gte, lte, inArray } = await import("drizzle-orm");
+
+  const conditions = [
+    gte(driverJobsTable.assignedAt, fromDate),
+    lte(driverJobsTable.assignedAt, toDate),
+    ...(driverIdFilter ? [eq(driverJobsTable.driverId, driverIdFilter)] : []),
+  ];
+
+  const jobs = await db
+    .select({
+      driverId: driverJobsTable.driverId,
+      driverName: driversTable.name,
+      driverEmail: driversTable.email,
+      vehiclePlate: driversTable.vehiclePlate,
+      vehicleType: driversTable.vehicleType,
+      status: driverJobsTable.status,
+      assignedAt: driverJobsTable.assignedAt,
+      completedAt: driverJobsTable.completedAt,
+      deliveryDateTime: driverJobsTable.deliveryDateTime,
+    })
+    .from(driverJobsTable)
+    .leftJoin(driversTable, eq(driverJobsTable.driverId, driversTable.id))
+    .where(and(...conditions));
+
+  type DriverStat = {
+    driverId: number;
+    driverName: string;
+    driverEmail: string;
+    vehiclePlate: string | null;
+    vehicleType: string | null;
+    totalJobs: number;
+    completed: number;
+    delivered: number;
+    cancelled: number;
+    inProgress: number;
+    totalDurationMs: number;
+    completedWithDuration: number;
+    onTimeCount: number;
+    onTimeEligible: number;
+  };
+
+  const statsMap = new Map<number, DriverStat>();
+
+  const TERMINAL = new Set(["COMPLETED", "DELIVERED", "CANCELLED"]);
+  const ACTIVE_STATUSES = new Set(["ASSIGNED","ACCEPTED","ON_THE_WAY_TO_PICKUP","ARRIVED_AT_PICKUP","PICKED_UP","IN_TRANSIT","ARRIVED_AT_DESTINATION"]);
+
+  for (const job of jobs) {
+    if (!job.driverId) continue;
+    if (!statsMap.has(job.driverId)) {
+      statsMap.set(job.driverId, {
+        driverId: job.driverId,
+        driverName: job.driverName ?? "",
+        driverEmail: job.driverEmail ?? "",
+        vehiclePlate: job.vehiclePlate,
+        vehicleType: job.vehicleType,
+        totalJobs: 0, completed: 0, delivered: 0, cancelled: 0, inProgress: 0,
+        totalDurationMs: 0, completedWithDuration: 0,
+        onTimeCount: 0, onTimeEligible: 0,
+      });
+    }
+    const s = statsMap.get(job.driverId)!;
+    s.totalJobs++;
+    if (job.status === "COMPLETED") {
+      s.completed++;
+      s.delivered++;
+    } else if (job.status === "DELIVERED") {
+      s.delivered++;
+    } else if (job.status === "CANCELLED") {
+      s.cancelled++;
+    } else if (ACTIVE_STATUSES.has(job.status)) {
+      s.inProgress++;
+    }
+    if ((job.status === "COMPLETED" || job.status === "DELIVERED") && job.completedAt && job.assignedAt) {
+      s.totalDurationMs += job.completedAt.getTime() - job.assignedAt.getTime();
+      s.completedWithDuration++;
+    }
+    if (job.deliveryDateTime && (job.status === "COMPLETED" || job.status === "DELIVERED")) {
+      s.onTimeEligible++;
+      const finishedAt = job.completedAt ?? new Date();
+      if (finishedAt <= job.deliveryDateTime) s.onTimeCount++;
+    }
+  }
+
+  const result = [...statsMap.values()].map((s) => ({
+    driverId: s.driverId,
+    driverName: s.driverName,
+    driverEmail: s.driverEmail,
+    vehiclePlate: s.vehiclePlate,
+    vehicleType: s.vehicleType,
+    totalJobs: s.totalJobs,
+    completed: s.completed,
+    delivered: s.delivered,
+    cancelled: s.cancelled,
+    inProgress: s.inProgress,
+    successRate: s.totalJobs > 0 ? Math.round((s.delivered / s.totalJobs) * 100) : 0,
+    avgDurationHours: s.completedWithDuration > 0
+      ? Math.round((s.totalDurationMs / s.completedWithDuration / 3_600_000) * 10) / 10
+      : null,
+    onTimeCount: s.onTimeCount,
+    onTimeEligible: s.onTimeEligible,
+    onTimePct: s.onTimeEligible > 0 ? Math.round((s.onTimeCount / s.onTimeEligible) * 100) : null,
+  })).sort((a, b) => b.totalJobs - a.totalJobs);
+
+  res.json({ from: fromDate.toISOString(), to: toDate.toISOString(), drivers: result });
+});
+
 // GET /api/drivers/jobs/list — list all driver jobs (admin)
 // IMPORTANT: must be registered BEFORE /:id to avoid Express swallowing it
 adminRouter.get("/jobs/list", async (req, res) => {

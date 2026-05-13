@@ -1,7 +1,7 @@
 import { db, suppliersTable, vendorCatalogItemsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
-import { getAdminWa } from "./adminWa";
+import { getAdminWa, getAdminGroupWa } from "./adminWa";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
 
@@ -204,6 +204,46 @@ function buildTruckingVendorWaMessage(
   );
 }
 
+function buildAdminGroupWaMessage(order: LogisticOrderData): string {
+  const orderUrl = getOrderUrl(order.id);
+  const tgl = order.createdAt ? formatTanggal(order.createdAt) : nowWIB();
+  const jam = order.jamOrder
+    ? formatJamOrder(order.jamOrder)
+    : order.createdAt
+      ? formatJam(order.createdAt)
+      : "";
+
+  const weightLine = order.grossWeight ? `⚖️ Berat    : ${order.grossWeight.toLocaleString("id-ID")} kg\n` : "";
+  const volumeLine = order.volumeCbm  ? `📐 Volume   : ${order.volumeCbm} CBM\n` : "";
+  const reqDate    = order.requiredDate ? `📅 Tgl Kirim: ${formatISODate(order.requiredDate)}\n` : "";
+  const notesLine  = order.notes ? `📝 Catatan  : ${order.notes}\n` : "";
+
+  return (
+    `🔔 *[ORDER MASUK] ${order.orderNumber}*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🏷️ No. Tracking  : \`${order.orderNumber}\`\n` +
+    `📆 Tanggal       : ${tgl}${jam ? ` | ${jam} WIB` : ""}\n` +
+    `👤 Customer      : *${order.customerName}*${order.companyName ? ` (${order.companyName})` : ""}\n` +
+    `📞 HP            : ${order.phone}\n` +
+    `📧 Email         : ${order.email}\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🚢 Jenis         : ${order.shipmentType}\n` +
+    `📍 Rute          : ${order.origin} → ${order.destination}\n` +
+    (order.commodity ? `📦 Komoditi      : ${order.commodity}\n` : "") +
+    (order.cargoDescription ? `📋 Deskripsi     : ${order.cargoDescription}\n` : "") +
+    weightLine +
+    volumeLine +
+    reqDate +
+    notesLine +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `💰 Total Est.    : *Rp ${formatRupiah(order.grandTotal)}*\n` +
+    `🔵 Status        : Menunggu Konfirmasi\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    (orderUrl ? `🔗 *Buka di BizPortal:*\n${orderUrl}\n\n` : "") +
+    `_Harap segera diproses. Dikirim: ${nowWIB()}_`
+  );
+}
+
 function buildCustomerWaMessage(order: LogisticOrderData): string {
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
@@ -293,6 +333,17 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
     );
   } else {
     logger.warn("Admin WA target not configured — skipping (set FONNTE_ADMIN_WA or configure via admin panel)");
+  }
+
+  // Send to admin WhatsApp group if configured
+  const adminGroupWa = await getAdminGroupWa();
+  if (adminGroupWa) {
+    logger.info({ groupId: adminGroupWa, orderNumber: order.orderNumber }, "Sending group WA notification");
+    sendWhatsApp(adminGroupWa, buildAdminGroupWaMessage(order)).catch((err: unknown) =>
+      logger.error({ err }, "WA group notification failed")
+    );
+  } else {
+    logger.info("Admin WA group not configured — skipping (set FONNTE_ADMIN_GROUP_ID or configure via admin panel)");
   }
 
   if (isSmtpConfigured()) {

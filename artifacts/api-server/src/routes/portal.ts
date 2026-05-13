@@ -6,6 +6,7 @@ import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
+import { broadcastToAdmins } from "../lib/sseManager";
 
 const router = Router();
 
@@ -785,6 +786,18 @@ router.post("/orders", requirePortalAuth, async (req, res) => {
       req.log.error({ err, phone: portalCustomer.phone }, "sendWhatsApp to customer failed (portal order)");
     });
   }
+
+  // Real-time SSE: notify BizPortal admins immediately
+  broadcastToAdmins("new_order", {
+    type: "portal_sales",
+    orderId: doc!.id,
+    orderNumber: doc!.docNumber,
+    customerName: portalCustomer.name,
+    companyName: portalCustomer.company ?? null,
+    grandTotal: Number(doc!.grandTotal),
+    itemCount: orderItems.length,
+    createdAt: doc!.createdAt,
+  });
 
   // Notify admin via WhatsApp (fire-and-forget)
   getAdminWa().then((adminWa) => {

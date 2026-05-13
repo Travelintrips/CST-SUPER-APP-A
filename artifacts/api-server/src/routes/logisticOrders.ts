@@ -10,6 +10,7 @@ import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
+import { broadcastToAdmins } from "../lib/sseManager";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -146,9 +147,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     (body.items.find((i) => i.calculatorType === "trucking")
       ?.inputData as Record<string, unknown> | undefined)
       ?.vehicleType as string ?? null;
-
-  // Fire-and-forget: notify admin + customer via WA & email
-  sendLogisticOrderNotification({
+sendLogisticOrderNotification({
     id: order.id,
     orderNumber,
     customerName: body.customerName,

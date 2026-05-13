@@ -516,6 +516,7 @@ function WhatsAppNotificationCard() {
   const { toast } = useToast();
   const { t } = useLanguage();
   const [adminWa, setAdminWa] = useState("");
+  const [adminGroupWa, setAdminGroupWa] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -523,13 +524,13 @@ function WhatsAppNotificationCard() {
   useEffect(() => {
     void (async () => {
       try {
-        
         const res = await fetch("/api/settings/notifications", {
           credentials: "include",
         });
         if (res.ok) {
-          const data = await res.json() as { adminWa: string };
+          const data = await res.json() as { adminWa: string; adminGroupWa?: string };
           setAdminWa(data.adminWa ?? "");
+          setAdminGroupWa(data.adminGroupWa ?? "");
         }
       } catch {
         // ignore
@@ -542,14 +543,10 @@ function WhatsAppNotificationCard() {
   async function handleSave() {
     setSaving(true);
     try {
-      
       const res = await fetch("/api/settings/notifications", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          
-        },
-        body: JSON.stringify({ adminWa }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminWa, adminGroupWa }),
       });
       if (!res.ok) throw new Error(await res.text());
       setSaved(true);
@@ -570,32 +567,58 @@ function WhatsAppNotificationCard() {
           Notifikasi WhatsApp
         </CardTitle>
         <CardDescription>
-          Nomor WhatsApp admin yang menerima notifikasi saat ada order atau dokumen baru.
-          Admin akan mendapat pesan otomatis untuk Sales Quotation, Sales Order, Logistik, dan E-commerce Order.
+          Konfigurasi nomor dan grup WhatsApp yang menerima notifikasi otomatis saat ada order baru.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
         {loading ? (
-          <Skeleton className="h-10 w-full max-w-sm bg-muted" />
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full max-w-sm bg-muted" />
+            <Skeleton className="h-10 w-full max-w-sm bg-muted" />
+          </div>
         ) : (
-          <div className="flex flex-col gap-3 max-w-lg">
+          <div className="flex flex-col gap-5 max-w-lg">
             <div className="space-y-1.5">
-              <Label htmlFor="admin-wa">Nomor / Group ID WhatsApp Admin</Label>
+              <Label htmlFor="admin-wa">Nomor WhatsApp Admin (Personal)</Label>
               <Input
                 id="admin-wa"
                 value={adminWa}
                 onChange={(e) => setAdminWa(e.target.value)}
-                placeholder="628xxxxxxxxxx atau 12036xxxxxxxx@g.us"
+                placeholder="628xxxxxxxxxx"
+              />
+              <p className="text-xs text-muted-foreground">
+                Menerima notifikasi untuk Sales Quotation, Sales Order, Logistik, dan E-commerce Order.
+                Format: <code>6281234567890</code>
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-group-wa" className="flex items-center gap-1.5">
+                Group ID WhatsApp Admin
+                <span className="text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 rounded px-1.5 py-0.5">
+                  Push Notif Grup
+                </span>
+              </Label>
+              <Input
+                id="admin-group-wa"
+                value={adminGroupWa}
+                onChange={(e) => setAdminGroupWa(e.target.value)}
+                placeholder="120363xxxxxxxxxx@g.us"
               />
               <div className="text-xs text-muted-foreground space-y-1">
-                <p>Bisa diisi dengan:</p>
-                <ul className="list-disc list-inside space-y-0.5 pl-1">
-                  <li>Nomor HP personal: <code>6281234567890</code></li>
-                  <li>Group ID WhatsApp: <code>120363xxxxxxxxxx@g.us</code> — agar notifikasi masuk ke <strong>grup admin</strong></li>
-                </ul>
-                <p className="text-amber-600 dark:text-amber-400">⚠️ Untuk kirim ke grup, isi dengan Group ID (format <code>@g.us</code>), bukan nomor HP.</p>
+                <p>
+                  Setiap order logistik baru dari Customer Portal akan dikirim ke grup ini dengan detail lengkap dan nomor tracking otomatis.
+                </p>
+                <p className="text-amber-600 dark:text-amber-400">
+                  ⚠️ Isi dengan Group ID Fonnte (format <code>120363xxxxxxxxxx@g.us</code>).
+                  Kosongkan jika tidak ingin notifikasi grup.
+                </p>
+                <p>
+                  Cara cari Group ID: Kirim pesan dari grup ke bot Fonnte, lalu cek log di dashboard Fonnte — Group ID terlihat di kolom <em>target</em>.
+                </p>
               </div>
             </div>
+
             <Button
               onClick={handleSave}
               disabled={saving}
