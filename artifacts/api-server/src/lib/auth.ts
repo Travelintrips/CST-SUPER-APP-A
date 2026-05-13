@@ -9,6 +9,7 @@ export interface AuthUser {
   firstName?: string | null;
   lastName?: string | null;
   profileImageUrl?: string | null;
+  role?: string | null;
 }
 
 export const ISSUER_URL = process.env.ISSUER_URL ?? "https://replit.com/oidc";

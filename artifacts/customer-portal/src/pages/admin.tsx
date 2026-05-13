@@ -175,6 +175,7 @@ type Service = {
   description: string | null;
   price: number;
   imageUrl: string | null;
+  mediaItems?: MediaItem[];
 };
 
 type MediaItem = { type: "image" | "video"; url: string };
@@ -558,12 +559,12 @@ function ItemEditCard({
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
   const [price, setPrice] = useState(String(item.price));
-  const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl);
+  const firstMediaImage = (item as Service | Product).mediaItems?.find((m) => m.type === "image")?.url ?? null;
+  const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl ?? firstMediaImage);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(() => {
     if (type !== "products") return [];
     const existing = (item as Product).mediaItems ?? [];
     if (existing.length > 0) return existing;
-    // Jika mediaItems kosong tapi imageUrl ada, tampilkan imageUrl sebagai cover
     if (item.imageUrl) return [{ type: "image" as const, url: item.imageUrl }];
     return [];
   });

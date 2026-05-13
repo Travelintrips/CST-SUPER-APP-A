@@ -47,6 +47,12 @@ export const purchaseDocumentsTable = pgTable("purchase_documents", {
   expectedDate: timestamp("expected_date"),
   notes: text("notes"),
   confirmedAt: timestamp("confirmed_at"),
+  // Bill automation fields
+  billNumber: text("bill_number"),
+  billDate: text("bill_date"),
+  dueDate: text("due_date"),
+  paymentTermDays: integer("payment_term_days").default(30),
+  cancelledAt: timestamp("cancelled_at"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

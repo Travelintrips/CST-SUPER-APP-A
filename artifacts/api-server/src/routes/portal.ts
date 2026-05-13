@@ -599,7 +599,7 @@ router.delete("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   return res.json({ ok: true });
 });
 
-// POST /api/portal/admin/upload-url  — get presigned upload URL (admin only)
+// POST /api/portal/admin/upload-url  — get presigned upload URL (admin only → public-assets)
 const _objectStorage = new ObjectStorageService();
 router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {
   const { contentType } = req.body ?? {};
@@ -607,7 +607,7 @@ router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {
   if (!contentType.startsWith("image/") && !contentType.startsWith("video/"))
     return res.status(415).json({ message: "Hanya file gambar atau video yang diizinkan" });
   try {
-    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
+    const uploadURL = await _objectStorage.getPublicAssetUploadURL();
     const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
     return res.json({ uploadURL, objectPath });
   } catch (_err) {
@@ -615,7 +615,7 @@ router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {
   }
 });
 
-// POST /api/portal/order-upload-url  — get presigned URL for order document uploads (customer auth)
+// POST /api/portal/order-upload-url  — get presigned URL for order document uploads (customer-attachments)
 router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
   const { contentType } = req.body ?? {};
   if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
@@ -624,7 +624,7 @@ router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
   if (!allowed.includes(contentType) && !contentType.startsWith("image/"))
     return res.status(415).json({ message: "Tipe file tidak diizinkan" });
   try {
-    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
+    const uploadURL = await _objectStorage.getObjectEntityUploadURL("customer-attachments");
     const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
     return res.json({ uploadURL, objectPath });
   } catch (_err) {

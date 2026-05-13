@@ -49,14 +49,19 @@ function getOrigin(req: Request): string {
 }
 
 function getGoogleOrigin(req: Request): string {
-  // Support both env var names for backward compatibility
+  // Explicit override always wins (set this in production secrets)
   const override = process.env.GOOGLE_REDIRECT_BASE_URL || process.env.GOOGLE_CALLBACK_ORIGIN;
   if (override) {
     return override.replace(/\/$/, "");
   }
-  // Use APP_URL if set (e.g. https://cstlogistic.co.id) — ensures consistent callback URI
+  // Use APP_URL if set (e.g. https://cstlogistic.co.id)
   if (process.env.APP_URL) {
     return process.env.APP_URL.replace(/\/$/, "");
+  }
+  // In Replit dev (NOT deployed), use the stable dev domain
+  // REPLIT_DEPLOYMENT=1 is set in deployed environments, so skip dev domain there
+  if (process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
   return getOrigin(req);
 }
@@ -105,9 +110,11 @@ async function upsertUser(claims: Record<string, unknown>) {
       .where(and(eq(usersTable.email, email), ne(usersTable.id, id)));
   }
 
-  // Auto-promote to admin if email matches ADMIN_EMAIL env var
-  const adminEmails = (process.env.ADMIN_EMAIL ?? "")
-    .split(",")
+  // Auto-promote to admin if email matches ADMIN_EMAIL or ADMIN_EMAILS env var
+  const adminEmails = [
+    ...(process.env.ADMIN_EMAIL ?? "").split(","),
+    ...(process.env.ADMIN_EMAILS ?? "").split(","),
+  ]
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
   const isAdmin = adminEmails.includes(email.toLowerCase());
@@ -281,8 +288,13 @@ function returnToFromState(state: string | undefined): string {
 router.get("/callback/google", async (req: Request, res: Response) => {
   const { code, state, error } = req.query as Record<string, string>;
 
+  req.log.info(
+    { hasCode: !!code, hasState: !!state, error: error ?? null, savedStateCookie: req.cookies?.google_state ?? null },
+    "[Google OAuth] callback received"
+  );
+
   if (error || !code || !state) {
-    req.log.warn({ error }, "[Google OAuth] callback error from Google — redirecting to login");
+    req.log.warn({ error, hasCode: !!code, hasState: !!state }, "[Google OAuth] callback error from Google — redirecting to login");
     res.clearCookie("google_state", { path: "/" });
     res.redirect(returnToFromState(state));
     return;
@@ -293,7 +305,7 @@ router.get("/callback/google", async (req: Request, res: Response) => {
   res.clearCookie("google_state", { path: "/" });
 
   if (!savedState || savedState !== stateToken) {
-    req.log.warn("[Google OAuth] state mismatch — redirecting to login");
+    req.log.warn({ savedState: savedState ?? null, stateToken }, "[Google OAuth] state mismatch — redirecting to login");
     res.redirect(returnToFromState(state));
     return;
   }
@@ -347,6 +359,50 @@ router.get("/callback/google", async (req: Request, res: Response) => {
     req.log.error({ err }, "[Google OAuth] callback token exchange error");
     res.redirect(returnTo);
   }
+});
+
+// ─── Dev Login (development only) ─────────────────────────────────────────────
+
+router.post("/dev-login", async (req: Request, res: Response) => {
+  if (process.env.NODE_ENV !== "development") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const { email } = req.body as { email?: string };
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    res.status(400).json({ error: "Valid email required" });
+    return;
+  }
+
+  const id = `dev_${email.replace(/[^a-z0-9]/gi, "_")}`;
+  const claims: Record<string, unknown> = {
+    sub: id,
+    email,
+    first_name: email.split("@")[0],
+    last_name: null,
+    picture: null,
+  };
+
+  const dbUser = await upsertUser(claims);
+  const now = Math.floor(Date.now() / 1000);
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      profileImageUrl: dbUser.profileImageUrl,
+    },
+    access_token: "dev",
+    refresh_token: undefined,
+    expires_at: now + 86400,
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+  req.log.info({ email }, "[Dev Login] session created");
+  res.json({ ok: true, email: dbUser.email, role: dbUser.role });
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
