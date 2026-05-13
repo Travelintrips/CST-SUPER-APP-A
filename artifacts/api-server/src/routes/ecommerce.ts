@@ -210,6 +210,87 @@ router.post("/products", async (req, res) => {
   return res.status(201).json(serializeProduct(product, categoryNames));
 });
 
+// POST /api/ecommerce/products/bulk-import
+router.post("/products/bulk-import", async (req, res) => {
+  const rows: unknown[] = Array.isArray(req.body.rows) ? req.body.rows : [];
+  if (rows.length === 0) return res.status(400).json({ message: "rows array is required and must not be empty" });
+  if (rows.length > 500) return res.status(400).json({ message: "Maksimum 500 baris per import" });
+
+  const allCats = await db.select().from(productCategoriesTable);
+  const catByName = new Map(allCats.map((c) => [c.name.toLowerCase(), c]));
+
+  const skus = rows.map((r) => String((r as Record<string, unknown>).sku ?? "").trim()).filter(Boolean);
+  const existingProducts = skus.length > 0
+    ? await db.select().from(productsTable).where(inArray(productsTable.sku, skus))
+    : [];
+  const existingBySku = new Map(existingProducts.map((p) => [p.sku, p]));
+
+  const results: Array<{ row: number; sku?: string; name?: string; status: string; message?: string }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] as Record<string, unknown>;
+    try {
+      const name = String(row.nama ?? row.name ?? "").trim();
+      const sku = String(row.sku ?? "").trim();
+      const itemType = String(row.tipe ?? row.itemType ?? "barang").toLowerCase() === "jasa" ? "jasa" : "barang";
+      const priceRaw = String(row.harga ?? row.price ?? "0").replace(/[^0-9.,-]/g, "").replace(",", ".");
+      const price = parseFloat(priceRaw) || 0;
+      const stockRaw = String(row.stok ?? row.stock ?? "0").replace(/[^0-9]/g, "");
+      const stock = parseInt(stockRaw, 10) || 0;
+      const unit = String(row.satuan ?? row.unit ?? "pcs").trim() || "pcs";
+      const description = row.deskripsi != null ? String(row.deskripsi) : (row.description != null ? String(row.description) : null);
+      const subcategory = row.subkategori != null ? String(row.subkategori).trim() || null : (row.subcategory != null ? String(row.subcategory).trim() || null : null);
+      const isActiveRaw = String(row.aktif ?? row.isActive ?? "ya").toLowerCase().trim();
+      const isActive = !(isActiveRaw === "false" || isActiveRaw === "tidak" || isActiveRaw === "0" || isActiveRaw === "no");
+      const categoryStr = String(row.kategori ?? row.categories ?? "").trim();
+      const categoryNames = categoryStr.split(";").map((c) => c.trim()).filter(Boolean);
+
+      if (!name) { results.push({ row: i + 1, status: "error", message: "Nama produk wajib diisi" }); continue; }
+      if (!sku) { results.push({ row: i + 1, status: "error", message: "SKU wajib diisi" }); continue; }
+      if (price < 0) { results.push({ row: i + 1, sku, status: "error", message: "Harga tidak boleh negatif" }); continue; }
+      if (categoryNames.length === 0) { results.push({ row: i + 1, sku, status: "error", message: "Kategori wajib diisi" }); continue; }
+
+      const validCats = categoryNames.map((n) => catByName.get(n.toLowerCase())).filter(Boolean) as typeof allCats;
+      if (validCats.length !== categoryNames.length) {
+        const invalid = categoryNames.filter((n) => !catByName.has(n.toLowerCase()));
+        results.push({ row: i + 1, sku, status: "error", message: `Kategori tidak ditemukan: ${invalid.join(", ")}` });
+        continue;
+      }
+
+      const existing = existingBySku.get(sku);
+      if (existing) {
+        await db.transaction(async (tx) => {
+          await tx.update(productsTable).set({
+            name, price: String(price), stock, description: description ?? null,
+            itemType, unit, subcategory, isActive,
+          }).where(eq(productsTable.sku, sku));
+          await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, existing.id));
+          if (validCats.length > 0) {
+            await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: existing.id, categoryId: c.id })));
+          }
+        });
+        results.push({ row: i + 1, sku, name, status: "updated" });
+      } else {
+        await db.transaction(async (tx) => {
+          const [p] = await tx.insert(productsTable).values({
+            name, sku, price: String(price), stock, description: description ?? null,
+            imageUrl: null, mediaItems: "[]", itemType, unit,
+            unitOptions: "[]", subcategory, isActive,
+          }).returning();
+          if (validCats.length > 0) {
+            await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: p.id, categoryId: c.id })));
+          }
+        });
+        results.push({ row: i + 1, sku, name, status: "created" });
+      }
+    } catch (err: unknown) {
+      results.push({ row: i + 1, status: "error", message: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }
+
+  return res.json({ results });
+});
+
 // GET /api/ecommerce/products/:id
 router.get("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
