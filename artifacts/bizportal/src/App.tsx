@@ -1,21 +1,27 @@
 import React from "react";
-import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
+import { Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import {
-  useGetCurrentUser,
-  getGetCurrentUserQueryKey,
-} from "@workspace/api-client-react";
 import {
   SupabaseAuthProvider,
   useSupabaseAuth,
 } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { CompanyProvider } from "@/contexts/CompanyContext";
+import {
+  useGetCurrentUser,
+  getGetCurrentUserQueryKey,
+} from "@workspace/api-client-react";
+import { Redirect } from "wouter";
+import { AppRoutes } from "@/routes";
+import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
+
+const queryClient = new QueryClient();
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const ROLE_CACHE_KEY = "biz_user_role_v1";
-function readRoleCache(): string | null {
+function readRoleCache() {
   try {
     return sessionStorage.getItem(ROLE_CACHE_KEY);
   } catch {
@@ -94,7 +100,22 @@ import HoldingPage from "@/pages/HoldingPage";
 const queryClient = new QueryClient();
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-
+function roleToPath(role?: string | null) {
+  switch (role) {
+    case "admin":
+      return "/dashboard";
+    case "ecommerce":
+      return "/ecommerce";
+    case "trading":
+      return "/trading";
+    case "logistics":
+      return "/logistics";
+    case "pos":
+      return "/pos";
+    default:
+      return "/welcome";
+  }
+}
 function LoadingSpinner() {
   return (
     <div className="flex h-screen items-center justify-center bg-slate-950">
@@ -123,11 +144,8 @@ function LoginScreen() {
         body: JSON.stringify({ email: devEmail }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) {
-        setDevError(data.error || "Login gagal");
-      } else {
-        window.location.reload();
-      }
+      if (!res.ok || !data.ok) setDevError(data.error || "Login gagal");
+      else window.location.reload();
     } catch {
       setDevError("Tidak bisa terhubung ke server");
     } finally {
@@ -171,7 +189,6 @@ function LoginScreen() {
           </svg>
           Masuk dengan Google
         </button>
-
         {IS_DEV && (
           <>
             <div className="flex items-center gap-3">
@@ -204,27 +221,9 @@ function LoginScreen() {
   );
 }
 
-function roleToPath(role: string | null | undefined): string {
-  switch (role) {
-    case "admin":
-      return "/dashboard";
-    case "ecommerce":
-      return "/ecommerce";
-    case "trading":
-      return "/trading";
-    case "logistics":
-      return "/logistics";
-    case "pos":
-      return "/pos";
-    default:
-      return "/welcome";
-  }
-}
-
 function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
   const cachedRole = readRoleCache();
-
   const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
@@ -233,40 +232,16 @@ function AuthRouteGuard() {
       retry: 1,
     },
   });
-
   React.useEffect(() => {
     if (dbUser?.role) writeRoleCache(dbUser.role);
   }, [dbUser?.role]);
-
   if (isLoading) return <LoadingSpinner />;
-
   if (!isAuthenticated) {
     writeRoleCache(null);
     return <LoginScreen />;
   }
-
   if (dbLoading) return <LoadingSpinner />;
-
-  const role = dbUser?.role ?? cachedRole;
-  const defaultPath = roleToPath(role);
-
-  return <Redirect to={defaultPath} />;
-}
-
-function ProtectedRoute({
-  component: Component,
-}: {
-  component: React.ComponentType;
-}) {
-  const { isAuthenticated, isLoading } = useSupabaseAuth();
-
-  if (isLoading) return <LoadingSpinner />;
-
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
-
-  return <Component />;
+  return <Redirect to={roleToPath(dbUser?.role ?? cachedRole)} />;
 }
 
 function Router() {
@@ -349,6 +324,7 @@ function Router() {
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
         <Route component={NotFound} />
       </Switch>
+      <AppRoutes rootGuard={AuthRouteGuard} />
     </WouterRouter>
   );
 }
@@ -359,11 +335,13 @@ export default function App() {
       <SupabaseAuthProvider>
         <LanguageProvider>
           <CompanyProvider>
+          <OrderNotificationsProvider>
             <TooltipProvider>
               <Router />
               <Toaster />
             </TooltipProvider>
           </CompanyProvider>
+          </OrderNotificationsProvider>
         </LanguageProvider>
       </SupabaseAuthProvider>
     </QueryClientProvider>

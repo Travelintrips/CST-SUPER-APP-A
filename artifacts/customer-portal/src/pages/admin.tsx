@@ -245,18 +245,17 @@ function ImageUploader({
     }
     setUploading(true);
     try {
-      const { uploadURL, objectPath } = await apiPost<{ uploadURL: string; objectPath: string }>(
-        "/api/portal/admin/upload-url",
-        { contentType: file.type }
-      );
-      await fetch(uploadURL, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/portal/admin/upload", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: formData,
       });
-      const publicUrl = `/api/storage${objectPath}`;
-      setPreview(publicUrl);
-      onUpload(publicUrl);
+      if (!res.ok) throw new Error(await res.text());
+      const { url } = await res.json() as { url: string };
+      setPreview(url);
+      onUpload(url);
       toast({ title: "Gambar berhasil diunggah" });
     } catch (err) {
       toast({ title: "Gagal mengunggah gambar", description: String(err), variant: "destructive" });

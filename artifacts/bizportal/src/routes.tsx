@@ -1,0 +1,135 @@
+import React from "react";
+import { Switch, Route } from "wouter";
+import NotFound from "@/pages/not-found";
+import DashboardPage from "@/pages/dashboard";
+import EcommercePage from "@/pages/ecommerce";
+import TradingPage from "@/pages/trading";
+import LogisticsPage from "@/pages/logistics";
+import LogisticsFreightPage from "@/pages/logistics-freight";
+import LogisticsFreightEditorPage from "@/pages/logistics-freight-editor";
+import LogisticsFreightDetailPage from "@/pages/logistics-freight-detail";
+import LogisticsFreightBLPage from "@/pages/logistics-freight-bl";
+import LogisticsPortalOrdersPage from "@/pages/logistics-portal-orders";
+import LogisticsPortalOrderDetailPage from "@/pages/logistics-portal-order-detail";
+import LogisticsDriversPage from "@/pages/logistics-drivers";
+import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
+import LogisticsVendorsPage from "@/pages/logistics-vendors";
+import PosPage from "@/pages/pos";
+import SettingsPage from "@/pages/settings";
+import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
+import AiScanSettingsPage from "@/pages/ai-scan-settings";
+import UsersPage from "@/pages/users";
+import WelcomePage from "@/pages/welcome";
+import SalesDashboardPage from "@/pages/sales/dashboard";
+import SalesDocumentsListPage from "@/pages/sales/documents-list";
+import SalesDocumentEditorPage from "@/pages/sales/quotation-editor";
+import AiDraftsPage from "@/pages/sales/ai-drafts";
+import CustomersPage from "@/pages/sales/customers";
+import SalesInvoicesPage from "@/pages/sales/invoices";
+import SalesItemsPage from "@/pages/sales/items";
+import PurchaseDashboardPage from "@/pages/purchase/dashboard";
+import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
+import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
+import VendorsPage from "@/pages/purchase/vendors";
+import VendorDetailPage from "@/pages/purchase/vendor-detail";
+import PurchaseBillsPage from "@/pages/purchase/bills";
+import ReportsSalesPage from "@/pages/reports/sales";
+import ReportsPurchasePage from "@/pages/reports/purchase";
+import ReportsArAgingPage from "@/pages/reports/ar-aging";
+import ReportsApAgingPage from "@/pages/reports/ap-aging";
+import AccountingAccountsPage from "@/pages/accounting/accounts";
+import AccountingJournalsPage from "@/pages/accounting/journals";
+import AccountingTaxesPage from "@/pages/accounting/taxes";
+import AccountingEntriesPage from "@/pages/accounting/entries";
+import AccountingEntryDetailPage from "@/pages/accounting/entry-detail";
+import AccountingJournalItemsPage from "@/pages/accounting/journal-items";
+import AccountingPaymentsPage from "@/pages/accounting/payments";
+import AccountingSettingsPage from "@/pages/accounting/settings";
+import AccountingTrialBalancePage from "@/pages/accounting/reports/trial-balance";
+import AccountingGeneralLedgerPage from "@/pages/accounting/reports/general-ledger";
+import AccountingProfitLossPage from "@/pages/accounting/reports/profit-loss";
+import AccountingBalanceSheetPage from "@/pages/accounting/reports/balance-sheet";
+import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
+import CorrespondencesPage from "@/pages/correspondences";
+import EmailInboxPage from "@/pages/email-inbox";
+import ExpenseListPage from "@/pages/expense/index";
+import ExpenseEditorPage from "@/pages/expense/editor";
+import ExpenseCategoriesPage from "@/pages/expense/categories";
+import ExpenseReportsPage from "@/pages/expense/reports";
+import PortalProductOrdersPage from "@/pages/portal-product-orders";
+import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
+import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+
+const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
+
+export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
+  return (
+    <Switch>
+      {rootGuard && <Route path="/" component={rootGuard} />}
+      <Route path="/welcome" component={WelcomePage} />
+      <Route path="/dashboard" component={PR(DashboardPage)} />
+      <Route path="/ecommerce" component={PR(EcommercePage)} />
+      <Route path="/trading" component={PR(TradingPage)} />
+      <Route path="/pos" component={PR(PosPage)} />
+      <Route path="/logistics" component={PR(LogisticsPage)} />
+      <Route path="/logistics/freight" component={PR(LogisticsFreightPage)} />
+      <Route path="/logistics/freight/new" component={PR(LogisticsFreightEditorPage)} />
+      <Route path="/logistics/freight/:id/bl" component={PR(LogisticsFreightBLPage)} />
+      <Route path="/logistics/freight/:id/edit" component={PR(LogisticsFreightEditorPage)} />
+      <Route path="/logistics/freight/:id" component={PR(LogisticsFreightDetailPage)} />
+      <Route path="/logistics/portal-orders" component={PR(LogisticsPortalOrdersPage)} />
+      <Route path="/logistics/portal-orders/:id" component={PR(LogisticsPortalOrderDetailPage)} />
+      <Route path="/logistics/drivers" component={PR(LogisticsDriversPage)} />
+      <Route path="/logistics/driver-performance" component={PR(LogisticsDriverPerformancePage)} />
+      <Route path="/logistics/vendors" component={PR(LogisticsVendorsPage)} />
+      <Route path="/logistics/vendor-quote" component={LogisticsVendorQuotePage} />
+      <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
+      <Route path="/sales" component={PR(SalesDashboardPage)} />
+      <Route path="/sales/documents" component={PR(SalesDocumentsListPage)} />
+      <Route path="/sales/documents/new" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/documents/:id" component={PR(SalesDocumentEditorPage)} />
+      <Route path="/sales/ai-drafts" component={PR(AiDraftsPage)} />
+      <Route path="/sales/customers" component={PR(CustomersPage)} />
+      <Route path="/sales/invoices" component={PR(SalesInvoicesPage)} />
+      <Route path="/sales/items" component={PR(SalesItemsPage)} />
+      <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
+      <Route path="/purchase/documents" component={PR(PurchaseDocumentsListPage)} />
+      <Route path="/purchase/documents/new" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/documents/:id" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/vendors" component={PR(VendorsPage)} />
+      <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
+      <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
+      <Route path="/reports/sales" component={PR(ReportsSalesPage)} />
+      <Route path="/reports/purchase" component={PR(ReportsPurchasePage)} />
+      <Route path="/reports/ar-aging" component={PR(ReportsArAgingPage)} />
+      <Route path="/reports/ap-aging" component={PR(ReportsApAgingPage)} />
+      <Route path="/accounting/accounts" component={PR(AccountingAccountsPage)} />
+      <Route path="/accounting/journals" component={PR(AccountingJournalsPage)} />
+      <Route path="/accounting/taxes" component={PR(AccountingTaxesPage)} />
+      <Route path="/accounting/entries" component={PR(AccountingEntriesPage)} />
+      <Route path="/accounting/entries/:id" component={PR(AccountingEntryDetailPage)} />
+      <Route path="/accounting/journal-items" component={PR(AccountingJournalItemsPage)} />
+      <Route path="/accounting/payments" component={PR(AccountingPaymentsPage)} />
+      <Route path="/accounting/settings" component={PR(AccountingSettingsPage)} />
+      <Route path="/accounting/reconciliation" component={PR(AccountingReconciliationPage)} />
+      <Route path="/accounting/reports/trial-balance" component={PR(AccountingTrialBalancePage)} />
+      <Route path="/accounting/reports/general-ledger" component={PR(AccountingGeneralLedgerPage)} />
+      <Route path="/accounting/reports/profit-loss" component={PR(AccountingProfitLossPage)} />
+      <Route path="/accounting/reports/balance-sheet" component={PR(AccountingBalanceSheetPage)} />
+      <Route path="/correspondences" component={PR(CorrespondencesPage)} />
+      <Route path="/email-inbox" component={PR(EmailInboxPage)} />
+      <Route path="/expense/new" component={PR(ExpenseEditorPage)} />
+      <Route path="/expense/categories" component={PR(ExpenseCategoriesPage)} />
+      <Route path="/expense/reports" component={PR(ExpenseReportsPage)} />
+      <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
+      <Route path="/expense" component={PR(ExpenseListPage)} />
+      <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
+      <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
+      <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
+      <Route path="/settings" component={PR(SettingsPage)} />
+      <Route path="/users" component={PR(UsersPage)} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}

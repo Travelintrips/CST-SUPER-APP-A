@@ -1,34 +1,20 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
+import { Readable } from "stream";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
-import { compressImageBuffer } from "../lib/imageCompress";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const ALLOWED_UPLOAD_PREFIXES = ["image/", "application/pdf"];
-
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
-  return createClient(url, key);
-}
-
-function getBucket() {
-  return process.env.SUPABASE_STORAGE_BUCKET ?? "bizportal";
-}
-
 /**
  * POST /storage/uploads/request-url
  *
- * Returns an internal upload token. The client will PUT the file to /api/storage/upload/:objectId
+ * Request a presigned GCS URL for file upload.
+ * The client sends JSON metadata (name, size, contentType) — NOT the file.
+ * Client then uploads the file directly to the returned presigned URL (GCS).
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -44,25 +30,8 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 
   try {
     const { name, size, contentType } = parsed.data;
-
-    if (typeof size === "number" && size > MAX_UPLOAD_BYTES) {
-      res.status(413).json({ error: "File too large (max 10MB)" });
-      return;
-    }
-    if (
-      typeof contentType === "string" &&
-      contentType.length > 0 &&
-      !ALLOWED_UPLOAD_PREFIXES.some((p) => contentType.toLowerCase().startsWith(p))
-    ) {
-      res.status(415).json({ error: "Unsupported file type" });
-      return;
-    }
-
-    const objectId = randomUUID();
-    const proto = req.headers["x-forwarded-proto"] || "https";
-    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
-    const uploadURL = `${proto}://${host}/api/storage/upload/${objectId}`;
-    const objectPath = `/objects/documents/${objectId}`;
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
     res.json(
       RequestUploadUrlResponse.parse({
@@ -78,146 +47,31 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 });
 
 /**
- * PUT /storage/upload/:objectId
- *
- * Receives file body and stores in Supabase Storage (private/documents/).
- */
-router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
-  const objectId = String(req.params.objectId);
-  if (!objectId) {
-    res.status(400).json({ error: "Missing objectId" });
-    return;
-  }
-
-  try {
-    const supabase = getSupabase();
-    const bucket = getBucket();
-    const storagePath = `private/documents/${objectId}`;
-    const contentType = req.headers["content-type"] || "application/octet-stream";
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
-    }
-    let buffer = Buffer.concat(chunks);
-
-    if (buffer.length > MAX_UPLOAD_BYTES) {
-      res.status(413).json({ error: "File too large (max 10MB)" });
-      return;
-    }
-
-    let finalContentType = contentType;
-    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType, "ocr-doc"));
-
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(storagePath, buffer, { contentType: finalContentType, upsert: true });
-
-    if (error) {
-      req.log.error({ err: error }, "Supabase Storage upload failed");
-      res.status(500).json({ error: "Upload failed" });
-      return;
-    }
-
-    res.status(200).json({ ok: true });
-  } catch (error) {
-    req.log.error({ err: error }, "Error during file upload");
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-/**
- * PUT /storage/internal-upload/:visibility/:folder/:objectId
- *
- * Handles uploads from getObjectEntityUploadURL() and getPublicAssetUploadURL().
- * Visibility: "public" | "private"
- * Folder: cargo-photos | documents | public-assets | customer-attachments | ocr-temp
- */
-const ALLOWED_INTERNAL_FOLDERS = new Set([
-  "cargo-photos", "documents", "public-assets", "customer-attachments", "ocr-temp",
-]);
-
-router.put("/storage/internal-upload/{*uploadPath}", async (req: Request, res: Response) => {
-  const rawPath = req.params.uploadPath as string;
-  const parts = rawPath.split("/");
-  const visibility = parts[0];
-  const folder = parts[1];
-
-  if (!["public", "private"].includes(visibility) || !folder || !ALLOWED_INTERNAL_FOLDERS.has(folder)) {
-    res.status(400).json({ error: "Invalid upload path" });
-    return;
-  }
-
-  // Determine compression mode by folder
-  const compressMode: import("../lib/imageCompress.js").ImageCompressMode =
-    folder === "cargo-photos" || folder === "public-assets" ? "photo" : "ocr-doc";
-
-  try {
-    const supabase = getSupabase();
-    const bucket = getBucket();
-    const storagePath = rawPath;
-    const contentType = req.headers["content-type"] || "application/octet-stream";
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
-    }
-    let buffer = Buffer.concat(chunks);
-
-    if (buffer.length > MAX_UPLOAD_BYTES) {
-      res.status(413).json({ error: "File too large (max 10MB)" });
-      return;
-    }
-
-    let finalContentType = contentType;
-    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType, compressMode));
-
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(storagePath, buffer, { contentType: finalContentType, upsert: true });
-
-    if (error) {
-      req.log.error({ err: error }, "Supabase internal-upload failed");
-      res.status(500).json({ error: "Upload failed" });
-      return;
-    }
-
-    res.status(200).json({ ok: true });
-  } catch (error) {
-    req.log.error({ err: error }, "Error during internal file upload");
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-/**
  * GET /storage/public-objects/*
  *
- * Serve public assets from Supabase Storage public/ folder.
+ * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
+ * Unconditionally public — no auth checks.
  */
 router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Response) => {
   try {
     const raw = req.params.filePath;
     const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-    const supabase = getSupabase();
-    const bucket = getBucket();
-    const storagePath = `public/${filePath}`;
-
-    const { data, error } = await supabase.storage.from(bucket).download(storagePath);
-    if (error || !data) {
+    const file = await objectStorageService.searchPublicObject(filePath);
+    if (!file) {
       res.status(404).json({ error: "File not found" });
       return;
     }
 
-    const buffer = Buffer.from(await data.arrayBuffer());
-    res.setHeader("Content-Type", data.type || "application/octet-stream");
-    res.setHeader("Cache-Control", "public, max-age=3600");
-    res.setHeader("Content-Length", String(buffer.length));
-    res.end(buffer);
+    const response = await objectStorageService.downloadObject(file);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
   } catch (error) {
     req.log.error({ err: error }, "Error serving public object");
     res.status(500).json({ error: "Failed to serve public object" });
@@ -227,30 +81,25 @@ router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Resp
 /**
  * GET /storage/objects/*
  *
- * Serve private object entities from Supabase Storage private/ folder.
+ * Serve private object entities from PRIVATE_OBJECT_DIR.
  */
 router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
-    const supabase = getSupabase();
-    const bucket = getBucket();
-    const entityId = objectPath.slice("/objects/".length);
-    const storagePath = `private/${entityId}`;
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
 
-    const { data, error } = await supabase.storage.from(bucket).download(storagePath);
-    if (error || !data) {
-      res.status(404).json({ error: "Object not found" });
-      return;
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
     }
-
-    const buffer = Buffer.from(await data.arrayBuffer());
-    res.setHeader("Content-Type", data.type || "application/octet-stream");
-    res.setHeader("Cache-Control", "private, max-age=3600");
-    res.setHeader("Content-Length", String(buffer.length));
-    res.end(buffer);
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
       req.log.warn({ err: error }, "Object not found");
