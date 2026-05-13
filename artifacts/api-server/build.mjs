@@ -15,16 +15,18 @@ async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
-  await esbuild({
+  const t0 = Date.now();
+  const result = await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",
     bundle: true,
     format: "esm",
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
-    // Suppress default bundle size warnings — 5-6MB is normal for a bundled Node.js server.
-    // All packages are inlined; no runtime module resolution issues.
-    logLevel: "warning",
+    // Silent: suppress esbuild's built-in reporter (which adds ⚠️ for files >500KB).
+    // We print our own summary below using metafile data.
+    logLevel: "error",
+    metafile: true,
     // Keep explicit list for native addons that can't be bundled.
     external: [
       "*.node",
@@ -120,6 +122,18 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // Custom build summary — no ⚠️ threshold noise.
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+  const outputs = Object.entries(result.metafile.outputs)
+    .filter(([f]) => !f.endsWith(".map"))
+    .sort((a, b) => b[1].bytes - a[1].bytes);
+  const pad = Math.max(...outputs.map(([f]) => f.length));
+  for (const [file, { bytes }] of outputs) {
+    const kb = (bytes / 1024).toFixed(1).padStart(7);
+    console.log(`  ${file.padEnd(pad)}  ${kb} kb`);
+  }
+  console.log(`\n⚡ Done in ${elapsed}s`);
 }
 
 buildAll().catch((err) => {
