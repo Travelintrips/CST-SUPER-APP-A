@@ -9,6 +9,7 @@ import {
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { sendWhatsApp } from "../lib/fonnte";
+import { broadcastToAdmins } from "../lib/sseManager";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -145,6 +146,20 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     (body.items.find((i) => i.calculatorType === "trucking")
       ?.inputData as Record<string, unknown> | undefined)
       ?.vehicleType as string ?? null;
+
+  // Real-time SSE: notify BizPortal admins immediately
+  broadcastToAdmins("new_order", {
+    type: "logistic",
+    orderId: order.id,
+    orderNumber,
+    customerName: body.customerName,
+    companyName: body.companyName,
+    shipmentType: body.shipmentType,
+    origin: body.origin,
+    destination: body.destination,
+    grandTotal: Number(body.grandTotal),
+    createdAt: order.createdAt,
+  });
 
   // Fire-and-forget: notify admin + vendors + customer via WA & email
   sendLogisticOrderNotification({
