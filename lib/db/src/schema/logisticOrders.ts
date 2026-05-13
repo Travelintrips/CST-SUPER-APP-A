@@ -44,6 +44,9 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   approvedVendorId: integer("approved_vendor_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   finalSellingPrice: numeric("final_selling_price", { precision: 14, scale: 2 }),
   quotationSentAt: timestamp("quotation_sent_at"),
+  customerConfirmToken: text("customer_confirm_token").unique(),
+  customerConfirmStatus: text("customer_confirm_status").default("pending"),
+  customerConfirmedAt: timestamp("customer_confirmed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

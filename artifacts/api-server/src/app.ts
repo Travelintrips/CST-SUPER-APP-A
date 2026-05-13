@@ -57,6 +57,21 @@ app.use(authMiddleware);
 // Auth routes (login/callback/logout/mobile-auth) — mounted under /api
 app.use("/api", authRouter);
 
+// ─── Customer Portal Static Serving ──────────────────────────────────────────
+// Customer portal is built with base="/" so assets are at /assets/...
+// Serves at root "/" so confirm links (https://domain/confirm/:token) work.
+// Must come BEFORE /api routes for static assets, but SPA fallback is AFTER.
+
+const CUSTOMER_PORTAL_DIST = path.resolve(
+  process.cwd(),
+  "../customer-portal/dist/public",
+);
+
+if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
+  // Serve static files (JS/CSS/images) — these paths never conflict with /api/*
+  app.use(express.static(CUSTOMER_PORTAL_DIST, { index: false }));
+}
+
 // ─── BizPortal Static Serving ────────────────────────────────────────────────
 // BizPortal is built with base="/bizportal/" so all asset hrefs are /bizportal/...
 // The API server handles /bizportal/* so that:
@@ -109,22 +124,21 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use("/api", router);
 
-// ─── Customer Portal Static Serving ──────────────────────────────────────────
-// Customer Portal is built with base="/" so assets are at /assets/...
-const CUSTOMER_PORTAL_DIST = path.resolve(
-  process.cwd(),
-  "../customer-portal/dist/public",
-);
-
+// ─── Customer Portal SPA Fallback ────────────────────────────────────────────
+// For any non-API, non-BizPortal path (e.g. /confirm/:token, /, /services, etc.)
+// serve the customer portal index.html so client-side routing works.
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
-  app.use(
-    "/",
-    express.static(CUSTOMER_PORTAL_DIST, { index: "index.html" }),
-  );
-
-  // SPA fallback: any path that isn't a file → index.html
-  app.use("/{*path}", (_req: Request, res: Response) => {
-    res.sendFile(path.join(CUSTOMER_PORTAL_DIST, "index.html"));
+  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (PORTAL_SKIP.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
+      return next();
+    }
+    const indexPath = path.join(CUSTOMER_PORTAL_DIST, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      next();
+    }
   });
 }
 

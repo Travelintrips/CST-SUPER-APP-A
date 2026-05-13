@@ -250,21 +250,20 @@ function buildCustomerWaMessage(order: LogisticOrderData): string {
   return (
     `✅ *PESANAN ANDA DITERIMA*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Halo ${order.customerName},\n\n` +
+    `Halo *${order.customerName}*,\n\n` +
     `Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics.\n\n` +
     `No. Order       : *${order.orderNumber}*\n` +
     (tgl ? `Tanggal         : ${tgl}\n` : ``) +
     (jam ? `Jam             : ${jam}\n` : ``) +
-    `Status          : Menunggu Konfirmasi\n` +
+    `Status          : Pesanan Diterima\n` +
     `Rute            : ${order.origin} → ${order.destination}\n` +
     (order.commodity ? `Kategori Barang : ${order.commodity}\n` : ``) +
     (order.grossWeight ? `Berat           : ${order.grossWeight} kg\n` : ``) +
     (order.volumeCbm ? `Volume          : ${order.volumeCbm} CBM\n` : ``) +
     `Layanan         :\n${order.serviceList}\n` +
-    `Total Est.      : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.requiredDate ? `Tgl Butuh       : ${order.requiredDate}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.\n` +
+    `Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan *penawaran harga terbaik* untuk Anda.\n\n` +
     `📞 Jakarta: (021) 6241234 | Tangerang: (021) 5591234\n\n` +
     `_Dikirim: ${nowWIB()}_`
   );
@@ -498,14 +497,13 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
 
   const rows: [string, string][] = [
     ["No. Order", `<strong>${order.orderNumber}</strong>`],
-    ["Status", "<span style='color:#059669;font-weight:600'>Menunggu Konfirmasi</span>"],
+    ["Status", "<span style='color:#059669;font-weight:600'>Pesanan Diterima</span>"],
     ["Jenis", order.shipmentType],
     ["Rute", `${order.origin} → ${order.destination}`],
     ...(order.commodity ? [["Komoditi", order.commodity] as [string, string]] : []),
     ...(order.grossWeight ? [["Berat", `${order.grossWeight} kg`] as [string, string]] : []),
     ...(order.volumeCbm ? [["Volume", `${order.volumeCbm} CBM`] as [string, string]] : []),
     ["Layanan", order.serviceList.replace(/\n/g, "<br>")],
-    ["Total Est.", `Rp ${formatRupiah(order.grandTotal)}`],
     ...(order.requiredDate ? [["Tgl Butuh", order.requiredDate] as [string, string]] : []),
   ];
 
@@ -515,17 +513,16 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
       subject: `Pesanan Diterima — ${order.orderNumber}`,
       html: buildEmailHtml(
         "Pesanan Anda Telah Diterima",
-        `Halo <strong>${order.customerName}</strong>,<br><br>Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics. Tim kami akan segera menghubungi Anda untuk konfirmasi lebih lanjut.`,
+        `Halo <strong>${order.customerName}</strong>,<br><br>Terima kasih telah mempercayakan pengiriman Anda kepada CST Logistics. Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan penawaran harga terbaik untuk Anda.`,
         rows,
         "Gunakan nomor order di atas untuk tracking. Hubungi kami di: <strong>(021) 6241234</strong>"
       ),
       text:
         `Pesanan Diterima!\n` +
         `No. Order: ${order.orderNumber}\n` +
-        `Status: Menunggu Konfirmasi\n` +
-        `Rute: ${order.origin} → ${order.destination}\n` +
-        `Total: Rp ${formatRupiah(order.grandTotal)}\n\n` +
-        `Tim kami akan segera menghubungi Anda.`,
+        `Status: Pesanan Diterima\n` +
+        `Rute: ${order.origin} → ${order.destination}\n\n` +
+        `Tim kami sedang memproses permintaan Anda dan akan segera mengirimkan penawaran harga.`,
     }).then(() => logger.info({ email: order.email, orderNumber: order.orderNumber }, "Customer email sent successfully"))
       .catch((err: unknown) => logger.error({ err, email: order.email }, "Email customer notification failed"));
   } else {
