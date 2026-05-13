@@ -11,6 +11,7 @@ import {
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { and, eq, ne } from "drizzle-orm";
+import { saveOauthState, consumeOauthState } from "../lib/oauthStateMigration";
 import {
   clearSession,
   getOidcConfig,
@@ -254,65 +255,49 @@ router.get("/callback", async (req: Request, res: Response) => {
 
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
-router.get("/login/google", (req: Request, res: Response) => {
+router.get("/login/google", async (req: Request, res: Response) => {
   const redirectUri = `${getGoogleOrigin(req)}/api/callback/google`;
   const returnTo = getSafeReturnTo(req.query.returnTo);
   const state = crypto.randomBytes(16).toString("hex");
 
   req.log.info({ redirectUri }, "[Google OAuth] initiating login, redirect_uri");
 
+  // Store state in DB (domain-agnostic — avoids cross-subdomain cookie issues)
+  await saveOauthState(state, returnTo);
+
   const client = getGoogleOAuthClient(redirectUri);
   const authUrl = client.generateAuthUrl({
     access_type: "offline",
     scope: ["openid", "email", "profile"],
-    state: `${state}:${Buffer.from(returnTo).toString("base64")}`,
+    state,
     prompt: "select_account",
   });
 
-  setOidcCookie(res, "google_state", state);
   res.redirect(authUrl);
 });
-
-// Helper: extract a safe returnTo from the Google OAuth state param (stateToken:returnToB64)
-function returnToFromState(state: string | undefined): string {
-  if (!state) return "/bizportal/";
-  const [, returnToB64] = state.split(":");
-  if (!returnToB64) return "/bizportal/";
-  try {
-    return getSafeReturnTo(Buffer.from(returnToB64, "base64").toString());
-  } catch {
-    return "/bizportal/";
-  }
-}
 
 router.get("/callback/google", async (req: Request, res: Response) => {
   const { code, state, error } = req.query as Record<string, string>;
 
   req.log.info(
-    { hasCode: !!code, hasState: !!state, error: error ?? null, savedStateCookie: req.cookies?.google_state ?? null },
+    { hasCode: !!code, hasState: !!state, error: error ?? null },
     "[Google OAuth] callback received"
   );
 
   if (error || !code || !state) {
     req.log.warn({ error, hasCode: !!code, hasState: !!state }, "[Google OAuth] callback error from Google — redirecting to login");
-    res.clearCookie("google_state", { path: "/" });
-    res.redirect(returnToFromState(state));
+    res.redirect("/bizportal/");
     return;
   }
 
-  const [stateToken, returnToB64] = state.split(":");
-  const savedState = req.cookies?.google_state;
-  res.clearCookie("google_state", { path: "/" });
+  // Look up state from DB (domain-agnostic, no cookie dependency)
+  const returnTo = await consumeOauthState(state);
 
-  if (!savedState || savedState !== stateToken) {
-    req.log.warn({ savedState: savedState ?? null, stateToken }, "[Google OAuth] state mismatch — redirecting to login");
-    res.redirect(returnToFromState(state));
+  if (!returnTo) {
+    req.log.warn({ stateToken: state }, "[Google OAuth] state not found or expired — redirecting to login");
+    res.redirect("/bizportal/");
     return;
   }
-
-  const returnTo = getSafeReturnTo(
-    returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/bizportal/"
-  );
 
   const redirectUri = `${getGoogleOrigin(req)}/api/callback/google`;
   const client = getGoogleOAuthClient(redirectUri);

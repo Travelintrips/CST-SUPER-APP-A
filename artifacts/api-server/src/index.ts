@@ -9,6 +9,7 @@ import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { runPortalMigration } from "./lib/portalMigration";
 import { runAccountingMigration } from "./lib/accountingMigration";
+import { runOauthStateMigration } from "./lib/oauthStateMigration";
 import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 
 const rawPort = process.env["PORT"];
@@ -41,6 +42,11 @@ app.listen(port, (err) => {
   // Jalankan accounting schema migration (idempotent — tambah kolom automation)
   runAccountingMigration().catch((err) => {
     logger.error({ err }, "Accounting migration error");
+  });
+
+  // Buat tabel oauth_states untuk Google OAuth state management
+  runOauthStateMigration().catch((err) => {
+    logger.error({ err }, "OAuth state migration error");
   });
 
   // Enable Supabase Realtime on driver tables (idempotent)
