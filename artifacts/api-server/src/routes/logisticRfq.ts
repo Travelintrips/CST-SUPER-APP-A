@@ -354,6 +354,9 @@ logisticRfqRouter.post("/vendor-quote", async (req: Request, res: Response) => {
     .where(eq(suppliersTable.id, Number(vendorId)));
 
   const vp = Number(vendorPrice);
+  const vendorMarkupPct = vendor ? Number(vendor.markupPct ?? 0) : 0;
+  const computedSellingPrice = vp * (1 + vendorMarkupPct / 100);
+
   const [quote] = await db.insert(logisticOrderQuotesTable).values({
     rfqId: rfq.id,
     orderId: rfq.orderId,
@@ -364,9 +367,9 @@ logisticRfqRouter.post("/vendor-quote", async (req: Request, res: Response) => {
     estimatedDays: estimatedDays != null ? Number(estimatedDays) : null,
     vendorNotes: notes?.trim() || null,
     markupType: "percentage",
-    markupPercentage: "0",
+    markupPercentage: String(vendorMarkupPct),
     fixedSellingPrice: null,
-    sellingPrice: String(vp),
+    sellingPrice: String(computedSellingPrice),
     quoteStatus: "pending",
     replySource: "vendor_form",
     replyTimestamp: new Date(),
