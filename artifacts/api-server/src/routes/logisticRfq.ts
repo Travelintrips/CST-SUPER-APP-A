@@ -1,9 +1,16 @@
 import { Router, Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
+
+function getConfirmFormUrl(token: string): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/confirm/${token}`;
+}
 
 export const logisticRfqRouter = Router();
 
@@ -708,6 +715,8 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
         quote.fixedSellingPrice != null ? Number(quote.fixedSellingPrice) : null);
 
   const now = new Date();
+  const confirmToken = randomUUID();
+
   await db.update(logisticOrderQuotesTable)
     .set({ quoteStatus: "approved" })
     .where(eq(logisticOrderQuotesTable.id, quoteId));
@@ -721,6 +730,8 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
       approvedAt: now,
       finalSellingPrice: String(sellingPrice),
       quotationSentAt: now,
+      customerConfirmToken: confirmToken,
+      customerConfirmStatus: "pending",
     })
     .where(eq(logisticOrdersTable.id, orderId))
     .returning();
@@ -729,6 +740,8 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
 
   const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, quote.vendorId));
   const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+
+  const confirmUrl = getConfirmFormUrl(confirmToken);
 
   const customerMsg =
     `✅ *PENAWARAN HARGA ANDA TELAH SIAP*\n` +
@@ -744,7 +757,8 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
     `━━━━━━━━━━━━━━━━━━\n` +
     `💰 *Total Harga  : ${fmt(sellingPrice)}*\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `Balas pesan ini atau hubungi kami untuk konfirmasi:\n` +
+    (confirmUrl ? `📋 *Konfirmasi persetujuan Anda di sini:*\n${confirmUrl}\n\n` : "") +
+    `Atau balas pesan ini / hubungi kami:\n` +
     `📞 Jakarta: (021) 6241234`;
 
   if (updatedOrder.phone) {
@@ -762,5 +776,106 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
     finalSellingPrice: sellingPrice,
     approvedVendorName: vendor?.name ?? null,
     quotationSentAt: now.toISOString(),
+    confirmUrl,
   });
+});
+
+// GET /api/logistic/orders/confirm-form/:token — public: load data for customer confirmation page
+logisticRfqRouter.get("/confirm-form/:token", async (req: Request, res: Response) => {
+  const { token } = req.params;
+  if (!token) return res.status(400).json({ message: "Token wajib diisi" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.customerConfirmToken, token));
+  if (!order) return res.status(404).json({ message: "Link konfirmasi tidak valid atau sudah kadaluarsa" });
+
+  // Get approved quote for ETA + vendor info
+  let estimatedPickup: string | null = null;
+  let estimatedDelivery: string | null = null;
+  let vendorName: string | null = null;
+  if (order.approvedQuoteId) {
+    const [quote] = await db.select().from(logisticOrderQuotesTable)
+      .where(eq(logisticOrderQuotesTable.id, order.approvedQuoteId));
+    if (quote) {
+      estimatedPickup = quote.estimatedPickup ?? null;
+      estimatedDelivery = quote.estimatedDelivery ?? null;
+      if (order.approvedVendorId) {
+        const [vendor] = await db.select().from(suppliersTable)
+          .where(eq(suppliersTable.id, order.approvedVendorId));
+        vendorName = vendor?.name ?? null;
+      }
+    }
+  }
+
+  return res.json({
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    customerName: order.customerName,
+    phone: order.phone ?? null,
+    finalSellingPrice: order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0,
+    estimatedPickup,
+    estimatedDelivery,
+    vendorName,
+    customerConfirmStatus: order.customerConfirmStatus ?? "pending",
+  });
+});
+
+// POST /api/logistic/orders/confirm/:token — public: customer confirms or rejects
+logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) => {
+  const { token } = req.params;
+  const { action } = req.body as { action: "confirmed" | "rejected" };
+
+  if (!token) return res.status(400).json({ message: "Token wajib diisi" });
+  if (action !== "confirmed" && action !== "rejected") {
+    return res.status(400).json({ message: "Action harus 'confirmed' atau 'rejected'" });
+  }
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.customerConfirmToken, token));
+  if (!order) return res.status(404).json({ message: "Link konfirmasi tidak valid atau sudah kadaluarsa" });
+
+  if (order.customerConfirmStatus !== "pending") {
+    return res.status(409).json({ message: "Konfirmasi sudah pernah dikirimkan sebelumnya" });
+  }
+
+  const now = new Date();
+  const newStatus = action === "confirmed" ? "Confirmed" : "Quotation Sent";
+
+  await db.update(logisticOrdersTable)
+    .set({
+      customerConfirmStatus: action,
+      customerConfirmedAt: now,
+      ...(action === "confirmed" ? { status: newStatus } : {}),
+    })
+    .where(eq(logisticOrdersTable.id, order.id));
+
+  // Notify admin via WA
+  const adminWa = await getAdminWa();
+  if (adminWa) {
+    const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+    const sp = order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0;
+    const adminMsg = action === "confirmed"
+      ? `✅ *CUSTOMER SETUJU — ${order.orderNumber}*\n\n` +
+        `Customer *${order.customerName}* telah menyetujui penawaran harga:\n` +
+        `💰 *${fmt(sp)}*\n\n` +
+        `Rute: ${order.origin} → ${order.destination}\n` +
+        `Jenis: ${order.shipmentType}\n\n` +
+        `Silakan proses order ini ke tahap selanjutnya.`
+      : `❌ *CUSTOMER TOLAK — ${order.orderNumber}*\n\n` +
+        `Customer *${order.customerName}* menolak penawaran harga:\n` +
+        `💰 *${fmt(sp)}*\n\n` +
+        `Rute: ${order.origin} → ${order.destination}\n` +
+        `Jenis: ${order.shipmentType}\n\n` +
+        `Silakan hubungi customer untuk negosiasi lebih lanjut.`;
+    sendWhatsApp(adminWa, adminMsg).catch((e: unknown) =>
+      logger.error({ e }, "WA admin customer confirm notif failed")
+    );
+  }
+
+  logger.info({ orderId: order.id, action, orderNumber: order.orderNumber }, "Customer confirmation received");
+  return res.json({ ok: true, action });
 });
