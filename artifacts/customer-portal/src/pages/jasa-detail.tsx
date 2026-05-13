@@ -699,54 +699,100 @@ export default function JasaDetail() {
       calculatorType: (CAT_TO_CALC[(s.categories ?? [])[0] ?? ""] ?? "generic") as CalculatorType,
     }));
 
+  const CATEGORY_HERO: Record<string, { gradient: string; glowA: string; glowB: string; accentRing: string; features: string[] }> = {
+    Freight:    { gradient: "linear-gradient(135deg, #050D1F 0%, #0B1E44 55%, #050D1F 100%)", glowA: "bg-blue-600",    glowB: "bg-cyan-500",   accentRing: "ring-blue-400/40",    features: ["Air Freight", "Sea FCL / LCL", "Door-to-Door", "Multi-Modal"] },
+    Customs:    { gradient: "linear-gradient(135deg, #051A0F 0%, #0A3020 55%, #051A0F 100%)", glowA: "bg-emerald-600", glowB: "bg-green-500",  accentRing: "ring-emerald-400/40", features: ["Import & Export", "PIB / PEB", "HS Code Konsultasi", "PPJK Resmi"] },
+    Handling:   { gradient: "linear-gradient(135deg, #100520 0%, #1E0A3C 55%, #100520 100%)", glowA: "bg-violet-600",  glowB: "bg-purple-500", accentRing: "ring-violet-400/40",  features: ["Origin Handling", "Destination Handling", "Kargo Berbahaya", "Tim Profesional"] },
+    Storage:    { gradient: "linear-gradient(135deg, #061616 0%, #0A2828 55%, #061616 100%)", glowA: "bg-teal-600",    glowB: "bg-cyan-500",   accentRing: "ring-teal-400/40",    features: ["Gudang Umum", "Bonded Warehouse", "Cold Storage", "Sewa Fleksibel"] },
+    Trucking:   { gradient: "linear-gradient(135deg, #160B00 0%, #2E1800 55%, #160B00 100%)", glowA: "bg-amber-500",   glowB: "bg-orange-500", accentRing: "ring-amber-400/40",   features: ["5 Jenis Armada", "Kalkulasi Otomatis", "Harga Transparan", "Berlisensi & Profesional"] },
+    Document:   { gradient: "linear-gradient(135deg, #050B1F 0%, #0A1640 55%, #050B1F 100%)", glowA: "bg-indigo-600",  glowB: "bg-blue-500",   accentRing: "ring-indigo-400/40",  features: ["Bill of Lading", "Air Waybill", "COO / SKA", "Packing List"] },
+    Additional: { gradient: "linear-gradient(135deg, #1A0510 0%, #350828 55%, #1A0510 100%)", glowA: "bg-rose-600",    glowB: "bg-pink-500",   accentRing: "ring-rose-400/40",    features: ["Asuransi Kargo", "Surveyor", "Perizinan", "BPOM / SNI"] },
+  };
+  const hero = CATEGORY_HERO[item.category] ?? CATEGORY_HERO["Freight"]!;
+
   return (
-    <div className={`min-h-screen pb-28 ${ct === "trucking" ? "bg-slate-50" : "bg-gray-50"}`}>
-      {/* Hero */}
-      <div className={ct === "trucking"
-        ? "bg-gradient-to-br from-sky-600 via-blue-700 to-indigo-800 text-white py-10 md:py-14 relative overflow-hidden"
-        : "bg-primary text-primary-foreground py-12 md:py-20"
-      }>
-        {ct === "trucking" && (
-          <div className="absolute inset-0 opacity-10" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"}}/>
-        )}
-        <div className="container px-4 md:px-6 relative z-10">
-          <Link href="/jasa" className={`inline-flex items-center gap-1.5 text-sm mb-5 transition-colors ${ct === "trucking" ? "text-white/60 hover:text-white" : "text-primary-foreground/60 hover:text-primary-foreground"}`}>
-            <ArrowLeft className="h-4 w-4" />
+    <div className="min-h-screen pb-28 bg-gray-50">
+      {/* ── PREMIUM HERO ── */}
+      <div className="relative overflow-hidden text-white" style={{ background: hero.gradient }}>
+        {/* Dot-grid overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "26px 26px" }}
+        />
+        {/* Glow orbs */}
+        <div className={`absolute -top-40 -right-40 w-[560px] h-[560px] rounded-full blur-3xl opacity-20 pointer-events-none ${hero.glowA}`} />
+        <div className={`absolute -bottom-40 -left-40 w-[460px] h-[460px] rounded-full blur-3xl opacity-15 pointer-events-none ${hero.glowB}`} />
+        {/* Top shimmer line */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+
+        <div className="container px-4 md:px-6 py-10 md:py-16 relative z-10">
+          {/* Back link */}
+          <Link
+            href="/jasa"
+            className="inline-flex items-center gap-1.5 text-[13px] text-white/45 hover:text-white/90 transition-all duration-200 mb-8 group"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-200 group-hover:-translate-x-0.5" />
             Kembali ke Katalog Jasa
           </Link>
-          <div className="flex items-start gap-5">
-            {ct === "trucking" ? (
-              <div className="flex-shrink-0 bg-white/15 backdrop-blur-sm rounded-2xl p-3 ring-1 ring-white/20 shadow-lg">
-                <img
-                  src={cstLogo}
-                  alt="CST Logistic"
-                  className="h-14 w-auto sm:h-[72px] md:h-[88px] max-w-[160px] object-contain"
-                />
-              </div>
-            ) : (
-              <div className={`${colors.bg} rounded-2xl p-5 flex-shrink-0`}>
-                <IconComp className={`h-12 w-12 ${colors.text}`} />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <Badge className={ct === "trucking"
-                ? "bg-white/20 text-white border-white/30 font-medium mb-2 text-xs"
-                : `${colors.badge} border-0 font-medium mb-3`
-              }>{item.category}</Badge>
-              <h1 className={`font-display font-bold ${ct === "trucking" ? "text-2xl md:text-3xl mt-1 mb-1.5" : "text-3xl md:text-4xl mb-2"}`}>{item.name}</h1>
-              <p className={ct === "trucking" ? "text-white/75 text-base max-w-xl" : "text-primary-foreground/80 text-lg max-w-2xl"}>{item.description}</p>
-              {ct === "trucking" && (
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {["5 Jenis Armada", "Kalkulasi Jarak Otomatis", "Harga Transparan", "Berlisensi & Profesional"].map(f => (
-                    <span key={f} className="text-[11px] px-2.5 py-1 bg-white/10 rounded-full text-white/85 ring-1 ring-white/20 flex items-center gap-1">
-                      <span className="text-blue-200">✓</span> {f}
-                    </span>
-                  ))}
-                </div>
+
+          <div className="flex flex-col sm:flex-row items-start gap-6 md:gap-8">
+            {/* Icon — glassmorphism card */}
+            <div
+              className={`flex-shrink-0 rounded-2xl p-5 ring-1 shadow-2xl backdrop-blur-sm ${hero.accentRing}`}
+              style={{ background: "rgba(255,255,255,0.08)" }}
+            >
+              {ct === "trucking" ? (
+                <img src={cstLogo} alt="CST Logistic" className="h-16 w-auto max-w-[120px] object-contain" />
+              ) : (
+                <IconComp className="h-14 w-14 text-white/90" />
               )}
+            </div>
+
+            {/* Text */}
+            <div className="flex-1 min-w-0">
+              {/* Eyebrow */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">
+                  CST Logistics
+                </span>
+                <span className="w-5 h-px bg-white/20" />
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-widest px-2.5 py-0.5 rounded-full ring-1 text-white/75 ${hero.accentRing}`}
+                  style={{ background: "rgba(255,255,255,0.09)" }}
+                >
+                  {item.category}
+                </span>
+              </div>
+
+              {/* Title */}
+              <h1 className="text-3xl sm:text-4xl md:text-[2.75rem] font-bold leading-[1.15] tracking-tight text-white mb-3">
+                {item.name}
+              </h1>
+
+              {/* Description */}
+              <p className="text-base md:text-[1.05rem] text-white/60 max-w-2xl leading-relaxed mb-6">
+                {item.description}
+              </p>
+
+              {/* Feature pills */}
+              <div className="flex flex-wrap gap-2">
+                {hero.features.map(f => (
+                  <span
+                    key={f}
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-full ring-1 text-white/80 backdrop-blur-sm ${hero.accentRing}`}
+                    style={{ background: "rgba(255,255,255,0.07)" }}
+                  >
+                    <CheckCircle2 className="h-3 w-3 text-white/45 flex-shrink-0" />
+                    {f}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Bottom edge fade */}
+        <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-b from-transparent to-black/20 pointer-events-none" />
       </div>
 
       <div className={`${ct === "trucking" ? "max-w-[1200px] mx-auto" : "container"} px-4 md:px-6 mt-8`}>
