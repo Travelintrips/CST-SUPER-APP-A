@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useOrderNotifications, type OrderNotification } from "@/hooks/useOrderNotifications";
+import { useOrderNotificationsContext, type OrderNotification } from "@/contexts/OrderNotificationsContext";
 
 function typeLabel(type: OrderNotification["type"]) {
   if (type === "logistic") return "Order Logistik";
@@ -44,7 +44,7 @@ function timeAgo(isoDate: string) {
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, clearAll, setOnNewOrder } = useOrderNotifications();
+  const { notifications, unreadCount, markAllRead, clearAll, setOnNewOrder } = useOrderNotificationsContext();
   const initialized = useRef(false);
 
   if (!initialized.current) {
