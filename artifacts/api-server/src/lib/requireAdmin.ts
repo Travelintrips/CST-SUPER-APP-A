@@ -2,8 +2,15 @@ import type { Request, Response } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const ADMIN_EMAILS = (process.env["ADMIN_EMAILS"] ?? "divatranssoetta@gmail.com")
-  .split(",")
+const HARDCODED_SUPERADMINS = [
+  "admcst001@gmail.com",
+  "divatranssoetta@gmail.com",
+];
+
+const ADMIN_EMAILS = [
+  ...HARDCODED_SUPERADMINS,
+  ...(process.env["ADMIN_EMAILS"] ?? "").split(","),
+]
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
