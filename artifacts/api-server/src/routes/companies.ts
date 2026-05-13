@@ -5,13 +5,11 @@ import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router = Router();
 
-router.use(async (req, res, next) => {
-  if (!(await requireAdmin(req, res))) return;
-  next();
-});
-
-// GET /companies
-router.get("/", async (_req, res) => {
+// GET /companies — semua user login bisa baca daftar perusahaan (untuk CompanySwitcher)
+router.get("/", async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
   const rows = await db
     .select()
     .from(companiesTable)
@@ -19,8 +17,9 @@ router.get("/", async (_req, res) => {
   return res.json(rows.map((c) => ({ ...c, createdAt: c.createdAt.toISOString() })));
 });
 
-// POST /companies
+// POST /companies — admin only
 router.post("/", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const { companyName, companyCode, logoUrl, address, phone, email, npwp } = req.body ?? {};
   if (!companyName || !companyCode) {
     return res.status(400).json({ message: "companyName and companyCode are required" });
@@ -38,8 +37,9 @@ router.post("/", async (req, res) => {
   }
 });
 
-// PATCH /companies/:id
+// PATCH /companies/:id — admin only
 router.patch("/:id", async (req, res) => {
+  if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
   const { companyName, companyCode, logoUrl, address, phone, email, npwp, isActive } = req.body ?? {};

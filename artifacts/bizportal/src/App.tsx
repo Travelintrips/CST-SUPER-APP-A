@@ -327,6 +327,7 @@ function Router() {
         <Route path="/accounting/reports/general-ledger" component={() => <ProtectedRoute component={AccountingGeneralLedgerPage} />} />
         <Route path="/accounting/reports/profit-loss" component={() => <ProtectedRoute component={AccountingProfitLossPage} />} />
         <Route path="/accounting/reports/balance-sheet" component={() => <ProtectedRoute component={AccountingBalanceSheetPage} />} />
+        <Route path="/accounting/reconciliation" component={() => <ProtectedRoute component={AccountingReconciliationPage} />} />
         {/* Expenses */}
         <Route path="/expenses" component={() => <ProtectedRoute component={ExpenseListPage} />} />
         <Route path="/expenses/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
