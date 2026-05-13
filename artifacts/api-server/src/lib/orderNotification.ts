@@ -118,9 +118,6 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
     (orderUrl ? `🔗 *Buka & Approve di BizPortal:*\n${orderUrl}\n\n` : ``) +
-    `💬 *Approve via WA* (setelah vendor balas harga):\n` +
-    `\`\`\`APPROVE ${order.orderNumber} [harga_jual]\`\`\`\n` +
-    `_Cek penawaran vendor: \`QUOTES ${order.orderNumber}\`_\n\n` +
     `_Dikirim: ${nowWIB()}_`
   );
 }
