@@ -281,6 +281,12 @@ export default function JasaDetail() {
   const [receiverPhone, setReceiverPhone] = useState("");
 
   useEffect(() => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    try { window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior }); } catch { window.scrollTo(0, 0); }
+  }, [params.id]);
+
+  useEffect(() => {
     fetch("/api/portal/trucking-rates")
       .then(r => r.ok ? r.json() as Promise<Record<string, { ratePerKm: number; loadingFee: number }>> : Promise.reject())
       .then(setTruckingRates)
