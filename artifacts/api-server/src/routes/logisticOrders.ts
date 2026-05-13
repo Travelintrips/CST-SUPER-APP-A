@@ -8,7 +8,9 @@ import {
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
+import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
+import { broadcastToAdmins } from "../lib/sseManager";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -145,9 +147,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     (body.items.find((i) => i.calculatorType === "trucking")
       ?.inputData as Record<string, unknown> | undefined)
       ?.vehicleType as string ?? null;
-
-  // Fire-and-forget: notify admin + vendors + customer via WA & email
-  sendLogisticOrderNotification({
+sendLogisticOrderNotification({
     id: order.id,
     orderNumber,
     customerName: body.customerName,
@@ -170,6 +170,25 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     createdAt: order.createdAt,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
+  });
+
+  // Fire-and-forget: auto-create RFQ + send WA to matching vendors with quote form link
+  autoCreateRfqAndNotifyVendors(order.id, {
+    orderNumber,
+    shipmentType: body.shipmentType,
+    origin: body.origin,
+    destination: body.destination,
+    commodity: body.commodity ?? null,
+    cargoDescription: body.cargoDescription ?? null,
+    grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
+    volumeCbm: body.volumeCbm != null ? Number(body.volumeCbm) : null,
+    requiredDate: body.requiredDate ?? null,
+    notes: body.notes ?? null,
+    jamOrder: body.jamOrder ?? null,
+    vehicleType,
+    createdAt: order.createdAt,
+  }).catch((err: unknown) => {
+    req.log.error({ err }, "autoCreateRfqAndNotifyVendors failed");
   });
 
   return res.status(201).json({

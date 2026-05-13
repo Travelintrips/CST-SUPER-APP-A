@@ -437,20 +437,23 @@ export default function LogisticsVendorQuotePage() {
                 Harga dasar vendor: <span className="font-medium text-slate-700">{fmt(data.vendorBasePrice)}</span>
               </p>
             )}
-            <Input
+            <input
               id="vendorPrice"
-              type="number"
+              type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
               placeholder="Contoh: 5000000"
               value={vendorPrice}
-              onChange={(e) => setVendorPrice(e.target.value)}
-              className="text-lg font-semibold h-12 border-slate-300 focus:border-blue-500"
+              onChange={(e) => setVendorPrice(e.target.value.replace(/[^0-9]/g, ""))}
+              className="w-full h-12 px-3 text-lg font-semibold text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               required
             />
             {vendorPrice && parseFloat(vendorPrice) > 0 && (
-              <p className="text-sm text-green-700 font-medium">
-                {fmt(parseFloat(vendorPrice))}
-              </p>
+              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                <p className="text-sm text-green-700 font-semibold">
+                  {fmt(parseFloat(vendorPrice))}
+                </p>
+              </div>
             )}
           </div>
 
@@ -458,7 +461,7 @@ export default function LogisticsVendorQuotePage() {
             <Label htmlFor="notes" className="text-sm text-slate-600">
               {isTrucking ? "Catatan Tambahan (opsional)" : "Catatan / Syarat Tambahan"}
             </Label>
-            <Textarea
+            <textarea
               id="notes"
               rows={3}
               placeholder={
@@ -468,7 +471,7 @@ export default function LogisticsVendorQuotePage() {
               }
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="border-slate-300 resize-none"
+              className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
             />
           </div>
 

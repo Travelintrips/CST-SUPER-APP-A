@@ -13,6 +13,8 @@ import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
   registerAdminConnection, unregisterAdminConnection, broadcastToAdmins,
 } from "../lib/sseManager";
+import { checkGeofence } from "../lib/geofence";
+import { upsertAlert, resolveAlert, getActiveAlerts, hasActiveAlert } from "../lib/geofenceAlertStore";
 
 const router = Router();
 const adminRouter = Router();
@@ -378,6 +380,64 @@ router.post("/location", requireDriverAuth, async (req, res) => {
     .update(driversTable)
     .set({ currentLat: String(lat), currentLng: String(lng), lastLocationAt: new Date() })
     .where(eq(driversTable.id, driverId));
+  const [driver] = await db
+    .select({ id: driversTable.id, name: driversTable.name, vehiclePlate: driversTable.vehiclePlate })
+    .from(driversTable)
+    .where(eq(driversTable.id, driverId));
+  broadcastToAdmins("location_update", {
+    driverId,
+    name: driver?.name ?? "",
+    vehiclePlate: driver?.vehiclePlate ?? null,
+    lat: Number(lat),
+    lng: Number(lng),
+    updatedAt: new Date().toISOString(),
+  });
+
+  // Geofence check — run async without blocking the response
+  (async () => {
+    try {
+      const activeJobs = await db
+        .select({ id: driverJobsTable.id, jobNumber: driverJobsTable.jobNumber, status: driverJobsTable.status, pickupAddress: driverJobsTable.pickupAddress, deliveryAddress: driverJobsTable.deliveryAddress })
+        .from(driverJobsTable)
+        .where(and(
+          eq(driverJobsTable.driverId, driverId),
+          ne(driverJobsTable.status, "COMPLETED"),
+          ne(driverJobsTable.status, "CANCELLED"),
+          ne(driverJobsTable.status, "DELIVERED"),
+          ne(driverJobsTable.status, "ASSIGNED"),
+        ));
+      if (!activeJobs.length) return;
+      const job = activeJobs[0];
+      const result = await checkGeofence(Number(lat), Number(lng), job.pickupAddress, job.deliveryAddress);
+      if (!result) return;
+      if (result.deviated) {
+        const wasAlreadyAlerting = hasActiveAlert(driverId, job.id);
+        const alert = upsertAlert({
+          driverId,
+          driverName: driver?.name ?? "",
+          jobId: job.id,
+          jobNumber: job.jobNumber,
+          deviationKm: result.deviationKm,
+          thresholdKm: result.thresholdKm,
+          lat: Number(lat),
+          lng: Number(lng),
+          pickupAddress: job.pickupAddress,
+          deliveryAddress: job.deliveryAddress,
+        });
+        if (!wasAlreadyAlerting) {
+          broadcastToAdmins("geofence_alert", alert);
+        } else {
+          broadcastToAdmins("geofence_alert_update", alert);
+        }
+      } else {
+        const resolved = resolveAlert(driverId, job.id);
+        if (resolved) {
+          broadcastToAdmins("geofence_resolved", { id: resolved.id, driverId, driverName: driver?.name ?? "", jobNumber: job.jobNumber });
+        }
+      }
+    } catch { /* non-critical */ }
+  })();
+
   res.json({ ok: true });
 });
 
@@ -442,6 +502,126 @@ adminRouter.get("/events", async (req, res) => {
     clearInterval(heartbeat);
     unregisterAdminConnection(res);
   });
+});
+
+// GET /api/drivers/geofence-alerts — list active geofence alerts
+adminRouter.get("/geofence-alerts", (_req, res) => {
+  res.json(getActiveAlerts());
+});
+
+// GET /api/drivers/performance?from=&to=&driverId=
+adminRouter.get("/performance", async (req, res) => {
+  const fromRaw = req.query.from as string | undefined;
+  const toRaw = req.query.to as string | undefined;
+  const driverIdFilter = req.query.driverId ? Number(req.query.driverId) : undefined;
+
+  const fromDate = fromRaw ? new Date(fromRaw) : (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; })();
+  const toDate = toRaw ? new Date(toRaw + "T23:59:59") : new Date();
+
+  const { gte, lte, inArray } = await import("drizzle-orm");
+
+  const conditions = [
+    gte(driverJobsTable.assignedAt, fromDate),
+    lte(driverJobsTable.assignedAt, toDate),
+    ...(driverIdFilter ? [eq(driverJobsTable.driverId, driverIdFilter)] : []),
+  ];
+
+  const jobs = await db
+    .select({
+      driverId: driverJobsTable.driverId,
+      driverName: driversTable.name,
+      driverEmail: driversTable.email,
+      vehiclePlate: driversTable.vehiclePlate,
+      vehicleType: driversTable.vehicleType,
+      status: driverJobsTable.status,
+      assignedAt: driverJobsTable.assignedAt,
+      completedAt: driverJobsTable.completedAt,
+      deliveryDateTime: driverJobsTable.deliveryDateTime,
+    })
+    .from(driverJobsTable)
+    .leftJoin(driversTable, eq(driverJobsTable.driverId, driversTable.id))
+    .where(and(...conditions));
+
+  type DriverStat = {
+    driverId: number;
+    driverName: string;
+    driverEmail: string;
+    vehiclePlate: string | null;
+    vehicleType: string | null;
+    totalJobs: number;
+    completed: number;
+    delivered: number;
+    cancelled: number;
+    inProgress: number;
+    totalDurationMs: number;
+    completedWithDuration: number;
+    onTimeCount: number;
+    onTimeEligible: number;
+  };
+
+  const statsMap = new Map<number, DriverStat>();
+
+  const TERMINAL = new Set(["COMPLETED", "DELIVERED", "CANCELLED"]);
+  const ACTIVE_STATUSES = new Set(["ASSIGNED","ACCEPTED","ON_THE_WAY_TO_PICKUP","ARRIVED_AT_PICKUP","PICKED_UP","IN_TRANSIT","ARRIVED_AT_DESTINATION"]);
+
+  for (const job of jobs) {
+    if (!job.driverId) continue;
+    if (!statsMap.has(job.driverId)) {
+      statsMap.set(job.driverId, {
+        driverId: job.driverId,
+        driverName: job.driverName ?? "",
+        driverEmail: job.driverEmail ?? "",
+        vehiclePlate: job.vehiclePlate,
+        vehicleType: job.vehicleType,
+        totalJobs: 0, completed: 0, delivered: 0, cancelled: 0, inProgress: 0,
+        totalDurationMs: 0, completedWithDuration: 0,
+        onTimeCount: 0, onTimeEligible: 0,
+      });
+    }
+    const s = statsMap.get(job.driverId)!;
+    s.totalJobs++;
+    if (job.status === "COMPLETED") {
+      s.completed++;
+      s.delivered++;
+    } else if (job.status === "DELIVERED") {
+      s.delivered++;
+    } else if (job.status === "CANCELLED") {
+      s.cancelled++;
+    } else if (ACTIVE_STATUSES.has(job.status)) {
+      s.inProgress++;
+    }
+    if ((job.status === "COMPLETED" || job.status === "DELIVERED") && job.completedAt && job.assignedAt) {
+      s.totalDurationMs += job.completedAt.getTime() - job.assignedAt.getTime();
+      s.completedWithDuration++;
+    }
+    if (job.deliveryDateTime && (job.status === "COMPLETED" || job.status === "DELIVERED")) {
+      s.onTimeEligible++;
+      const finishedAt = job.completedAt ?? new Date();
+      if (finishedAt <= job.deliveryDateTime) s.onTimeCount++;
+    }
+  }
+
+  const result = [...statsMap.values()].map((s) => ({
+    driverId: s.driverId,
+    driverName: s.driverName,
+    driverEmail: s.driverEmail,
+    vehiclePlate: s.vehiclePlate,
+    vehicleType: s.vehicleType,
+    totalJobs: s.totalJobs,
+    completed: s.completed,
+    delivered: s.delivered,
+    cancelled: s.cancelled,
+    inProgress: s.inProgress,
+    successRate: s.totalJobs > 0 ? Math.round((s.delivered / s.totalJobs) * 100) : 0,
+    avgDurationHours: s.completedWithDuration > 0
+      ? Math.round((s.totalDurationMs / s.completedWithDuration / 3_600_000) * 10) / 10
+      : null,
+    onTimeCount: s.onTimeCount,
+    onTimeEligible: s.onTimeEligible,
+    onTimePct: s.onTimeEligible > 0 ? Math.round((s.onTimeCount / s.onTimeEligible) * 100) : null,
+  })).sort((a, b) => b.totalJobs - a.totalJobs);
+
+  res.json({ from: fromDate.toISOString(), to: toDate.toISOString(), drivers: result });
 });
 
 // GET /api/drivers/jobs/list — list all driver jobs (admin)

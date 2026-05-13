@@ -15,6 +15,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp, Activity, ClipboardList } from "lucide-react";
+import DriverMap from "@/components/logistics/DriverMap";
+import GeofenceAlertPanel from "@/components/logistics/GeofenceAlertPanel";
 
 interface Driver {
   id: number;
@@ -106,6 +108,8 @@ export default function LogisticsDriversPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [sseConnected, setSseConnected] = useState(false);
+  const [geofenceAlertCount, setGeofenceAlertCount] = useState(0);
+  const [deviatedDriverIds, setDeviatedDriverIds] = useState<Set<number>>(new Set());
   const sseRef = useRef<EventSource | null>(null);
 
   // SSE real-time subscription untuk update status driver
@@ -143,6 +147,50 @@ export default function LogisticsDriversPage() {
         } catch { /* ignore */ }
       });
 
+      es.addEventListener("location_update", (e: MessageEvent) => {
+        if (!active) return;
+        try {
+          const data = JSON.parse(e.data);
+          window.dispatchEvent(new CustomEvent("driver_location_update", { detail: data }));
+          queryClient.invalidateQueries({ queryKey: ["drivers"] });
+        } catch { /* ignore */ }
+      });
+
+      es.addEventListener("geofence_alert", (e: MessageEvent) => {
+        if (!active) return;
+        try {
+          const data = JSON.parse(e.data);
+          window.dispatchEvent(new CustomEvent("geofence_alert", { detail: data }));
+          setGeofenceAlertCount((c) => c + 1);
+          toast({
+            title: `⚠️ Geofence Alert — ${data.driverName}`,
+            description: `Job ${data.jobNumber}: menyimpang ${data.deviationKm.toFixed(1)} km dari rute!`,
+            variant: "destructive",
+          });
+        } catch { /* ignore */ }
+      });
+
+      es.addEventListener("geofence_alert_update", (e: MessageEvent) => {
+        if (!active) return;
+        try {
+          const data = JSON.parse(e.data);
+          window.dispatchEvent(new CustomEvent("geofence_alert_update", { detail: data }));
+        } catch { /* ignore */ }
+      });
+
+      es.addEventListener("geofence_resolved", (e: MessageEvent) => {
+        if (!active) return;
+        try {
+          const data = JSON.parse(e.data);
+          window.dispatchEvent(new CustomEvent("geofence_resolved", { detail: data }));
+          setGeofenceAlertCount((c) => Math.max(0, c - 1));
+          toast({
+            title: `✅ ${data.driverName} kembali ke rute`,
+            description: `Job ${data.jobNumber} sudah kembali dalam jalur normal.`,
+          });
+        } catch { /* ignore */ }
+      });
+
       es.onerror = () => {
         setSseConnected(false);
         es?.close();
@@ -162,6 +210,24 @@ export default function LogisticsDriversPage() {
       sseRef.current = null;
     };
   }, [queryClient, toast]);
+
+  // Track deviated driver IDs from geofence events for map highlighting
+  useEffect(() => {
+    function onAlert(e: Event) {
+      const data = (e as CustomEvent).detail as { driverId: number };
+      setDeviatedDriverIds((prev) => new Set([...prev, data.driverId]));
+    }
+    function onResolved(e: Event) {
+      const data = (e as CustomEvent).detail as { driverId: number };
+      setDeviatedDriverIds((prev) => { const next = new Set(prev); next.delete(data.driverId); return next; });
+    }
+    window.addEventListener("geofence_alert", onAlert);
+    window.addEventListener("geofence_resolved", onResolved);
+    return () => {
+      window.removeEventListener("geofence_alert", onAlert);
+      window.removeEventListener("geofence_resolved", onResolved);
+    };
+  }, []);
 
   const [showJobDialog, setShowJobDialog] = useState(false);
   const [jobTargetDriver, setJobTargetDriver] = useState<Driver | null>(null);
@@ -359,6 +425,17 @@ export default function LogisticsDriversPage() {
             </CardContent>
           </Card>
         </div>
+
+        <GeofenceAlertPanel
+          onAlertCountChange={setGeofenceAlertCount}
+        />
+
+        <DriverMap
+          drivers={drivers}
+          activeJobByDriver={activeJobByDriver}
+          sseConnected={sseConnected}
+          geofenceAlertDriverIds={deviatedDriverIds}
+        />
 
         <Card>
           <CardHeader className="pb-3">

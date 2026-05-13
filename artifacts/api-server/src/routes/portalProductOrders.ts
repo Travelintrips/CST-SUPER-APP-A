@@ -10,6 +10,7 @@ import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
+import { broadcastToAdmins } from "../lib/sseManager";
 
 export const portalProductOrdersRouter = Router();
 
@@ -196,6 +197,18 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
 
   const orderOut = toOrder(order);
   const itemsOut = insertedItems.map(toItem);
+
+  // Real-time SSE: notify BizPortal admins immediately
+  broadcastToAdmins("new_order", {
+    type: "product",
+    orderId: order.id,
+    orderNumber,
+    customerName: customerName.trim(),
+    companyName: null,
+    grandTotal: grandTotal,
+    itemCount: items.length,
+    createdAt: order.createdAt,
+  });
 
   sendProductOrderNotification(orderOut, itemsOut).catch((err: unknown) => {
     req.log.error({ err }, "sendProductOrderNotification failed");

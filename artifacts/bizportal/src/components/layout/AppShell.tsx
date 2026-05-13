@@ -57,6 +57,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface AppShellProps {
@@ -187,6 +188,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "shipments", href: "/logistics", icon: Truck },
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
+        { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2 },
       ],
     },
     { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
@@ -387,6 +389,12 @@ export function AppShell({ children }: AppShellProps) {
               <Building2 size={18} className="text-primary" />
               <span>BizPortal</span>
             </div>
+            <div className="ml-auto">
+              <NotificationBell />
+            </div>
+          </div>
+          <div className="hidden lg:flex sticky top-0 z-10 h-12 items-center justify-end border-b border-border bg-background px-6">
+            <NotificationBell />
           </div>
           <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {children}
