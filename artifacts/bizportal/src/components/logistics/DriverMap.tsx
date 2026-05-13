@@ -82,9 +82,10 @@ interface DriverMapProps {
   drivers: Driver[];
   activeJobByDriver: Record<number, ActiveJob>;
   sseConnected: boolean;
+  geofenceAlertDriverIds?: Set<number>;
 }
 
-export default function DriverMap({ drivers, activeJobByDriver, sseConnected }: DriverMapProps) {
+export default function DriverMap({ drivers, activeJobByDriver, sseConnected, geofenceAlertDriverIds = new Set() }: DriverMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<number, L.Marker>>(new Map());
@@ -163,6 +164,7 @@ export default function DriverMap({ drivers, activeJobByDriver, sseConnected }: 
     if (!map) return;
 
     const currentIds = new Set(locations.keys());
+
     for (const [id, marker] of markersRef.current) {
       if (!currentIds.has(id)) {
         marker.remove();
@@ -174,10 +176,12 @@ export default function DriverMap({ drivers, activeJobByDriver, sseConnected }: 
     for (const [driverId, loc] of locations) {
       const job = activeJobByDriver[driverId];
       const isOnJob = job && job.status !== "COMPLETED" && job.status !== "CANCELLED";
-      const color = isOnJob ? "#f97316" : "#22c55e";
+      const isDeviated = geofenceAlertDriverIds.has(driverId);
+      const color = isDeviated ? "#ef4444" : isOnJob ? "#f97316" : "#22c55e";
       const icon = makeMarkerIcon(color);
       const popupHtml = `
         <div style="min-width:160px;font-family:system-ui,sans-serif">
+          ${isDeviated ? `<div style="color:#ef4444;font-size:12px;font-weight:600;margin-bottom:6px;padding:4px 8px;background:#fef2f2;border-radius:4px">⚠️ Keluar jalur rute!</div>` : ""}
           <div style="font-weight:700;font-size:14px;margin-bottom:4px">${loc.name}</div>
           ${loc.vehiclePlate ? `<div style="color:#666;font-size:12px;margin-bottom:4px">🚛 ${loc.vehiclePlate}</div>` : ""}
           ${job && isOnJob ? `<div style="font-size:12px;color:#f97316;margin-bottom:4px">📋 ${job.jobNumber} — ${STATUS_LABELS[job.status] ?? job.status}</div>` : ""}

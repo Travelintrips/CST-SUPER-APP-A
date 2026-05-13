@@ -13,6 +13,8 @@ import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
   registerAdminConnection, unregisterAdminConnection, broadcastToAdmins,
 } from "../lib/sseManager";
+import { checkGeofence } from "../lib/geofence";
+import { upsertAlert, resolveAlert, getActiveAlerts, hasActiveAlert } from "../lib/geofenceAlertStore";
 
 const router = Router();
 const adminRouter = Router();
@@ -390,6 +392,52 @@ router.post("/location", requireDriverAuth, async (req, res) => {
     lng: Number(lng),
     updatedAt: new Date().toISOString(),
   });
+
+  // Geofence check — run async without blocking the response
+  (async () => {
+    try {
+      const activeJobs = await db
+        .select({ id: driverJobsTable.id, jobNumber: driverJobsTable.jobNumber, status: driverJobsTable.status, pickupAddress: driverJobsTable.pickupAddress, deliveryAddress: driverJobsTable.deliveryAddress })
+        .from(driverJobsTable)
+        .where(and(
+          eq(driverJobsTable.driverId, driverId),
+          ne(driverJobsTable.status, "COMPLETED"),
+          ne(driverJobsTable.status, "CANCELLED"),
+          ne(driverJobsTable.status, "DELIVERED"),
+          ne(driverJobsTable.status, "ASSIGNED"),
+        ));
+      if (!activeJobs.length) return;
+      const job = activeJobs[0];
+      const result = await checkGeofence(Number(lat), Number(lng), job.pickupAddress, job.deliveryAddress);
+      if (!result) return;
+      if (result.deviated) {
+        const wasAlreadyAlerting = hasActiveAlert(driverId, job.id);
+        const alert = upsertAlert({
+          driverId,
+          driverName: driver?.name ?? "",
+          jobId: job.id,
+          jobNumber: job.jobNumber,
+          deviationKm: result.deviationKm,
+          thresholdKm: result.thresholdKm,
+          lat: Number(lat),
+          lng: Number(lng),
+          pickupAddress: job.pickupAddress,
+          deliveryAddress: job.deliveryAddress,
+        });
+        if (!wasAlreadyAlerting) {
+          broadcastToAdmins("geofence_alert", alert);
+        } else {
+          broadcastToAdmins("geofence_alert_update", alert);
+        }
+      } else {
+        const resolved = resolveAlert(driverId, job.id);
+        if (resolved) {
+          broadcastToAdmins("geofence_resolved", { id: resolved.id, driverId, driverName: driver?.name ?? "", jobNumber: job.jobNumber });
+        }
+      }
+    } catch { /* non-critical */ }
+  })();
+
   res.json({ ok: true });
 });
 
@@ -454,6 +502,11 @@ adminRouter.get("/events", async (req, res) => {
     clearInterval(heartbeat);
     unregisterAdminConnection(res);
   });
+});
+
+// GET /api/drivers/geofence-alerts — list active geofence alerts
+adminRouter.get("/geofence-alerts", (_req, res) => {
+  res.json(getActiveAlerts());
 });
 
 // GET /api/drivers/jobs/list — list all driver jobs (admin)
