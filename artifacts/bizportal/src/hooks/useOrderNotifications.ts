@@ -1,5 +1,33 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
+function playNotificationChime() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const now = ctx.currentTime;
+
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    const timings = [0, 0.15, 0.3, 0.45];
+
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + timings[i]);
+      gain.gain.setValueAtTime(0, now + timings[i]);
+      gain.gain.linearRampToValueAtTime(0.18, now + timings[i] + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + timings[i] + 0.5);
+      osc.start(now + timings[i]);
+      osc.stop(now + timings[i] + 0.55);
+    });
+
+    setTimeout(() => ctx.close(), 2500);
+  } catch {
+    // AudioContext not supported or blocked — silently skip
+  }
+}
+
 export interface OrderNotification {
   id: string;
   type: "logistic" | "portal_sales" | "product";
@@ -79,6 +107,7 @@ export function useOrderNotifications() {
           setNotifications((prev) =>
             [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
           );
+          playNotificationChime();
           onNewOrderRef.current?.(notification);
         } catch {
         }
