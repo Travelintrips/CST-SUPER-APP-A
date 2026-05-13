@@ -5,8 +5,11 @@ import {
   logisticOrderItemsTable,
   portalContentTable,
   suppliersTable,
+  driverJobsTable,
+  driverJobLogsTable,
+  driverPhotosTable,
 } from "@workspace/db";
-import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, or, sql, desc } from "drizzle-orm";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -270,6 +273,85 @@ logisticOrdersRouter.get(
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
     return res.json({ ...toOrder(order), items: items.map(toItem) });
+  }
+);
+
+// GET /api/logistic/orders/track/:orderNumber — full tracking data with driver job (public)
+logisticOrdersRouter.get(
+  "/track/:orderNumber",
+  async (req: Request, res: Response) => {
+    const orderNumber = String(req.params.orderNumber ?? "").toUpperCase().trim();
+    if (!orderNumber) return res.status(400).json({ message: "Nomor order tidak valid" });
+
+    const [order] = await db
+      .select()
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.orderNumber, orderNumber));
+
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const items = await db
+      .select()
+      .from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, order.id));
+
+    const [driverJob] = await db
+      .select()
+      .from(driverJobsTable)
+      .where(eq(driverJobsTable.logisticOrderId, order.id))
+      .orderBy(desc(driverJobsTable.assignedAt))
+      .limit(1);
+
+    let driverJobData = null;
+    if (driverJob) {
+      const logs = await db
+        .select()
+        .from(driverJobLogsTable)
+        .where(eq(driverJobLogsTable.driverJobId, driverJob.id))
+        .orderBy(desc(driverJobLogsTable.timestamp));
+
+      const photos = await db
+        .select()
+        .from(driverPhotosTable)
+        .where(eq(driverPhotosTable.driverJobId, driverJob.id))
+        .orderBy(desc(driverPhotosTable.takenAt));
+
+      driverJobData = {
+        id: driverJob.id,
+        jobNumber: driverJob.jobNumber,
+        status: driverJob.status,
+        vehicleType: driverJob.vehicleType ?? null,
+        truckPlate: driverJob.truckPlate ?? null,
+        pickupAddress: driverJob.pickupAddress ?? null,
+        deliveryAddress: driverJob.deliveryAddress ?? null,
+        pickupDateTime: driverJob.pickupDateTime?.toISOString() ?? null,
+        deliveryDateTime: driverJob.deliveryDateTime?.toISOString() ?? null,
+        cargoDescription: driverJob.cargoDescription ?? null,
+        weight: driverJob.weight ?? null,
+        distance: driverJob.distance ?? null,
+        podReceiverName: driverJob.podReceiverName ?? null,
+        assignedAt: driverJob.assignedAt.toISOString(),
+        completedAt: driverJob.completedAt?.toISOString() ?? null,
+        logs: logs.map((l) => ({
+          id: l.id,
+          status: l.status,
+          note: l.note ?? null,
+          timestamp: l.timestamp.toISOString(),
+        })),
+        photos: photos.map((p) => ({
+          id: p.id,
+          url: p.url,
+          photoType: p.photoType,
+          takenAt: p.takenAt.toISOString(),
+        })),
+      };
+    }
+
+    return res.json({
+      ...toOrder(order),
+      items: items.map(toItem),
+      driverJob: driverJobData,
+    });
   }
 );
 
