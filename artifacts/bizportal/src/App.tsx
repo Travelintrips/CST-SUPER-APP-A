@@ -97,9 +97,6 @@ import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
 
-const queryClient = new QueryClient();
-
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 function roleToPath(role?: string | null) {
   switch (role) {
     case "admin":
