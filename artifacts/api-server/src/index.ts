@@ -8,6 +8,7 @@ import { startImapPoller } from "./lib/imapPoller";
 import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { runPortalMigration } from "./lib/portalMigration";
+import { runAccountingMigration } from "./lib/accountingMigration";
 import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 
 const rawPort = process.env["PORT"];
@@ -35,6 +36,11 @@ app.listen(port, (err) => {
   // Jalankan portal schema migration (idempotent — aman untuk prod)
   runPortalMigration().catch((err) => {
     logger.error({ err }, "Portal migration error");
+  });
+
+  // Jalankan accounting schema migration (idempotent — tambah kolom automation)
+  runAccountingMigration().catch((err) => {
+    logger.error({ err }, "Accounting migration error");
   });
 
   // Enable Supabase Realtime on driver tables (idempotent)

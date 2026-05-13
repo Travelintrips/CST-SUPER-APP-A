@@ -53,6 +53,12 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   notes: text("notes"),
   paymentType: text("payment_type"),
   confirmedAt: timestamp("confirmed_at"),
+  // Invoice automation fields
+  invoiceNumber: text("invoice_number"),
+  invoiceDate: date("invoice_date"),
+  dueDate: date("due_date"),
+  paymentTermDays: integer("payment_term_days").default(30),
+  cancelledAt: timestamp("cancelled_at"),
   createdById: text("created_by_id"),
   aiGenerated: boolean("ai_generated").notNull().default(false),
   aiSourceCorrespondenceId: integer("ai_source_correspondence_id"),

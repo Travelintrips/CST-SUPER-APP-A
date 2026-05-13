@@ -566,6 +566,11 @@ export interface SalesDocument {
   aiGenerated?: boolean;
   aiSourceWaPhone?: string | null;
   aiSourceCorrespondenceId?: number | null;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
+  dueDate?: string | null;
+  paymentTermDays?: number | null;
+  cancelledAt?: string | null;
 }
 
 export type SalesDocumentDetail = SalesDocument & {
@@ -709,6 +714,11 @@ export interface PurchaseDocument {
   amountPaid: number;
   createdAt: string;
   updatedAt: string;
+  billNumber?: string | null;
+  billDate?: string | null;
+  dueDate?: string | null;
+  paymentTermDays?: number | null;
+  cancelledAt?: string | null;
 }
 
 export type PurchaseDocumentDetail = PurchaseDocument & {
@@ -1143,6 +1153,7 @@ export const AccountingPaymentStatus = {
 
 export interface AccountingPayment {
   id: number;
+  paymentNumber?: string | null;
   paymentType: AccountingPaymentPaymentType;
   status: AccountingPaymentStatus;
   amount: number;

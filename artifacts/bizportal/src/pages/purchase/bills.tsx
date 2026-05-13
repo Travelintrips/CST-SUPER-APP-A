@@ -150,13 +150,15 @@ export default function PurchaseBillsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>No. Bill</TableHead>
                   <TableHead>No. Order</TableHead>
                   <TableHead>Vendor</TableHead>
                   <TableHead>Status Bill</TableHead>
                   <TableHead>Status Bayar</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Sisa Hutang</TableHead>
-                  <TableHead className="text-right">Tanggal</TableHead>
+                  <TableHead>Tgl Bill</TableHead>
+                  <TableHead>Jatuh Tempo</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -164,9 +166,13 @@ export default function PurchaseBillsPage() {
                 {filtered.map((d) => {
                   const balanceDue = Math.max(0, Number(d.grandTotal) - Number(d.amountPaid ?? 0));
                   const effectivePayStatus = balanceDue === 0 ? "paid" : (d.amountPaid ?? 0) > 0 ? "partial" : "unpaid";
-                  const canPay = d.billStatus === "billed" && effectivePayStatus !== "paid";
+                  const canPay = d.billStatus === "billed" && effectivePayStatus !== "paid" && !d.cancelledAt;
+                  const isOverdue = d.dueDate && new Date(d.dueDate) < new Date() && effectivePayStatus !== "paid" && d.billStatus === "billed";
                   return (
-                    <TableRow key={d.id} data-testid={`row-bill-${d.id}`}>
+                    <TableRow key={d.id} data-testid={`row-bill-${d.id}`} className={d.cancelledAt ? "opacity-50" : undefined}>
+                      <TableCell className="font-mono text-xs text-violet-400">
+                        {d.billNumber ?? <span className="text-slate-600">—</span>}
+                      </TableCell>
                       <TableCell>
                         <Link href={`/purchase/orders/${d.id}`}>
                           <Badge className="bg-violet-900/40 text-violet-300 border-violet-700 text-xs gap-1 cursor-pointer hover:bg-violet-900/60 font-mono">
@@ -176,12 +182,16 @@ export default function PurchaseBillsPage() {
                       </TableCell>
                       <TableCell>{d.supplierName}</TableCell>
                       <TableCell>
-                        <Badge variant={d.billStatus === "billed" ? "default" : "outline"} className="capitalize">
-                          {d.billStatus.replace("_", " ")}
-                        </Badge>
+                        {d.cancelledAt ? (
+                          <Badge className="bg-slate-700/60 text-slate-400 border-slate-600 text-xs">Dibatalkan</Badge>
+                        ) : (
+                          <Badge variant={d.billStatus === "billed" ? "default" : "outline"} className="capitalize">
+                            {d.billStatus === "billed" ? "Posted" : d.billStatus.replace("_", " ")}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
-                        {d.billStatus === "billed" ? (
+                        {d.billStatus === "billed" && !d.cancelledAt ? (
                           <PaymentStatusBadge status={effectivePayStatus} />
                         ) : (
                           <span className="text-slate-500 text-xs">-</span>
@@ -189,15 +199,21 @@ export default function PurchaseBillsPage() {
                       </TableCell>
                       <TableCell className="text-right font-medium">{idr(Number(d.grandTotal ?? d.totalAmount))}</TableCell>
                       <TableCell className="text-right">
-                        {d.billStatus === "billed" && balanceDue > 0 ? (
+                        {d.billStatus === "billed" && !d.cancelledAt && balanceDue > 0 ? (
                           <span className="text-amber-400 font-mono text-sm">{idr(balanceDue)}</span>
-                        ) : d.billStatus === "billed" && balanceDue === 0 ? (
+                        ) : d.billStatus === "billed" && !d.cancelledAt && balanceDue === 0 ? (
                           <span className="text-emerald-400 text-xs">Lunas</span>
                         ) : (
                           <span className="text-slate-500 text-xs">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">{new Date(d.createdAt).toLocaleDateString("id-ID")}</TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {d.billDate ? new Date(d.billDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </TableCell>
+                      <TableCell className={`text-xs ${isOverdue ? "text-red-400 font-semibold" : "text-slate-400"}`}>
+                        {d.dueDate ? new Date(d.dueDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        {isOverdue && <span className="ml-1 text-xs">(Lewat)</span>}
+                      </TableCell>
                       <TableCell>
                         {canPay && (
                           <Button
@@ -222,7 +238,7 @@ export default function PurchaseBillsPage() {
                 })}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       Belum ada bill.
                     </TableCell>
                   </TableRow>

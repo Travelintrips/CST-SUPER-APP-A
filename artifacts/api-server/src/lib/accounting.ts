@@ -39,13 +39,15 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-async function nextEntryNumber(journalCode: string): Promise<string> {
+async function nextEntryNumber(journalCode: string, source?: string): Promise<string> {
   const year = new Date().getFullYear();
+  // Manual entries always use JE prefix; auto-posted entries use the journal code
+  const prefix = (source === "manual" || !source) ? "JE" : journalCode;
   const [{ count }] = await db
     .select({ count: sql<number>`cast(count(*) as int)` })
     .from(accountingEntriesTable);
-  const seq = (Number(count) + 1).toString().padStart(6, "0");
-  return `${journalCode}/${year}/${seq}`;
+  const seq = (Number(count) + 1).toString().padStart(4, "0");
+  return `${prefix}/${year}/${seq}`;
 }
 
 /** Create and post a balanced journal entry. Throws if not balanced. */
@@ -64,7 +66,7 @@ export async function postEntry(
     throw new Error("Journal entry must have at least one line");
   }
 
-  const entryNumber = await nextEntryNumber(journalCode);
+  const entryNumber = await nextEntryNumber(journalCode, input.source);
   const dateStr = input.date.toISOString().split("T")[0]!;
   const source = input.source ?? "manual";
   const sourceId = input.sourceId ?? null;
