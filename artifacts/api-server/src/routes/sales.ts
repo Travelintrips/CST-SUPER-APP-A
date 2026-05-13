@@ -415,8 +415,30 @@ router.post("/documents/:id/action", async (req, res) => {
       if (shipmentCount === 0) {
         return res.status(400).json({ message: "Tidak bisa membuat invoice: belum ada Shipment yang terhubung dengan Sales Order ini. Buat Shipment terlebih dahulu." });
       }
+      // Auto-numbering: INV/YYYY/NNNN
+      const invYear = new Date().getFullYear();
+      const [{ invCount }] = await db
+        .select({ invCount: sql<number>`cast(count(*) as int)` })
+        .from(salesDocumentsTable)
+        .where(sql`invoice_number IS NOT NULL`);
+      const invSeq = (Number(invCount) + 1).toString().padStart(4, "0");
+      const invoiceNumber = `INV/${invYear}/${invSeq}`;
+      const invoiceDate = new Date().toISOString().split("T")[0]!;
+      // Auto due date: invoiceDate + paymentTermDays (default 30)
+      const termDays = Number((doc as Record<string, unknown>)["paymentTermDays"] ?? 30);
+      const dueDate = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000).toISOString().split("T")[0]!;
       patch["invoiceStatus"] = "invoiced" satisfies SalesInvoiceStatus;
+      patch["invoiceNumber"] = invoiceNumber;
+      patch["invoiceDate"] = invoiceDate;
+      patch["dueDate"] = dueDate;
       if (doc.deliveryStatus === "delivered") patch["status"] = "done" satisfies SalesDocStatus;
+      break;
+    }
+    case "cancel_invoice": {
+      if (doc.invoiceStatus !== "invoiced") {
+        return res.status(400).json({ message: "Hanya invoice yang sudah diposting yang bisa dibatalkan" });
+      }
+      patch["cancelledAt"] = new Date();
       break;
     }
     case "mark_delivered":

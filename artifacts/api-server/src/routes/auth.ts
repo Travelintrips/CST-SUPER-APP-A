@@ -42,18 +42,19 @@ function getOrigin(req: Request): string {
 }
 
 function getGoogleOrigin(req: Request): string {
-  // Support both env var names for backward compatibility
+  // Explicit override always wins (set this in production secrets)
   const override = process.env.GOOGLE_REDIRECT_BASE_URL || process.env.GOOGLE_CALLBACK_ORIGIN;
   if (override) {
     return override.replace(/\/$/, "");
   }
-  // In Replit dev, use the stable dev domain automatically
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  }
   // Use APP_URL if set (e.g. https://cstlogistic.co.id)
   if (process.env.APP_URL) {
     return process.env.APP_URL.replace(/\/$/, "");
+  }
+  // In Replit dev (NOT deployed), use the stable dev domain
+  // REPLIT_DEPLOYMENT=1 is set in deployed environments, so skip dev domain there
+  if (process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
   return getOrigin(req);
 }
@@ -102,9 +103,11 @@ async function upsertUser(claims: Record<string, unknown>) {
       .where(and(eq(usersTable.email, email), ne(usersTable.id, id)));
   }
 
-  // Auto-promote to admin if email matches ADMIN_EMAIL env var
-  const adminEmails = (process.env.ADMIN_EMAIL ?? "")
-    .split(",")
+  // Auto-promote to admin if email matches ADMIN_EMAIL or ADMIN_EMAILS env var
+  const adminEmails = [
+    ...(process.env.ADMIN_EMAIL ?? "").split(","),
+    ...(process.env.ADMIN_EMAILS ?? "").split(","),
+  ]
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
   const isAdmin = adminEmails.includes(email.toLowerCase());

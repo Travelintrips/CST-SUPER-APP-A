@@ -5,8 +5,10 @@ import { seedLogisticsServiceItems } from "./lib/seedLogisticsItems";
 import { seedCatalogProducts } from "./lib/seedCatalogProducts";
 import { seedDemoData, seedDemoDrivers } from "./lib/seedDemoData";
 import { startImapPoller } from "./lib/imapPoller";
+import { startOcrTempCleanup } from "./lib/ocrTempCleanup";
 import { remediateOrphanProducts } from "./lib/remediateOrphanProducts";
 import { runPortalMigration } from "./lib/portalMigration";
+import { runAccountingMigration } from "./lib/accountingMigration";
 import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 
 const rawPort = process.env["PORT"];
@@ -36,6 +38,11 @@ app.listen(port, (err) => {
     logger.error({ err }, "Portal migration error");
   });
 
+  // Jalankan accounting schema migration (idempotent — tambah kolom automation)
+  runAccountingMigration().catch((err) => {
+    logger.error({ err }, "Accounting migration error");
+  });
+
   // Enable Supabase Realtime on driver tables (idempotent)
   enableRealtimeTables().catch((err) => {
     logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
@@ -58,5 +65,8 @@ app.listen(port, (err) => {
 
   // Start IMAP email poller (polls every 3 minutes when IMAP credentials are configured)
   startImapPoller(3 * 60 * 1000);
+
+  // Auto-delete OCR temp files older than 24 hours (runs every 6 hours)
+  startOcrTempCleanup();
 
 });

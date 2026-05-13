@@ -299,10 +299,33 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
       if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
       break;
-    case "mark_billed":
+    case "mark_billed": {
+      // Auto-numbering: BILL/YYYY/NNNN
+      const billYear = new Date().getFullYear();
+      const [{ billCount }] = await db
+        .select({ billCount: sql<number>`cast(count(*) as int)` })
+        .from(purchaseDocumentsTable)
+        .where(sql`bill_number IS NOT NULL`);
+      const billSeq = (Number(billCount) + 1).toString().padStart(4, "0");
+      const billNumber = `BILL/${billYear}/${billSeq}`;
+      const billDate = new Date().toISOString().split("T")[0]!;
+      // Auto due date: billDate + paymentTermDays (default 30)
+      const termDays = Number((doc as Record<string, unknown>)["paymentTermDays"] ?? 30);
+      const dueDate = new Date(Date.now() + termDays * 24 * 60 * 60 * 1000).toISOString().split("T")[0]!;
       patch["billStatus"] = "billed" satisfies PurchaseBillStatus;
+      patch["billNumber"] = billNumber;
+      patch["billDate"] = billDate;
+      patch["dueDate"] = dueDate;
       if (doc.receiveStatus === "received") patch["status"] = "done" satisfies PurchaseStatus;
       break;
+    }
+    case "cancel_bill": {
+      if (doc.billStatus !== "billed") {
+        return res.status(400).json({ message: "Hanya bill yang sudah diposting yang bisa dibatalkan" });
+      }
+      patch["cancelledAt"] = new Date();
+      break;
+    }
     default:
       return res.status(400).json({ message: "Invalid action" });
   }

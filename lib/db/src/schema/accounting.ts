@@ -48,6 +48,7 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "ecommerce_order",
   "stock_received",
   "manual_payment",
+  "reversal",
 ]);
 
 export const accountingPaymentTypeEnum = pgEnum("accounting_payment_type", [
@@ -209,6 +210,7 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
 
 export const accountingPaymentsTable = pgTable("accounting_payments", {
   id: serial("id").primaryKey(),
+  paymentNumber: text("payment_number"),
   paymentType: accountingPaymentTypeEnum("payment_type").notNull(),
   status: accountingPaymentStatusEnum("status").notNull().default("posted"),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),

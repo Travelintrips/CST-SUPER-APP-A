@@ -62,7 +62,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
     const proto = req.headers["x-forwarded-proto"] || "https";
     const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
     const uploadURL = `${proto}://${host}/api/storage/upload/${objectId}`;
-    const objectPath = `/objects/uploads/${objectId}`;
+    const objectPath = `/objects/documents/${objectId}`;
 
     res.json(
       RequestUploadUrlResponse.parse({
@@ -80,7 +80,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 /**
  * PUT /storage/upload/:objectId
  *
- * Receives file body and stores in Supabase Storage (private/uploads/).
+ * Receives file body and stores in Supabase Storage (private/documents/).
  */
 router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -97,7 +97,7 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
   try {
     const supabase = getSupabase();
     const bucket = getBucket();
-    const storagePath = `private/uploads/${objectId}`;
+    const storagePath = `private/documents/${objectId}`;
     const contentType = req.headers["content-type"] || "application/octet-stream";
 
     const chunks: Buffer[] = [];
@@ -112,7 +112,7 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
     }
 
     let finalContentType = contentType;
-    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType));
+    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType, "ocr-doc"));
 
     const { error } = await supabase.storage
       .from(bucket)
@@ -127,6 +127,69 @@ router.put("/storage/upload/:objectId", async (req: Request, res: Response) => {
     res.status(200).json({ ok: true });
   } catch (error) {
     req.log.error({ err: error }, "Error during file upload");
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
+
+/**
+ * PUT /storage/internal-upload/:visibility/:folder/:objectId
+ *
+ * Handles uploads from getObjectEntityUploadURL() and getPublicAssetUploadURL().
+ * Visibility: "public" | "private"
+ * Folder: cargo-photos | documents | public-assets | customer-attachments | ocr-temp
+ */
+const ALLOWED_INTERNAL_FOLDERS = new Set([
+  "cargo-photos", "documents", "public-assets", "customer-attachments", "ocr-temp",
+]);
+
+router.put("/storage/internal-upload/{*uploadPath}", async (req: Request, res: Response) => {
+  const rawPath = req.params.uploadPath as string;
+  const parts = rawPath.split("/");
+  const visibility = parts[0];
+  const folder = parts[1];
+
+  if (!["public", "private"].includes(visibility) || !folder || !ALLOWED_INTERNAL_FOLDERS.has(folder)) {
+    res.status(400).json({ error: "Invalid upload path" });
+    return;
+  }
+
+  // Determine compression mode by folder
+  const compressMode: import("../lib/imageCompress.js").ImageCompressMode =
+    folder === "cargo-photos" || folder === "public-assets" ? "photo" : "ocr-doc";
+
+  try {
+    const supabase = getSupabase();
+    const bucket = getBucket();
+    const storagePath = rawPath;
+    const contentType = req.headers["content-type"] || "application/octet-stream";
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+    }
+    let buffer = Buffer.concat(chunks);
+
+    if (buffer.length > MAX_UPLOAD_BYTES) {
+      res.status(413).json({ error: "File too large (max 10MB)" });
+      return;
+    }
+
+    let finalContentType = contentType;
+    ({ buffer, contentType: finalContentType } = await compressImageBuffer(buffer, contentType, compressMode));
+
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(storagePath, buffer, { contentType: finalContentType, upsert: true });
+
+    if (error) {
+      req.log.error({ err: error }, "Supabase internal-upload failed");
+      res.status(500).json({ error: "Upload failed" });
+      return;
+    }
+
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    req.log.error({ err: error }, "Error during internal file upload");
     res.status(500).json({ error: "Upload failed" });
   }
 });

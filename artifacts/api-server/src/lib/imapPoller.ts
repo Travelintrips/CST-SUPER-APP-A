@@ -32,9 +32,9 @@ async function uploadAttachmentToStorage(
   mimeType: string,
 ): Promise<string> {
   const objectId = randomUUID();
-  const storagePath = `private/email-attachments/${objectId}`;
+  const storagePath = `private/documents/email/${objectId}`;
   await _imapStorage.uploadFile(buffer, storagePath, mimeType);
-  return `/objects/email-attachments/${objectId}`;
+  return `/objects/documents/email/${objectId}`;
 }
 
 export async function syncImapEmails(): Promise<{ synced: number; errors: number }> {

@@ -189,7 +189,6 @@ function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
   const cachedRole = readRoleCache();
 
-  const { data: dbUser, isLoading: dbUserLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
       queryKey: getGetCurrentUserQueryKey(),
@@ -210,6 +209,9 @@ function AuthRouteGuard() {
     writeRoleCache(null);
     return <LoginScreen />;
   }
+
+  // Wait for user data if no cached role is available (e.g. fresh login with no prior visit)
+  if (isUserLoading && !cachedRole) return <LoadingSpinner />;
 
   // Use live role if available, fall back to cached role immediately (no second spinner)
   const role = dbUser?.role ?? cachedRole;

@@ -423,9 +423,18 @@ router.post("/payments", async (req, res) => {
     const validSourceType =
       sourceType === "sales_order" || sourceType === "purchase_order" ? sourceType : null;
 
+    // Auto-numbering: PAY/YYYY/NNNN
+    const payYear = new Date().getFullYear();
+    const [{ payCount }] = await db
+      .select({ payCount: sql<number>`cast(count(*) as int)` })
+      .from(accountingPaymentsTable);
+    const paySeq = (Number(payCount) + 1).toString().padStart(4, "0");
+    const paymentNumber = `PAY/${payYear}/${paySeq}`;
+
     const [payment] = await db
       .insert(accountingPaymentsTable)
       .values({
+        paymentNumber,
         paymentType,
         amount: String(round2(amt)),
         journalId: journal.id,
@@ -676,6 +685,88 @@ router.post("/payments/:id/void", async (req, res) => {
   } catch (err) {
     return res.status(400).json({ message: String((err as Error)?.message ?? err) });
   }
+});
+
+// ============ Journal Entry Locking (Reverse / Reset-Draft / Cancel) ============
+
+/** POST /accounting/entries/:id/reverse — buat jurnal pembalik untuk entry yang sudah diposting */
+router.post("/entries/:id/reverse", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const [entry] = await db.select().from(accountingEntriesTable).where(eq(accountingEntriesTable.id, id));
+  if (!entry) return res.status(404).json({ message: "Entri tidak ditemukan" });
+  if (entry.status !== "posted") return res.status(400).json({ message: "Hanya entri berstatus 'posted' yang bisa dibalik" });
+  if (entry.source === "reversal") return res.status(400).json({ message: "Entri pembalik tidak bisa dibalik lagi" });
+
+  const origLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, id));
+  if (origLines.length === 0) return res.status(400).json({ message: "Entri tidak memiliki baris jurnal" });
+
+  const [journal] = await db.select().from(accountingJournalsTable).where(eq(accountingJournalsTable.id, entry.journalId));
+  if (!journal) return res.status(400).json({ message: "Jurnal tidak ditemukan" });
+
+  const reversalLines: PostingLine[] = origLines.map((l) => ({
+    accountId: l.accountId,
+    debit: Number(l.credit),
+    credit: Number(l.debit),
+    description: `[PEMBALIK] ${l.description ?? ""}`.trim(),
+  }));
+
+  const reverseReason = typeof req.body?.reason === "string" && req.body.reason.trim() ? req.body.reason.trim() : null;
+  const desc = reverseReason
+    ? `[PEMBALIK] ${entry.description ?? `Entri #${entry.id}`} — ${reverseReason}`
+    : `[PEMBALIK] ${entry.description ?? `Entri #${entry.id}`}`;
+
+  try {
+    const reversalEntry = await postEntry(
+      {
+        journalId: entry.journalId,
+        date: new Date(),
+        ref: entry.ref ?? null,
+        description: desc,
+        source: "reversal",
+        sourceId: entry.id,
+        lines: reversalLines,
+      },
+      journal.code,
+    );
+
+    const fullLines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, reversalEntry.id));
+    return res.status(201).json({ ...serializeEntry(reversalEntry), lines: fullLines.map(serializeEntryLine) });
+  } catch (err) {
+    return res.status(400).json({ message: String((err as Error)?.message ?? err) });
+  }
+});
+
+/** PATCH /accounting/entries/:id/status — reset ke draft atau cancel (hanya manual entry) */
+router.patch("/entries/:id/status", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const { status } = req.body ?? {};
+  if (status !== "draft" && status !== "cancelled") {
+    return res.status(400).json({ message: "status harus 'draft' atau 'cancelled'" });
+  }
+
+  const [entry] = await db.select().from(accountingEntriesTable).where(eq(accountingEntriesTable.id, id));
+  if (!entry) return res.status(404).json({ message: "Entri tidak ditemukan" });
+
+  // Hanya manual entry yang bisa di-reset (auto-posted entries dikunci)
+  if (entry.source !== "manual") {
+    return res.status(400).json({ message: "Hanya jurnal manual yang bisa di-reset. Jurnal otomatis harus dibalik menggunakan endpoint /reverse." });
+  }
+  if (entry.status === "cancelled") {
+    return res.status(400).json({ message: "Entri ini sudah dibatalkan" });
+  }
+
+  const [updated] = await db
+    .update(accountingEntriesTable)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(accountingEntriesTable.id, id))
+    .returning();
+
+  const lines = await db.select().from(accountingEntryLinesTable).where(eq(accountingEntryLinesTable.entryId, id));
+  return res.json({ ...serializeEntry(updated!), lines: lines.map(serializeEntryLine) });
 });
 
 // ============ Settings ============
