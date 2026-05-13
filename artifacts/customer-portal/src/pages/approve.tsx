@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
-import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ChevronDown, ChevronUp, DollarSign } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ChevronDown, ChevronUp } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) {
@@ -345,10 +345,10 @@ export default function ApprovePage() {
                     Harga Jual (Rp)
                   </label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-yellow-500">Rp</span>
                     <input
                       type="number"
-                      className="w-full border border-gray-300 rounded-xl pl-9 pr-4 py-3 text-gray-900 font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-gray-900 font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       value={sellingPrice}
                       onChange={(e) => setSellingPrice(e.target.value)}
                       placeholder="0"
