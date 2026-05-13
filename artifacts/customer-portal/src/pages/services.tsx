@@ -256,22 +256,23 @@ export default function Services() {
                 className="group overflow-hidden flex flex-col h-full border-border/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer"
                 onClick={() => setTruckingOpen(true)}
               >
-                {/* Visual: gradient + icons instead of photo */}
-                <div className="aspect-video w-full overflow-hidden relative bg-gradient-to-br from-slate-800 via-slate-700 to-slate-600 flex items-center justify-center">
-                  <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.4) 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
-                  <div className="flex items-center gap-5 relative z-10">
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center">
-                        <Truck className="w-7 h-7 text-white" />
-                      </div>
-                    </div>
-                    <div className="text-white/40 text-3xl font-thin">+</div>
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center">
-                        <Container className="w-7 h-7 text-white" />
-                      </div>
-                    </div>
-                  </div>
+                {/* Visual: premium banner image */}
+                <div className="aspect-video w-full overflow-hidden relative">
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/banner-trucking-container.png`}
+                    alt="Trucking & Container"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = "none";
+                      const parent = el.parentElement as HTMLElement | null;
+                      if (parent) {
+                        parent.style.background = "linear-gradient(135deg,#0d1b2a,#1a2744)";
+                      }
+                    }}
+                  />
+                  {/* Dark gradient overlay for readability */}
+                  <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.38) 0%, transparent 55%)" }} />
                   {/* Sub-count badge */}
                   <div className="absolute top-3 left-3">
                     <Badge className="bg-white/20 text-white backdrop-blur-sm border-white/30 text-xs font-semibold">

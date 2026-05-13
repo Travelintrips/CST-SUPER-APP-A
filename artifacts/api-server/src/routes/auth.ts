@@ -41,6 +41,14 @@ function getOrigin(req: Request): string {
   return `${proto}://${host}`;
 }
 
+function getGoogleCallbackOrigin(req: Request): string {
+  // Allow explicit override via env var (useful for production deployments)
+  if (process.env.GOOGLE_CALLBACK_ORIGIN) {
+    return process.env.GOOGLE_CALLBACK_ORIGIN.replace(/\/$/, "");
+  }
+  return getOrigin(req);
+}
+
 function setSessionCookie(res: Response, sid: string) {
   res.cookie(SESSION_COOKIE, sid, {
     httpOnly: true,
@@ -228,10 +236,12 @@ router.get("/callback", async (req: Request, res: Response) => {
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 
 router.get("/login/google", (req: Request, res: Response) => {
-  const origin = getOrigin(req);
-  const redirectUri = `${origin}/api/callback/google`;
+  const callbackOrigin = getGoogleCallbackOrigin(req);
+  const redirectUri = `${callbackOrigin}/api/callback/google`;
   const returnTo = getSafeReturnTo(req.query.returnTo);
   const state = crypto.randomBytes(16).toString("hex");
+
+  req.log.info({ redirectUri }, "[Google OAuth] initiating login, redirect_uri");
 
   const client = getGoogleOAuthClient(redirectUri);
   const authUrl = client.generateAuthUrl({
@@ -245,11 +255,25 @@ router.get("/login/google", (req: Request, res: Response) => {
   res.redirect(authUrl);
 });
 
+// Helper: extract a safe returnTo from the Google OAuth state param (stateToken:returnToB64)
+function returnToFromState(state: string | undefined): string {
+  if (!state) return "/bizportal/";
+  const [, returnToB64] = state.split(":");
+  if (!returnToB64) return "/bizportal/";
+  try {
+    return getSafeReturnTo(Buffer.from(returnToB64, "base64").toString());
+  } catch {
+    return "/bizportal/";
+  }
+}
+
 router.get("/callback/google", async (req: Request, res: Response) => {
   const { code, state, error } = req.query as Record<string, string>;
 
   if (error || !code || !state) {
-    res.redirect("/api/login");
+    req.log.warn({ error }, "[Google OAuth] callback error from Google — redirecting to login");
+    res.clearCookie("google_state", { path: "/" });
+    res.redirect(returnToFromState(state));
     return;
   }
 
@@ -258,16 +282,17 @@ router.get("/callback/google", async (req: Request, res: Response) => {
   res.clearCookie("google_state", { path: "/" });
 
   if (!savedState || savedState !== stateToken) {
-    res.redirect("/api/login");
+    req.log.warn("[Google OAuth] state mismatch — redirecting to login");
+    res.redirect(returnToFromState(state));
     return;
   }
 
   const returnTo = getSafeReturnTo(
-    returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/"
+    returnToB64 ? Buffer.from(returnToB64, "base64").toString() : "/bizportal/"
   );
 
-  const origin = getOrigin(req);
-  const redirectUri = `${origin}/api/callback/google`;
+  const callbackOrigin = getGoogleCallbackOrigin(req);
+  const redirectUri = `${callbackOrigin}/api/callback/google`;
   const client = getGoogleOAuthClient(redirectUri);
 
   try {
@@ -309,8 +334,8 @@ router.get("/callback/google", async (req: Request, res: Response) => {
     setSessionCookie(res, sid);
     res.redirect(returnTo);
   } catch (err) {
-    req.log.error({ err }, "Google OAuth callback error");
-    res.redirect("/api/login");
+    req.log.error({ err }, "[Google OAuth] callback token exchange error");
+    res.redirect(returnTo);
   }
 });
 

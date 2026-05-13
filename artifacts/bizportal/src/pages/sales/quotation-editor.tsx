@@ -68,7 +68,7 @@ import {
   type Customer,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal, Pencil, Loader2 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -394,6 +394,9 @@ export default function SalesDocumentEditorPage() {
   const [customerName, setCustomerName] = useState("");
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [addCustomerForm, setAddCustomerForm] = useState({ name: "", email: "", phone: "", address: "", taxId: "", notes: "", defaultSalesTaxId: null as number | null });
+  const [editingNpwp, setEditingNpwp] = useState(false);
+  const [npwpDraft, setNpwpDraft] = useState("");
+  const [npwpSaving, setNpwpSaving] = useState(false);
   const [validUntil, setValidUntil] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -456,6 +459,32 @@ export default function SalesDocumentEditorPage() {
 
   const isEditable = isNew || (doc && (doc.status === "draft" || doc.status === "sent"));
   const selectedCustomer = (customers ?? []).find((c) => c.id === customerId) ?? null;
+
+  useEffect(() => {
+    setNpwpDraft(selectedCustomer?.taxId ?? "");
+    setEditingNpwp(false);
+  }, [selectedCustomer?.id]);
+
+  const handleSaveNpwp = async () => {
+    if (!selectedCustomer) return;
+    setNpwpSaving(true);
+    try {
+      const resp = await fetch(`/api/sales/customers/${selectedCustomer.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taxId: npwpDraft.trim() || null }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      await qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
+      setEditingNpwp(false);
+      toast({ title: "NPWP customer diperbarui" });
+    } catch {
+      toast({ title: "Gagal menyimpan NPWP", variant: "destructive" });
+    } finally {
+      setNpwpSaving(false);
+    }
+  };
 
   const setLine = (idx: number, patch: Partial<LineDraft>) => {
     setLines((arr) => arr.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -809,16 +838,52 @@ export default function SalesDocumentEditorPage() {
               <Label>Nama Customer</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} disabled={!isEditable} data-testid="input-customer-name" />
             </div>
-            {selectedCustomer?.taxId && (
+            {selectedCustomer && (
               <div className="grid gap-1.5">
-                <Label>NPWP Customer</Label>
-                <Input
-                  value={selectedCustomer.taxId}
-                  readOnly
-                  disabled
-                  data-testid="input-customer-tax-id"
-                  className="bg-muted text-muted-foreground cursor-default"
-                />
+                <div className="flex items-center justify-between">
+                  <Label>NPWP Customer</Label>
+                  {!editingNpwp && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs text-muted-foreground"
+                      onClick={() => setEditingNpwp(true)}
+                    >
+                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                    </Button>
+                  )}
+                </div>
+                {editingNpwp ? (
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={npwpDraft}
+                      onChange={(e) => setNpwpDraft(e.target.value)}
+                      placeholder="Masukkan NPWP…"
+                      className="flex-1"
+                      data-testid="input-customer-tax-id"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); void handleSaveNpwp(); }
+                        if (e.key === "Escape") { setEditingNpwp(false); setNpwpDraft(selectedCustomer.taxId ?? ""); }
+                      }}
+                    />
+                    <Button type="button" size="icon" variant="default" className="shrink-0" onClick={() => void handleSaveNpwp()} disabled={npwpSaving}>
+                      {npwpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    </Button>
+                    <Button type="button" size="icon" variant="ghost" className="shrink-0" onClick={() => { setEditingNpwp(false); setNpwpDraft(selectedCustomer.taxId ?? ""); }} disabled={npwpSaving}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Input
+                    value={selectedCustomer.taxId ?? ""}
+                    readOnly
+                    disabled
+                    data-testid="input-customer-tax-id"
+                    className="bg-muted text-muted-foreground cursor-default"
+                    placeholder="Belum diisi"
+                  />
+                )}
               </div>
             )}
             <div className="grid gap-1.5">

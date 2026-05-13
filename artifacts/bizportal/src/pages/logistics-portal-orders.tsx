@@ -29,6 +29,21 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 text-yellow-900 rounded-sm px-0.5 not-italic">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 const STATUS_OPTIONS = ["New Order", "Confirmed", "In Progress", "Completed", "Cancelled"];
 
 const SHIPMENT_TYPE_OPTIONS = [
@@ -309,7 +324,7 @@ export default function LogisticsPortalOrdersPage() {
                           className="font-mono text-xs font-medium hover:underline text-left"
                           onClick={(e) => { e.stopPropagation(); setDetailDialog(o); }}
                         >
-                          {o.orderNumber}
+                          <Highlight text={o.orderNumber} query={search} />
                         </button>
                         {(o as { source?: string }).source === "ai_agent" && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
@@ -320,9 +335,9 @@ export default function LogisticsPortalOrdersPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-medium text-sm">{o.customerName}</span>
-                        <span className="text-xs text-muted-foreground">{o.companyName}</span>
-                        <span className="text-xs text-muted-foreground">{o.email}</span>
+                        <span className="font-medium text-sm"><Highlight text={o.customerName} query={search} /></span>
+                        <span className="text-xs text-muted-foreground"><Highlight text={o.companyName} query={search} /></span>
+                        <span className="text-xs text-muted-foreground"><Highlight text={o.email} query={search} /></span>
                       </div>
                     </TableCell>
                     <TableCell>

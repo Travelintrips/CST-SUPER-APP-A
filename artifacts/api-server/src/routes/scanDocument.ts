@@ -65,6 +65,8 @@ interface CleanPdfResult {
   text: string;
   truncatedAt: string | null;
   lineIndex: number;
+  /** True when the text was cut at PDF_TEXT_MAX_CHARS without a boilerplate header — data on later pages/sections may have been missed */
+  charLimitHit: boolean;
 }
 
 // Strip excessive blank lines and common boilerplate headers before sending to AI.
@@ -101,7 +103,11 @@ function cleanPdfText(raw: string, headers: string[] = BOILERPLATE_HEADERS): Cle
     text = lines.slice(0, lineIndex).join("\n").trim();
   }
 
-  return { text: text.slice(0, PDF_TEXT_MAX_CHARS), truncatedAt, lineIndex };
+  // Detect char-limit hit BEFORE slicing — if text is still longer than the cap,
+  // we will cut it silently; warn the caller so they can surface this to the user.
+  const charLimitHit = truncatedAt === null && text.length > PDF_TEXT_MAX_CHARS;
+
+  return { text: text.slice(0, PDF_TEXT_MAX_CHARS), truncatedAt, lineIndex, charLimitHit };
 }
 
 router.use((req, res, next) => {
@@ -361,6 +367,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
     let extractedText: string;
     let mode: "pdf-text" | "pdf-vision" | "image-vision" = "image-vision";
     let truncation: { phrase: string; lineIndex: number } | null = null;
+    let charLimitHit = false;
 
     if (isPdf) {
       // Fast path: try local PDF text extraction first.
@@ -378,8 +385,9 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       if (pdfText.length >= PDF_TEXT_FAST_PATH_MIN_CHARS) {
         // Text-based PDF: send extracted text to a faster text-only model.
         mode = "pdf-text";
-        const { text: cleanText, truncatedAt, lineIndex } = cleanPdfText(pdfText, boilerplateHeaders);
+        const { text: cleanText, truncatedAt, lineIndex, charLimitHit: cLH } = cleanPdfText(pdfText, boilerplateHeaders);
         truncation = truncatedAt != null ? { phrase: truncatedAt, lineIndex } : null;
+        charLimitHit = cLH;
         const response = await getOpenAI().chat.completions.create({
           model: "gpt-5-mini",
           max_completion_tokens: 3500,
@@ -441,7 +449,7 @@ router.post("/", upload.single("file"), async (req, res): Promise<void> => {
       return;
     }
 
-    res.json({ data: parsed, mode, truncation });
+    res.json({ data: parsed, mode, truncation, charLimitHit });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({
@@ -512,6 +520,40 @@ router.put("/fields", async (req, res): Promise<void> => {
     });
 
   res.json({ ok: true });
+});
+
+// ── POST /api/scan-document/extract-text ─────────────────────────────────────
+// Admin-only: extract raw text from a PDF for client-side boilerplate testing.
+// No AI is involved — returns the raw text as parsed by pdf-parse.
+router.post("/extract-text", upload.single("file"), async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ message: "No file uploaded" });
+    return;
+  }
+  if (file.mimetype !== "application/pdf") {
+    res.status(400).json({ message: "Only PDF files are supported for text extraction" });
+    return;
+  }
+
+  try {
+    const parsedPdf = await pdfParse(file.buffer);
+    const rawText = (parsedPdf.text ?? "").trim();
+    if (rawText.length < PDF_TEXT_FAST_PATH_MIN_CHARS) {
+      res.status(422).json({
+        message:
+          "PDF ini tidak memiliki cukup teks yang dapat diekstrak — kemungkinan merupakan PDF hasil scan (image). Gunakan PDF berbasis teks (digital).",
+      });
+      return;
+    }
+    res.json({ text: rawText, pages: parsedPdf.numpages, charCount: rawText.length });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err }, "[extract-text] pdf-parse failed");
+    res.status(422).json({ message: `Gagal mengekstrak teks PDF: ${msg}` });
+  }
 });
 
 // ── GET /api/scan-document/boilerplate-headers ────────────────────────────────

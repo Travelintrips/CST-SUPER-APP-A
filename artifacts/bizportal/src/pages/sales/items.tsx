@@ -39,6 +39,43 @@ const UNITS = ["pcs", "kg", "cbm", "container", "shipment", "dokumen", "trip", "
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
+const usd = (n: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+const _BP_USD_KEY = "cst_usd_idr_rate";
+const _BP_USD_TTL = 6 * 60 * 60 * 1000;
+const _BP_USD_FALLBACK = 16_300;
+
+function _readBpRate(): { rate: number; fresh: boolean } {
+  try {
+    const raw = localStorage.getItem(_BP_USD_KEY);
+    if (raw) {
+      const { rate, ts } = JSON.parse(raw) as { rate: number; ts: number };
+      if (rate > 1000) return { rate, fresh: Date.now() - ts < _BP_USD_TTL };
+    }
+  } catch { /* ignore */ }
+  return { rate: _BP_USD_FALLBACK, fresh: false };
+}
+
+function useUsdRate(): number {
+  const [rate, setRate] = useState<number>(() => _readBpRate().rate);
+  useEffect(() => {
+    const { fresh } = _readBpRate();
+    if (fresh) return;
+    fetch("https://open.er-api.com/v6/latest/USD")
+      .then((r) => r.json())
+      .then((data) => {
+        const idrRate = (data?.rates?.IDR as number) ?? 0;
+        if (idrRate > 1000) {
+          localStorage.setItem(_BP_USD_KEY, JSON.stringify({ rate: idrRate, ts: Date.now() }));
+          setRate(idrRate);
+        }
+      })
+      .catch(() => { /* keep fallback */ });
+  }, []);
+  return rate;
+}
+
 interface MediaItem {
   type: "image" | "video";
   url: string;
@@ -138,6 +175,7 @@ export default function SalesItemsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const usdIdrRate = useUsdRate();
 
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "barang" | "jasa">("all");
@@ -461,7 +499,14 @@ export default function SalesItemsPage() {
                           }
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-slate-300">
-                          {p.price > 0 ? idr(p.price) : <span className="text-slate-500 text-xs">—</span>}
+                          {p.price > 0 ? (
+                            <div>
+                              <div>{idr(p.price)}</div>
+                              <div className="text-[11px] text-slate-500 font-normal">≈ {usd(p.price / usdIdrRate)}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 text-xs">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-slate-400 text-xs">{taxName(p.defaultSalesTaxId)}</TableCell>
                         <TableCell>
@@ -797,7 +842,7 @@ export default function SalesItemsPage() {
               <p className="text-xs text-slate-500">Foto pertama jadi cover. Bisa upload lebih dari satu foto.</p>
 
               {/* URL alternatif */}
-              <details className="group">
+              <details className="group" open={!!form.imageUrl && form.mediaItems.length === 0}>
                 <summary className="text-xs cursor-pointer hover:text-slate-300 transition-colors list-none">
                   <span className="text-blue-400 underline-offset-2 hover:underline">atau masukkan URL gambar secara manual</span>
                 </summary>

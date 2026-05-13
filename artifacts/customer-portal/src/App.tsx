@@ -14,6 +14,9 @@ import { BackToTopButton } from "@/components/BackToTopButton";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { ChatWidget } from "@/components/ChatWidget";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { fetchAndStoreProfile } from "@/lib/auth";
 
 // Portal pages
 import Home from "@/pages/home";
@@ -47,8 +50,49 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
   window.location.replace("https://cstlogistic.co.id/bizportal/");
 }
 
+
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
 const NO_SHELL_PREFIXES = ["/jasa/", "/services/"];
+
+const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function currentPortalPath() {
+  return window.location.pathname.replace(BASE_PREFIX, "") || "/";
+}
+
+function redirectByRole(role: string, setLocation: (path: string) => void) {
+  if (role === "admin") setLocation("/admin");
+  else if (role === "vendor") setLocation("/vendor-dashboard");
+  else setLocation("/dashboard");
+}
+
+function OAuthRedirectHandler() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    if (!supabase) return;
+
+    // Check existing session immediately on mount (handles refresh after OAuth)
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const path = currentPortalPath();
+      if (path !== "/" && path !== "/login") return;
+      const profile = await fetchAndStoreProfile();
+      if (profile) redirectByRole(profile.role, setLocation);
+    });
+
+    // Also listen for new sign-in events (handles fresh OAuth flow)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+        const path = currentPortalPath();
+        if (path !== "/" && path !== "/login") return;
+        const profile = await fetchAndStoreProfile();
+        if (profile) redirectByRole(profile.role, setLocation);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [setLocation]);
+  return null;
+}
 
 function AppShell() {
   const [location] = useLocation();
@@ -112,6 +156,7 @@ function App() {
           <CartProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <EditModeProvider>
+                <OAuthRedirectHandler />
                 <AppShell />
               </EditModeProvider>
             </WouterRouter>

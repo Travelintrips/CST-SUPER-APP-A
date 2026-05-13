@@ -710,7 +710,7 @@ export default function EcommercePage() {
                         <Label>Kategori <span className="text-muted-foreground text-xs">(pilih satu atau lebih)</span></Label>
                         <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2" data-testid="create-product-categories">
                           {[...productCategories].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
-                            <div key={c.id} className="flex items-center gap-2">
+                            <div key={c.id} className={`flex items-center gap-2${c.productCount === 0 ? " opacity-50" : ""}`}>
                               <Checkbox
                                 id={`create-cat-${c.id}`}
                                 checked={createProdCategories.includes(c.name)}
@@ -722,6 +722,7 @@ export default function EcommercePage() {
                                 data-testid={`create-cat-checkbox-${c.id}`}
                               />
                               <label htmlFor={`create-cat-${c.id}`} className="text-sm cursor-pointer">{c.name}</label>
+                              <span className="text-xs text-muted-foreground tabular-nums">({c.productCount ?? 0})</span>
                             </div>
                           ))}
                           {productCategories.length === 0 && (
@@ -1621,7 +1622,7 @@ export default function EcommercePage() {
                   <Label>Kategori <span className="text-muted-foreground text-xs">(pilih satu atau lebih)</span></Label>
                   <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2" data-testid="edit-product-categories">
                     {[...productCategories].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
-                      <div key={c.id} className="flex items-center gap-2">
+                      <div key={c.id} className={`flex items-center gap-2${c.productCount === 0 ? " opacity-50" : ""}`}>
                         <Checkbox
                           id={`edit-cat-${c.id}`}
                           checked={editProdCategories.includes(c.name)}
@@ -1633,6 +1634,7 @@ export default function EcommercePage() {
                           data-testid={`edit-cat-checkbox-${c.id}`}
                         />
                         <label htmlFor={`edit-cat-${c.id}`} className="text-sm cursor-pointer">{c.name}</label>
+                        <span className="text-xs text-muted-foreground tabular-nums">({c.productCount ?? 0})</span>
                       </div>
                     ))}
                     {productCategories.length === 0 && (

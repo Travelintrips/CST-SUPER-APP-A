@@ -664,15 +664,13 @@ export function ChatWidget() {
   );
   /** Pixels the soft keyboard has pushed up the visual viewport on mobile */
   const [kbOffset, setKbOffset] = useState(0);
-  /** True while the keyboard is actively animating — enables bottom transition */
-  const [kbMoving, setKbMoving] = useState(false);
   /** File selected by user, waiting to be sent */
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   /** Base64 preview URL for image attachments */
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
   /** True while uploading+OCR-ing a file */
   const [uploadingFile, setUploadingFile] = useState(false);
-  const kbMoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   /** Mirrors kbOffset without triggering re-renders — used for pure comparison in the viewport handler */
   const kbOffsetRef = useRef(0);
 
@@ -832,21 +830,19 @@ export function ChatWidget() {
   useEffect(() => {
     if (!isMobile || !open) {
       setKbOffset(0);
-      setKbMoving(false);
-      if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
       return;
     }
     const vv = window.visualViewport;
     if (!vv) return;
     const update = () => {
-      const next = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      // Use innerHeight - vv.height for keyboard height. Do NOT subtract
+      // vv.offsetTop: on iOS the page may scroll when an input is focused,
+      // which would make kbOffset smaller than the real keyboard height and
+      // leave the input partially hidden behind the keyboard.
+      const next = Math.max(0, window.innerHeight - vv.height);
       if (next === kbOffsetRef.current) return;
-      // Keyboard is moving — enable bottom transition, then clear after animation
       kbOffsetRef.current = next;
       setKbOffset(next);
-      setKbMoving(true);
-      if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
-      kbMoveTimerRef.current = setTimeout(() => setKbMoving(false), 250);
     };
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
@@ -856,8 +852,6 @@ export function ChatWidget() {
       vv.removeEventListener("scroll", update);
       kbOffsetRef.current = 0;
       setKbOffset(0);
-      setKbMoving(false);
-      if (kbMoveTimerRef.current) clearTimeout(kbMoveTimerRef.current);
     };
   }, [isMobile, open]);
 
@@ -1436,19 +1430,21 @@ export function ChatWidget() {
           style={
             isMobile
               ? {
+                  // Use top + bottom (no explicit height) so the panel
+                  // automatically shrinks when the keyboard pushes bottom up.
+                  top: "5dvh",
                   bottom: kbOffset,
                   left: 0,
                   right: 0,
                   width: "100%",
-                  height: `min(92dvh, 92vh)`,
-                  maxHeight: `min(92dvh, 92vh)`,
                   borderRadius: "20px 20px 0 0",
                   border: "1px solid rgba(0,0,0,0.06)",
                   boxShadow: "0 -4px 24px rgba(0,0,0,0.14), 0 -1px 4px rgba(0,0,0,0.06)",
                   fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                   WebkitTapHighlightColor: "transparent",
                   animation: "chatSheetIn 0.32s cubic-bezier(0.32, 0.72, 0, 1)",
-                  transition: kbMoving ? "bottom 0.2s ease" : undefined,
+                  // Always transition bottom so the panel smoothly tracks the keyboard
+                  transition: "bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                 }
               : {
                   top: "50%",

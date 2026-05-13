@@ -3,6 +3,7 @@ import type { AuthUser } from "../lib/auth";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { verifySupabaseToken } from "../lib/supabaseAdmin";
+import { getSessionId, getSession } from "../lib/auth";
 
 declare global {
   namespace Express {
@@ -29,67 +30,80 @@ export async function authMiddleware(
     return this.user != null;
   } as Request["isAuthenticated"];
 
+  // ── 1. Session cookie (Google OAuth / Replit OIDC) ──────────────────────────
+  const sid = getSessionId(req);
+  if (sid && !req.headers.authorization?.startsWith("Bearer ")) {
+    const session = await getSession(sid);
+    if (session?.user) {
+      req.user = {
+        id: session.user.id,
+        email: session.user.email ?? null,
+        firstName: session.user.firstName ?? null,
+        lastName: session.user.lastName ?? null,
+        profileImageUrl: session.user.profileImageUrl ?? null,
+      };
+      next();
+      return;
+    }
+  }
+
+  // ── 2. Supabase Bearer token (legacy / mobile) ───────────────────────────────
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
-    next();
-    return;
-  }
+  if (auth?.startsWith("Bearer ")) {
+    const token = auth.slice(7);
+    const supabaseUser = await verifySupabaseToken(token);
+    if (supabaseUser?.email) {
+      let [dbUser] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, supabaseUser.email));
 
-  const token = auth.slice(7);
-  const supabaseUser = await verifySupabaseToken(token);
-  if (!supabaseUser?.email) {
-    next();
-    return;
-  }
+      if (!dbUser) {
+        const meta = supabaseUser.user_metadata ?? {};
+        const firstName =
+          (meta.given_name as string) ||
+          (meta.full_name as string)?.split(" ")[0] ||
+          null;
+        const lastName =
+          (meta.family_name as string) ||
+          (meta.full_name as string)?.split(" ").slice(1).join(" ") ||
+          null;
+        const profileImageUrl = (meta.avatar_url as string) || null;
 
-  let [dbUser] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, supabaseUser.email));
+        const adminEmails = (process.env.ADMIN_EMAIL ?? "")
+          .split(",")
+          .map((e) => e.trim().toLowerCase())
+          .filter(Boolean);
+        const isAdmin = adminEmails.includes(supabaseUser.email.toLowerCase());
 
-  if (!dbUser) {
-    const meta = supabaseUser.user_metadata ?? {};
-    const firstName =
-      (meta.given_name as string) ||
-      (meta.full_name as string)?.split(" ")[0] ||
-      null;
-    const lastName =
-      (meta.family_name as string) ||
-      (meta.full_name as string)?.split(" ").slice(1).join(" ") ||
-      null;
-    const profileImageUrl = (meta.avatar_url as string) || null;
+        const [created] = await db
+          .insert(usersTable)
+          .values({
+            id: supabaseUser.id,
+            email: supabaseUser.email,
+            firstName,
+            lastName,
+            profileImageUrl,
+            role: isAdmin ? "admin" : "admin",
+          })
+          .onConflictDoNothing()
+          .returning();
 
-    const adminEmails = (process.env.ADMIN_EMAIL ?? "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    const isAdmin = adminEmails.includes(supabaseUser.email.toLowerCase());
+        dbUser = created;
+      }
 
-    const [created] = await db
-      .insert(usersTable)
-      .values({
-        id: supabaseUser.id,
-        email: supabaseUser.email,
-        firstName,
-        lastName,
-        profileImageUrl,
-        role: isAdmin ? "admin" : "admin",
-      })
-      .onConflictDoNothing()
-      .returning();
-
-    dbUser = created;
-  }
-
-  if (dbUser) {
-    req.user = {
-      id: dbUser.id,
-      email: dbUser.email ?? supabaseUser.email,
-      firstName: dbUser.firstName ?? null,
-      lastName: dbUser.lastName ?? null,
-      profileImageUrl: dbUser.profileImageUrl ?? null,
-      role: dbUser.role ?? null,
-    };
+      if (dbUser) {
+        req.user = {
+          id: dbUser.id,
+          email: dbUser.email ?? supabaseUser.email,
+          firstName: dbUser.firstName ?? null,
+          lastName: dbUser.lastName ?? null,
+          profileImageUrl: dbUser.profileImageUrl ?? null,
+          role: dbUser.role ?? null,
+        };
+      }
+    }
+    return next();
   }
 
   next();

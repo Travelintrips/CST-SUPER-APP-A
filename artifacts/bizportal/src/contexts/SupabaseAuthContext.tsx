@@ -1,97 +1,104 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import type { AuthUser } from "@workspace/api-client-react";
 
 interface AuthContextValue {
-  session: Session | null;
-  user: User | null;
+  session: { user: AuthUser } | null;
+  user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => void;
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
-  signOut: () => Promise<void>;
+  signOut: () => void;
   login: () => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function getRedirectTo(): string {
-  const base = import.meta.env.BASE_URL || "/bizportal/";
-  const devDomain = import.meta.env.VITE_REPLIT_DEV_DOMAIN as string;
-  if (import.meta.env.DEV && devDomain) {
-    return `https://${devDomain}${base}`;
-  }
-  return window.location.origin + base;
+function getBase(): string {
+  return (window as any).__BASE_PATH__ || import.meta.env.BASE_URL || "/bizportal/";
+}
+
+function getOrigin(): string {
+  return window.location.origin;
 }
 
 export function SupabaseAuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (!supabase) {
+  const fetchUser = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/user", { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { user: AuthUser | null };
+      setUser(data.user ?? null);
+    } catch {
+      setUser(null);
+    } finally {
       setIsLoading(false);
-      return;
     }
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setIsLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[BizPortal Auth] event:", event, "session:", !!session);
-      setSession(session);
-      setIsLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
-    setAuthTokenGetter(async () => {
-      const { data: { session } } = await supabase!.auth.getSession();
-      return session?.access_token ?? null;
-    });
-    return () => setAuthTokenGetter(null);
+    fetchUser();
+  }, [fetchUser]);
+
+  const signInWithGoogle = useCallback(() => {
+    const base = getBase();
+    const returnTo = encodeURIComponent(base);
+    const origin = getOrigin();
+    const loginUrl = `${origin}/api/login/google?returnTo=${returnTo}`;
+
+    const isInIframe = window !== window.top;
+    if (isInIframe) {
+      const authWindow = window.open(loginUrl, "_blank", "noopener");
+      if (authWindow) {
+        const poll = setInterval(() => {
+          fetch("/api/auth/user", { credentials: "include" })
+            .then((r) => r.json())
+            .then((data: { user: AuthUser | null }) => {
+              if (data.user) {
+                clearInterval(poll);
+                setUser(data.user);
+              }
+            })
+            .catch(() => {});
+        }, 2000);
+        setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+      } else {
+        // Popup blocked — try navigating top frame, fallback to current frame
+        try {
+          if (window.top) window.top.location.href = loginUrl;
+          else window.location.href = loginUrl;
+        } catch {
+          window.location.href = loginUrl;
+        }
+      }
+    } else {
+      window.location.href = loginUrl;
+    }
   }, []);
 
-  const signInWithGoogle = async () => {
-    if (!supabase) return;
-    const redirectTo = getRedirectTo();
-    console.log("[BizPortal Auth] Google OAuth redirectTo:", redirectTo);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-    if (error) {
-      console.error("[BizPortal Auth] OAuth error:", error.message);
-    }
-  };
+  const signInWithEmail = useCallback(async (_email: string, _password: string) => {
+    return { error: "Email login is not supported. Please use Google login." };
+  }, []);
 
-  const signInWithEmail = async (email: string, password: string) => {
-    if (!supabase) return { error: "Supabase not configured" };
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
-  };
-
-  const signOut = async () => {
-    if (supabase) await supabase.auth.signOut();
-    setSession(null);
-  };
+  const signOut = useCallback(() => {
+    const base = getBase();
+    window.location.href = `${getOrigin()}/api/logout?redirect=${encodeURIComponent(base)}`;
+  }, []);
 
   const value: AuthContextValue = {
-    session,
-    user: session?.user ?? null,
+    session: user ? { user } : null,
+    user,
     isLoading,
-    isAuthenticated: !!session,
+    isAuthenticated: !!user,
     signInWithGoogle,
     signInWithEmail,
     signOut,
     login: signInWithGoogle,
-    logout: () => { signOut(); },
+    logout: signOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

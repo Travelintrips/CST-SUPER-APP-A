@@ -5,6 +5,23 @@ import { Label } from "@/components/ui/label";
 import { ScanLine, Upload, Camera, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
+const SCAN_FIELD_DEFS: Array<{ key: keyof ScannedDocumentData; label: string }> = [
+  { key: "partyName",      label: "Nama Pihak" },
+  { key: "partyEmail",     label: "Email" },
+  { key: "partyPhone",     label: "Telepon" },
+  { key: "partyAddress",   label: "Alamat" },
+  { key: "docDate",        label: "Tanggal Dokumen" },
+  { key: "dueDate",        label: "Jatuh Tempo" },
+  { key: "shipmentNumber", label: "No. Shipment" },
+  { key: "origin",         label: "Asal" },
+  { key: "destination",    label: "Tujuan" },
+  { key: "carrier",        label: "Carrier" },
+  { key: "weight",         label: "Berat (kg)" },
+  { key: "volume",         label: "Volume (CBM)" },
+  { key: "estimatedCost",  label: "Estimasi Biaya" },
+  { key: "notes",          label: "Catatan" },
+];
+
 export interface ScannedDocumentData {
   docType?: "sales" | "purchase" | "freight";
   partyName?: string | null;
@@ -42,6 +59,7 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
   const [fileName, setFileName] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<ScannedDocumentData | null>(null);
   const [truncation, setTruncation] = useState<{ phrase: string; lineIndex: number } | null>(null);
+  const [charLimitHit, setCharLimitHit] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,6 +68,7 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
     setFileName(null);
     setExtracted(null);
     setTruncation(null);
+    setCharLimitHit(false);
   };
 
   const handleFile = async (file: File) => {
@@ -79,9 +98,11 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
         data: ScannedDocumentData;
         mode?: string;
         truncation?: { phrase: string; lineIndex: number } | null;
+        charLimitHit?: boolean;
       };
       setExtracted(json.data);
       setTruncation(json.truncation ?? null);
+      setCharLimitHit(json.charLimitHit ?? false);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Gagal memproses dokumen");
     } finally {
@@ -167,25 +188,61 @@ export function ScanDocumentDialog({ open, onOpenChange, onDataExtracted, title 
             </div>
           )}
 
-          {!loading && extracted && (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3 space-y-1.5">
-              <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                Data berhasil diekstrak
-              </div>
-              {extracted.partyName && <p className="text-xs text-muted-foreground">Pihak: <span className="text-foreground font-medium">{extracted.partyName}</span></p>}
-              {extracted.lines && extracted.lines.length > 0 && (
-                <p className="text-xs text-muted-foreground">{extracted.lines.length} item ditemukan</p>
-              )}
-              {extracted.origin && <p className="text-xs text-muted-foreground">Rute: {extracted.origin} → {extracted.destination}</p>}
-              {truncation && (
-                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1 mt-1">
-                  <AlertCircle className="h-3 w-3 shrink-0 text-amber-500" />
-                  <span>Dipotong di: <span className="font-medium">"{truncation.phrase}"</span> (baris {truncation.lineIndex + 1})</span>
+          {!loading && extracted && (() => {
+            const activeFields = SCAN_FIELD_DEFS.filter(
+              ({ key }) => extracted[key] != null && extracted[key] !== ""
+            );
+            const lineCount = extracted.lines?.length ?? 0;
+            const totalActive = activeFields.length + (lineCount > 0 ? 1 : 0);
+            return (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    Data berhasil diekstrak
+                  </div>
+                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-full px-2 py-0.5">
+                    {totalActive} field aktif
+                  </span>
                 </div>
-              )}
-            </div>
-          )}
+
+                {totalActive > 0 && (
+                  <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                    {activeFields.map(({ key, label }) => {
+                      const val = extracted[key];
+                      return (
+                        <div key={key} className="flex items-start gap-2 text-xs rounded-md bg-white/70 border border-emerald-100 px-2 py-1.5">
+                          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                          <span className="font-medium text-foreground/70 min-w-[90px]">{label}</span>
+                          <span className="text-foreground font-medium break-all">{String(val)}</span>
+                        </div>
+                      );
+                    })}
+                    {lineCount > 0 && (
+                      <div className="flex items-start gap-2 text-xs rounded-md bg-white/70 border border-emerald-100 px-2 py-1.5">
+                        <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                        <span className="font-medium text-foreground/70 min-w-[90px]">Item Baris</span>
+                        <span className="text-foreground font-medium">{lineCount} item</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {truncation && (
+                  <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+                    <AlertCircle className="h-3 w-3 shrink-0 text-amber-500 mt-0.5" />
+                    <span>Teks PDF dipotong di baris {truncation.lineIndex + 1} (<span className="font-medium">"{truncation.phrase}"</span>) — data setelahnya tidak dikirim ke AI. Periksa field yang mungkin kosong.</span>
+                  </div>
+                )}
+                {charLimitHit && !truncation && (
+                  <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1.5">
+                    <AlertCircle className="h-3 w-3 shrink-0 text-amber-500 mt-0.5" />
+                    <span>Dokumen panjang — teks dipotong di 5.000 karakter pertama. Data di halaman akhir mungkin tidak terbaca. Periksa field yang kosong.</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {!loading && !extracted && fileName && !preview && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">

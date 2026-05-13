@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
-import { fetchAndStoreProfile, setPortalProfile } from "@/lib/auth";
+import { fetchAndStoreProfile } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -37,23 +37,6 @@ export default function Login() {
   const [forgotMsg, setForgotMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
-        const profile = await fetchAndStoreProfile();
-        if (!profile) return;
-        const rt = new URLSearchParams(window.location.search).get("returnTo");
-        if (rt) {
-          setLocation(rt);
-        } else if (profile.role === "vendor") {
-          setLocation("/vendor-dashboard");
-        } else {
-          setLocation("/dashboard");
-        }
-      }
-    });
-  }, [setLocation]);
 
   const loginSchema = z.object({
     email: z.string().email({ message: t("login.email") }),
@@ -88,6 +71,8 @@ export default function Login() {
       const rt = new URLSearchParams(window.location.search).get("returnTo");
       if (rt) {
         setLocation(rt);
+      } else if (profile.role === "admin") {
+        setLocation("/admin");
       } else if (profile.role === "vendor") {
         setLocation("/vendor-dashboard");
       } else {
@@ -133,7 +118,9 @@ export default function Login() {
       return;
     }
     setErrorMsg("");
-    const redirectTo = `${window.location.origin}${BASE}/`;
+    // Redirect to /bizportal/ which is already whitelisted in Supabase redirect URLs.
+    // BizPortal's main.tsx will detect the Supabase hash and forward back to the portal root.
+    const redirectTo = `${window.location.origin}/bizportal/`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
