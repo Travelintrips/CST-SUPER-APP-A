@@ -39,6 +39,11 @@ interface OptionFormData {
   pickupDate: string | null;
   pickupTime: string | null;
   truckType: string | null;
+  transportMode: string | null;
+  originPort: string | null;
+  destPort: string | null;
+  etd: string | null;
+  eta: string | null;
   isTrucking: boolean;
   alreadyChosen: boolean;
   options: Option[];
@@ -124,7 +129,13 @@ export default function ChooseOptionPage() {
     );
   }
 
-  const ModeIcon = data.isTrucking ? Truck : data.options[0]?.transitDays != null ? Ship : Plane;
+  const ModeIcon = data.transportMode === "SEA_FREIGHT" ? Ship
+    : data.transportMode === "AIR_FREIGHT" ? Plane
+    : data.isTrucking ? Truck
+    : data.options[0]?.transitDays != null ? Ship : Plane;
+  const modeLabel = data.transportMode === "SEA_FREIGHT" ? "Sea Freight"
+    : data.transportMode === "AIR_FREIGHT" ? "Air Freight"
+    : "Trucking";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 py-8 px-4">
@@ -133,7 +144,7 @@ export default function ChooseOptionPage() {
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold">
             <ModeIcon className="h-4 w-4" />
-            CST Logistics — Pilih Opsi
+            CST Logistics — {modeLabel}
           </div>
           <h1 className="text-xl font-bold text-slate-800">Penawaran untuk Anda</h1>
           <p className="text-sm text-slate-500">Pilih satu opsi terbaik yang sesuai kebutuhan Anda</p>
@@ -165,6 +176,28 @@ export default function ChooseOptionPage() {
               <div>
                 <p className="text-xs text-slate-400">Tipe Unit</p>
                 <p className="font-medium text-slate-700">{data.truckType}</p>
+              </div>
+            </div>
+          )}
+          {!data.isTrucking && (data.originPort || data.destPort) && (
+            <div className="flex items-start gap-3">
+              <MapPin className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-slate-400">Port / Bandara</p>
+                <p className="font-medium text-slate-700">
+                  {[data.originPort, data.destPort].filter(Boolean).join(" → ")}
+                </p>
+              </div>
+            </div>
+          )}
+          {!data.isTrucking && (data.etd || data.eta) && (
+            <div className="flex items-start gap-3">
+              <Plane className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-slate-400">ETD / ETA</p>
+                <p className="font-medium text-slate-700">
+                  {data.etd ? formatTanggal(data.etd) : "—"} → {data.eta ? formatTanggal(data.eta) : "—"}
+                </p>
               </div>
             </div>
           )}

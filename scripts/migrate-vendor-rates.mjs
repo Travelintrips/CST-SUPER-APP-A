@@ -3,9 +3,7 @@
  * Run: node scripts/migrate-vendor-rates.mjs
  */
 import pg from "pg";
-import * as dotenv from "dotenv";
 
-dotenv.config();
 const { Pool } = pg;
 
 const connectionString = (

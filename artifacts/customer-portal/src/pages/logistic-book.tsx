@@ -923,6 +923,99 @@ export default function BookPage() {
                 <Label className="text-xs">Telepon / WhatsApp <span className="text-destructive">*</span></Label>
                 <Input placeholder="+62..." value={f.phone} onChange={e => set("phone", e.target.value)} />
               </div>
+              {/* ── Mode Pengiriman ─── */}
+              <div className="col-span-2">
+                <Label className="text-xs">Mode Pengiriman</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={f.transportMode}
+                  onChange={e => set("transportMode", e.target.value)}
+                >
+                  <option value="">-- Pilih Mode (opsional) --</option>
+                  <option value="TRUCKING">🚛 Trucking / Darat</option>
+                  <option value="AIR_FREIGHT">✈️ Air Freight / Udara</option>
+                  <option value="SEA_FREIGHT">🚢 Sea Freight / Laut</option>
+                </select>
+              </div>
+
+              {/* ── Trucking-specific fields ─── */}
+              {f.transportMode === "TRUCKING" && (<>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Kota Asal (Kecamatan)</Label>
+                  <Input placeholder="Cakung, Jakarta Timur" value={f.originDistrict} onChange={e => set("originDistrict", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Kota Tujuan (Kecamatan)</Label>
+                  <Input placeholder="Rungkut, Surabaya" value={f.destDistrict} onChange={e => set("destDistrict", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Tanggal Pickup</Label>
+                  <Input type="date" value={f.pickupDate} onChange={e => set("pickupDate", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Jam Pickup</Label>
+                  <Input type="time" value={f.pickupTime} onChange={e => set("pickupTime", e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-xs">Tipe Unit / Armada</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={f.truckType}
+                    onChange={e => set("truckType", e.target.value)}
+                  >
+                    <option value="">-- Pilih Tipe --</option>
+                    <option value="CDD">CDD</option>
+                    <option value="CDD Long">CDD Long</option>
+                    <option value="CDE">CDE</option>
+                    <option value="Fuso">Fuso</option>
+                    <option value="Tronton">Tronton</option>
+                    <option value="Trailer 20ft">Trailer 20ft</option>
+                    <option value="Trailer 40ft">Trailer 40ft</option>
+                    <option value="Pickup Box">Pickup Box</option>
+                  </select>
+                </div>
+              </>)}
+
+              {/* ── Air/Sea-specific fields ─── */}
+              {(f.transportMode === "AIR_FREIGHT" || f.transportMode === "SEA_FREIGHT") && (<>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Asal</Label>
+                  <Input placeholder={f.transportMode === "AIR_FREIGHT" ? "CGK / Soekarno-Hatta" : "Tanjung Priok"} value={f.originPort} onChange={e => set("originPort", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Tujuan</Label>
+                  <Input placeholder={f.transportMode === "AIR_FREIGHT" ? "SUB / Juanda" : "Tanjung Perak"} value={f.destPort} onChange={e => set("destPort", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Berat Kargo (kg)</Label>
+                  <Input type="number" placeholder="500" value={f.weightKg} onChange={e => set("weightKg", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Incoterm</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={f.incoterm}
+                    onChange={e => set("incoterm", e.target.value)}
+                  >
+                    <option value="">-- Pilih --</option>
+                    <option value="EXW">EXW</option>
+                    <option value="FOB">FOB</option>
+                    <option value="CIF">CIF</option>
+                    <option value="DAP">DAP</option>
+                    <option value="DDP">DDP</option>
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">ETD (Keberangkatan)</Label>
+                  <Input type="date" value={f.etd} onChange={e => set("etd", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">ETA (Tiba Tujuan)</Label>
+                  <Input type="date" value={f.eta} onChange={e => set("eta", e.target.value)} />
+                </div>
+              </>)}
+
+              {/* ── Asal & Tujuan Pengiriman ─── */}
               <div className="col-span-2 sm:col-span-1">
                 <Label className="text-xs">Asal Pengiriman</Label>
                 <Input placeholder="Jakarta" value={f.origin} onChange={e => set("origin", e.target.value)} />
@@ -931,10 +1024,35 @@ export default function BookPage() {
                 <Label className="text-xs">Tujuan Pengiriman</Label>
                 <Input placeholder="Surabaya" value={f.destination} onChange={e => set("destination", e.target.value)} />
               </div>
+
               <div className="col-span-2">
                 <Label className="text-xs">Catatan Tambahan</Label>
                 <Textarea placeholder="Informasi tambahan untuk tim kami..." value={f.notes} onChange={e => set("notes", e.target.value)} rows={3} />
               </div>
+
+              {/* ── Estimasi Harga ─── */}
+              {f.transportMode && (
+                <div className="col-span-2">
+                  {estimating && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 flex items-center gap-2">
+                      <span className="animate-spin">⏳</span> Menghitung estimasi harga...
+                    </div>
+                  )}
+                  {!estimating && estimation && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1">
+                      <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Estimasi Harga</p>
+                      {estimation.estimated_price != null ? (
+                        <p className="text-lg font-bold text-emerald-800">
+                          Rp {Math.round(estimation.estimated_price).toLocaleString("id-ID")}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-slate-500">Estimasi tidak tersedia — harga akan dikonfirmasi admin</p>
+                      )}
+                      <p className="text-[11px] text-slate-400">{estimation.disclaimer}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
