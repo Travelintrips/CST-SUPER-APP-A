@@ -699,70 +699,122 @@ export default function JasaDetail() {
       calculatorType: (CAT_TO_CALC[(s.categories ?? [])[0] ?? ""] ?? "generic") as CalculatorType,
     }));
 
+  const CATEGORY_HERO: Record<string, { gradient: string; glowA: string; glowB: string; accentRing: string; features: string[] }> = {
+    Freight:    { gradient: "linear-gradient(135deg, #050D1F 0%, #0B1E44 55%, #050D1F 100%)", glowA: "bg-blue-600",    glowB: "bg-cyan-500",   accentRing: "ring-blue-400/40",    features: ["Air Freight", "Sea FCL / LCL", "Door-to-Door", "Multi-Modal"] },
+    Customs:    { gradient: "linear-gradient(135deg, #051A0F 0%, #0A3020 55%, #051A0F 100%)", glowA: "bg-emerald-600", glowB: "bg-green-500",  accentRing: "ring-emerald-400/40", features: ["Import & Export", "PIB / PEB", "HS Code Konsultasi", "PPJK Resmi"] },
+    Handling:   { gradient: "linear-gradient(135deg, #100520 0%, #1E0A3C 55%, #100520 100%)", glowA: "bg-violet-600",  glowB: "bg-purple-500", accentRing: "ring-violet-400/40",  features: ["Origin Handling", "Destination Handling", "Kargo Berbahaya", "Tim Profesional"] },
+    Storage:    { gradient: "linear-gradient(135deg, #061616 0%, #0A2828 55%, #061616 100%)", glowA: "bg-teal-600",    glowB: "bg-cyan-500",   accentRing: "ring-teal-400/40",    features: ["Gudang Umum", "Bonded Warehouse", "Cold Storage", "Sewa Fleksibel"] },
+    Trucking:   { gradient: "linear-gradient(135deg, #160B00 0%, #2E1800 55%, #160B00 100%)", glowA: "bg-amber-500",   glowB: "bg-orange-500", accentRing: "ring-amber-400/40",   features: ["5 Jenis Armada", "Kalkulasi Otomatis", "Harga Transparan", "Berlisensi & Profesional"] },
+    Document:   { gradient: "linear-gradient(135deg, #050B1F 0%, #0A1640 55%, #050B1F 100%)", glowA: "bg-indigo-600",  glowB: "bg-blue-500",   accentRing: "ring-indigo-400/40",  features: ["Bill of Lading", "Air Waybill", "COO / SKA", "Packing List"] },
+    Additional: { gradient: "linear-gradient(135deg, #1A0510 0%, #350828 55%, #1A0510 100%)", glowA: "bg-rose-600",    glowB: "bg-pink-500",   accentRing: "ring-rose-400/40",    features: ["Asuransi Kargo", "Surveyor", "Perizinan", "BPOM / SNI"] },
+  };
+  const hero = CATEGORY_HERO[item.category] ?? CATEGORY_HERO["Freight"]!;
+
   return (
-    <div className={`min-h-screen pb-28 ${ct === "trucking" ? "bg-slate-50" : "bg-gray-50"}`}>
-      {/* Hero */}
-      <div className={ct === "trucking"
-        ? "bg-gradient-to-br from-sky-600 via-blue-700 to-indigo-800 text-white py-10 md:py-14 relative overflow-hidden"
-        : "bg-primary text-primary-foreground py-12 md:py-20"
-      }>
-        {ct === "trucking" && (
-          <div className="absolute inset-0 opacity-10" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"}}/>
-        )}
-        <div className="container px-4 md:px-6 relative z-10">
-          <Link href="/jasa" className={`inline-flex items-center gap-1.5 text-sm mb-5 transition-colors ${ct === "trucking" ? "text-white/60 hover:text-white" : "text-primary-foreground/60 hover:text-primary-foreground"}`}>
-            <ArrowLeft className="h-4 w-4" />
+    <div className="min-h-screen pb-28 bg-gray-50">
+      {/* ── PREMIUM HERO ── */}
+      <div className="relative overflow-hidden text-white" style={{ background: hero.gradient }}>
+        {/* Dot-grid overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "26px 26px" }}
+        />
+        {/* Glow orbs */}
+        <div className={`absolute -top-40 -right-40 w-[560px] h-[560px] rounded-full blur-3xl opacity-20 pointer-events-none ${hero.glowA}`} />
+        <div className={`absolute -bottom-40 -left-40 w-[460px] h-[460px] rounded-full blur-3xl opacity-15 pointer-events-none ${hero.glowB}`} />
+        {/* Top shimmer line */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+
+        <div className="container px-4 md:px-6 py-10 md:py-16 relative z-10">
+          {/* Back link */}
+          <Link
+            href="/jasa"
+            className="inline-flex items-center gap-1.5 text-[13px] text-white/45 hover:text-white/90 transition-all duration-200 mb-8 group"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-200 group-hover:-translate-x-0.5" />
             Kembali ke Katalog Jasa
           </Link>
-          <div className="flex items-start gap-5">
-            {ct === "trucking" ? (
-              <div className="flex-shrink-0 bg-white/15 backdrop-blur-sm rounded-2xl p-3 ring-1 ring-white/20 shadow-lg">
-                <img
-                  src={cstLogo}
-                  alt="CST Logistic"
-                  className="h-14 w-auto sm:h-[72px] md:h-[88px] max-w-[160px] object-contain"
-                />
-              </div>
-            ) : (
-              <div className={`${colors.bg} rounded-2xl p-5 flex-shrink-0`}>
-                <IconComp className={`h-12 w-12 ${colors.text}`} />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <Badge className={ct === "trucking"
-                ? "bg-white/20 text-white border-white/30 font-medium mb-2 text-xs"
-                : `${colors.badge} border-0 font-medium mb-3`
-              }>{item.category}</Badge>
-              <h1 className={`font-display font-bold ${ct === "trucking" ? "text-2xl md:text-3xl mt-1 mb-1.5" : "text-3xl md:text-4xl mb-2"}`}>{item.name}</h1>
-              <p className={ct === "trucking" ? "text-white/75 text-base max-w-xl" : "text-primary-foreground/80 text-lg max-w-2xl"}>{item.description}</p>
-              {ct === "trucking" && (
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {["5 Jenis Armada", "Kalkulasi Jarak Otomatis", "Harga Transparan", "Berlisensi & Profesional"].map(f => (
-                    <span key={f} className="text-[11px] px-2.5 py-1 bg-white/10 rounded-full text-white/85 ring-1 ring-white/20 flex items-center gap-1">
-                      <span className="text-blue-200">✓</span> {f}
-                    </span>
-                  ))}
-                </div>
+
+          <div className="flex flex-col sm:flex-row items-start gap-6 md:gap-8">
+            {/* Icon — glassmorphism card */}
+            <div
+              className={`flex-shrink-0 rounded-2xl p-5 ring-1 shadow-2xl backdrop-blur-sm ${hero.accentRing}`}
+              style={{ background: "rgba(255,255,255,0.08)" }}
+            >
+              {ct === "trucking" ? (
+                <img src={cstLogo} alt="CST Logistic" className="h-16 w-auto max-w-[120px] object-contain" />
+              ) : (
+                <IconComp className="h-14 w-14 text-white/90" />
               )}
+            </div>
+
+            {/* Text */}
+            <div className="flex-1 min-w-0">
+              {/* Eyebrow */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">
+                  CST Logistics
+                </span>
+                <span className="w-5 h-px bg-white/20" />
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-widest px-2.5 py-0.5 rounded-full ring-1 text-white/75 ${hero.accentRing}`}
+                  style={{ background: "rgba(255,255,255,0.09)" }}
+                >
+                  {item.category}
+                </span>
+              </div>
+
+              {/* Title */}
+              <h1 className="text-3xl sm:text-4xl md:text-[2.75rem] font-bold leading-[1.15] tracking-tight text-white mb-3">
+                {item.name}
+              </h1>
+
+              {/* Description */}
+              <p className="text-base md:text-[1.05rem] text-white/60 max-w-2xl leading-relaxed mb-6">
+                {item.description}
+              </p>
+
+              {/* Feature pills */}
+              <div className="flex flex-wrap gap-2">
+                {hero.features.map(f => (
+                  <span
+                    key={f}
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-full ring-1 text-white/80 backdrop-blur-sm ${hero.accentRing}`}
+                    style={{ background: "rgba(255,255,255,0.07)" }}
+                  >
+                    <CheckCircle2 className="h-3 w-3 text-white/45 flex-shrink-0" />
+                    {f}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Bottom edge fade */}
+        <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-b from-transparent to-black/20 pointer-events-none" />
       </div>
 
       <div className={`${ct === "trucking" ? "max-w-[1200px] mx-auto" : "container"} px-4 md:px-6 mt-8`}>
         <div className={ct === "trucking" ? "flex flex-col lg:flex-row gap-8 items-start" : "grid grid-cols-1 lg:grid-cols-3 gap-8"}>
           {/* Calculator section */}
           <div className={ct === "trucking" ? "flex-1 min-w-0" : "lg:col-span-2"}>
-            <div className={ct === "trucking" ? "" : "bg-white rounded-2xl border border-border shadow-sm overflow-hidden"}>
+            <div className={ct === "trucking" ? "" : "bg-white rounded-2xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_28px_rgba(0,0,0,0.07)] ring-1 ring-slate-200/70"}>
               {ct !== "trucking" && (
-                <div className="border-b border-border px-6 py-4 flex items-center gap-2">
-                  <Calculator className="h-5 w-5 text-accent" />
-                  <h2 className="text-lg font-bold">Kalkulator Estimasi Biaya</h2>
-                  <span className="text-sm text-muted-foreground ml-1">— isi data untuk mendapatkan estimasi</span>
+                <div className="px-7 pt-6 pb-5 border-b border-slate-100">
+                  <div className="flex items-start gap-4">
+                    <div className="h-10 w-10 mt-0.5 rounded-xl bg-gradient-to-br from-slate-900 to-slate-700 flex items-center justify-center flex-shrink-0 shadow-md">
+                      <Calculator className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-[18px] font-bold text-slate-900 leading-tight tracking-tight">Kalkulator Estimasi Biaya</h2>
+                      <p className="text-[13px] text-slate-400 mt-0.5">Isi parameter layanan untuk mendapatkan estimasi harga</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              <div className={ct === "trucking" ? "" : "p-6 space-y-4"}>
+              <div className={ct === "trucking" ? "" : "px-7 py-6 space-y-5"}>
                 {ct === "air_freight" && <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1477,38 +1529,50 @@ export default function JasaDetail() {
 
                 {ct !== "trucking" && (
                   <>
-                    <Separator />
+                    <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
-                    <div className={`rounded-xl p-4 flex items-center justify-between ${subtotal > 0 ? `${colors.bg} border ${colors.text.replace("text", "border").replace("700", "200")}` : "bg-muted"}`}>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Estimasi Subtotal</p>
-                        <p className={`text-2xl font-bold ${subtotal > 0 ? colors.text : "text-foreground"}`}>
-                          {subtotal > 0 ? formatCurrency(subtotal) : "—"}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5 italic">
-                          Harga estimasi, final dikonfirmasi tim kami
-                        </p>
+                    {/* Premium estimasi subtotal */}
+                    <div className={`rounded-2xl p-5 transition-all duration-300 ${subtotal > 0
+                      ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 shadow-[0_4px_24px_rgba(15,23,42,0.22)]"
+                      : "bg-slate-50 ring-1 ring-slate-200"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className={`text-[10px] font-bold uppercase tracking-[0.15em] mb-2 ${subtotal > 0 ? "text-slate-500" : "text-slate-400"}`}>
+                            Estimasi Subtotal
+                          </p>
+                          <p className={`text-[2rem] font-bold tracking-tight leading-none ${subtotal > 0 ? "text-white" : "text-slate-300"}`}>
+                            {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                          </p>
+                          <p className={`text-[11px] mt-2 ${subtotal > 0 ? "text-slate-500" : "text-slate-400"}`}>
+                            Estimasi harga · dikonfirmasi tim CST
+                          </p>
+                        </div>
+                        {subtotal > 0 && (
+                          <div className="h-10 w-10 rounded-xl bg-white/10 ring-1 ring-white/10 flex items-center justify-center flex-shrink-0">
+                            <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                          </div>
+                        )}
                       </div>
-                      {subtotal > 0 && <CheckCircle2 className={`h-8 w-8 ${colors.text} opacity-60`} />}
                     </div>
 
                     {!added ? (
-                      <Button
-                        size="lg"
-                        className="w-full gap-2 h-12 text-base"
+                      <button
+                        type="button"
                         onClick={handleAddToCart}
                         disabled={subtotal <= 0}
+                        className="w-full h-[52px] rounded-xl font-bold text-[15px] flex items-center justify-center gap-2.5 transition-all duration-200 active:scale-[0.985] disabled:opacity-35 disabled:cursor-not-allowed bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-[0_2px_12px_rgba(15,23,42,0.28)] hover:shadow-[0_4px_20px_rgba(15,23,42,0.38)] hover:from-slate-800 hover:to-slate-700"
                       >
                         <ShoppingCart className="h-5 w-5" />
                         Tambahkan ke Pesanan
-                      </Button>
+                      </button>
                     ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-green-600 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm font-medium">
-                          <CheckCircle2 className="h-4 w-4" />
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2.5 text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200/80 rounded-xl px-4 py-3 text-[13px] font-semibold">
+                          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
                           {item.name} berhasil ditambahkan ke pesanan
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <Button variant="outline" onClick={() => {
                             setAdded(false);
                             setState({});
@@ -1521,12 +1585,12 @@ export default function JasaDetail() {
                             setCargoPhotoFiles([]);
                             setCargoPhotoUrls([]);
                             setTruckingStep(1);
-                          }} className="gap-1.5">
+                          }} className="gap-1.5 rounded-xl border-slate-200 text-slate-600 h-11">
                             <Calculator className="h-4 w-4" /> Hitung Ulang
                           </Button>
-                          <Button onClick={handleProceed} className="gap-1.5">
+                          <button type="button" onClick={handleProceed} className="rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 text-white font-semibold text-[13px] flex items-center justify-center gap-1.5 h-11 hover:from-slate-800 hover:to-slate-700 transition-all shadow-sm">
                             <ArrowRight className="h-4 w-4" /> Lanjut Pesan
-                          </Button>
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1537,66 +1601,84 @@ export default function JasaDetail() {
           </div>
 
           {/* Sidebar */}
-          <div className={ct === "trucking" ? "w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 space-y-4" : "space-y-6"}>
-            {/* Info card */}
-            <div className={`bg-white rounded-2xl shadow-sm p-5 space-y-4 ${ct === "trucking" ? "border border-slate-200/80" : "border border-border"}`}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-foreground text-sm">Informasi Layanan</h3>
-                {ct === "trucking" && <span className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full font-medium border border-green-200">Aktif</span>}
+          <div className={ct === "trucking" ? "w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 space-y-4" : "space-y-4"}>
+
+            {/* ── Premium info card ── */}
+            <div className="rounded-2xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_28px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/70">
+              {/* Dark header with price */}
+              <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-5 py-5">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Informasi Layanan</p>
+                  <span className="text-[10px] px-2 py-0.5 bg-white/10 text-white/60 rounded-full font-semibold ring-1 ring-white/15">
+                    {item.category}
+                  </span>
+                </div>
+                <p className={`text-[1.9rem] font-bold tracking-tight leading-none ${subtotal > 0 ? "text-white" : "text-slate-600"}`}>
+                  {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  {ct === "trucking" ? "Sesuai kalkulasi jarak & armada" : "Negosiasi / Quotation"}
+                </p>
               </div>
-              <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                  <span className="text-muted-foreground text-xs">Kategori</span>
-                  <Badge className={`${colors.badge} border-0 text-xs`}>{item.category}</Badge>
+
+              {/* White body with data rows */}
+              <div className="bg-white divide-y divide-slate-100">
+                <div className="flex justify-between items-center px-5 py-3">
+                  <span className="text-[12px] text-slate-400 font-medium">Kategori</span>
+                  <Badge className={`${colors.badge} border-0 text-[11px] font-semibold`}>{item.category}</Badge>
                 </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                  <span className="text-muted-foreground text-xs">Harga</span>
-                  {ct === "trucking"
-                    ? <span className="font-semibold text-green-700 text-xs">Sesuai Kalkulasi Jarak</span>
-                    : <span className="font-semibold text-amber-600 text-xs">Negosiasi / Quotation</span>
-                  }
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                  <span className="text-muted-foreground text-xs">Estimasi</span>
-                  <span className={`font-bold text-sm ${subtotal > 0 ? "text-green-700" : "text-slate-400"}`}>
-                    {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                <div className="flex justify-between items-center px-5 py-3">
+                  <span className="text-[12px] text-slate-400 font-medium">Status</span>
+                  <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full ring-1 ring-emerald-200/60">
+                    Tersedia
                   </span>
                 </div>
                 {ct === "trucking" && state.vehicleType && (
-                  <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                    <span className="text-muted-foreground text-xs">Kendaraan</span>
-                    <span className="font-medium text-xs text-slate-700 text-right max-w-[140px] leading-tight">{state.vehicleType}</span>
+                  <div className="flex justify-between items-center px-5 py-3">
+                    <span className="text-[12px] text-slate-400 font-medium">Kendaraan</span>
+                    <span className="text-[11px] font-semibold text-slate-700 text-right max-w-[150px] leading-snug">{state.vehicleType}</span>
                   </div>
                 )}
                 {ct === "trucking" && state.distance && (
-                  <div className="flex justify-between items-center py-1.5">
-                    <span className="text-muted-foreground text-xs">Jarak</span>
-                    <span className="font-medium text-xs text-slate-700">{state.distance} km</span>
+                  <div className="flex justify-between items-center px-5 py-3">
+                    <span className="text-[12px] text-slate-400 font-medium">Jarak</span>
+                    <span className="text-[11px] font-semibold text-slate-700">{state.distance} km</span>
                   </div>
                 )}
               </div>
-              <button
-                onClick={requireAuthThenBook}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-slate-200 text-slate-700 text-sm font-semibold hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 transition-all duration-200"
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Lihat Keranjang Pesanan
-              </button>
+
+              {/* CTA button */}
+              <div className="bg-white px-5 pb-5 pt-3">
+                <button
+                  type="button"
+                  onClick={requireAuthThenBook}
+                  className="w-full h-[46px] rounded-xl flex items-center justify-center gap-2 text-[13px] font-bold transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-[0_2px_10px_rgba(15,23,42,0.22)] hover:shadow-[0_4px_16px_rgba(15,23,42,0.32)] hover:from-slate-800 hover:to-slate-700"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Lihat Keranjang Pesanan
+                </button>
+              </div>
             </div>
 
-            {/* Related services */}
+            {/* ── Related services ── */}
             {otherServices.length > 0 && (
-              <div className="bg-white rounded-2xl border border-border shadow-sm p-6 space-y-3">
-                <h3 className="font-bold text-foreground">Layanan {item.category} Lainnya</h3>
-                <div className="space-y-2">
+              <div className="bg-white rounded-2xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_28px_rgba(0,0,0,0.07)] ring-1 ring-slate-200/70">
+                <div className="px-5 pt-5 pb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Layanan {item.category} Lainnya
+                  </p>
+                </div>
+                <div className="divide-y divide-slate-100 px-2 pb-2">
                   {otherServices.map((s) => (
                     <Link key={s.id} href={`/jasa/${s.id}`}>
-                      <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                        <div>
-                          <p className="text-sm font-medium group-hover:text-accent transition-colors">{s.name}</p>
-                          <p className="text-xs text-muted-foreground leading-tight">{s.description}</p>
+                      <div className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-slate-800 group-hover:text-slate-900 truncate">{s.name}</p>
+                          <p className="text-[11px] text-slate-400 leading-tight mt-0.5 truncate">{s.description}</p>
                         </div>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-accent transition-colors flex-shrink-0" />
+                        <div className="h-7 w-7 rounded-lg bg-slate-100 group-hover:bg-slate-200 flex items-center justify-center flex-shrink-0 transition-colors">
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+                        </div>
                       </div>
                     </Link>
                   ))}
@@ -1606,10 +1688,10 @@ export default function JasaDetail() {
 
             {/* Back to catalog */}
             <Link href="/jasa">
-              <Button variant="ghost" className="w-full gap-2 text-muted-foreground">
-                <ArrowLeft className="h-4 w-4" />
+              <button type="button" className="w-full h-10 rounded-xl flex items-center justify-center gap-2 text-[13px] font-medium text-slate-400 hover:text-slate-600 hover:bg-slate-100/80 transition-all duration-200">
+                <ArrowLeft className="h-3.5 w-3.5" />
                 Lihat Semua Layanan
-              </Button>
+              </button>
             </Link>
           </div>
         </div>

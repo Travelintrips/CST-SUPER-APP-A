@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-client-react";
 import { Redirect } from "wouter";
 import { AppRoutes } from "@/routes";
+import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -133,10 +134,12 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <SupabaseAuthProvider>
         <LanguageProvider>
-          <TooltipProvider>
-            <Router />
-            <Toaster />
-          </TooltipProvider>
+          <OrderNotificationsProvider>
+            <TooltipProvider>
+              <Router />
+              <Toaster />
+            </TooltipProvider>
+          </OrderNotificationsProvider>
         </LanguageProvider>
       </SupabaseAuthProvider>
     </QueryClientProvider>
