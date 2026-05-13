@@ -116,6 +116,12 @@ function getOrderUrl(orderId: number): string {
   return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
 }
 
+function getApproveFormUrl(orderNumber: string): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/approve/${orderNumber}`;
+}
+
 function getVendorFormUrl(rfqNumber: string, vendorId: number): string {
   const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
   if (!domain) return "";
@@ -127,7 +133,7 @@ function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName
   estimatedDays?: number | null; vendorNotes?: string | null;
 }, quotePosition?: number): string {
   const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-  const url = getOrderUrl(orderId);
+  const approveUrl = getApproveFormUrl(orderNumber);
   const posLabel = quotePosition != null ? ` (vendor ke-${quotePosition})` : "";
   return (
     `💰 *PENAWARAN VENDOR DITERIMA (Portal)*\n` +
@@ -141,11 +147,11 @@ function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName
     (quote.estimatedDays ? `Est. Hari   : ${quote.estimatedDays} hari\n` : "") +
     (quote.vendorNotes ? `Catatan     : ${quote.vendorNotes}\n` : "") +
     `━━━━━━━━━━━━━━━━━━\n` +
-    (quotePosition != null
-      ? `✅ Approve vendor ini:\n\`APPROVE ${orderNumber} ${quotePosition}\`\n\n`
+    (approveUrl
+      ? `✅ *Approve & Kirim ke Customer:*\n${approveUrl}\n\n`
       : ``) +
     `📋 Lihat semua penawaran:\n\`QUOTES ${orderNumber}\`\n\n` +
-    (url ? `🔗 *Buka di BizPortal:*\n${url}` : `Login ke sistem untuk approve.`)
+    `_Atau ketik: \`APPROVE ${orderNumber} ${quotePosition ?? 1}\`_`
   );
 }
 
@@ -554,6 +560,55 @@ logisticRfqRouter.put("/quotes/:quoteId", async (req: Request, res: Response) =>
 
   const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, updated.vendorId));
   return res.json(toQuote(updated, vendor?.name ?? `Vendor #${updated.vendorId}`));
+});
+
+// GET /api/logistic/orders/approve-form/:orderNumber — public approve form data
+logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  if (!orderNumber) return res.status(400).json({ message: "orderNumber wajib diisi" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.orderNumber, orderNumber));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const quotes = await db.select().from(logisticOrderQuotesTable)
+    .where(eq(logisticOrderQuotesTable.orderId, order.id));
+
+  const vendorIds = [...new Set(quotes.map((q) => q.vendorId))];
+  const vendors = vendorIds.length
+    ? await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds))
+    : [];
+  const vendorMap = new Map(vendors.map((v) => [v.id, v.name]));
+
+  return res.json({
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    customerName: order.customerName,
+    phone: order.phone ?? null,
+    adminApprovalStatus: order.adminApprovalStatus ?? "pending",
+    approvedQuoteId: order.approvedQuoteId ?? null,
+    finalSellingPrice: order.finalSellingPrice != null ? Number(order.finalSellingPrice) : null,
+    quotes: quotes.map((q) => ({
+      id: q.id,
+      vendorId: q.vendorId,
+      vendorName: vendorMap.get(q.vendorId) ?? `Vendor #${q.vendorId}`,
+      vendorPrice: Number(q.vendorPrice),
+      estimatedPickup: q.estimatedPickup ?? null,
+      estimatedDelivery: q.estimatedDelivery ?? null,
+      estimatedDays: q.estimatedDays ?? null,
+      vendorNotes: q.vendorNotes ?? null,
+      markupType: q.markupType,
+      markupPercentage: Number(q.markupPercentage),
+      fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
+      sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
+      quoteStatus: q.quoteStatus,
+      replySource: q.replySource,
+    })),
+  });
 });
 
 // POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer

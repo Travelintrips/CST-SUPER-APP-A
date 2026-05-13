@@ -1,0 +1,426 @@
+import { useState, useEffect } from "react";
+import { useParams } from "wouter";
+import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ChevronDown, ChevronUp, DollarSign } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+function apiUrl(path: string) {
+  return `${BASE}${path}`;
+}
+
+interface Quote {
+  id: number;
+  vendorId: number;
+  vendorName: string;
+  vendorPrice: number;
+  estimatedPickup: string | null;
+  estimatedDelivery: string | null;
+  estimatedDays: number | null;
+  vendorNotes: string | null;
+  markupType: string;
+  markupPercentage: number;
+  fixedSellingPrice: number | null;
+  sellingPrice: number | null;
+  quoteStatus: string;
+  replySource: string | null;
+}
+
+interface OrderData {
+  orderId: number;
+  orderNumber: string;
+  shipmentType: string;
+  origin: string;
+  destination: string;
+  commodity: string | null;
+  customerName: string;
+  phone: string | null;
+  adminApprovalStatus: string;
+  approvedQuoteId: number | null;
+  finalSellingPrice: number | null;
+  quotes: Quote[];
+}
+
+function fmt(n: number) {
+  return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+}
+
+function calcSuggested(q: Quote): number {
+  if (q.markupType === "fixed_price" && q.fixedSellingPrice != null) return q.fixedSellingPrice;
+  if (q.sellingPrice != null) return q.sellingPrice;
+  return q.vendorPrice + (q.vendorPrice * q.markupPercentage / 100);
+}
+
+export default function ApprovePage() {
+  const { orderNumber } = useParams<{ orderNumber: string }>();
+  const [data, setData] = useState<OrderData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [selectedQuoteId, setSelectedQuoteId] = useState<number | null>(null);
+  const [sellingPrice, setSellingPrice] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [expandedQuote, setExpandedQuote] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!orderNumber) return;
+    fetch(apiUrl(`/api/logistic/orders/approve-form/${orderNumber}`))
+      .then((r) => r.ok ? r.json() : r.json().then((e: { message: string }) => Promise.reject(e.message)))
+      .then((d: OrderData) => {
+        setData(d);
+        if (d.approvedQuoteId) {
+          setSelectedQuoteId(d.approvedQuoteId);
+          if (d.finalSellingPrice) setSellingPrice(String(Math.round(d.finalSellingPrice)));
+        } else if (d.quotes.length === 1) {
+          setSelectedQuoteId(d.quotes[0].id);
+          setSellingPrice(String(Math.round(calcSuggested(d.quotes[0]))));
+        }
+      })
+      .catch((msg: string) => setError(typeof msg === "string" ? msg : "Gagal memuat data"))
+      .finally(() => setLoading(false));
+  }, [orderNumber]);
+
+  function onSelectQuote(q: Quote) {
+    setSelectedQuoteId(q.id);
+    setSellingPrice(String(Math.round(calcSuggested(q))));
+    setExpandedQuote(q.id);
+  }
+
+  async function handleApprove() {
+    if (!data || !selectedQuoteId) return;
+    const sp = parseFloat(sellingPrice.replace(/[^\d.]/g, ""));
+    if (isNaN(sp) || sp <= 0) {
+      setSubmitError("Harga jual tidak valid");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const r = await fetch(apiUrl(`/api/logistic/orders/${data.orderId}/approve`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quoteId: selectedQuoteId, sellingPrice: sp }),
+      });
+      if (!r.ok) {
+        const e = await r.json() as { message?: string };
+        throw new Error(e.message ?? "Gagal approve");
+      }
+      setSuccess(true);
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : "Gagal approve order");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const isAlreadyApproved = data?.adminApprovalStatus === "approved";
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3 text-gray-500">
+          <Loader2 className="w-8 h-8 animate-spin" />
+          <p className="text-sm">Memuat data order...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-2xl shadow p-6 max-w-sm w-full text-center space-y-3">
+          <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
+          <h2 className="font-semibold text-gray-800">Order Tidak Ditemukan</h2>
+          <p className="text-sm text-gray-500">{error ?? "Order tidak ditemukan"}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (success) {
+    const approved = data.quotes.find((q) => q.id === selectedQuoteId);
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-2xl shadow p-6 max-w-sm w-full text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+            <CheckCircle2 className="w-9 h-9 text-green-600" />
+          </div>
+          <div>
+            <h2 className="font-bold text-lg text-gray-900">Penawaran Dikirim!</h2>
+            <p className="text-sm text-gray-500 mt-1">Harga telah dikirim ke customer via WhatsApp</p>
+          </div>
+          <div className="bg-green-50 rounded-xl p-4 text-left space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Order</span>
+              <span className="font-mono font-medium">{data.orderNumber}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Vendor</span>
+              <span className="font-medium">{approved?.vendorName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Harga Jual</span>
+              <span className="font-bold text-green-700">{fmt(parseFloat(sellingPrice))}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Customer</span>
+              <span className="font-medium">{data.customerName}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedQuote = data.quotes.find((q) => q.id === selectedQuoteId) ?? null;
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-10">
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <Truck className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 leading-none">Approve Penawaran</p>
+            <p className="font-mono text-sm font-semibold text-gray-800 leading-tight">{data.orderNumber}</p>
+          </div>
+          {isAlreadyApproved && (
+            <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              Sudah Diapprove
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="max-w-lg mx-auto px-4 pt-4 space-y-4">
+        {/* Order Summary */}
+        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+          <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Detail Order</h3>
+          <div className="space-y-2">
+            <InfoRow icon={<User className="w-4 h-4" />} label="Customer" value={data.customerName} />
+            {data.phone && <InfoRow icon={<Phone className="w-4 h-4" />} label="Telepon" value={data.phone} />}
+            <InfoRow icon={<Truck className="w-4 h-4" />} label="Jenis" value={data.shipmentType} />
+            <InfoRow
+              icon={<MapPin className="w-4 h-4" />}
+              label="Rute"
+              value={`${data.origin} → ${data.destination}`}
+            />
+            {data.commodity && (
+              <InfoRow icon={<Package className="w-4 h-4" />} label="Komoditi" value={data.commodity} />
+            )}
+          </div>
+        </div>
+
+        {/* Quotes */}
+        <div className="space-y-2">
+          <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide px-1">
+            Penawaran Vendor ({data.quotes.length})
+          </h3>
+
+          {data.quotes.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow-sm p-6 text-center text-sm text-gray-400">
+              Belum ada penawaran dari vendor
+            </div>
+          ) : (
+            data.quotes.map((q) => {
+              const isSelected = selectedQuoteId === q.id;
+              const isExpanded = expandedQuote === q.id;
+              const suggested = calcSuggested(q);
+
+              return (
+                <div
+                  key={q.id}
+                  className={`bg-white rounded-2xl shadow-sm overflow-hidden border-2 transition-colors ${
+                    isSelected ? "border-blue-500" : "border-transparent"
+                  }`}
+                >
+                  <button
+                    className="w-full text-left p-4"
+                    onClick={() => {
+                      if (isSelected) {
+                        setExpandedQuote(isExpanded ? null : q.id);
+                      } else {
+                        onSelectQuote(q);
+                      }
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-3">
+                        <div className={`w-5 h-5 rounded-full border-2 mt-0.5 flex-shrink-0 flex items-center justify-center ${
+                          isSelected ? "border-blue-500 bg-blue-500" : "border-gray-300"
+                        }`}>
+                          {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">{q.vendorName}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {q.replySource === "whatsapp" ? "Via WhatsApp" : "Via Portal"}
+                            {q.quoteStatus === "approved" && " · ✅ Dipilih"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs text-gray-400">Harga Vendor</p>
+                        <p className="font-bold text-gray-900">{fmt(q.vendorPrice)}</p>
+                        <p className="text-xs text-blue-600 mt-0.5">Jual ≈ {fmt(suggested)}</p>
+                      </div>
+                    </div>
+
+                    {(q.estimatedDays || q.estimatedPickup || q.estimatedDelivery) && (
+                      <div className="mt-2 ml-8 flex flex-wrap gap-2">
+                        {q.estimatedDays && (
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                            ⏱ {q.estimatedDays} hari
+                          </span>
+                        )}
+                        {q.estimatedPickup && (
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                            📦 Pickup: {q.estimatedPickup}
+                          </span>
+                        )}
+                        {q.estimatedDelivery && (
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                            🏁 Tiba: {q.estimatedDelivery}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {isSelected && (
+                      <div className="ml-8 mt-1 flex items-center gap-1 text-xs text-gray-400">
+                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        {isExpanded ? "Sembunyikan detail" : "Lihat detail"}
+                      </div>
+                    )}
+                  </button>
+
+                  {isSelected && isExpanded && q.vendorNotes && (
+                    <div className="px-4 pb-3 ml-8">
+                      <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
+                        📝 {q.vendorNotes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Selling price + approve */}
+        {data.quotes.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+            <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Harga Jual ke Customer</h3>
+
+            {!selectedQuoteId ? (
+              <p className="text-sm text-gray-400">Pilih vendor di atas terlebih dahulu</p>
+            ) : (
+              <>
+                {selectedQuote && (
+                  <div className="bg-blue-50 rounded-xl p-3 text-sm space-y-1">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Vendor terpilih</span>
+                      <span className="font-medium">{selectedQuote.vendorName}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Harga vendor</span>
+                      <span className="font-medium">{fmt(selectedQuote.vendorPrice)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Markup ({selectedQuote.markupPercentage}%)</span>
+                      <span className="font-medium">
+                        {selectedQuote.markupType === "fixed_price"
+                          ? "Fixed"
+                          : fmt(selectedQuote.vendorPrice * selectedQuote.markupPercentage / 100)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Harga Jual (Rp)
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded-xl pl-9 pr-4 py-3 text-gray-900 font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={sellingPrice}
+                      onChange={(e) => setSellingPrice(e.target.value)}
+                      placeholder="0"
+                      min={0}
+                    />
+                  </div>
+                  {sellingPrice && !isNaN(parseFloat(sellingPrice)) && (
+                    <p className="text-xs text-gray-400 mt-1 ml-1">
+                      = {fmt(parseFloat(sellingPrice))}
+                    </p>
+                  )}
+                </div>
+
+                {submitError && (
+                  <div className="flex items-start gap-2 bg-red-50 rounded-xl p-3 text-sm text-red-600">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
+
+                {isAlreadyApproved ? (
+                  <div className="bg-green-50 rounded-xl p-4 text-center space-y-1">
+                    <CheckCircle2 className="w-6 h-6 text-green-600 mx-auto" />
+                    <p className="text-sm font-semibold text-green-700">Order sudah diapprove</p>
+                    <p className="text-xs text-green-600">
+                      Harga jual: {data.finalSellingPrice ? fmt(data.finalSellingPrice) : "-"}
+                    </p>
+                    <button
+                      onClick={handleApprove}
+                      disabled={submitting}
+                      className="mt-2 w-full py-2 rounded-xl border border-green-500 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Kirim Ulang ke Customer
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleApprove}
+                    disabled={submitting || !sellingPrice}
+                    className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold rounded-2xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-base shadow-lg shadow-blue-200"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Mengirim...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" />
+                        Approve & Kirim ke Customer
+                      </>
+                    )}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="text-gray-400 mt-0.5 flex-shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-gray-400">{label}</p>
+        <p className="text-sm text-gray-800 font-medium break-words">{value}</p>
+      </div>
+    </div>
+  );
+}
