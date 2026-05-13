@@ -42,6 +42,7 @@ import Pabean from "@/pages/pabean";
 import Calculator from "@/pages/calculator";
 import ResetPassword from "@/pages/reset-password";
 import ProductOrder from "@/pages/product-order";
+import VendorResponsePage from "@/pages/vendor-response";
 
 const queryClient = new QueryClient();
 
@@ -52,7 +53,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/"];
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response"];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -125,6 +126,7 @@ function AppShell() {
       <Route path="/calculator" component={Calculator} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/order-produk" component={ProductOrder} />
+      <Route path="/vendor-response/:orderNumber" component={VendorResponsePage} />
       <Route component={NotFound} />
     </Switch>
   );

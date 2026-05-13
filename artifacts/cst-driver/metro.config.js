@@ -15,7 +15,13 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
-// Disallow any temp expo-notifications directories
-config.resolver.blockList = /expo-notifications_tmp_[^/]+\/.*/;
+// Exclude transient temp directories that appear and disappear during agent sessions
+// and pnpm installs. FallbackWatcher (used when Watchman is unavailable) calls
+// fs.watch() on every dir it finds; if one vanishes mid-crawl it throws ENOENT,
+// crashing Metro. Patterns covered:
+//   expo-notifications_tmp_*  — Expo notifications temp build artefacts
+//   .local/**                 — agent skill temp dirs + pnpm install temp dirs
+config.resolver.blockList =
+  /expo-notifications_tmp_[^/]+\/.*|[/\\]\.local[/\\].*/;
 
 module.exports = config;

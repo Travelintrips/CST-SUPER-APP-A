@@ -7,6 +7,17 @@ import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-cli
 import { SupabaseAuthProvider, useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
+const ROLE_CACHE_KEY = "biz_user_role_v1";
+function readRoleCache(): string | null {
+  try { return sessionStorage.getItem(ROLE_CACHE_KEY); } catch { return null; }
+}
+function writeRoleCache(role: string | null) {
+  try {
+    if (role) sessionStorage.setItem(ROLE_CACHE_KEY, role);
+    else sessionStorage.removeItem(ROLE_CACHE_KEY);
+  } catch {}
+}
+
 import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
@@ -78,20 +89,36 @@ function LoadingSpinner() {
   );
 }
 
-function LoginScreen() {
-  const { signInWithGoogle, signInWithEmail } = useSupabaseAuth();
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [error, setError] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
+const IS_DEV = import.meta.env.DEV;
 
-  async function handleEmailLogin(e: React.FormEvent) {
+function LoginScreen() {
+  const { signInWithGoogle } = useSupabaseAuth();
+  const [devEmail, setDevEmail] = React.useState("wangsamasindo@gmail.com");
+  const [devError, setDevError] = React.useState("");
+  const [devLoading, setDevLoading] = React.useState(false);
+
+  async function handleDevLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    setLoading(true);
-    const { error: err } = await signInWithEmail(email, password);
-    if (err) setError(err);
-    setLoading(false);
+    setDevError("");
+    setDevLoading(true);
+    try {
+      const res = await fetch("/api/dev-login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: devEmail }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setDevError(data.error || "Login gagal");
+      } else {
+        window.location.reload();
+      }
+    } catch {
+      setDevError("Tidak bisa terhubung ke server");
+    } finally {
+      setDevLoading(false);
+    }
   }
 
   return (
@@ -114,73 +141,82 @@ function LoginScreen() {
           </svg>
           Masuk dengan Google
         </button>
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-slate-700" />
-          <span className="text-xs text-slate-500">atau email</span>
-          <div className="flex-1 h-px bg-slate-700" />
-        </div>
-        <form onSubmit={handleEmailLogin} className="flex flex-col gap-2">
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="rounded-lg bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="rounded-lg bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          {error && <p className="text-xs text-red-400">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-60"
-          >
-            {loading ? "Masuk..." : "Masuk"}
-          </button>
-        </form>
+
+        {IS_DEV && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-slate-700" />
+              <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
+              <div className="flex-1 h-px bg-slate-700" />
+            </div>
+            <form onSubmit={handleDevLogin} className="flex flex-col gap-2">
+              <input
+                type="email"
+                placeholder="Email (dev bypass)"
+                value={devEmail}
+                onChange={(e) => setDevEmail(e.target.value)}
+                required
+                className="rounded-lg bg-slate-800 border border-amber-600/40 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+              {devError && <p className="text-xs text-red-400">{devError}</p>}
+              <button
+                type="submit"
+                disabled={devLoading}
+                className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all disabled:opacity-60"
+              >
+                {devLoading ? "Masuk..." : "Dev Login (tanpa Google)"}
+              </button>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
+function roleToPath(role: string | null | undefined): string {
+  switch (role) {
+    case "admin": return "/dashboard";
+    case "ecommerce": return "/ecommerce";
+    case "trading": return "/trading";
+    case "logistics": return "/logistics";
+    case "pos": return "/pos";
+    default: return "/welcome";
+  }
+}
+
 function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
-  const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
+  const cachedRole = readRoleCache();
+
+  const { data: dbUser, isLoading: isUserLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
       queryKey: getGetCurrentUserQueryKey(),
-      staleTime: Infinity,
+      staleTime: 5 * 60 * 1000,
       retry: 1,
     }
   });
 
-  if (isLoading || (isAuthenticated && dbLoading)) {
-    return <LoadingSpinner />;
-  }
+  // Persist fetched role for next visit
+  React.useEffect(() => {
+    if (dbUser?.role) writeRoleCache(dbUser.role);
+  }, [dbUser?.role]);
+
+  // Still loading auth — only show spinner if no cached state at all
+  if (isLoading) return <LoadingSpinner />;
 
   if (!isAuthenticated) {
+    writeRoleCache(null);
     return <LoginScreen />;
   }
 
-  if (dbUser) {
-    switch (dbUser.role) {
-      case "admin": return <Redirect to="/dashboard" />;
-      case "ecommerce": return <Redirect to="/ecommerce" />;
-      case "trading": return <Redirect to="/trading" />;
-      case "logistics": return <Redirect to="/logistics" />;
-      case "pos": return <Redirect to="/pos" />;
-      default: return <Redirect to="/welcome" />;
-    }
-  }
+  // Wait for user data if no cached role is available (e.g. fresh login with no prior visit)
+  if (isUserLoading && !cachedRole) return <LoadingSpinner />;
 
-  return <Redirect to="/welcome" />;
+  // Use live role if available, fall back to cached role immediately (no second spinner)
+  const role = dbUser?.role ?? cachedRole;
+  return <Redirect to={roleToPath(role)} />;
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
