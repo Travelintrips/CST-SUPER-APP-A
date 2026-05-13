@@ -1099,7 +1099,7 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
         `📦 Order: ${updatedOrder.orderNumber}\n\n` +
         `━━━━━━━━━━━━━━━━━━\n` +
         `📍 Rute: ${updatedOrder.origin} → ${updatedOrder.destination}\n` +
-        (pickupDate ? `📅 Pickup: ${pickupDate}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
+        (pickupDate ? `📅 Pickup: ${formatISODate(pickupDate)}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
         `🚚 Unit: ${truckType ?? "-"} | ${updatedOrder.commodity ?? "Umum"}\n\n` +
         `💰 TOTAL BIAYA: ${fmt(sellingPrice)}\n` +
         `━━━━━━━━━━━━━━━━━━\n\n` +
@@ -1224,27 +1224,36 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
     })
     .where(eq(logisticOrdersTable.id, order.id));
 
-  // Notify admin via WA
+  // Notify admin via WA — [TRUCKING-FIX] include SO link when customer confirms
   const adminWa = await getAdminWa();
   if (adminWa) {
-    const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+    const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
     const sp = order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0;
+    const orderUrl = getOrderUrl(order.id);                                // BizPortal order URL
+    const orderAny3 = order as any;
+    const truckType  = orderAny3.truckType ?? null;
+    const pickupDate = orderAny3.pickupDate ? formatISODate(orderAny3.pickupDate) : null;
+    const pickupTime = orderAny3.pickupTime ?? null;
+    const isTrucking = !!truckType;
+
     const adminMsg = action === "confirmed"
       ? `✅ *CUSTOMER SETUJU — ${order.orderNumber}*\n\n` +
-        `Customer *${order.customerName}* telah menyetujui penawaran harga:\n` +
-        `💰 *${fmt(sp)}*\n\n` +
-        `Rute: ${order.origin} → ${order.destination}\n` +
-        `Jenis: ${order.shipmentType}\n\n` +
-        `Silakan proses order ini ke tahap selanjutnya.`
+        `Customer *${order.customerName}* menyetujui penawaran:\n` +
+        `💰 *${fmtRp(sp)}*\n\n` +
+        `📍 Rute: ${order.origin} → ${order.destination}\n` +
+        (isTrucking && pickupDate ? `📅 Pickup: ${pickupDate}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
+        (truckType ? `🚚 Unit: ${truckType}\n` : "") +
+        `\n🔗 *Buat Sales Order:*\n${orderUrl}`
       : `❌ *CUSTOMER TOLAK — ${order.orderNumber}*\n\n` +
-        `Customer *${order.customerName}* menolak penawaran harga:\n` +
-        `💰 *${fmt(sp)}*\n\n` +
-        `Rute: ${order.origin} → ${order.destination}\n` +
-        `Jenis: ${order.shipmentType}\n\n` +
-        `Silakan hubungi customer untuk negosiasi lebih lanjut.`;
+        `Customer *${order.customerName}* menolak penawaran:\n` +
+        `💰 *${fmtRp(sp)}*\n\n` +
+        `📍 Rute: ${order.origin} → ${order.destination}\n` +
+        `Silakan hubungi customer untuk negosiasi lebih lanjut.\n\n` +
+        (orderUrl ? `🔗 *Detail order:*\n${orderUrl}` : "");
     sendWhatsApp(adminWa, adminMsg).catch((e: unknown) =>
       logger.error({ e }, "WA admin customer confirm notif failed")
     );
+    if (action === "confirmed") console.log(`[TRUCKING-FLOW] State: Confirmed → SO_PENDING (order ${order.id})`);
   }
 
   logger.info({ orderId: order.id, action, orderNumber: order.orderNumber }, "Customer confirmation received");

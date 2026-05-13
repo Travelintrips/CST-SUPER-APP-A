@@ -8,6 +8,14 @@ function fmt(n: number) {
   return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 }
 
+const BULAN = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+function formatTanggal(iso: string | null): string {
+  if (!iso) return "-";
+  const [y, m, d] = iso.split("-");
+  const month = BULAN[parseInt(m, 10) - 1] ?? m;
+  return `${parseInt(d, 10)} ${month} ${y}`;
+}
+
 function getTokenFromUrl(): string {
   const pathname = window.location.pathname;
   const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
@@ -197,7 +205,7 @@ export default function ConfirmPage() {
               {data.pickupDate && (
                 <div className="bg-slate-50 rounded-xl p-3">
                   <p className="text-xs text-slate-400 mb-1">Tanggal Pickup</p>
-                  <p className="font-medium text-slate-700">{data.pickupDate}</p>
+                  <p className="font-medium text-slate-700">{formatTanggal(data.pickupDate)}</p>
                 </div>
               )}
               {data.pickupTime && (

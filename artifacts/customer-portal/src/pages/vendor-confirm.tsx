@@ -2,6 +2,14 @@
 import { useState, useEffect } from "react";
 import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, DollarSign } from "lucide-react";
 
+const BULAN = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+function formatTanggal(iso: string | null): string {
+  if (!iso) return "-";
+  const [y, m, d] = iso.split("-");
+  const month = BULAN[parseInt(m, 10) - 1] ?? m;
+  return `${parseInt(d, 10)} ${month} ${y}`;
+}
+
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) { return `${BASE}${path}`; }
 
@@ -166,7 +174,7 @@ export default function VendorConfirmPage() {
               <div>
                 <p className="text-xs text-slate-400">Jadwal Pickup</p>
                 <p className="font-medium text-slate-700">
-                  {data.pickupDate ?? "-"}{data.pickupTime ? ` Pukul ${data.pickupTime} WIB` : ""}
+                  {formatTanggal(data.pickupDate)}{data.pickupTime ? ` Pukul ${data.pickupTime} WIB` : ""}
                 </p>
               </div>
             </div>
