@@ -1,3 +1,7 @@
+import { File } from "@google-cloud/storage";
+
+const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
+
 export enum ObjectAccessGroupType {}
 
 export interface ObjectAccessGroup {
@@ -21,29 +25,60 @@ export interface ObjectAclPolicy {
   aclRules?: Array<ObjectAclRule>;
 }
 
-export async function setObjectAclPolicy(
-  _objectFile: { bucket: string; path: string },
-  _aclPolicy: ObjectAclPolicy,
-): Promise<void> {
-  // Supabase Storage uses bucket-level public/private settings.
-  // Row-level ACL is not stored per-object; access is controlled via signed URLs.
+function isPermissionAllowed(requested: ObjectPermission, granted: ObjectPermission): boolean {
+  if (requested === ObjectPermission.READ) {
+    return [ObjectPermission.READ, ObjectPermission.WRITE].includes(granted);
+  }
+  return granted === ObjectPermission.WRITE;
 }
 
-export async function getObjectAclPolicy(
-  objectFile: { bucket: string; path: string },
-): Promise<ObjectAclPolicy | null> {
-  return {
-    owner: "system",
-    visibility: objectFile.path.startsWith("public/") ? "public" : "private",
-  };
+abstract class BaseObjectAccessGroup implements ObjectAccessGroup {
+  constructor(
+    public readonly type: ObjectAccessGroupType,
+    public readonly id: string,
+  ) {}
+  public abstract hasMember(userId: string): Promise<boolean>;
+}
+
+function createObjectAccessGroup(group: ObjectAccessGroup): BaseObjectAccessGroup {
+  switch (group.type) {
+    default:
+      throw new Error(`Unknown access group type: ${group.type}`);
+  }
+}
+
+export async function setObjectAclPolicy(objectFile: File, aclPolicy: ObjectAclPolicy): Promise<void> {
+  const [exists] = await objectFile.exists();
+  if (!exists) throw new Error(`Object not found: ${objectFile.name}`);
+  await objectFile.setMetadata({ metadata: { [ACL_POLICY_METADATA_KEY]: JSON.stringify(aclPolicy) } });
+}
+
+export async function getObjectAclPolicy(objectFile: File): Promise<ObjectAclPolicy | null> {
+  const [metadata] = await objectFile.getMetadata();
+  const aclPolicy = metadata?.metadata?.[ACL_POLICY_METADATA_KEY];
+  if (!aclPolicy) return null;
+  return JSON.parse(aclPolicy as string);
 }
 
 export async function canAccessObject({
+  userId,
   objectFile,
+  requestedPermission,
 }: {
   userId?: string;
-  objectFile: { bucket: string; path: string };
+  objectFile: File;
   requestedPermission: ObjectPermission;
 }): Promise<boolean> {
-  return objectFile.path.startsWith("public/");
+  const aclPolicy = await getObjectAclPolicy(objectFile);
+  if (!aclPolicy) return false;
+  if (aclPolicy.visibility === "public" && requestedPermission === ObjectPermission.READ) return true;
+  if (!userId) return false;
+  if (aclPolicy.owner === userId) return true;
+  for (const rule of aclPolicy.aclRules || []) {
+    const accessGroup = createObjectAccessGroup(rule.group);
+    if ((await accessGroup.hasMember(userId)) && isPermissionAllowed(requestedPermission, rule.permission)) {
+      return true;
+    }
+  }
+  return false;
 }
