@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import {
   useGetAccountingSettings, useUpdateAccountingSettings, useListAccounts, useListJournals, useListTaxes,
   getGetAccountingSettingsQueryKey,
@@ -41,7 +42,8 @@ export default function AccountingSettingsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { data: settings, isLoading } = useGetAccountingSettings();
+  const { activeCompany } = useCompany();
+  const { data: settings, isLoading } = useGetAccountingSettings({ company: activeCompany.id });
   const { data: accounts } = useListAccounts();
   const { data: journals } = useListJournals();
   const { data: taxes } = useListTaxes();

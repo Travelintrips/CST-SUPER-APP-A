@@ -19,6 +19,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import { ShoppingCart, Ship, Plus, Receipt, Search, Trash2, X, CalendarRange } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -70,6 +71,7 @@ export default function ExpenseListPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { activeCompany } = useCompany();
   const _urlParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const [search, setSearch] = useState(() => _urlParams.get("search") ?? "");
   const [fromFilter, setFromFilter] = useState(() => _urlParams.get("from") ?? "");
@@ -116,6 +118,7 @@ export default function ExpenseListPage() {
     search: search || undefined,
     from: fromFilter || undefined,
     to: toFilter || undefined,
+    company: activeCompany.id,
   });
   const { data: cats = [] } = useListExpenseCategories();
   const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });

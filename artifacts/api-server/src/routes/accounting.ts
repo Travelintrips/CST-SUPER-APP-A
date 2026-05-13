@@ -47,6 +47,12 @@ function serializeSettings(s: typeof accountingSettingsTable.$inferSelect) {
   return { ...s, updatedAt: s.updatedAt.toISOString() };
 }
 
+function getCompanyId(req: { query: Record<string, unknown> }): number {
+  const raw = req.query["company"];
+  const id = Number(raw);
+  return !raw || Number.isNaN(id) || id <= 0 ? 1 : id;
+}
+
 function parseDateRange(req: { query: Record<string, unknown> }):
   | { from: Date | null; to: Date | null; error: null }
   | { from: null; to: null; error: string } {
@@ -196,9 +202,10 @@ router.patch("/taxes/:id", async (req, res) => {
 
 // ============ Journal Entries ============
 router.get("/entries", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [];
+  const conds: SQL<unknown>[] = [eq(accountingEntriesTable.companyId, companyId)];
   if (range.from) conds.push(gte(accountingEntriesTable.date, range.from.toISOString().split("T")[0]!));
   if (range.to) conds.push(lte(accountingEntriesTable.date, range.to.toISOString().split("T")[0]!));
   const journalId = req.query["journalId"] ? Number(req.query["journalId"]) : null;
@@ -206,7 +213,7 @@ router.get("/entries", async (req, res) => {
   const rows = await db
     .select()
     .from(accountingEntriesTable)
-    .where(conds.length ? and(...conds) : undefined)
+    .where(and(...conds))
     .orderBy(desc(accountingEntriesTable.date), desc(accountingEntriesTable.id))
     .limit(500);
   return res.json(rows.map(serializeEntry));
@@ -225,6 +232,7 @@ router.get("/entries/:id", async (req, res) => {
 });
 
 router.post("/entries", async (req, res) => {
+  const companyId = getCompanyId(req);
   const { journalId, date: dateStr, ref, description, lines } = req.body ?? {};
   if (!journalId || !dateStr || !Array.isArray(lines))
     return res.status(400).json({ message: "journalId, date, lines[] required" });
@@ -251,6 +259,7 @@ router.post("/entries", async (req, res) => {
         description: description ?? null,
         source: "manual",
         lines: postingLines,
+        companyId,
       },
       journal.code,
     );
@@ -266,9 +275,10 @@ router.post("/entries", async (req, res) => {
 
 // GET /accounting/entry-lines — list journal line items with joined entry info
 router.get("/entry-lines", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [];
+  const conds: SQL<unknown>[] = [eq(accountingEntriesTable.companyId, companyId)];
   if (range.from) conds.push(gte(accountingEntriesTable.date, range.from.toISOString().split("T")[0]!));
   if (range.to) conds.push(lte(accountingEntriesTable.date, range.to.toISOString().split("T")[0]!));
   const journalId = req.query["journalId"] ? Number(req.query["journalId"]) : null;
@@ -316,9 +326,10 @@ function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
 }
 
 router.get("/payments", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [];
+  const conds: SQL<unknown>[] = [eq(accountingPaymentsTable.companyId, companyId)];
   if (range.from) conds.push(gte(accountingPaymentsTable.date, range.from.toISOString().split("T")[0]!));
   if (range.to) conds.push(lte(accountingPaymentsTable.date, range.to.toISOString().split("T")[0]!));
   const typeFilter = typeof req.query["paymentType"] === "string" ? req.query["paymentType"] : null;
@@ -336,7 +347,7 @@ router.get("/payments", async (req, res) => {
   const rows = await db
     .select()
     .from(accountingPaymentsTable)
-    .where(conds.length ? and(...conds) : undefined)
+    .where(and(...conds))
     .orderBy(desc(accountingPaymentsTable.date), desc(accountingPaymentsTable.id))
     .limit(500);
   return res.json(rows.map(serializePayment));
@@ -359,6 +370,7 @@ router.get("/payments/:id", async (req, res) => {
 });
 
 router.post("/payments", async (req, res) => {
+  const companyId = getCompanyId(req);
   const { paymentType, amount, journalId, partnerName, date: dateStr, ref, memo, sourceType, sourceDocId } = req.body ?? {};
   if (!paymentType || !amount || !journalId || !dateStr)
     return res.status(400).json({ message: "paymentType, amount, journalId, date required" });
@@ -375,7 +387,7 @@ router.post("/payments", async (req, res) => {
   if (journal.type !== "bank" && journal.type !== "cash")
     return res.status(400).json({ message: "Journal must be of type bank or cash" });
 
-  const settings = await ensureAccountingSettings();
+  const settings = await ensureAccountingSettings(companyId);
 
   // Determine bank/cash account: prefer journal's default accounts, fall back to settings
   const bankCashAccountId =
@@ -414,6 +426,7 @@ router.post("/payments", async (req, res) => {
         ref: ref ?? null,
         description: memo ?? `Pembayaran ${paymentType === "inbound" ? "masuk" : "keluar"} - ${partner}`,
         source: "manual_payment",
+        companyId,
         lines,
       },
       journal.code,
@@ -434,6 +447,7 @@ router.post("/payments", async (req, res) => {
     const [payment] = await db
       .insert(accountingPaymentsTable)
       .values({
+        companyId,
         paymentNumber,
         paymentType,
         amount: String(round2(amt)),
@@ -770,13 +784,15 @@ router.patch("/entries/:id/status", async (req, res) => {
 });
 
 // ============ Settings ============
-router.get("/settings", async (_req, res) => {
-  const s = await ensureAccountingSettings();
+router.get("/settings", async (req, res) => {
+  const companyId = getCompanyId(req);
+  const s = await ensureAccountingSettings(companyId);
   return res.json(serializeSettings(s));
 });
 
 router.patch("/settings", async (req, res) => {
-  const s = await ensureAccountingSettings();
+  const companyId = getCompanyId(req);
+  const s = await ensureAccountingSettings(companyId);
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const k of [
     "arAccountId",
@@ -807,8 +823,11 @@ router.patch("/settings", async (req, res) => {
 });
 
 // ============ Reports ============
-async function buildLedgerWindow(from: Date | null, to: Date | null) {
-  const conds: SQL<unknown>[] = [eq(accountingEntriesTable.status, "posted")];
+async function buildLedgerWindow(from: Date | null, to: Date | null, companyId = 1) {
+  const conds: SQL<unknown>[] = [
+    eq(accountingEntriesTable.status, "posted"),
+    eq(accountingEntriesTable.companyId, companyId),
+  ];
   if (from) conds.push(gte(accountingEntriesTable.date, from.toISOString().split("T")[0]!));
   if (to) conds.push(lte(accountingEntriesTable.date, to.toISOString().split("T")[0]!));
   const entries = await db
@@ -826,10 +845,11 @@ async function buildLedgerWindow(from: Date | null, to: Date | null) {
 }
 
 router.get("/reports/trial-balance", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to);
+  const { lines } = await buildLedgerWindow(range.from, range.to, companyId);
   const totals = new Map<number, { debit: number; credit: number }>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? { debit: 0, credit: 0 };
@@ -863,11 +883,12 @@ router.get("/reports/trial-balance", async (req, res) => {
 });
 
 router.get("/reports/general-ledger", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accountId = req.query["accountId"] ? Number(req.query["accountId"]) : null;
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { entries, lines } = await buildLedgerWindow(range.from, range.to);
+  const { entries, lines } = await buildLedgerWindow(range.from, range.to, companyId);
   const entryById = new Map(entries.map((e) => [e.id, e]));
   const filtered = accountId ? lines.filter((l) => l.accountId === accountId) : lines;
   const grouped = new Map<number, { account: typeof accounts[number]; rows: Array<{ date: string; entryNumber: string; ref: string | null; description: string | null; debit: number; credit: number; balance: number }>; totalDebit: number; totalCredit: number }>();
@@ -922,10 +943,11 @@ router.get("/reports/general-ledger", async (req, res) => {
 });
 
 router.get("/reports/profit-loss", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to);
+  const { lines } = await buildLedgerWindow(range.from, range.to, companyId);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? 0;
@@ -957,12 +979,13 @@ router.get("/reports/profit-loss", async (req, res) => {
 });
 
 router.get("/reports/balance-sheet", async (req, res) => {
+  const companyId = getCompanyId(req);
   // Balance sheet is "as of" date — use 'to' as cutoff, ignore 'from'
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const asOf = range.to;
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(null, asOf);
+  const { lines } = await buildLedgerWindow(null, asOf, companyId);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const acc = accounts.find((a) => a.id === l.accountId);

@@ -12,6 +12,7 @@ import {
   useSupabaseAuth,
 } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
+import { CompanyProvider } from "@/contexts/CompanyContext";
 
 const ROLE_CACHE_KEY = "biz_user_role_v1";
 function readRoleCache(): string | null {
@@ -271,6 +272,76 @@ function Router() {
   return (
     <WouterRouter base={basePath}>
       <Switch>
+        <Route path="/" component={AuthRouteGuard} />
+        <Route path="/welcome" component={() => <ProtectedRoute component={WelcomePage} />} />
+        <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
+        <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
+        <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
+        <Route path="/logistics" component={() => <ProtectedRoute component={LogisticsPage} />} />
+        <Route path="/logistics/freight" component={() => <ProtectedRoute component={LogisticsFreightPage} />} />
+        <Route path="/logistics/freight/new" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
+        <Route path="/logistics/freight/:id" component={() => <ProtectedRoute component={LogisticsFreightDetailPage} />} />
+        <Route path="/logistics/freight/:id/edit" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
+        <Route path="/logistics/freight/:id/bl" component={() => <ProtectedRoute component={LogisticsFreightBLPage} />} />
+        <Route path="/logistics/portal-orders" component={() => <ProtectedRoute component={LogisticsPortalOrdersPage} />} />
+        <Route path="/logistics/portal-orders/:id" component={() => <ProtectedRoute component={LogisticsPortalOrderDetailPage} />} />
+        <Route path="/logistics/drivers" component={() => <ProtectedRoute component={LogisticsDriversPage} />} />
+        <Route path="/logistics/driver-performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
+        <Route path="/logistics/vendors" component={() => <ProtectedRoute component={LogisticsVendorsPage} />} />
+        <Route path="/logistics/quotation-reply" component={() => <ProtectedRoute component={LogisticsQuotationReplyPage} />} />
+        <Route path="/logistics/vendor-quote/:id" component={() => <ProtectedRoute component={LogisticsVendorQuotePage} />} />
+        <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
+        <Route path="/portal-product-orders" component={() => <ProtectedRoute component={PortalProductOrdersPage} />} />
+        {/* Sales */}
+        <Route path="/sales" component={() => <ProtectedRoute component={SalesDashboardPage} />} />
+        <Route path="/sales/documents" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
+        <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/documents/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/ai-drafts" component={() => <ProtectedRoute component={AiDraftsPage} />} />
+        <Route path="/sales/customers" component={() => <ProtectedRoute component={CustomersPage} />} />
+        <Route path="/sales/invoices" component={() => <ProtectedRoute component={SalesInvoicesPage} />} />
+        <Route path="/sales/items" component={() => <ProtectedRoute component={SalesItemsPage} />} />
+        {/* Purchase */}
+        <Route path="/purchase" component={() => <ProtectedRoute component={PurchaseDashboardPage} />} />
+        <Route path="/purchase/documents" component={() => <ProtectedRoute component={PurchaseDocumentsListPage} />} />
+        <Route path="/purchase/documents/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/documents/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
+        <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
+        <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
+        {/* Reports */}
+        <Route path="/reports/sales" component={() => <ProtectedRoute component={ReportsSalesPage} />} />
+        <Route path="/reports/purchase" component={() => <ProtectedRoute component={ReportsPurchasePage} />} />
+        <Route path="/reports/ar-aging" component={() => <ProtectedRoute component={ReportsArAgingPage} />} />
+        <Route path="/reports/ap-aging" component={() => <ProtectedRoute component={ReportsApAgingPage} />} />
+        {/* Accounting */}
+        <Route path="/accounting/accounts" component={() => <ProtectedRoute component={AccountingAccountsPage} />} />
+        <Route path="/accounting/journals" component={() => <ProtectedRoute component={AccountingJournalsPage} />} />
+        <Route path="/accounting/taxes" component={() => <ProtectedRoute component={AccountingTaxesPage} />} />
+        <Route path="/accounting/entries" component={() => <ProtectedRoute component={AccountingEntriesPage} />} />
+        <Route path="/accounting/entries/:id" component={() => <ProtectedRoute component={AccountingEntryDetailPage} />} />
+        <Route path="/accounting/journal-items" component={() => <ProtectedRoute component={AccountingJournalItemsPage} />} />
+        <Route path="/accounting/payments" component={() => <ProtectedRoute component={AccountingPaymentsPage} />} />
+        <Route path="/accounting/settings" component={() => <ProtectedRoute component={AccountingSettingsPage} />} />
+        <Route path="/accounting/reports/trial-balance" component={() => <ProtectedRoute component={AccountingTrialBalancePage} />} />
+        <Route path="/accounting/reports/general-ledger" component={() => <ProtectedRoute component={AccountingGeneralLedgerPage} />} />
+        <Route path="/accounting/reports/profit-loss" component={() => <ProtectedRoute component={AccountingProfitLossPage} />} />
+        <Route path="/accounting/reports/balance-sheet" component={() => <ProtectedRoute component={AccountingBalanceSheetPage} />} />
+        {/* Expenses */}
+        <Route path="/expenses" component={() => <ProtectedRoute component={ExpenseListPage} />} />
+        <Route path="/expenses/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
+        <Route path="/expenses/:id" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
+        <Route path="/expenses/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
+        <Route path="/expenses/reports" component={() => <ProtectedRoute component={ExpenseReportsPage} />} />
+        {/* Settings */}
+        <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
+        <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
+        <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
+        <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
+        <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
+        <Route component={NotFound} />
+      </Switch>
+    </WouterRouter>
   );
 }
 
@@ -279,10 +350,12 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <SupabaseAuthProvider>
         <LanguageProvider>
-          <TooltipProvider>
-            <Router />
-            <Toaster />
-          </TooltipProvider>
+          <CompanyProvider>
+            <TooltipProvider>
+              <Router />
+              <Toaster />
+            </TooltipProvider>
+          </CompanyProvider>
         </LanguageProvider>
       </SupabaseAuthProvider>
     </QueryClientProvider>

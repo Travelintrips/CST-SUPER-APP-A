@@ -331,14 +331,21 @@ async function seedExpenseCategories(
   }
 }
 
-export async function getAccountingSettings(): Promise<typeof accountingSettingsTable.$inferSelect | null> {
-  const [row] = await db.select().from(accountingSettingsTable).limit(1);
+export async function getAccountingSettings(companyId = 1): Promise<typeof accountingSettingsTable.$inferSelect | null> {
+  const [row] = await db
+    .select()
+    .from(accountingSettingsTable)
+    .where(eq(accountingSettingsTable.companyId, companyId))
+    .limit(1);
   return row ?? null;
 }
 
-export async function ensureAccountingSettings(): Promise<typeof accountingSettingsTable.$inferSelect> {
-  const existing = await getAccountingSettings();
+export async function ensureAccountingSettings(companyId = 1): Promise<typeof accountingSettingsTable.$inferSelect> {
+  const existing = await getAccountingSettings(companyId);
   if (existing) return existing;
-  const [created] = await db.insert(accountingSettingsTable).values({}).returning();
+  const [created] = await db
+    .insert(accountingSettingsTable)
+    .values({ companyId })
+    .returning();
   return created!;
 }

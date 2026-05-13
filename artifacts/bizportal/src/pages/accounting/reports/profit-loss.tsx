@@ -6,18 +6,21 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useGetProfitLoss, getGetProfitLossQueryKey } from "@workspace/api-client-react";
+import { useCompany } from "@/contexts/CompanyContext";
 import { TrendingUp, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
 export default function ProfitLossPage() {
+  const { activeCompany } = useCompany();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const params = useMemo(() => ({
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
-  }), [from, to]);
+    company: activeCompany.id,
+  }), [from, to, activeCompany]);
   const { data, isLoading } = useGetProfitLoss(params, { query: { queryKey: getGetProfitLossQueryKey(params) } });
 
   function buildExportRows() {

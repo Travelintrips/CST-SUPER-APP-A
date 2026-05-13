@@ -12,6 +12,7 @@ import { runAccountingMigration } from "./lib/accountingMigration";
 import { runOauthStateMigration } from "./lib/oauthStateMigration";
 import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 import { runKnowledgeBaseMigration } from "./lib/knowledgeBaseMigration";
+import { runCompaniesMigration } from "./lib/companiesMigration";
 
 const rawPort = process.env["PORT"];
 
@@ -34,6 +35,11 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Buat tabel companies + company_id columns (idempotent)
+  runCompaniesMigration().catch((err) => {
+    logger.error({ err }, "Companies migration error");
+  });
 
   // Jalankan portal schema migration (idempotent — aman untuk prod)
   runPortalMigration().catch((err) => {

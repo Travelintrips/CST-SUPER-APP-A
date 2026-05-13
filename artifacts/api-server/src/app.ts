@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import authRouter from "./routes/auth";
+import companiesRouter from "./routes/companies";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
@@ -107,6 +108,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+app.use("/api/companies", companiesRouter);
 app.use("/api", router);
 
 // Global error handler — logs unhandled errors and returns JSON

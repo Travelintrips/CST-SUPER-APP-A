@@ -16,6 +16,7 @@ import {
   useListAccountingEntryLines, useListJournals, useListAccounts,
   getListAccountingEntryLinesQueryKey,
 } from "@workspace/api-client-react";
+import { useCompany } from "@/contexts/CompanyContext";
 import { List, TrendingUp, TrendingDown, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 
@@ -35,6 +36,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export default function JournalItemsPage() {
+  const { activeCompany } = useCompany();
   const [filter, setFilter] = useState<{
     journalId?: number;
     accountId?: number;
@@ -47,7 +49,8 @@ export default function JournalItemsPage() {
     ...(filter.accountId ? { accountId: filter.accountId } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
-  }), [filter]);
+    company: activeCompany.id,
+  }), [filter, activeCompany]);
 
   const { data: lines, isLoading } = useListAccountingEntryLines(params, {
     query: { queryKey: getListAccountingEntryLinesQueryKey(params) },

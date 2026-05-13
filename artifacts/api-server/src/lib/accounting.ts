@@ -32,6 +32,7 @@ export interface PostingInput {
     | "manual_payment";
   sourceId?: number | null;
   createdById?: string | null;
+  companyId?: number | null;
   lines: PostingLine[];
 }
 
@@ -99,6 +100,7 @@ export async function postEntry(
       totalDebit: String(totalDebit),
       totalCredit: String(totalCredit),
       createdById: input.createdById ?? null,
+      companyId: input.companyId ?? 1,
     })
     .onConflictDoNothing()
     .returning();

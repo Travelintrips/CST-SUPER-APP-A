@@ -241,8 +241,15 @@ router.get("/summary", async (req, res) => {
 
 // ===================== Expenses CRUD =====================
 
+function getExpenseCompanyId(req: { query: Record<string, unknown> }): number {
+  const raw = req.query["company"];
+  const id = Number(raw);
+  return !raw || Number.isNaN(id) || id <= 0 ? 1 : id;
+}
+
 router.get("/", async (req, res) => {
-  const conditions: ReturnType<typeof eq>[] = [];
+  const companyId = getExpenseCompanyId(req);
+  const conditions: ReturnType<typeof eq>[] = [eq(expensesTable.companyId, companyId)];
   const { status, categoryId, expenseType, salesDocId, shipmentId, search, from, to } = req.query as Record<string, string>;
 
   if (status) conditions.push(eq(expensesTable.status, status));
@@ -256,7 +263,7 @@ router.get("/", async (req, res) => {
   let rows = await db
     .select()
     .from(expensesTable)
-    .where(conditions.length ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(expensesTable.date), desc(expensesTable.id))
     .limit(500);
 
@@ -313,11 +320,13 @@ router.post("/", async (req, res) => {
   }
   const total = Math.round((subtotal + taxAmountN) * 100) / 100;
 
+  const companyIdForInsert = getExpenseCompanyId(req);
   const expenseNumber = await nextExpenseNumber();
 
   const [created] = await db
     .insert(expensesTable)
     .values({
+      companyId: companyIdForInsert,
       expenseNumber,
       date: String(date),
       vendorEmployee: vendorEmployee ? String(vendorEmployee) : null,
@@ -458,7 +467,8 @@ router.post("/:id/action", async (req, res) => {
   }
 
   if (action === "post") {
-    const settings = await ensureAccountingSettings();
+    const expenseCompanyId = expense.companyId ?? 1;
+    const settings = await ensureAccountingSettings(expenseCompanyId);
 
     const effectiveExpenseAccountId = expense.expenseAccountId ?? null;
     const effectivePayableAccountId = expense.payableAccountId ?? settings.apAccountId ?? null;
@@ -502,6 +512,7 @@ router.post("/:id/action", async (req, res) => {
         ref: expense.expenseNumber,
         description: `${expense.expenseNumber} — ${expense.description ?? expense.vendorEmployee ?? "Expense"}`,
         source: "manual",
+        companyId: expenseCompanyId,
         lines,
       },
       journal.code,
@@ -511,7 +522,8 @@ router.post("/:id/action", async (req, res) => {
       .set({ status: "posted", entryId: entry.id, updatedAt: new Date() })
       .where(eq(expensesTable.id, id));
   } else if (action === "pay") {
-    const settings = await ensureAccountingSettings();
+    const expenseCompanyId = expense.companyId ?? 1;
+    const settings = await ensureAccountingSettings(expenseCompanyId);
     const totalN = Number(expense.total);
 
     const effectivePayableAccountId = expense.payableAccountId ?? settings.apAccountId;
@@ -538,6 +550,7 @@ router.post("/:id/action", async (req, res) => {
         ref: expense.expenseNumber,
         description: `Pembayaran ${expense.expenseNumber} — ${expense.vendorEmployee ?? expense.description ?? "Expense"}`,
         source: "manual",
+        companyId: expenseCompanyId,
         lines: [
           { accountId: effectivePayableAccountId, debit: totalN, credit: 0, description: "Pelunasan Hutang Biaya" },
           { accountId: effectiveBankAccountId, debit: 0, credit: totalN, description: "Bank Mandiri" },

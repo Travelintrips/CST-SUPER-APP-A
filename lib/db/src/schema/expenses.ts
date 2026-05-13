@@ -25,6 +25,7 @@ export const expenseCategoriesTable = pgTable("expense_categories", {
 
 export const expensesTable = pgTable("expenses", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
   expenseNumber: text("expense_number").notNull().unique(),
   date: date("date").notNull(),
   vendorEmployee: text("vendor_employee"),
