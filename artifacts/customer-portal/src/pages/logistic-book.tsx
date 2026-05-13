@@ -612,6 +612,19 @@ export default function BookPage() {
       namaPenerima: customerForm.namaPenerima || null,
       nomorPenerima: customerForm.nomorPenerima || null,
       jamOrder: str(truckingInputData.pickupTime) || null,
+      // [MULTI-MODE] transport mode fields
+      transportMode: customerForm.transportMode || undefined,
+      originDistrict: customerForm.originDistrict || undefined,
+      destDistrict: customerForm.destDistrict || undefined,
+      pickupDate: customerForm.pickupDate || str(truckingInputData.pickupDate) || undefined,
+      pickupTime: customerForm.pickupTime || str(truckingInputData.pickupTime) || undefined,
+      truckType: customerForm.truckType || str(truckingInputData.vehicleType) || undefined,
+      originPort: customerForm.originPort || undefined,
+      destPort: customerForm.destPort || undefined,
+      weightKg: customerForm.weightKg ? parseFloat(customerForm.weightKg) : undefined,
+      incoterm: customerForm.incoterm || undefined,
+      etd: customerForm.etd || undefined,
+      eta: customerForm.eta || undefined,
       paymentMethod: paymentType === "gateway"
         ? "payment_gateway"
         : paymentType === "transfer"

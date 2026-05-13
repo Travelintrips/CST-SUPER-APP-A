@@ -1568,3 +1568,54 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
   logger.info({ orderId: order.id, offerId: chosen.id, price: chosenPrice }, "[MULTI-MODE] Customer chose option");
   return res.json({ ok: true, chosenLabel: chosen.optionLabel ?? "Opsi", price: chosenPrice });
 });
+
+// GET /estimate-price — public: auto-estimate lowest vendor rate for a given mode/route
+logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => {
+  const { transport_mode, origin, dest, truck_type } = req.query as Record<string, string>;
+  if (!transport_mode) {
+    return res.status(400).json({ message: "transport_mode wajib diisi" });
+  }
+
+  const DISCLAIMER = "Estimasi berdasarkan tarif vendor aktif. Harga final mengikuti penawaran yang dikonfirmasi admin.";
+
+  try {
+    const yearCutoff = new Date().getFullYear() - 5;
+    let estimatedPrice: number | null = null;
+
+    if (transport_mode === "TRUCKING") {
+      const rows = await db
+        .select({ baseRate: vendorRatesTable.baseRate })
+        .from(vendorRatesTable)
+        .innerJoin(suppliersTable, eq(vendorRatesTable.vendorId, suppliersTable.id))
+        .where(
+          and(
+            eq(vendorRatesTable.transportMode, "TRUCKING"),
+            eq(vendorRatesTable.isActive, true),
+            ...(truck_type ? [eq(vendorRatesTable.truckType, truck_type)] : []),
+            sql`(${suppliersTable.yearVehicle} IS NULL OR ${suppliersTable.yearVehicle} >= ${yearCutoff})`
+          )
+        );
+      if (rows.length > 0) {
+        estimatedPrice = Math.min(...rows.map((r) => Number(r.baseRate)));
+      }
+    } else if (transport_mode === "AIR_FREIGHT" || transport_mode === "SEA_FREIGHT") {
+      const rows = await db
+        .select({ baseRate: vendorRatesTable.baseRate })
+        .from(vendorRatesTable)
+        .where(
+          and(
+            eq(vendorRatesTable.transportMode, transport_mode),
+            eq(vendorRatesTable.isActive, true)
+          )
+        );
+      if (rows.length > 0) {
+        estimatedPrice = Math.min(...rows.map((r) => Number(r.baseRate)));
+      }
+    }
+
+    return res.json({ estimated_price: estimatedPrice, disclaimer: DISCLAIMER });
+  } catch (e: unknown) {
+    logger.error({ e }, "[estimate-price] Error querying vendor_rates");
+    return res.json({ estimated_price: null, disclaimer: DISCLAIMER });
+  }
+});
