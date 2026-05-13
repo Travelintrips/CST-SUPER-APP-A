@@ -77,11 +77,6 @@ function useUsdRate(): number {
   return rate;
 }
 
-interface MediaItem {
-  type: "image" | "video";
-  url: string;
-}
-
 interface ItemForm {
   name: string;
   sku: string;
@@ -118,12 +113,12 @@ const emptyForm = (): ItemForm => ({
   mediaItems: [],
 });
 
-function parseMediaItems(raw: unknown): MediaItem[] {
+function parseMediaItems(raw: MediaItem[] | string | null | undefined): MediaItem[] {
   if (!raw) return [];
   try {
     const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (!Array.isArray(arr)) return [];
-    return arr.filter((x) => x && typeof x.url === "string");
+    return arr.filter((x): x is MediaItem => !!x && typeof x.url === "string");
   } catch { return []; }
 }
 
