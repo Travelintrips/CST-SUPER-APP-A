@@ -1,40 +1,15 @@
 import React from "react";
-import { Router as WouterRouter } from "wouter";
+import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import {
-  SupabaseAuthProvider,
-  useSupabaseAuth,
-} from "@/contexts/SupabaseAuthContext";
+import { SupabaseAuthProvider, useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { CompanyProvider } from "@/contexts/CompanyContext";
-import {
-  useGetCurrentUser,
-  getGetCurrentUserQueryKey,
-} from "@workspace/api-client-react";
-import { Redirect } from "wouter";
+import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { AppRoutes } from "@/routes";
 import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
-
-const queryClient = new QueryClient();
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-const ROLE_CACHE_KEY = "biz_user_role_v1";
-function readRoleCache() {
-  try {
-    return sessionStorage.getItem(ROLE_CACHE_KEY);
-  } catch {
-    return null;
-  }
-}
-function writeRoleCache(role: string | null) {
-  try {
-    if (role) sessionStorage.setItem(ROLE_CACHE_KEY, role);
-    else sessionStorage.removeItem(ROLE_CACHE_KEY);
-  } catch {}
-}
-
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
@@ -96,6 +71,24 @@ import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
+
+const queryClient = new QueryClient();
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const ROLE_CACHE_KEY = "biz_user_role_v1";
+function readRoleCache() {
+  try {
+    return sessionStorage.getItem(ROLE_CACHE_KEY);
+  } catch {
+    return null;
+  }
+}
+function writeRoleCache(role: string | null) {
+  try {
+    if (role) sessionStorage.setItem(ROLE_CACHE_KEY, role);
+    else sessionStorage.removeItem(ROLE_CACHE_KEY);
+  } catch {}
+}
 
 function roleToPath(role?: string | null) {
   switch (role) {
@@ -337,8 +330,8 @@ export default function App() {
               <Router />
               <Toaster />
             </TooltipProvider>
-          </CompanyProvider>
           </OrderNotificationsProvider>
+          </CompanyProvider>
         </LanguageProvider>
       </SupabaseAuthProvider>
     </QueryClientProvider>
