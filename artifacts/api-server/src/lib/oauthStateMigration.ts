@@ -33,11 +33,12 @@ export async function saveOauthState(token: string, returnTo: string): Promise<v
 }
 
 export async function consumeOauthState(token: string): Promise<string | null> {
-  const rows = await db.execute(sql`
+  const result = await db.execute(sql`
     DELETE FROM oauth_states
     WHERE token = ${token} AND expires_at > ${Date.now()}
     RETURNING return_to
   `);
-  const row = (rows as unknown as Array<{ return_to: string }>)[0];
+  const row = (result as unknown as { rows: Array<{ return_to: string }> }).rows?.[0]
+    ?? (result as unknown as Array<{ return_to: string }>)[0];
   return row?.return_to ?? null;
 }

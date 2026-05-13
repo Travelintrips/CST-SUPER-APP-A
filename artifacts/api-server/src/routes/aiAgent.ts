@@ -5,6 +5,7 @@ import {
   aiChatSessionsTable,
   aiChatMessagesTable,
   aiAgentSettingsTable,
+  chatbotKnowledgeBaseTable,
   logisticOrdersTable,
   productsTable,
   ordersTable,
@@ -74,14 +75,34 @@ Layanan yang tersedia:
 
 Harga layanan logistik dikonfirmasi tim setelah order masuk. Harga produk sesuai katalog.`;
 
-/** Load the active system prompt from DB, fall back to the hardcoded default */
+/** Load the active system prompt from DB, fall back to the hardcoded default, then inject KB entries */
 async function getSystemPrompt(): Promise<string> {
   try {
-    const [row] = await db
+    const [settingRow] = await db
       .select()
       .from(aiAgentSettingsTable)
       .where(eq(aiAgentSettingsTable.key, "system_prompt"));
-    return row?.value ?? DEFAULT_SYSTEM_PROMPT;
+    const base = settingRow?.value ?? DEFAULT_SYSTEM_PROMPT;
+
+    // Inject active knowledge base entries
+    let kbEntries: Array<{ title: string; category: string; content: string }> = [];
+    try {
+      kbEntries = await db
+        .select({ title: chatbotKnowledgeBaseTable.title, category: chatbotKnowledgeBaseTable.category, content: chatbotKnowledgeBaseTable.content })
+        .from(chatbotKnowledgeBaseTable)
+        .where(eq(chatbotKnowledgeBaseTable.isActive, true))
+        .orderBy(asc(chatbotKnowledgeBaseTable.sortOrder), asc(chatbotKnowledgeBaseTable.id));
+    } catch {
+      // Table may not exist yet — silently skip
+    }
+
+    if (kbEntries.length === 0) return base;
+
+    const kbSection = kbEntries
+      .map((e) => `### ${e.title} [${e.category}]\n${e.content}`)
+      .join("\n\n");
+
+    return `${base}\n\n---\n## KNOWLEDGE BASE — Gunakan informasi ini saat menjawab pertanyaan pelanggan:\n\n${kbSection}`;
   } catch {
     return DEFAULT_SYSTEM_PROMPT;
   }
@@ -1026,6 +1047,279 @@ aiAgentRouter.get("/session/by-order/:orderId", async (req: Request, res: Respon
       createdAt: m.createdAt.toISOString(),
     })),
   });
+});
+
+// ── POST /api/ai-agent/knowledge-base/parse-import ───────────────────────────
+// Accepts a PDF, TXT, or raw text body, extracts text, then asks AI to split
+// it into structured KB entries. Returns the parsed entries for user review —
+// nothing is saved yet.
+aiAgentRouter.post(
+  "/knowledge-base/parse-import",
+  uploadMemory.single("file"),
+  async (req: Request, res: Response): Promise<void> => {
+    if (!(await requireAdmin(req, res))) return;
+
+    let rawText = "";
+
+    if (req.file) {
+      const file = req.file;
+      const isPlainText =
+        file.mimetype === "text/plain" || file.originalname.endsWith(".txt");
+      const isPdf = file.mimetype === "application/pdf" || file.originalname.endsWith(".pdf");
+
+      if (isPlainText) {
+        rawText = file.buffer.toString("utf-8");
+      } else if (isPdf) {
+        try {
+          const parsed = await pdfParse(file.buffer);
+          rawText = (parsed.text ?? "").trim();
+        } catch {
+          // fallback: try vision OCR
+        }
+        if (!rawText || rawText.length < 50) {
+          // Try GPT-4o vision for scanned PDFs
+          try {
+            const base64 = file.buffer.toString("base64");
+            const resp = await getOpenAI().chat.completions.create({
+              model: "gpt-4o",
+              max_completion_tokens: 2000,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "text", text: "Ekstrak semua teks dari dokumen PDF ini secara lengkap dalam Bahasa Indonesia." },
+                  { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
+                ],
+              }],
+            });
+            rawText = resp.choices[0]?.message?.content ?? "";
+          } catch (err) {
+            logger.warn({ err }, "KB import: vision OCR fallback failed");
+          }
+        }
+      } else {
+        res.status(400).json({ message: "Format tidak didukung. Gunakan PDF atau TXT." });
+        return;
+      }
+    } else if (typeof req.body?.text === "string" && req.body.text.trim()) {
+      rawText = req.body.text.trim();
+    }
+
+    if (!rawText || rawText.length < 10) {
+      res.status(400).json({ message: "Tidak ada teks yang bisa dibaca dari file." });
+      return;
+    }
+
+    // Ask AI to parse the raw text into structured KB entries
+    try {
+      const systemMsg = `Kamu adalah asisten yang membantu mengonversi dokumen SOP/FAQ perusahaan logistik menjadi entri knowledge base terstruktur untuk chatbot.
+
+Tugas: Baca teks dokumen dan pecah menjadi entri-entri knowledge base yang terpisah dan spesifik.
+
+Format output WAJIB: JSON array dengan struktur:
+[
+  {
+    "title": "Judul singkat dan deskriptif",
+    "category": "salah satu dari: umum | harga | layanan | prosedur | dokumen | faq | kebijakan | kontak",
+    "content": "Isi lengkap informasi untuk entri ini, dalam format yang jelas dan mudah dibaca chatbot"
+  }
+]
+
+Aturan:
+- Setiap entri fokus pada SATU topik spesifik
+- Judul max 80 karakter, jelas dan deskriptif
+- Isi boleh panjang jika perlu, tapi tetap terstruktur
+- Pilih kategori yang paling sesuai
+- Jika ada tabel harga, ubah jadi teks yang mudah dibaca
+- HANYA output JSON, tidak ada teks lain di luar array JSON`;
+
+      const resp = await getOpenAI().chat.completions.create({
+        model: "gpt-4o-mini",
+        max_completion_tokens: 4000,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemMsg },
+          { role: "user", content: `Konversi dokumen berikut menjadi entri knowledge base:\n\n${rawText.slice(0, 12000)}` },
+        ],
+      });
+
+      const raw = resp.choices[0]?.message?.content ?? "{}";
+      let parsed: { entries?: Array<{ title: string; category: string; content: string }> } = {};
+      try {
+        parsed = JSON.parse(raw) as typeof parsed;
+      } catch {
+        // try to extract array directly
+      }
+
+      // The AI might return { entries: [...] } or just an array at top level
+      let entries: Array<{ title: string; category: string; content: string }> = [];
+      if (Array.isArray(parsed)) {
+        entries = parsed as typeof entries;
+      } else if (Array.isArray(parsed.entries)) {
+        entries = parsed.entries;
+      } else {
+        // try any top-level array key
+        const arrKey = Object.keys(parsed).find((k) => Array.isArray((parsed as Record<string, unknown>)[k]));
+        if (arrKey) entries = (parsed as Record<string, unknown>)[arrKey] as typeof entries;
+      }
+
+      // Validate and sanitize
+      const VALID_CATS = ["umum", "harga", "layanan", "prosedur", "dokumen", "faq", "kebijakan", "kontak"];
+      entries = entries
+        .filter((e) => e && typeof e.title === "string" && typeof e.content === "string")
+        .map((e) => ({
+          title: String(e.title).slice(0, 200).trim(),
+          category: VALID_CATS.includes(e.category) ? e.category : "umum",
+          content: String(e.content).trim(),
+        }));
+
+      res.json({ entries, rawLength: rawText.length });
+    } catch (err) {
+      logger.error({ err }, "KB import AI parse failed");
+      res.status(500).json({ message: "Gagal menganalisis dokumen. Coba lagi." });
+    }
+  }
+);
+
+// ── POST /api/ai-agent/knowledge-base/bulk ────────────────────────────────────
+// Save multiple KB entries at once (after user review)
+aiAgentRouter.post("/knowledge-base/bulk", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { entries } = req.body as {
+    entries?: Array<{ title: string; category: string; content: string }>;
+  };
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return res.status(400).json({ message: "entries tidak boleh kosong" });
+  }
+  const VALID_CATS = ["umum", "harga", "layanan", "prosedur", "dokumen", "faq", "kebijakan", "kontak"];
+  const toInsert = entries
+    .filter((e) => e?.title?.trim() && e?.content?.trim())
+    .map((e, i) => ({
+      title: e.title.trim().slice(0, 200),
+      category: VALID_CATS.includes(e.category) ? e.category : "umum",
+      content: e.content.trim(),
+      sortOrder: i,
+      isActive: true,
+    }));
+  if (toInsert.length === 0) {
+    return res.status(400).json({ message: "Tidak ada entri valid untuk disimpan" });
+  }
+  try {
+    const saved = await db.insert(chatbotKnowledgeBaseTable).values(toInsert).returning();
+    return res.status(201).json({ saved: saved.length });
+  } catch (err) {
+    logger.error({ err }, "KB bulk insert failed");
+    return res.status(500).json({ message: "Gagal menyimpan entri" });
+  }
+});
+
+// ── GET /api/ai-agent/knowledge-base ─────────────────────────────────────────
+aiAgentRouter.get("/knowledge-base", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const entries = await db
+      .select()
+      .from(chatbotKnowledgeBaseTable)
+      .orderBy(asc(chatbotKnowledgeBaseTable.sortOrder), asc(chatbotKnowledgeBaseTable.id));
+    return res.json(
+      entries.map((e) => ({
+        id: e.id,
+        title: e.title,
+        category: e.category,
+        content: e.content,
+        isActive: e.isActive,
+        sortOrder: e.sortOrder,
+        createdAt: e.createdAt.toISOString(),
+        updatedAt: e.updatedAt.toISOString(),
+      }))
+    );
+  } catch (err) {
+    logger.error({ err }, "KB list failed");
+    return res.status(500).json({ message: "Gagal memuat knowledge base" });
+  }
+});
+
+// ── POST /api/ai-agent/knowledge-base ────────────────────────────────────────
+aiAgentRouter.post("/knowledge-base", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { title, category, content, sortOrder } = req.body as {
+    title?: string; category?: string; content?: string; sortOrder?: number;
+  };
+  if (!title?.trim() || !content?.trim()) {
+    return res.status(400).json({ message: "title dan content tidak boleh kosong" });
+  }
+  try {
+    const [entry] = await db.insert(chatbotKnowledgeBaseTable).values({
+      title: title.trim(),
+      category: category?.trim() ?? "umum",
+      content: content.trim(),
+      sortOrder: sortOrder ?? 0,
+      isActive: true,
+    }).returning();
+    return res.status(201).json({
+      id: entry.id,
+      title: entry.title,
+      category: entry.category,
+      content: entry.content,
+      isActive: entry.isActive,
+      sortOrder: entry.sortOrder,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, "KB create failed");
+    return res.status(500).json({ message: "Gagal membuat entri" });
+  }
+});
+
+// ── PUT /api/ai-agent/knowledge-base/:id ─────────────────────────────────────
+aiAgentRouter.put("/knowledge-base/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { title, category, content, sortOrder, isActive } = req.body as {
+    title?: string; category?: string; content?: string; sortOrder?: number; isActive?: boolean;
+  };
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (title !== undefined) updates.title = title.trim();
+  if (category !== undefined) updates.category = category.trim();
+  if (content !== undefined) updates.content = content.trim();
+  if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+  if (isActive !== undefined) updates.isActive = isActive;
+  try {
+    const [entry] = await db
+      .update(chatbotKnowledgeBaseTable)
+      .set(updates)
+      .where(eq(chatbotKnowledgeBaseTable.id, id))
+      .returning();
+    if (!entry) return res.status(404).json({ message: "Entri tidak ditemukan" });
+    return res.json({
+      id: entry.id,
+      title: entry.title,
+      category: entry.category,
+      content: entry.content,
+      isActive: entry.isActive,
+      sortOrder: entry.sortOrder,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, "KB update failed");
+    return res.status(500).json({ message: "Gagal memperbarui entri" });
+  }
+});
+
+// ── DELETE /api/ai-agent/knowledge-base/:id ───────────────────────────────────
+aiAgentRouter.delete("/knowledge-base/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  try {
+    await db.delete(chatbotKnowledgeBaseTable).where(eq(chatbotKnowledgeBaseTable.id, id));
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "KB delete failed");
+    return res.status(500).json({ message: "Gagal menghapus entri" });
+  }
 });
 
 // ── GET /api/ai-agent/settings ───────────────────────────────────────────────

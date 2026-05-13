@@ -74,6 +74,7 @@ export interface Translations {
     emailInbox: string;
     users: string;
     aiChatbot: string;
+    aiKnowledgeBase: string;
     aiScanSettings: string;
     settings: string;
   };
@@ -444,6 +445,7 @@ const id: Translations = {
     emailInbox: "Kotak Masuk Email",
     users: "Pengguna",
     aiChatbot: "AI Chatbot",
+    aiKnowledgeBase: "Knowledge Base",
     aiScanSettings: "Scan Dokumen",
     settings: "Pengaturan",
   },
@@ -814,6 +816,7 @@ const en: Translations = {
     emailInbox: "Email Inbox",
     users: "Users",
     aiChatbot: "AI Chatbot",
+    aiKnowledgeBase: "Knowledge Base",
     aiScanSettings: "Document Scan",
     settings: "Settings",
   },
@@ -1182,6 +1185,7 @@ const zhCN: DeepPartial<Translations> = {
     emailInbox: "收件箱",
     users: "用户",
     aiChatbot: "AI聊天机器人",
+    aiKnowledgeBase: "知识库",
     aiScanSettings: "扫描文档",
     settings: "设置",
   },

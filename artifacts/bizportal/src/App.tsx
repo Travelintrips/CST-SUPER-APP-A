@@ -46,6 +46,7 @@ import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
+import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
@@ -272,10 +273,11 @@ function Router() {
     <WouterRouter base={basePath}>
       <Switch>
         <Route path="/" component={AuthRouteGuard} />
-        <Route path="/welcome" component={WelcomePage} />
+        <Route path="/welcome" component={() => <ProtectedRoute component={WelcomePage} />} />
         <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
         <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
+        <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
         <Route path="/logistics" component={() => <ProtectedRoute component={LogisticsPage} />} />
         <Route path="/logistics/freight" component={() => <ProtectedRoute component={LogisticsFreightPage} />} />
         <Route path="/logistics/freight/new" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
@@ -287,10 +289,11 @@ function Router() {
         <Route path="/logistics/drivers" component={() => <ProtectedRoute component={LogisticsDriversPage} />} />
         <Route path="/logistics/drivers/:id/performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
         <Route path="/logistics/vendors" component={() => <ProtectedRoute component={LogisticsVendorsPage} />} />
-        <Route path="/logistics/quotation-reply" component={() => <ProtectedRoute component={LogisticsQuotationReplyPage} />} />
+        <Route path="/logistics/vendors/:id/quote" component={() => <ProtectedRoute component={LogisticsVendorQuotePage} />} />
         <Route path="/logistics/vendor-quote/:rfqNumber" component={() => <ProtectedRoute component={LogisticsVendorQuotePage} />} />
+        <Route path="/logistics/quotation-reply" component={() => <ProtectedRoute component={LogisticsQuotationReplyPage} />} />
+        <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
         <Route path="/portal-product-orders" component={() => <ProtectedRoute component={PortalProductOrdersPage} />} />
-        <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
         <Route path="/sales" component={() => <ProtectedRoute component={SalesDashboardPage} />} />
         <Route path="/sales/quotations" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="quotation" />} />} />
         <Route path="/sales/quotations/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="quotation" />} />} />
@@ -323,8 +326,8 @@ function Router() {
         <Route path="/accounting/entries/:id" component={() => <ProtectedRoute component={AccountingEntryDetailPage} />} />
         <Route path="/accounting/journal-items" component={() => <ProtectedRoute component={AccountingJournalItemsPage} />} />
         <Route path="/accounting/payments" component={() => <ProtectedRoute component={AccountingPaymentsPage} />} />
-        <Route path="/accounting/settings" component={() => <ProtectedRoute component={AccountingSettingsPage} />} />
         <Route path="/accounting/reconciliation" component={() => <ProtectedRoute component={AccountingReconciliationPage} />} />
+        <Route path="/accounting/settings" component={() => <ProtectedRoute component={AccountingSettingsPage} />} />
         <Route path="/accounting/reports/trial-balance" component={() => <ProtectedRoute component={AccountingTrialBalancePage} />} />
         <Route path="/accounting/reports/general-ledger" component={() => <ProtectedRoute component={AccountingGeneralLedgerPage} />} />
         <Route path="/accounting/reports/profit-loss" component={() => <ProtectedRoute component={AccountingProfitLossPage} />} />
@@ -339,6 +342,7 @@ function Router() {
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
         <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
         <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
+        <Route path="/settings/ai-knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
         <Route component={NotFound} />
       </Switch>

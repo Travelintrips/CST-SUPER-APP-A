@@ -7,6 +7,68 @@ import { logger } from "../lib/logger.js";
 
 export const logisticRfqRouter = Router();
 
+/** Auto-create RFQ and send WA with form link to matching vendors when a new order is created */
+export async function autoCreateRfqAndNotifyVendors(
+  orderId: number,
+  order: {
+    orderNumber: string; shipmentType: string; origin: string; destination: string;
+    commodity?: string | null; cargoDescription?: string | null;
+    grossWeight?: number | null; volumeCbm?: number | null;
+    requiredDate?: string | null; notes?: string | null;
+    jamOrder?: string | null; createdAt?: Date | string | null;
+    vehicleType?: string | null;
+  }
+): Promise<void> {
+  if (!order.shipmentType?.trim()) {
+    logger.warn({ orderNumber: order.orderNumber }, "autoCreateRfqAndNotifyVendors: shipmentType kosong — skip");
+    return;
+  }
+
+  const vendors = await db
+    .select()
+    .from(suppliersTable)
+    .where(and(eq(suppliersTable.isActive, true), sql`${suppliersTable.serviceType} ILIKE ${"%" + order.shipmentType + "%"}`));
+
+  const eligible = vendors.filter((v) => v.phone);
+  if (eligible.length === 0) {
+    logger.info({ shipmentType: order.shipmentType }, "autoCreateRfqAndNotifyVendors: tidak ada vendor matching — skip");
+    return;
+  }
+
+  const rfqNumber = generateRfqNumber();
+  await db.insert(logisticOrderRfqsTable).values({
+    orderId,
+    rfqNumber,
+    vendorIds: eligible.map((v) => v.id),
+    notes: null,
+    status: "open",
+  });
+
+  await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
+
+  for (const vendor of eligible) {
+    const catalogItems = await db
+      .select()
+      .from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+
+    const matchingCatalog = order.vehicleType
+      ? catalogItems.find((c) => c.name.toLowerCase().includes(order.vehicleType!.toLowerCase()))
+      : null;
+    const vendorBasePrice = matchingCatalog
+      ? Number(matchingCatalog.priceBase)
+      : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
+
+    const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
+    const msg = buildRfqWaMessage(order, rfqNumber, vendor.name, formUrl, vendorBasePrice);
+    sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
+      logger.error({ err, vendorId: vendor.id }, "autoRFQ WA vendor failed")
+    );
+  }
+
+  logger.info({ rfqNumber, orderId, vendorCount: eligible.length }, "Auto-RFQ created and sent to vendors");
+}
+
 function generateRfqNumber(): string {
   const date = new Date();
   const y = date.getFullYear().toString().slice(-2);

@@ -5,9 +5,13 @@ import {
   logisticOrderItemsTable,
   portalContentTable,
   suppliersTable,
+  driverJobsTable,
+  driverJobLogsTable,
+  driverPhotosTable,
 } from "@workspace/db";
-import { eq, ilike, and, gte, lte, or, sql } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, or, sql, desc } from "drizzle-orm";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
+import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
 import { broadcastToAdmins } from "../lib/sseManager";
 import {
@@ -146,23 +150,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     (body.items.find((i) => i.calculatorType === "trucking")
       ?.inputData as Record<string, unknown> | undefined)
       ?.vehicleType as string ?? null;
-
-  // Real-time SSE: notify BizPortal admins immediately
-  broadcastToAdmins("new_order", {
-    type: "logistic",
-    orderId: order.id,
-    orderNumber,
-    customerName: body.customerName,
-    companyName: body.companyName,
-    shipmentType: body.shipmentType,
-    origin: body.origin,
-    destination: body.destination,
-    grandTotal: Number(body.grandTotal),
-    createdAt: order.createdAt,
-  });
-
-  // Fire-and-forget: notify admin + vendors + customer via WA & email
-  sendLogisticOrderNotification({
+sendLogisticOrderNotification({
     id: order.id,
     orderNumber,
     customerName: body.customerName,
@@ -185,6 +173,25 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
     createdAt: order.createdAt,
   }).catch((err: unknown) => {
     req.log.error({ err }, "sendLogisticOrderNotification failed");
+  });
+
+  // Fire-and-forget: auto-create RFQ + send WA to matching vendors with quote form link
+  autoCreateRfqAndNotifyVendors(order.id, {
+    orderNumber,
+    shipmentType: body.shipmentType,
+    origin: body.origin,
+    destination: body.destination,
+    commodity: body.commodity ?? null,
+    cargoDescription: body.cargoDescription ?? null,
+    grossWeight: body.grossWeight != null ? Number(body.grossWeight) : null,
+    volumeCbm: body.volumeCbm != null ? Number(body.volumeCbm) : null,
+    requiredDate: body.requiredDate ?? null,
+    notes: body.notes ?? null,
+    jamOrder: body.jamOrder ?? null,
+    vehicleType,
+    createdAt: order.createdAt,
+  }).catch((err: unknown) => {
+    req.log.error({ err }, "autoCreateRfqAndNotifyVendors failed");
   });
 
   return res.status(201).json({
@@ -266,6 +273,85 @@ logisticOrdersRouter.get(
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
     return res.json({ ...toOrder(order), items: items.map(toItem) });
+  }
+);
+
+// GET /api/logistic/orders/track/:orderNumber — full tracking data with driver job (public)
+logisticOrdersRouter.get(
+  "/track/:orderNumber",
+  async (req: Request, res: Response) => {
+    const orderNumber = String(req.params.orderNumber ?? "").toUpperCase().trim();
+    if (!orderNumber) return res.status(400).json({ message: "Nomor order tidak valid" });
+
+    const [order] = await db
+      .select()
+      .from(logisticOrdersTable)
+      .where(eq(logisticOrdersTable.orderNumber, orderNumber));
+
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const items = await db
+      .select()
+      .from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, order.id));
+
+    const [driverJob] = await db
+      .select()
+      .from(driverJobsTable)
+      .where(eq(driverJobsTable.logisticOrderId, order.id))
+      .orderBy(desc(driverJobsTable.assignedAt))
+      .limit(1);
+
+    let driverJobData = null;
+    if (driverJob) {
+      const logs = await db
+        .select()
+        .from(driverJobLogsTable)
+        .where(eq(driverJobLogsTable.driverJobId, driverJob.id))
+        .orderBy(desc(driverJobLogsTable.timestamp));
+
+      const photos = await db
+        .select()
+        .from(driverPhotosTable)
+        .where(eq(driverPhotosTable.driverJobId, driverJob.id))
+        .orderBy(desc(driverPhotosTable.takenAt));
+
+      driverJobData = {
+        id: driverJob.id,
+        jobNumber: driverJob.jobNumber,
+        status: driverJob.status,
+        vehicleType: driverJob.vehicleType ?? null,
+        truckPlate: driverJob.truckPlate ?? null,
+        pickupAddress: driverJob.pickupAddress ?? null,
+        deliveryAddress: driverJob.deliveryAddress ?? null,
+        pickupDateTime: driverJob.pickupDateTime?.toISOString() ?? null,
+        deliveryDateTime: driverJob.deliveryDateTime?.toISOString() ?? null,
+        cargoDescription: driverJob.cargoDescription ?? null,
+        weight: driverJob.weight ?? null,
+        distance: driverJob.distance ?? null,
+        podReceiverName: driverJob.podReceiverName ?? null,
+        assignedAt: driverJob.assignedAt.toISOString(),
+        completedAt: driverJob.completedAt?.toISOString() ?? null,
+        logs: logs.map((l) => ({
+          id: l.id,
+          status: l.status,
+          note: l.note ?? null,
+          timestamp: l.timestamp.toISOString(),
+        })),
+        photos: photos.map((p) => ({
+          id: p.id,
+          url: p.url,
+          photoType: p.photoType,
+          takenAt: p.takenAt.toISOString(),
+        })),
+      };
+    }
+
+    return res.json({
+      ...toOrder(order),
+      items: items.map(toItem),
+      driverJob: driverJobData,
+    });
   }
 );
 
