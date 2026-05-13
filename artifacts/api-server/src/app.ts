@@ -109,6 +109,25 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use("/api", router);
 
+// ─── Customer Portal Static Serving ──────────────────────────────────────────
+// Customer Portal is built with base="/" so assets are at /assets/...
+const CUSTOMER_PORTAL_DIST = path.resolve(
+  process.cwd(),
+  "../customer-portal/dist/public",
+);
+
+if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
+  app.use(
+    "/",
+    express.static(CUSTOMER_PORTAL_DIST, { index: "index.html" }),
+  );
+
+  // SPA fallback: any path that isn't a file → index.html
+  app.use("/{*path}", (_req: Request, res: Response) => {
+    res.sendFile(path.join(CUSTOMER_PORTAL_DIST, "index.html"));
+  });
+}
+
 // Global error handler — logs unhandled errors and returns JSON
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error(
