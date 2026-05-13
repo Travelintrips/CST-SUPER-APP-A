@@ -55,7 +55,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm"];
+const NO_SHELL_PREFIXES = ["/services/", "/vendor-response", "/approve", "/confirm"];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
