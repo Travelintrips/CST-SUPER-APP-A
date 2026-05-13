@@ -11,6 +11,7 @@ import { runPortalMigration } from "./lib/portalMigration";
 import { runAccountingMigration } from "./lib/accountingMigration";
 import { runOauthStateMigration } from "./lib/oauthStateMigration";
 import { enableRealtimeTables } from "./lib/enableRealtimeTables";
+import { runKnowledgeBaseMigration } from "./lib/knowledgeBaseMigration";
 
 const rawPort = process.env["PORT"];
 
@@ -47,6 +48,11 @@ app.listen(port, (err) => {
   // Buat tabel oauth_states untuk Google OAuth state management
   runOauthStateMigration().catch((err) => {
     logger.error({ err }, "OAuth state migration error");
+  });
+
+  // Buat tabel chatbot_knowledge_base (idempotent)
+  runKnowledgeBaseMigration().catch((err) => {
+    logger.error({ err }, "Knowledge base migration error");
   });
 
   // Enable Supabase Realtime on driver tables (idempotent)

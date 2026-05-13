@@ -34,6 +34,7 @@ import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
+import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
@@ -287,6 +288,9 @@ function Router() {
       </Route>
       <Route path="/settings/ai-chatbot">
         <ProtectedRoute component={AiChatbotSettingsPage} />
+      </Route>
+      <Route path="/settings/ai-knowledge">
+        <ProtectedRoute component={AiChatbotKnowledgePage} />
       </Route>
       <Route path="/settings/ai-scan">
         <ProtectedRoute component={AiScanSettingsPage} />
