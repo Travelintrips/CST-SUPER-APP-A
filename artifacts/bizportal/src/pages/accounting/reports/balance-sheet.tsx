@@ -13,12 +13,12 @@ import { exportXlsx, printWindow } from "@/lib/export";
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
 export default function BalanceSheetPage() {
-  const { activeCompany } = useCompany();
+  const { activeCompanyId } = useCompany();
   const [asOf, setAsOf] = useState("");
   const params = useMemo(() => ({
     ...(asOf ? { to: new Date(asOf + "T23:59:59").toISOString() } : {}),
-    company: activeCompany.id,
-  }), [asOf, activeCompany]);
+    company: activeCompanyId,
+  }), [asOf, activeCompanyId]);
   const { data, isLoading } = useGetBalanceSheet(params, { query: { queryKey: getGetBalanceSheetQueryKey(params) } });
 
   function buildExportRows() {

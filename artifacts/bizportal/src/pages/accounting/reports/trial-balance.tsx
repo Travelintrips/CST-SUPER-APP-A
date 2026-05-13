@@ -13,14 +13,14 @@ import { exportXlsx, printWindow } from "@/lib/export";
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
 export default function TrialBalancePage() {
-  const { activeCompany } = useCompany();
+  const { activeCompanyId } = useCompany();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const params = useMemo(() => ({
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
-    company: activeCompany.id,
-  }), [from, to, activeCompany]);
+    company: activeCompanyId,
+  }), [from, to, activeCompanyId]);
   const { data, isLoading } = useGetTrialBalance(params, { query: { queryKey: getGetTrialBalanceQueryKey(params) } });
 
   const rows = data?.rows ?? [];

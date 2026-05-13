@@ -162,14 +162,14 @@ export default function EntriesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { activeCompany } = useCompany();
+  const { activeCompanyId } = useCompany();
   const [filter, setFilter] = useState<{ journalId?: number; from?: string; to?: string }>({});
   const params = useMemo(() => ({
     ...(filter.journalId ? { journalId: filter.journalId } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
-    company: activeCompany.id,
-  }), [filter, activeCompany]);
+    company: activeCompanyId,
+  }), [filter, activeCompanyId]);
   const { data: entries } = useListAccountingEntries(params, { query: { queryKey: getListAccountingEntriesQueryKey(params) } });
   const { data: journals } = useListJournals();
   const { data: accounts } = useListAccounts();

@@ -16,7 +16,7 @@ import { exportXlsx, printWindow } from "@/lib/export";
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
 export default function GeneralLedgerPage() {
-  const { activeCompany } = useCompany();
+  const { activeCompanyId } = useCompany();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [accountId, setAccountId] = useState<number | undefined>();
@@ -24,8 +24,8 @@ export default function GeneralLedgerPage() {
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
     ...(accountId ? { accountId } : {}),
-    company: activeCompany.id,
-  }), [from, to, accountId, activeCompany]);
+    company: activeCompanyId,
+  }), [from, to, accountId, activeCompanyId]);
   const { data, isLoading } = useGetGeneralLedger(params, { query: { queryKey: getGetGeneralLedgerQueryKey(params) } });
   const { data: accounts } = useListAccounts();
 

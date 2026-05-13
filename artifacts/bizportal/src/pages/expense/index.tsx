@@ -71,7 +71,7 @@ export default function ExpenseListPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { activeCompany } = useCompany();
+  const { activeCompanyId } = useCompany();
   const _urlParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const [search, setSearch] = useState(() => _urlParams.get("search") ?? "");
   const [fromFilter, setFromFilter] = useState(() => _urlParams.get("from") ?? "");
@@ -118,7 +118,7 @@ export default function ExpenseListPage() {
     search: search || undefined,
     from: fromFilter || undefined,
     to: toFilter || undefined,
-    company: activeCompany.id,
+    company: activeCompanyId,
   });
   const { data: cats = [] } = useListExpenseCategories();
   const { data: salesDocs = [] } = useListSalesDocuments({ kind: "order" });

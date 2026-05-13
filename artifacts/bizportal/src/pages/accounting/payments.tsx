@@ -178,15 +178,15 @@ export default function PaymentsPage() {
   const [sourceDocIdText, setSourceDocIdText] = useState("");
   const [refSearch, setRefSearch] = useState("");
 
-  const { activeCompany } = useCompany();
+  const { activeCompanyId } = useCompany();
   const params = useMemo(() => ({
     ...(filter.paymentType ? { paymentType: filter.paymentType } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
     ...(filter.sourceType && filter.sourceType !== "all" ? { sourceType: filter.sourceType } : {}),
     ...(filter.sourceDocId ? { sourceDocId: filter.sourceDocId } : {}),
-    company: activeCompany.id,
-  }), [filter, activeCompany]);
+    company: activeCompanyId,
+  }), [filter, activeCompanyId]);
 
   const { data: allPayments = [] as AccountingPayment[], isLoading } = useListAccountingPayments(params, {
     query: { queryKey: getListAccountingPaymentsQueryKey(params) },

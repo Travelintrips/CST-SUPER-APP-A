@@ -42,8 +42,8 @@ export default function AccountingSettingsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { activeCompany } = useCompany();
-  const { data: settings, isLoading } = useGetAccountingSettings({ company: activeCompany.id });
+  const { activeCompanyId } = useCompany();
+  const { data: settings, isLoading } = useGetAccountingSettings({ company: activeCompanyId });
   const { data: accounts } = useListAccounts();
   const { data: journals } = useListJournals();
   const { data: taxes } = useListTaxes();
