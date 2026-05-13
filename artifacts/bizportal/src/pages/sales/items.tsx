@@ -147,7 +147,6 @@ async function uploadMediaFiles(files: File[], type: "image" | "video"): Promise
 }
 
 function formFromProduct(p: Product): ItemForm {
-  const pp = p as unknown as { unitOptions?: string[]; stock?: number; imageUrl?: string; mediaItems?: unknown };
   return {
     name: p.name,
     sku: p.sku,
@@ -155,15 +154,15 @@ function formFromProduct(p: Product): ItemForm {
     categories: p.categories ?? [],
     subcategory: p.subcategory ?? "",
     unit: p.unit,
-    unitOptions: Array.isArray(pp.unitOptions) ? (pp.unitOptions ?? []) : [],
+    unitOptions: Array.isArray(p.unitOptions) ? (p.unitOptions ?? []) : [],
     price: String(p.price),
-    stock: String(pp.stock ?? 0),
+    stock: String(p.stock ?? 0),
     defaultSalesTaxId: p.defaultSalesTaxId ? String(p.defaultSalesTaxId) : "",
     defaultPurchaseTaxId: p.defaultPurchaseTaxId ? String(p.defaultPurchaseTaxId) : "",
     isActive: p.isActive,
     description: p.description ?? "",
-    imageUrl: pp.imageUrl ?? "",
-    mediaItems: parseMediaItems(pp.mediaItems),
+    imageUrl: p.imageUrl ?? "",
+    mediaItems: parseMediaItems(p.mediaItems),
   };
 }
 
@@ -447,9 +446,9 @@ export default function SalesItemsPage() {
                       <TableRow key={p.id} className="border-slate-700/50">
                         <TableCell className="text-slate-200 font-medium">
                           <div className="flex items-center gap-2.5">
-                            {(p as unknown as { imageUrl?: string }).imageUrl ? (
+                            {p.imageUrl ? (
                               <img
-                                src={(p as unknown as { imageUrl: string }).imageUrl}
+                                src={resolveMediaUrl(p.imageUrl)}
                                 alt={p.name}
                                 className="h-8 w-8 rounded object-cover shrink-0 border border-slate-700"
                                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -479,8 +478,8 @@ export default function SalesItemsPage() {
                         <TableCell className="text-slate-400 text-sm">
                           <div className="flex flex-wrap gap-1 items-center">
                             <span>{p.unit}</span>
-                            {p.itemType === "barang" && Array.isArray((p as unknown as { unitOptions?: string[] }).unitOptions) && ((p as unknown as { unitOptions?: string[] }).unitOptions ?? []).length > 0 && (
-                              (p as unknown as { unitOptions?: string[] }).unitOptions!.filter((u) => u !== p.unit).map((u) => (
+                            {p.itemType === "barang" && Array.isArray(p.unitOptions) && (p.unitOptions ?? []).length > 0 && (
+                              (p.unitOptions ?? []).filter((u) => u !== p.unit).map((u) => (
                                 <Badge key={u} className="text-[9px] px-1 py-0 h-4 bg-slate-700 text-slate-300 border-slate-600">{u}</Badge>
                               ))
                             )}
@@ -488,8 +487,8 @@ export default function SalesItemsPage() {
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-slate-300">
                           {p.itemType === "barang"
-                            ? <span className={((p as unknown as { stock?: number }).stock ?? 0) === 0 ? "text-red-400" : ""}>
-                                {(p as unknown as { stock?: number }).stock ?? 0}
+                            ? <span className={(p.stock ?? 0) === 0 ? "text-red-400" : ""}>
+                                {p.stock ?? 0}
                               </span>
                             : <span className="text-slate-500 text-xs">—</span>
                           }
