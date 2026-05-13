@@ -10,6 +10,7 @@ import {
   getListProductCategoriesQueryKey,
   type Product,
   type AccountingTax,
+  type MediaItem,
 } from "@workspace/api-client-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";

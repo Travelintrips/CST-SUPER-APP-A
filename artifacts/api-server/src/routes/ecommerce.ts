@@ -53,6 +53,8 @@ function serializeProduct(
 ) {
   let unitOptions: string[] = [];
   try { unitOptions = JSON.parse(p.unitOptions ?? "[]"); } catch { /* empty */ }
+  let mediaItems: Array<{ type: string; url: string }> = [];
+  try { mediaItems = JSON.parse(p.mediaItems ?? "[]"); } catch { /* empty */ }
   return {
     ...p,
     price: Number(p.price),
@@ -61,8 +63,10 @@ function serializeProduct(
     itemType: p.itemType,
     unit: p.unit,
     unitOptions,
+    mediaItems,
     subcategory: p.subcategory ?? null,
     isActive: p.isActive,
+    imageUrl: p.imageUrl ?? null,
   };
 }
 
