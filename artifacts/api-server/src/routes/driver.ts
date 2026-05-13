@@ -378,6 +378,18 @@ router.post("/location", requireDriverAuth, async (req, res) => {
     .update(driversTable)
     .set({ currentLat: String(lat), currentLng: String(lng), lastLocationAt: new Date() })
     .where(eq(driversTable.id, driverId));
+  const [driver] = await db
+    .select({ id: driversTable.id, name: driversTable.name, vehiclePlate: driversTable.vehiclePlate })
+    .from(driversTable)
+    .where(eq(driversTable.id, driverId));
+  broadcastToAdmins("location_update", {
+    driverId,
+    name: driver?.name ?? "",
+    vehiclePlate: driver?.vehiclePlate ?? null,
+    lat: Number(lat),
+    lng: Number(lng),
+    updatedAt: new Date().toISOString(),
+  });
   res.json({ ok: true });
 });
 

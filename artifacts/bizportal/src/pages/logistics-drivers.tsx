@@ -15,6 +15,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, UserX, Truck, Phone, Mail, MapPin, ChevronDown, ChevronUp, Activity, ClipboardList } from "lucide-react";
+import DriverMap from "@/components/logistics/DriverMap";
 
 interface Driver {
   id: number;
@@ -140,6 +141,15 @@ export default function LogisticsDriversPage() {
             title: `Job ${data.jobNumber} — ${STATUS_LABELS[data.status] ?? data.status}`,
             description: "Status diperbarui oleh driver",
           });
+        } catch { /* ignore */ }
+      });
+
+      es.addEventListener("location_update", (e: MessageEvent) => {
+        if (!active) return;
+        try {
+          const data = JSON.parse(e.data);
+          window.dispatchEvent(new CustomEvent("driver_location_update", { detail: data }));
+          queryClient.invalidateQueries({ queryKey: ["drivers"] });
         } catch { /* ignore */ }
       });
 
@@ -359,6 +369,12 @@ export default function LogisticsDriversPage() {
             </CardContent>
           </Card>
         </div>
+
+        <DriverMap
+          drivers={drivers}
+          activeJobByDriver={activeJobByDriver}
+          sseConnected={sseConnected}
+        />
 
         <Card>
           <CardHeader className="pb-3">
