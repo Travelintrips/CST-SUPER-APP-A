@@ -194,7 +194,7 @@ function getApproveFormUrl(orderNumber: string): string {
 function getVendorFormUrl(rfqNumber: string, vendorId: number): string {
   const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
   if (!domain) return "";
-  return `https://${domain}/bizportal/logistics/vendor-quote?rfq=${rfqNumber}&v=${vendorId}`;
+  return `https://${domain}/vendor-quote?rfq=${encodeURIComponent(rfqNumber)}&v=${vendorId}`;
 }
 
 function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName: string, orderId: number, quote: {
@@ -646,6 +646,52 @@ logisticRfqRouter.put("/quotes/:quoteId", async (req: Request, res: Response) =>
 
   const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, updated.vendorId));
   return res.json(toQuote(updated, vendor?.name ?? `Vendor #${updated.vendorId}`));
+});
+
+// GET /api/logistic/orders/rfq-form?rfq=:rfqNumber&v=:vendorId — public vendor quote form data
+logisticRfqRouter.get("/rfq-form", async (req: Request, res: Response) => {
+  const rfqNumber = String(req.query.rfq ?? "").trim();
+  const vendorId = parseInt(String(req.query.v ?? ""), 10);
+
+  if (!rfqNumber || isNaN(vendorId)) {
+    return res.status(400).json({ message: "Parameter rfq dan v wajib diisi" });
+  }
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.rfqNumber, rfqNumber));
+  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+  const vendorIds = Array.isArray(rfq.vendorIds) ? rfq.vendorIds as number[] : [];
+  if (!vendorIds.includes(vendorId)) {
+    return res.status(403).json({ message: "Vendor tidak diundang dalam RFQ ini" });
+  }
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.id, rfq.orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [vendor] = await db.select().from(suppliersTable)
+    .where(eq(suppliersTable.id, vendorId));
+
+  const existing = await db.select().from(logisticOrderQuotesTable)
+    .where(and(
+      eq(logisticOrderQuotesTable.rfqId, rfq.id),
+      eq(logisticOrderQuotesTable.vendorId, vendorId),
+    ));
+
+  return res.json({
+    rfqNumber: rfq.rfqNumber,
+    orderNumber: order.orderNumber,
+    vendorName: vendor?.name ?? `Vendor #${vendorId}`,
+    shipmentType: order.shipmentType,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
+    volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
+    requiredDate: order.requiredDate ?? null,
+    alreadySubmitted: existing.length > 0,
+  });
 });
 
 // GET /api/logistic/orders/approve-form/:orderNumber — public approve form data

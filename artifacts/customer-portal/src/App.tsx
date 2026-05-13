@@ -45,6 +45,7 @@ import ProductOrder from "@/pages/product-order";
 import VendorResponsePage from "@/pages/vendor-response";
 import ApprovePage from "@/pages/approve";
 import ConfirmPage from "@/pages/confirm";
+import VendorQuoteFormPage from "@/pages/vendor-quote-form";
 
 const queryClient = new QueryClient();
 
@@ -55,7 +56,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm"];
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm", "/vendor-quote"];
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -129,6 +130,7 @@ function AppShell() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/order-produk" component={ProductOrder} />
       <Route path="/vendor-response/:orderNumber" component={VendorResponsePage} />
+      <Route path="/vendor-quote" component={VendorQuoteFormPage} />
       <Route path="/approve/:orderNumber" component={ApprovePage} />
       <Route path="/confirm/:token" component={ConfirmPage} />
       <Route component={NotFound} />
