@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
-import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ChevronDown, ChevronUp, Send } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) {
@@ -39,6 +39,13 @@ interface OrderData {
   quotes: Quote[];
 }
 
+interface VendorOption {
+  id: number;
+  name: string;
+  serviceType: string;
+  hasPhone: boolean;
+}
+
 function fmt(n: number) {
   return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 }
@@ -62,12 +69,21 @@ export default function ApprovePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [expandedQuote, setExpandedQuote] = useState<number | null>(null);
 
-  useEffect(() => {
+  // Manual RFQ state
+  const [vendors, setVendors] = useState<VendorOption[]>([]);
+  const [selectedVendorIds, setSelectedVendorIds] = useState<number[]>([]);
+  const [rfqShipmentType, setRfqShipmentType] = useState<string>("");
+  const [sendingRfq, setSendingRfq] = useState(false);
+  const [rfqSent, setRfqSent] = useState(false);
+  const [rfqError, setRfqError] = useState<string | null>(null);
+
+  const loadData = useCallback(() => {
     if (!orderNumber) return;
     fetch(apiUrl(`/api/logistic/orders/approve-form/${orderNumber}`))
       .then((r) => r.ok ? r.json() : r.json().then((e: { message: string }) => Promise.reject(e.message)))
       .then((d: OrderData) => {
         setData(d);
+        setRfqShipmentType(d.shipmentType || "");
         if (d.approvedQuoteId) {
           setSelectedQuoteId(d.approvedQuoteId);
           if (d.finalSellingPrice) setSellingPrice(String(Math.round(d.finalSellingPrice)));
@@ -79,6 +95,47 @@ export default function ApprovePage() {
       .catch((msg: string) => setError(typeof msg === "string" ? msg : "Gagal memuat data"))
       .finally(() => setLoading(false));
   }, [orderNumber]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/logistic/orders/logistic-vendors"))
+      .then((r) => r.ok ? r.json() : [])
+      .then((v: VendorOption[]) => setVendors(v))
+      .catch(() => {});
+  }, []);
+
+  async function handleSendRfq() {
+    if (!data || selectedVendorIds.length === 0) return;
+    setSendingRfq(true);
+    setRfqError(null);
+    try {
+      const r = await fetch(apiUrl(`/api/logistic/orders/${data.orderId}/manual-rfq`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorIds: selectedVendorIds, shipmentType: rfqShipmentType || undefined }),
+      });
+      const res = await r.json() as { ok?: boolean; vendorCount?: number; message?: string };
+      if (!r.ok) throw new Error(res.message ?? "Gagal kirim RFQ");
+      setRfqSent(true);
+      setSelectedVendorIds([]);
+      setTimeout(() => {
+        setRfqSent(false);
+        setLoading(true);
+        loadData();
+      }, 3000);
+    } catch (e: unknown) {
+      setRfqError(e instanceof Error ? e.message : "Gagal kirim RFQ");
+    } finally {
+      setSendingRfq(false);
+    }
+  }
+
+  function toggleVendor(id: number) {
+    setSelectedVendorIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
 
   function onSelectQuote(q: Quote) {
     setSelectedQuoteId(q.id);
@@ -221,8 +278,101 @@ export default function ApprovePage() {
           </h3>
 
           {data.quotes.length === 0 ? (
-            <div className="bg-white rounded-2xl shadow-sm p-6 text-center text-sm text-gray-400">
-              Belum ada penawaran dari vendor
+            <div className="space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800">
+                <p className="font-semibold mb-1">Belum ada penawaran masuk</p>
+                <p className="text-amber-700">
+                  {data.shipmentType
+                    ? `Tidak ada vendor dengan tipe "${data.shipmentType}" yang terdaftar, atau vendor belum merespons.`
+                    : "Jenis layanan (shipmentType) kosong sehingga RFQ tidak terkirim otomatis."}
+                </p>
+              </div>
+
+              {/* Manual RFQ section */}
+              {rfqSent ? (
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto" />
+                  <p className="font-semibold text-green-800">RFQ berhasil dikirim!</p>
+                  <p className="text-sm text-green-600">Halaman akan refresh untuk menunggu balasan vendor...</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+                  <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">
+                    Kirim RFQ Manual ke Vendor
+                  </h3>
+
+                  {/* shipmentType input if empty */}
+                  {!data.shipmentType && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Jenis Layanan (opsional, untuk info vendor)
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        placeholder="cth: Sea Freight, Trucking, Air Freight..."
+                        value={rfqShipmentType}
+                        onChange={(e) => setRfqShipmentType(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Vendor list */}
+                  {vendors.length === 0 ? (
+                    <p className="text-sm text-gray-400">Tidak ada vendor aktif tersedia</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400">Pilih vendor yang akan menerima RFQ:</p>
+                      {vendors.map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => v.hasPhone && toggleVendor(v.id)}
+                          className={`w-full text-left flex items-center gap-3 p-3 rounded-xl border-2 transition-colors ${
+                            !v.hasPhone
+                              ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                              : selectedVendorIds.includes(v.id)
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                            selectedVendorIds.includes(v.id) ? "border-blue-500 bg-blue-500" : "border-gray-300"
+                          }`}>
+                            {selectedVendorIds.includes(v.id) && <div className="w-2 h-2 rounded-full bg-white" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{v.name}</p>
+                            <p className="text-xs text-gray-400">
+                              {v.serviceType}
+                              {!v.hasPhone && " · Tidak ada nomor WA"}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {rfqError && (
+                    <div className="flex items-start gap-2 bg-red-50 rounded-xl p-3 text-sm text-red-600">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>{rfqError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSendRfq}
+                    disabled={sendingRfq || selectedVendorIds.length === 0}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                  >
+                    {sendingRfq ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" />Mengirim RFQ...</>
+                    ) : (
+                      <><Send className="w-4 h-4" />Kirim RFQ ke {selectedVendorIds.length > 0 ? `${selectedVendorIds.length} vendor` : "Vendor"}</>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             data.quotes.map((q) => {

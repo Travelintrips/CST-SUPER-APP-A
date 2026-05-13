@@ -694,6 +694,87 @@ logisticRfqRouter.get("/rfq-form", async (req: Request, res: Response) => {
   });
 });
 
+// GET /api/logistic/orders/logistic-vendors — list active logistic vendors (public, for approve page)
+logisticRfqRouter.get("/logistic-vendors", async (_req: Request, res: Response) => {
+  const vendors = await db
+    .select({ id: suppliersTable.id, name: suppliersTable.name, serviceType: suppliersTable.serviceType, phone: suppliersTable.phone })
+    .from(suppliersTable)
+    .where(eq(suppliersTable.isActive, true));
+  const logistic = vendors.filter((v) => v.serviceType && v.serviceType.trim() !== "");
+  return res.json(logistic.map((v) => ({ id: v.id, name: v.name, serviceType: v.serviceType ?? "", hasPhone: !!v.phone })));
+});
+
+// POST /api/logistic/orders/:id/manual-rfq — manually create RFQ and send WA to selected vendors
+logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) => {
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const { vendorIds, shipmentType } = req.body as { vendorIds?: number[]; shipmentType?: string };
+  if (!vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0)
+    return res.status(400).json({ message: "vendorIds wajib diisi (array of number)" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const finalShipmentType = shipmentType?.trim() || order.shipmentType || "";
+
+  if (finalShipmentType && finalShipmentType !== order.shipmentType) {
+    await db.update(logisticOrdersTable).set({ shipmentType: finalShipmentType }).where(eq(logisticOrdersTable.id, orderId));
+  }
+
+  const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds));
+  const eligible = vendors.filter((v) => v.phone);
+  if (eligible.length === 0)
+    return res.status(400).json({ message: "Tidak ada vendor terpilih yang memiliki nomor WhatsApp" });
+
+  const existingRfqs = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.orderId, orderId));
+  const rfqNumber = existingRfqs.length > 0 ? existingRfqs[0].rfqNumber : generateRfqNumber();
+
+  if (existingRfqs.length === 0) {
+    await db.insert(logisticOrderRfqsTable).values({
+      orderId,
+      rfqNumber,
+      vendorIds: eligible.map((v) => v.id),
+      notes: null,
+      status: "open",
+    });
+  } else {
+    await db.update(logisticOrderRfqsTable)
+      .set({ vendorIds: [...new Set([...(existingRfqs[0].vendorIds ?? []), ...eligible.map((v) => v.id)])] })
+      .where(eq(logisticOrderRfqsTable.id, existingRfqs[0].id));
+  }
+
+  await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
+
+  const orderData = {
+    orderNumber: order.orderNumber,
+    shipmentType: finalShipmentType,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    cargoDescription: order.cargoDescription ?? null,
+    grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
+    volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
+    requiredDate: order.requiredDate ?? null,
+    notes: order.notes ?? null,
+    createdAt: order.createdAt,
+  };
+
+  for (const vendor of eligible) {
+    const catalogItems = await db.select().from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+    const vendorBasePrice = catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
+    const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
+    const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl, vendorBasePrice);
+    sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
+      logger.error({ err, vendorId: vendor.id }, "manualRFQ WA vendor failed")
+    );
+  }
+
+  logger.info({ rfqNumber, orderId, vendorCount: eligible.length }, "Manual RFQ created and sent to vendors");
+  return res.json({ ok: true, rfqNumber, vendorCount: eligible.length });
+});
+
 // GET /api/logistic/orders/approve-form/:orderNumber — public approve form data
 logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Response) => {
   const { orderNumber } = req.params;
