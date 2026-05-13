@@ -72,15 +72,28 @@ export async function autoCreateRfqAndNotifyVendors(
   }
 
   const rfqNumber = generateRfqNumber();
-  await db.insert(logisticOrderRfqsTable).values({
+  const [rfq] = await db.insert(logisticOrderRfqsTable).values({  // [TRUCKING-FIX] capture rfq id
     orderId,
     rfqNumber,
     vendorIds: eligible.map((v) => v.id),
     notes: null,
     status: "open",
-  });
+  }).returning();
 
-  await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
+  const isTrucking = isTruckingOrder(order);                                                 // [TRUCKING-FIX]
+
+  // [TRUCKING-FIX] Save pickup info + truck type on order for trucking orders
+  if (isTrucking) {
+    await db.update(logisticOrdersTable).set({
+      status: "Under Review",
+      pickupDate: order.requiredDate ?? null,
+      pickupTime: order.jamOrder ?? null,
+      truckType: order.vehicleType ?? null,
+    } as any).where(eq(logisticOrdersTable.id, orderId));
+    console.log(`[TRUCKING-FLOW] State: PENDING → Under Review (order ${orderId})`);
+  } else {
+    await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
+  }
 
   for (const vendor of eligible) {
     const catalogItems = await db
@@ -95,14 +108,37 @@ export async function autoCreateRfqAndNotifyVendors(
       ? Number(matchingCatalog.priceBase)
       : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
 
-    const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
-    const msg = buildRfqWaMessage(order, rfqNumber, vendor.name, formUrl, vendorBasePrice);
-    sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
-      logger.error({ err, vendorId: vendor.id }, "autoRFQ WA vendor failed")
-    );
+    if (isTrucking && rfq) {                                                                  // [TRUCKING-FIX]
+      // Pre-create quote with token so vendor can confirm YES/NO without needing to fill a form
+      const vendorToken = randomUUID();
+      await db.insert(logisticOrderQuotesTable).values({
+        rfqId: rfq.id,
+        orderId,
+        vendorId: vendor.id,
+        vendorPrice: String(vendorBasePrice ?? 0),
+        vendorConfirmToken: vendorToken,
+        quoteStatus: "pending",
+        replySource: "auto",
+        markupType: "percentage",
+        markupPercentage: "20",
+      } as any);
+
+      const confirmUrl = getVendorConfirmUrl(orderId, vendorToken);
+      const msg = buildTruckingRfqWaMessage(order, rfqNumber, vendor.name, confirmUrl, confirmUrl + "&reject=1", vendorBasePrice);
+      sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
+        logger.error({ err, vendorId: vendor.id }, "autoRFQ trucking WA vendor failed")
+      );
+      console.log(`[TRUCKING-FLOW] RFQ sent to vendor ${vendor.name} (id=${vendor.id}) with token ${vendorToken}`);
+    } else {
+      const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
+      const msg = buildRfqWaMessage(order, rfqNumber, vendor.name, formUrl, vendorBasePrice);
+      sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
+        logger.error({ err, vendorId: vendor.id }, "autoRFQ WA vendor failed")
+      );
+    }
   }
 
-  logger.info({ rfqNumber, orderId, vendorCount: eligible.length }, "Auto-RFQ created and sent to vendors");
+  logger.info({ rfqNumber, orderId, vendorCount: eligible.length, isTrucking }, "Auto-RFQ created and sent to vendors");
 }
 
 function generateRfqNumber(): string {
@@ -226,6 +262,55 @@ function getVendorFormUrl(rfqNumber: string, vendorId: number): string {
   return `https://${domain}/vendor-quote?rfq=${encodeURIComponent(rfqNumber)}&v=${vendorId}`;
 }
 
+// [TRUCKING-FIX] Confirm link for vendor YES/NO page
+function getVendorConfirmUrl(orderId: number, token: string): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/vendor-confirm?orderId=${orderId}&token=${encodeURIComponent(token)}`;
+}
+
+// [TRUCKING-FIX] Detect if order is trucking-type (has truck_type or vehicleType set)
+function isTruckingOrder(order: { vehicleType?: string | null; truckType?: string | null }): boolean {
+  return !!(order.vehicleType || order.truckType);
+}
+
+// [TRUCKING-FIX] Format ISO date "2026-05-14" → "14 Mei 2026"
+function formatISODate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00+07:00");
+  if (isNaN(d.getTime())) return dateStr;
+  const parts = new Intl.DateTimeFormat("id-ID", { timeZone: TZ, day: "2-digit", month: "long", year: "numeric" }).formatToParts(d);
+  const day  = parts.find(p => p.type === "day")?.value ?? "";
+  const mon  = parts.find(p => p.type === "month")?.value ?? "";
+  const year = parts.find(p => p.type === "year")?.value ?? "";
+  return `${day} ${mon} ${year}`;
+}
+
+// [TRUCKING-FIX] New trucking RFQ WA format per spec — vendor gets base price + YES/NO links
+function buildTruckingRfqWaMessage(order: {
+  orderNumber: string; origin: string; destination: string;
+  commodity?: string | null; vehicleType?: string | null;
+  requiredDate?: string | null; jamOrder?: string | null;
+}, rfqNumber: string, vendorName: string, confirmUrl: string, rejectUrl: string, basePrice: number | null): string {
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const pickupDate = order.requiredDate ? formatISODate(order.requiredDate) : "-";
+  const pickupTime = order.jamOrder ? order.jamOrder.replace(".", ":") : "-";
+  return (
+    `🚛 *REQUEST PENAWARAN TRUCKING*\n` +
+    `📋 No. RFQ: ${rfqNumber}\n` +
+    `   No. Order: ${order.orderNumber}\n\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `📍 RUTE: ${order.origin} → ${order.destination}\n` +
+    `   PICKUP: ${pickupDate} Pukul ${pickupTime} WIB\n` +
+    `   KOMODITI: ${order.commodity ?? "Umum"}\n` +
+    `🚚 TIPE UNIT: ${order.vehicleType ?? "-"}\n\n` +
+    (basePrice != null ? `💰 HARGA DASAR: ${fmtRp(basePrice)}\n` : ``) +
+    `━━━━━━━━━━━━━━━━━━\n\n` +
+    `✅ Terima & tersedia: ${confirmUrl}\n` +
+    `   Tolak: ${rejectUrl}\n` +
+    `⏳ Batas konfirmasi: 24 jam`
+  );
+}
+
 function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName: string, orderId: number, quote: {
   vendorPrice: number; estimatedPickup?: string | null; estimatedDelivery?: string | null;
   estimatedDays?: number | null; vendorNotes?: string | null;
@@ -272,6 +357,108 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
   replySource: q.replySource,
   replyTimestamp: q.replyTimestamp?.toISOString() ?? null,
   createdAt: q.createdAt.toISOString(),
+});
+
+// [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
+logisticRfqRouter.get("/vendor-confirm-page", async (req: Request, res: Response) => {
+  const orderId = parseInt(String(req.query.orderId ?? ""), 10);
+  const token = String(req.query.token ?? "").trim();
+  if (isNaN(orderId) || !token) return res.status(400).json({ message: "orderId dan token wajib diisi" });
+
+  const [quote] = await db.select().from(logisticOrderQuotesTable)
+    .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.vendorConfirmToken as any, token)));
+  if (!quote) return res.status(404).json({ message: "Link konfirmasi tidak valid atau sudah kadaluarsa" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, quote.rfqId));
+  const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, quote.vendorId));
+
+  return res.json({
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    rfqNumber: rfq?.rfqNumber ?? "",
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    pickupDate: (order as any).pickupDate ?? order.requiredDate ?? null,
+    pickupTime: (order as any).pickupTime ?? order.jamOrder ?? null,
+    truckType: (order as any).truckType ?? null,
+    basePrice: Number(quote.vendorPrice),
+    vendorName: vendor?.name ?? "",
+    confirmStatus: quote.quoteStatus,                    // pending / vendor_confirmed / vendor_rejected
+  });
+});
+
+// [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
+logisticRfqRouter.post("/vendor-confirm", async (req: Request, res: Response) => {
+  const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
+  if (!orderId || !token || !action) return res.status(400).json({ message: "orderId, token, dan action wajib diisi" });
+  if (action !== "accept" && action !== "reject") return res.status(400).json({ message: "action harus 'accept' atau 'reject'" });
+
+  const [quote] = await db.select().from(logisticOrderQuotesTable)
+    .where(and(eq(logisticOrderQuotesTable.orderId, orderId), eq(logisticOrderQuotesTable.vendorConfirmToken as any, token)));
+  if (!quote) return res.status(404).json({ message: "Token tidak valid" });
+  if (quote.quoteStatus !== "pending") return res.status(409).json({ message: "Konfirmasi sudah pernah dikirimkan" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, quote.vendorId));
+  const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, quote.rfqId));
+
+  const newQuoteStatus = action === "accept" ? "vendor_confirmed" : "vendor_rejected";
+  const newOrderStatus = action === "accept" ? "Vendor Confirmed" : "Vendor Rejected";
+
+  await db.update(logisticOrderQuotesTable)
+    .set({ quoteStatus: newQuoteStatus, replyTimestamp: new Date(), replySource: "vendor_confirm" } as any)
+    .where(eq(logisticOrderQuotesTable.id, quote.id));
+
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const basePrice = Number(quote.vendorPrice);
+  const markupPct = Number(quote.markupPercentage) || 20;
+  const finalPrice = basePrice * (1 + markupPct / 100);
+
+  if (action === "accept") {
+    // [TRUCKING-FIX] Save final_price and markup to order, update status
+    await db.update(logisticOrdersTable).set({
+      status: newOrderStatus,
+      markupPercent: String(markupPct),
+      finalPrice: String(finalPrice),
+    } as any).where(eq(logisticOrdersTable.id, orderId));
+    console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Confirmed (order ${orderId}, vendor ${vendor?.name})`);
+
+    // Notify admin: vendor confirmed + pricing info + approve link
+    const approveUrl = getApproveFormUrl(order.orderNumber);
+    const adminMsg =
+      `🔔 *VENDOR CONFIRMED*\n` +
+      `📦 Order: ${order.orderNumber}\n` +
+      `🏢 Vendor: ${vendor?.name ?? "Unknown"}\n` +
+      `💰 Harga Dasar: ${fmtRp(basePrice)}\n` +
+      `💵 Harga ke Customer (Markup ${markupPct}%): ${fmtRp(finalPrice)}\n\n` +
+      (approveUrl ? `✅ Review & Approve: ${approveUrl}` : ``);
+
+    const adminWa = await getAdminWa();
+    if (adminWa) sendWhatsApp(adminWa, adminMsg).catch((e: unknown) => logger.error({ e }, "Admin notify vendor confirmed failed"));
+  } else {
+    await db.update(logisticOrdersTable).set({ status: newOrderStatus } as any).where(eq(logisticOrdersTable.id, orderId));
+    console.log(`[TRUCKING-FLOW] State: Under Review → Vendor Rejected (order ${orderId})`);
+
+    // Notify admin: vendor rejected
+    const approveUrl = getApproveFormUrl(order.orderNumber);
+    const adminMsg =
+      `🔔 *VENDOR REJECTED*\n` +
+      `📦 Order: ${order.orderNumber}\n` +
+      `🏢 Vendor: ${vendor?.name ?? "Unknown"} menolak order ini.\n\n` +
+      (approveUrl ? `📋 Cek & pilih vendor lain: ${approveUrl}` : ``);
+
+    const adminWa = await getAdminWa();
+    if (adminWa) sendWhatsApp(adminWa, adminMsg).catch((e: unknown) => logger.error({ e }, "Admin notify vendor rejected failed"));
+  }
+
+  logger.info({ orderId, action, vendorId: quote.vendorId }, `[TRUCKING-FIX] Vendor ${action} order`);
+  return res.json({ message: action === "accept" ? "Konfirmasi diterima. Terima kasih!" : "Order ditolak." });
 });
 
 // GET /api/logistic/orders/vendor-form?rfq=RFQ-XXXXXX&v=vendorId — public vendor form data
@@ -899,23 +1086,47 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
 
   const confirmUrl = getConfirmFormUrl(confirmToken);
 
-  const customerMsg =
-    `✅ *PENAWARAN HARGA ANDA TELAH SIAP*\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `Halo *${updatedOrder.customerName}*,\n\n` +
-    `Kami telah memproses permintaan Anda dan menyiapkan penawaran terbaik.\n\n` +
-    `No. Order   : \`${updatedOrder.orderNumber}\`\n` +
-    `Jenis       : ${updatedOrder.shipmentType}\n` +
-    `Rute        : ${updatedOrder.origin} → ${updatedOrder.destination}\n` +
-    (updatedOrder.commodity ? `Komoditi    : ${updatedOrder.commodity}\n` : "") +
-    (quote.estimatedPickup ? `ETA Pickup  : ${quote.estimatedPickup}\n` : "") +
-    (quote.estimatedDelivery ? `ETA Kirim   : ${quote.estimatedDelivery}\n` : "") +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    `💰 *Total Harga  : ${fmt(sellingPrice)}*\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
-    (confirmUrl ? `📋 *Konfirmasi persetujuan Anda di sini:*\n${confirmUrl}\n\n` : "") +
-    `Atau balas pesan ini / hubungi kami:\n` +
-    `📞 Jakarta: (021) 6241234`;
+  // [TRUCKING-FIX] Use trucking-specific customer WA format if this is a trucking order
+  const orderAny = updatedOrder as any;
+  const truckType = orderAny.truckType ?? null;
+  const pickupDate = orderAny.pickupDate ?? null;
+  const pickupTime = orderAny.pickupTime ?? null;
+  const isTrucking = !!(truckType || (updatedOrder as any).vehicleType);
+
+  const customerMsg = isTrucking
+    ? (
+        `✅ *PENAWARAN TRUCKING - CST Logistics*\n` +
+        `📦 Order: ${updatedOrder.orderNumber}\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `📍 Rute: ${updatedOrder.origin} → ${updatedOrder.destination}\n` +
+        (pickupDate ? `📅 Pickup: ${pickupDate}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
+        `🚚 Unit: ${truckType ?? "-"} | ${updatedOrder.commodity ?? "Umum"}\n\n` +
+        `💰 TOTAL BIAYA: ${fmt(sellingPrice)}\n` +
+        `━━━━━━━━━━━━━━━━━━\n\n` +
+        (confirmUrl ? `✅ Setuju & lanjutkan: ${confirmUrl}\n` : "") +
+        (confirmUrl ? `❌ Batalkan: ${confirmUrl}?cancel=1\n` : "") +
+        `⏳ Berlaku: 3 hari`
+      )
+    : (
+        `✅ *PENAWARAN HARGA ANDA TELAH SIAP*\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `Halo *${updatedOrder.customerName}*,\n\n` +
+        `Kami telah memproses permintaan Anda dan menyiapkan penawaran terbaik.\n\n` +
+        `No. Order   : \`${updatedOrder.orderNumber}\`\n` +
+        `Jenis       : ${updatedOrder.shipmentType}\n` +
+        `Rute        : ${updatedOrder.origin} → ${updatedOrder.destination}\n` +
+        (updatedOrder.commodity ? `Komoditi    : ${updatedOrder.commodity}\n` : "") +
+        (quote.estimatedPickup ? `ETA Pickup  : ${quote.estimatedPickup}\n` : "") +
+        (quote.estimatedDelivery ? `ETA Kirim   : ${quote.estimatedDelivery}\n` : "") +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `💰 *Total Harga  : ${fmt(sellingPrice)}*\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        (confirmUrl ? `📋 *Konfirmasi persetujuan Anda di sini:*\n${confirmUrl}\n\n` : "") +
+        `Atau balas pesan ini / hubungi kami:\n` +
+        `📞 Jakarta: (021) 6241234`
+      );
+
+  if (isTrucking) console.log(`[TRUCKING-FLOW] State: Vendor Confirmed → Waiting Customer (order ${orderId})`);
 
   if (updatedOrder.phone) {
     sendWhatsApp(updatedOrder.phone, customerMsg).catch((e: unknown) =>
@@ -963,6 +1174,7 @@ logisticRfqRouter.get("/confirm-form/:token", async (req: Request, res: Response
     }
   }
 
+  const orderAny2 = order as any;
   return res.json({
     orderId: order.id,
     orderNumber: order.orderNumber,
@@ -975,6 +1187,9 @@ logisticRfqRouter.get("/confirm-form/:token", async (req: Request, res: Response
     finalSellingPrice: order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0,
     estimatedPickup,
     estimatedDelivery,
+    pickupDate: orderAny2.pickupDate ?? order.requiredDate ?? null,       // [TRUCKING-FIX]
+    pickupTime: orderAny2.pickupTime ?? order.jamOrder ?? null,           // [TRUCKING-FIX]
+    truckType: orderAny2.truckType ?? null,                               // [TRUCKING-FIX]
     vendorName,
     customerConfirmStatus: order.customerConfirmStatus ?? "pending",
   });

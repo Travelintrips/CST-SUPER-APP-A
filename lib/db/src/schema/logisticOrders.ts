@@ -47,6 +47,11 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   customerConfirmToken: text("customer_confirm_token").unique(),
   customerConfirmStatus: text("customer_confirm_status").default("pending"),
   customerConfirmedAt: timestamp("customer_confirmed_at"),
+  pickupDate: text("pickup_date"),                                                              // [TRUCKING-FIX]
+  pickupTime: text("pickup_time"),                                                              // [TRUCKING-FIX]
+  truckType: text("truck_type"),                                                                // [TRUCKING-FIX]
+  markupPercent: numeric("markup_percent", { precision: 5, scale: 2 }).default("20"),          // [TRUCKING-FIX]
+  finalPrice: numeric("final_price", { precision: 14, scale: 2 }),                             // [TRUCKING-FIX]
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -89,6 +94,7 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   quoteStatus: text("quote_status").notNull().default("pending"),
   replySource: text("reply_source").notNull().default("manual"),
   replyTimestamp: timestamp("reply_timestamp"),
+  vendorConfirmToken: text("vendor_confirm_token").unique(),                                   // [TRUCKING-FIX]
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

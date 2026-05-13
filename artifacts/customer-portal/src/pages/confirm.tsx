@@ -28,6 +28,9 @@ interface ConfirmData {
   finalSellingPrice: number;
   estimatedPickup: string | null;
   estimatedDelivery: string | null;
+  pickupDate: string | null;           // [TRUCKING-FIX]
+  pickupTime: string | null;           // [TRUCKING-FIX]
+  truckType: string | null;            // [TRUCKING-FIX]
   vendorName: string | null;
   customerConfirmStatus: string;
 }
@@ -186,8 +189,32 @@ export default function ConfirmPage() {
           </div>
         </div>
 
-        {/* Estimasi */}
-        {(data.estimatedPickup || data.estimatedDelivery) && (
+        {/* [TRUCKING-FIX] Jadwal Pickup (trucking) ATAU Estimasi (non-trucking) */}
+        {(data.pickupDate || data.truckType) ? (
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Jadwal Pickup</h3>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {data.pickupDate && (
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-xs text-slate-400 mb-1">Tanggal Pickup</p>
+                  <p className="font-medium text-slate-700">{data.pickupDate}</p>
+                </div>
+              )}
+              {data.pickupTime && (
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-xs text-slate-400 mb-1">Jam Pickup</p>
+                  <p className="font-medium text-slate-700">{data.pickupTime} WIB</p>
+                </div>
+              )}
+              {data.truckType && (
+                <div className="bg-slate-50 rounded-xl p-3 col-span-2">
+                  <p className="text-xs text-slate-400 mb-1">Tipe Unit</p>
+                  <p className="font-medium text-slate-700">{data.truckType}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (data.estimatedPickup || data.estimatedDelivery) ? (
           <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
             <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Estimasi</h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -205,7 +232,7 @@ export default function ConfirmPage() {
               )}
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Harga */}
         <div className="bg-blue-600 rounded-2xl p-5 text-white text-center shadow-md">
