@@ -408,13 +408,6 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["status"] = "draft" satisfies SalesDocStatus;
       break;
     case "mark_invoiced": {
-      const [{ shipmentCount }] = await db
-        .select({ shipmentCount: count() })
-        .from(freightShipmentsTable)
-        .where(eq(freightShipmentsTable.salesDocId, id));
-      if (shipmentCount === 0) {
-        return res.status(400).json({ message: "Tidak bisa membuat invoice: belum ada Shipment yang terhubung dengan Sales Order ini. Buat Shipment terlebih dahulu." });
-      }
       // Auto-numbering: INV/YYYY/NNNN
       const invYear = new Date().getFullYear();
       const [{ invCount }] = await db
@@ -468,10 +461,10 @@ router.post("/documents/:id/action", async (req, res) => {
     }).catch(() => undefined);
   }
 
-  // Auto-post journal entry when newly invoiced
+  // Auto-post journal entry when order is newly confirmed (Debit AR / Credit Revenue)
   if (
-    action === "mark_invoiced" &&
-    doc.invoiceStatus !== "invoiced"
+    action === "confirm" &&
+    doc.status !== "confirmed"
   ) {
     const net = Number(doc.totalAmount);
     const taxAmount = Number(doc.taxAmount ?? 0);
