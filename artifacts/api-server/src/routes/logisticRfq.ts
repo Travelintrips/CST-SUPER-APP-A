@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
-import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable } from "@workspace/db";
+import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -1406,38 +1406,40 @@ logisticRfqRouter.post("/:id/send-customer-options", async (req: Request, res: R
   const orderAny = order as any;
   const isTrucking = !!(orderAny.truckType || orderAny.transportMode === "TRUCKING");
 
-  let optionsText = "";
+  // [MULTI-MODE] Compact WA format per spec — NO vendor names shown
+  const NUM_EMOJI = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"];
+  const modeLabel = orderAny.transportMode === "TRUCKING" ? "TRUCKING"
+    : orderAny.transportMode === "AIR_FREIGHT" ? "AIR FREIGHT"
+    : orderAny.transportMode === "SEA_FREIGHT" ? "SEA FREIGHT"
+    : "LOGISTIK";
+  const labelChar = (i: number) => String.fromCharCode(65 + i); // A, B, C...
+
+  let optLines = "";
   for (let i = 0; i < offers.length; i++) {
     const o = offers[i];
     const price = o.finalCustomerPrice != null ? Number(o.finalCustomerPrice) : Number(o.offerPrice);
-    optionsText += `*${i + 1}. Opsi ${i + 1}*\n`;
-    optionsText += `   💰 Harga: *${fmt(price)}*\n`;
-    if (isTrucking) {
-      if (o.vehicleYear) optionsText += `   🚚 Tahun Unit: ${o.vehicleYear}\n`;
-      if (o.carrierName) optionsText += `   🔹 Tipe Unit: (disembunyikan)\n`;
-    } else {
-      if (o.carrierName) optionsText += `   ✈️ Carrier: (disembunyikan)\n`;
-      if (o.transitDays) optionsText += `   ⏱️ Transit: ${o.transitDays} hari\n`;
-    }
-    if (o.notes) optionsText += `   📝 Catatan: ${o.notes}\n`;
-    optionsText += "\n";
+    const numEmoji = NUM_EMOJI[i] ?? `${i + 1}.`;
+    let line = `${numEmoji} Opsi ${labelChar(i)} | 💰${fmt(price)}`;
+    if (isTrucking && o.vehicleYear) line += ` | 🚗${o.vehicleYear}`;
+    if (!isTrucking && o.transitDays) line += ` | ⏱️${o.transitDays}hr`;
+    if (isTrucking && orderAny.truckType) line += ` | ${orderAny.truckType}`;
+    if (o.notes) line += ` | ${o.notes}`;
+    optLines += line + "\n";
   }
 
-  const pickupInfo = isTrucking && orderAny.pickupDate
-    ? `📅 Pickup: ${formatISODate(orderAny.pickupDate)}${orderAny.pickupTime ? ` ${orderAny.pickupTime} WIB` : ""}\n`
+  const pickupLine = isTrucking && orderAny.pickupDate
+    ? `📅 Pickup: ${formatISODate(orderAny.pickupDate)}${orderAny.pickupTime ? ` ${orderAny.pickupTime}` : ""}\n`
     : "";
 
   const waMsg =
-    `✅ *PENAWARAN TERSEDIA — CST Logistics*\n` +
-    `━━━━━━━━━━━━━━━━━━\n` +
+    `✅ PENAWARAN ${modeLabel} - CST Logistics\n` +
     `📦 Order: ${order.orderNumber}\n` +
-    `📍 Rute: ${order.origin} → ${order.destination}\n` +
-    pickupInfo +
-    `━━━━━━━━━━━━━━━━━━\n\n` +
-    `Kami memiliki *${offers.length} opsi* untuk Anda:\n\n` +
-    optionsText +
-    `👆 Pilih opsi yang sesuai:\n${optionUrl}\n\n` +
-    `_Harga sudah termasuk pajak & biaya admin_`;
+    `📍 ${order.origin} → ${order.destination}\n` +
+    pickupLine +
+    `━━━━━━━━━━━━━━\n` +
+    optLines +
+    `━━━━━━━━━━━━━━\n` +
+    `👉 Pilih opsi Anda:\n${optionUrl}`;
 
   if (order.phone) {
     sendWhatsApp(order.phone, waMsg).catch((e: unknown) =>

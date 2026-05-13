@@ -402,7 +402,15 @@ export default function BookPage() {
     grossWeight: "", volumeCbm: "", jumlahKoli: "", requiredDate: "", notes: "",
     quantity: "", unit: "",
     namaPenerima: "", nomorPenerima: "",
+    // [MULTI-MODE] transport mode fields
+    transportMode: "",
+    originDistrict: "", destDistrict: "",
+    pickupDate: "", pickupTime: "", truckType: "",
+    originPort: "", destPort: "", weightKg: "", incoterm: "",
+    etd: "", eta: "",
   });
+  const [estimation, setEstimation] = useState<{ estimated_price: number | null; disclaimer: string } | null>(null);
+  const [estimating, setEstimating] = useState(false);
   const [paymentType, setPaymentType] = useState<"transfer" | "gateway" | "">("");
   const [transferTerm, setTransferTerm] = useState<"full" | "termin" | "dp" | "">("");
   const [paymentTerm, setPaymentTerm] = useState<"net7" | "net14" | "net30" | "net60" | "">("");
@@ -484,6 +492,20 @@ export default function BookPage() {
       }
     }
   }, [cartItems]);
+
+  // [MULTI-MODE] Auto-fetch price estimation when mode + origin + destination are filled
+  useEffect(() => {
+    const { transportMode, origin, destination } = customerForm;
+    if (!transportMode || !origin || !destination) { setEstimation(null); return; }
+    setEstimating(true);
+    const params = new URLSearchParams({ transport_mode: transportMode, origin, dest: destination });
+    if (customerForm.truckType) params.set("truck_type", customerForm.truckType);
+    fetch(`/api/logistic/orders/estimate-price?${params.toString()}`)
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error("fetch failed")))
+      .then((d: { estimated_price: number | null; disclaimer: string }) => setEstimation(d))
+      .catch(() => setEstimation(null))
+      .finally(() => setEstimating(false));
+  }, [customerForm.transportMode, customerForm.origin, customerForm.destination, customerForm.truckType]);
 
   const itemsByCategory = useMemo(() =>
     (cat: ServiceCategory) => SERVICE_ITEMS.filter((i) => i.category === cat),
