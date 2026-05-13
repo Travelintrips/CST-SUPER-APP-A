@@ -19,6 +19,8 @@ export const suppliersTable = pgTable("suppliers", {
   markup: numeric("markup", { precision: 5, scale: 2 }).default("0"),
   note: text("note"),
   sortOrder: integer("sort_order").notNull().default(0),
+  yearVehicle: integer("year_vehicle"),
+  supportedModes: text("supported_modes").array(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

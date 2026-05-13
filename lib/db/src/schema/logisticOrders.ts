@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   timestamp,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { suppliersTable } from "./suppliers";
@@ -47,11 +48,24 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   customerConfirmToken: text("customer_confirm_token").unique(),
   customerConfirmStatus: text("customer_confirm_status").default("pending"),
   customerConfirmedAt: timestamp("customer_confirmed_at"),
-  pickupDate: text("pickup_date"),                                                              // [TRUCKING-FIX]
-  pickupTime: text("pickup_time"),                                                              // [TRUCKING-FIX]
-  truckType: text("truck_type"),                                                                // [TRUCKING-FIX]
-  markupPercent: numeric("markup_percent", { precision: 5, scale: 2 }).default("20"),          // [TRUCKING-FIX]
-  finalPrice: numeric("final_price", { precision: 14, scale: 2 }),                             // [TRUCKING-FIX]
+  pickupDate: text("pickup_date"),
+  pickupTime: text("pickup_time"),
+  truckType: text("truck_type"),
+  markupPercent: numeric("markup_percent", { precision: 5, scale: 2 }).default("20"),
+  finalPrice: numeric("final_price", { precision: 14, scale: 2 }),
+  // [MULTI-MODE] Transport mode & mode-specific fields
+  transportMode: text("transport_mode"),
+  originDistrict: text("origin_district"),
+  destDistrict: text("dest_district"),
+  etd: timestamp("etd", { withTimezone: true }),
+  eta: timestamp("eta", { withTimezone: true }),
+  originPort: text("origin_port"),
+  destPort: text("dest_port"),
+  weightKg: numeric("weight_kg", { precision: 12, scale: 3 }),
+  incoterm: text("incoterm"),
+  // [MULTI-MODE] Customer options flow
+  optionsToken: text("options_token").unique(),
+  optionsSentAt: timestamp("options_sent_at", { withTimezone: true }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -96,6 +110,24 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   replyTimestamp: timestamp("reply_timestamp"),
   vendorConfirmToken: text("vendor_confirm_token").unique(),                                   // [TRUCKING-FIX]
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const vendorOffersTable = pgTable("vendor_offers", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").references(() => logisticOrdersTable.id, { onDelete: "cascade" }),
+  vendorId: integer("vendor_id").references(() => suppliersTable.id, { onDelete: "set null" }),
+  transportMode: text("transport_mode"),
+  offerPrice: numeric("offer_price", { precision: 15, scale: 2 }).notNull().default("0"),
+  vehicleYear: integer("vehicle_year"),
+  carrierName: text("carrier_name"),
+  transitDays: integer("transit_days"),
+  notes: text("notes"),
+  isSelectedByAdmin: boolean("is_selected_by_admin").notNull().default(false),
+  finalCustomerPrice: numeric("final_customer_price", { precision: 15, scale: 2 }),
+  optionLabel: text("option_label"),
+  status: text("status").notNull().default("PENDING"),
+  chosenAt: timestamp("chosen_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const logisticOrdersRelations = relations(logisticOrdersTable, ({ many }) => ({

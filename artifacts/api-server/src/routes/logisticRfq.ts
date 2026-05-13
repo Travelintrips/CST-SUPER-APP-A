@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
-import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable } from "@workspace/db";
+import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -65,7 +65,17 @@ export async function autoCreateRfqAndNotifyVendors(
     return [...keywords].some((kw) => st.includes(kw.toLowerCase()));
   });
 
-  const eligible = matchingVendors.filter((v) => v.phone);
+  // [MULTI-MODE] Trucking: filter by year_vehicle >= (currentYear - 5)
+  const isTruckingForFilter = isTruckingOrder(order);
+  const vehicleYearCutoff = new Date().getFullYear() - 5;
+  const eligible = matchingVendors.filter((v) => {
+    if (!v.phone) return false;
+    if (isTruckingForFilter) {
+      const vy = (v as any).yearVehicle;
+      if (vy != null && vy < vehicleYearCutoff) return false;
+    }
+    return true;
+  });
   if (eligible.length === 0) {
     logger.info({ keywords: [...keywords] }, "autoCreateRfqAndNotifyVendors: tidak ada vendor matching — skip");
     return;
@@ -267,6 +277,13 @@ function getVendorConfirmUrl(orderId: number, token: string): string {
   const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
   if (!domain) return "";
   return `https://${domain}/vendor-confirm?orderId=${orderId}&token=${encodeURIComponent(token)}`;
+}
+
+// [MULTI-MODE] URL for customer to choose from anonymous options
+function getChooseOptionUrl(token: string): string {
+  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  if (!domain) return "";
+  return `https://${domain}/choose-option/${token}`;
 }
 
 // [TRUCKING-FIX] Detect if order is trucking-type (has truck_type or vehicleType set)
@@ -1258,4 +1275,294 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
 
   logger.info({ orderId: order.id, action, orderNumber: order.orderNumber }, "Customer confirmation received");
   return res.json({ ok: true, action });
+});
+
+// ─── [MULTI-MODE] Vendor Offers — Admin-Select Flow ──────────────────────────
+
+// GET /:id/vendor-offers — list vendor offers for admin (with vendor name)
+logisticRfqRouter.get("/:id/vendor-offers", async (req: Request, res: Response) => {
+  const orderId = parseInt(req.params.id, 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const offers = await db.select({
+    id: vendorOffersTable.id,
+    orderId: vendorOffersTable.orderId,
+    vendorId: vendorOffersTable.vendorId,
+    vendorName: suppliersTable.name,
+    transportMode: vendorOffersTable.transportMode,
+    offerPrice: vendorOffersTable.offerPrice,
+    vehicleYear: vendorOffersTable.vehicleYear,
+    carrierName: vendorOffersTable.carrierName,
+    transitDays: vendorOffersTable.transitDays,
+    notes: vendorOffersTable.notes,
+    isSelectedByAdmin: vendorOffersTable.isSelectedByAdmin,
+    finalCustomerPrice: vendorOffersTable.finalCustomerPrice,
+    optionLabel: vendorOffersTable.optionLabel,
+    status: vendorOffersTable.status,
+    chosenAt: vendorOffersTable.chosenAt,
+    createdAt: vendorOffersTable.createdAt,
+  })
+    .from(vendorOffersTable)
+    .leftJoin(suppliersTable, eq(vendorOffersTable.vendorId, suppliersTable.id))
+    .where(eq(vendorOffersTable.orderId, orderId))
+    .orderBy(vendorOffersTable.createdAt);
+
+  return res.json(offers.map((o) => ({
+    ...o,
+    offerPrice: o.offerPrice != null ? Number(o.offerPrice) : 0,
+    finalCustomerPrice: o.finalCustomerPrice != null ? Number(o.finalCustomerPrice) : null,
+  })));
+});
+
+// POST /:id/vendor-offers — admin creates a vendor offer
+logisticRfqRouter.post("/:id/vendor-offers", async (req: Request, res: Response) => {
+  const orderId = parseInt(req.params.id, 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const { vendorId, offerPrice, finalCustomerPrice, vehicleYear, carrierName, transitDays, notes, transportMode } =
+    req.body as {
+      vendorId?: number; offerPrice: number; finalCustomerPrice?: number;
+      vehicleYear?: number; carrierName?: string; transitDays?: number;
+      notes?: string; transportMode?: string;
+    };
+
+  if (offerPrice == null || offerPrice <= 0) {
+    return res.status(400).json({ message: "offerPrice wajib diisi" });
+  }
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // Lookup vendor info if vendorId provided
+  let resolvedCarrierName = carrierName?.trim() || null;
+  let resolvedVehicleYear = vehicleYear ?? null;
+  if (vendorId) {
+    const [vendor] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, vendorId));
+    if (vendor) {
+      if (!resolvedCarrierName) resolvedCarrierName = vendor.name;
+      if (!resolvedVehicleYear) resolvedVehicleYear = (vendor as any).yearVehicle ?? null;
+    }
+  }
+
+  const [offer] = await db.insert(vendorOffersTable).values({
+    orderId,
+    vendorId: vendorId ?? null,
+    transportMode: transportMode ?? (order as any).transportMode ?? null,
+    offerPrice: String(offerPrice),
+    finalCustomerPrice: finalCustomerPrice != null ? String(finalCustomerPrice) : null,
+    vehicleYear: resolvedVehicleYear,
+    carrierName: resolvedCarrierName,
+    transitDays: transitDays ?? null,
+    notes: notes?.trim() || null,
+    isSelectedByAdmin: true,
+    status: "PENDING",
+  } as any).returning();
+
+  logger.info({ orderId, offerId: offer.id }, "[MULTI-MODE] Vendor offer created by admin");
+  return res.status(201).json({ ...offer, offerPrice: Number(offer.offerPrice) });
+});
+
+// DELETE /vendor-offers/:offerId — admin removes an offer
+logisticRfqRouter.delete("/vendor-offers/:offerId", async (req: Request, res: Response) => {
+  const offerId = parseInt(req.params.offerId, 10);
+  if (isNaN(offerId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  await db.delete(vendorOffersTable).where(eq(vendorOffersTable.id, offerId));
+  return res.json({ ok: true });
+});
+
+// POST /:id/send-customer-options — admin sends anonymous options to customer via WA
+logisticRfqRouter.post("/:id/send-customer-options", async (req: Request, res: Response) => {
+  const orderId = parseInt(req.params.id, 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const offers = await db.select().from(vendorOffersTable)
+    .where(and(eq(vendorOffersTable.orderId, orderId), eq(vendorOffersTable.isSelectedByAdmin, true)))
+    .orderBy(vendorOffersTable.createdAt);
+
+  if (offers.length === 0) {
+    return res.status(400).json({ message: "Belum ada opsi yang dipilih admin. Tambahkan minimal 1 opsi vendor." });
+  }
+
+  // Generate options token
+  const token = randomUUID();
+  const optionUrl = getChooseOptionUrl(token);
+
+  // Label each offer: Opsi 1, Opsi 2, ...
+  for (let i = 0; i < offers.length; i++) {
+    await db.update(vendorOffersTable)
+      .set({ optionLabel: `Opsi ${i + 1}`, status: "OPTIONS_SENT" } as any)
+      .where(eq(vendorOffersTable.id, offers[i].id));
+  }
+
+  await db.update(logisticOrdersTable)
+    .set({ optionsToken: token, optionsSentAt: new Date(), status: "Quotation Sent" } as any)
+    .where(eq(logisticOrdersTable.id, orderId));
+
+  const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const orderAny = order as any;
+  const isTrucking = !!(orderAny.truckType || orderAny.transportMode === "TRUCKING");
+
+  let optionsText = "";
+  for (let i = 0; i < offers.length; i++) {
+    const o = offers[i];
+    const price = o.finalCustomerPrice != null ? Number(o.finalCustomerPrice) : Number(o.offerPrice);
+    optionsText += `*${i + 1}. Opsi ${i + 1}*\n`;
+    optionsText += `   💰 Harga: *${fmt(price)}*\n`;
+    if (isTrucking) {
+      if (o.vehicleYear) optionsText += `   🚚 Tahun Unit: ${o.vehicleYear}\n`;
+      if (o.carrierName) optionsText += `   🔹 Tipe Unit: (disembunyikan)\n`;
+    } else {
+      if (o.carrierName) optionsText += `   ✈️ Carrier: (disembunyikan)\n`;
+      if (o.transitDays) optionsText += `   ⏱️ Transit: ${o.transitDays} hari\n`;
+    }
+    if (o.notes) optionsText += `   📝 Catatan: ${o.notes}\n`;
+    optionsText += "\n";
+  }
+
+  const pickupInfo = isTrucking && orderAny.pickupDate
+    ? `📅 Pickup: ${formatISODate(orderAny.pickupDate)}${orderAny.pickupTime ? ` ${orderAny.pickupTime} WIB` : ""}\n`
+    : "";
+
+  const waMsg =
+    `✅ *PENAWARAN TERSEDIA — CST Logistics*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `📦 Order: ${order.orderNumber}\n` +
+    `📍 Rute: ${order.origin} → ${order.destination}\n` +
+    pickupInfo +
+    `━━━━━━━━━━━━━━━━━━\n\n` +
+    `Kami memiliki *${offers.length} opsi* untuk Anda:\n\n` +
+    optionsText +
+    `👆 Pilih opsi yang sesuai:\n${optionUrl}\n\n` +
+    `_Harga sudah termasuk pajak & biaya admin_`;
+
+  if (order.phone) {
+    sendWhatsApp(order.phone, waMsg).catch((e: unknown) =>
+      logger.error({ e }, "[MULTI-MODE] WA send-options to customer failed")
+    );
+  }
+
+  logger.info({ orderId, optionCount: offers.length }, "[MULTI-MODE] Options sent to customer");
+  return res.json({ ok: true, optionUrl, optionCount: offers.length });
+});
+
+// GET /choose-option-form/:token — public: customer views anonymous options
+logisticRfqRouter.get("/choose-option-form/:token", async (req: Request, res: Response) => {
+  const { token } = req.params;
+  if (!token) return res.status(400).json({ message: "Token wajib diisi" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.optionsToken as any, token));
+  if (!order) return res.status(404).json({ message: "Link tidak valid atau sudah kadaluarsa" });
+
+  const offers = await db.select().from(vendorOffersTable)
+    .where(and(eq(vendorOffersTable.orderId, order.id), eq(vendorOffersTable.isSelectedByAdmin, true)))
+    .orderBy(vendorOffersTable.createdAt);
+
+  const orderAny = order as any;
+  const isTrucking = !!(orderAny.truckType || orderAny.transportMode === "TRUCKING");
+
+  const options = offers.map((o, i) => ({
+    id: o.id,
+    label: o.optionLabel ?? `Opsi ${i + 1}`,
+    price: o.finalCustomerPrice != null ? Number(o.finalCustomerPrice) : Number(o.offerPrice),
+    vehicleYear: isTrucking ? (o.vehicleYear ?? null) : null,
+    truckType: isTrucking ? (orderAny.truckType ?? null) : null,
+    carrierInfo: !isTrucking ? (o.transitDays != null ? `Transit ${o.transitDays} hari` : null) : null,
+    transitDays: o.transitDays ?? null,
+    notes: o.notes ?? null,
+    status: o.status,
+    isChosen: o.status === "CUSTOMER_CHOSEN",
+  }));
+
+  const alreadyChosen = options.some((o) => o.isChosen);
+
+  return res.json({
+    orderNumber: order.orderNumber,
+    origin: order.origin,
+    destination: order.destination,
+    commodity: order.commodity ?? null,
+    pickupDate: orderAny.pickupDate ?? null,
+    pickupTime: orderAny.pickupTime ?? null,
+    truckType: orderAny.truckType ?? null,
+    isTrucking,
+    customerConfirmStatus: order.customerConfirmStatus ?? "pending",
+    alreadyChosen,
+    options,
+  });
+});
+
+// POST /choose-option — public: customer picks one option
+logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => {
+  const { token, optionId } = req.body as { token: string; optionId: number };
+  if (!token || !optionId) return res.status(400).json({ message: "token dan optionId wajib diisi" });
+
+  const [order] = await db.select().from(logisticOrdersTable)
+    .where(eq(logisticOrdersTable.optionsToken as any, token));
+  if (!order) return res.status(404).json({ message: "Link tidak valid" });
+
+  const allOffers = await db.select().from(vendorOffersTable)
+    .where(eq(vendorOffersTable.orderId, order.id));
+
+  const alreadyChosen = allOffers.some((o) => o.status === "CUSTOMER_CHOSEN");
+  if (alreadyChosen) return res.status(409).json({ message: "Anda sudah memilih opsi sebelumnya" });
+
+  const chosen = allOffers.find((o) => o.id === Number(optionId));
+  if (!chosen) return res.status(404).json({ message: "Opsi tidak ditemukan" });
+
+  const chosenPrice = chosen.finalCustomerPrice != null ? Number(chosen.finalCustomerPrice) : Number(chosen.offerPrice);
+
+  // Mark chosen offer
+  await db.update(vendorOffersTable)
+    .set({ status: "CUSTOMER_CHOSEN", chosenAt: new Date() } as any)
+    .where(eq(vendorOffersTable.id, chosen.id));
+
+  // Mark others as rejected
+  const othersIds = allOffers.filter((o) => o.id !== chosen.id).map((o) => o.id);
+  if (othersIds.length > 0) {
+    await db.update(vendorOffersTable)
+      .set({ status: "CUSTOMER_REJECTED" } as any)
+      .where(inArray(vendorOffersTable.id, othersIds));
+  }
+
+  // Update order: confirmed + final selling price
+  const confirmToken = randomUUID();
+  await db.update(logisticOrdersTable).set({
+    status: "Confirmed",
+    customerConfirmStatus: "confirmed",
+    customerConfirmedAt: new Date(),
+    finalSellingPrice: String(chosenPrice),
+    customerConfirmToken: confirmToken,
+  }).where(eq(logisticOrdersTable.id, order.id));
+
+  const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+  const orderUrl = getOrderUrl(order.id);
+  const orderAny = order as any;
+  const isTrucking = !!(orderAny.truckType || orderAny.transportMode === "TRUCKING");
+  const pickupDate = orderAny.pickupDate ? formatISODate(orderAny.pickupDate) : null;
+  const pickupTime = orderAny.pickupTime ?? null;
+
+  // Notify admin via WA with SO link
+  const adminWa = await getAdminWa();
+  if (adminWa) {
+    const adminMsg =
+      `✅ *CUSTOMER MEMILIH OPSI — ${order.orderNumber}*\n\n` +
+      `Customer *${order.customerName}* memilih: *${chosen.optionLabel ?? "Opsi"}*\n` +
+      `💰 *${fmtRp(chosenPrice)}*\n\n` +
+      `📍 Rute: ${order.origin} → ${order.destination}\n` +
+      (isTrucking && pickupDate ? `📅 Pickup: ${pickupDate}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
+      (orderAny.truckType ? `🚚 Unit: ${orderAny.truckType}\n` : "") +
+      (chosen.vehicleYear ? `📅 Tahun Unit: ${chosen.vehicleYear}\n` : "") +
+      `\n🔗 *Buat Sales Order:*\n${orderUrl}`;
+    sendWhatsApp(adminWa, adminMsg).catch((e: unknown) =>
+      logger.error({ e }, "[MULTI-MODE] WA admin choose-option failed")
+    );
+  }
+
+  console.log(`[MULTI-MODE] State: Options Sent → Confirmed (order ${order.id}, chose offer ${chosen.id})`);
+  logger.info({ orderId: order.id, offerId: chosen.id, price: chosenPrice }, "[MULTI-MODE] Customer chose option");
+  return res.json({ ok: true, chosenLabel: chosen.optionLabel ?? "Opsi", price: chosenPrice });
 });
