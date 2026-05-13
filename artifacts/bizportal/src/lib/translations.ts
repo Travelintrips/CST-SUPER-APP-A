@@ -78,6 +78,7 @@ export interface Translations {
     aiScanSettings: string;
     settings: string;
     holding: string;
+    holdingDashboard: string;
     holdingCompanies: string;
     holdingCoa: string;
     holdingJournals: string;
@@ -453,6 +454,7 @@ const id: Translations = {
     aiScanSettings: "Scan Dokumen",
     settings: "Pengaturan",
     holding: "Holding",
+    holdingDashboard: "Holding Dashboard",
     holdingCompanies: "Data Perusahaan",
     holdingCoa: "Bagan Akun",
     holdingJournals: "Jurnal",
@@ -828,6 +830,7 @@ const en: Translations = {
     aiScanSettings: "Document Scan",
     settings: "Settings",
     holding: "Holding",
+    holdingDashboard: "Holding Dashboard",
     holdingCompanies: "Companies",
     holdingCoa: "Chart of Accounts",
     holdingJournals: "Journals",
@@ -1201,6 +1204,7 @@ const zhCN: DeepPartial<Translations> = {
     aiScanSettings: "扫描文档",
     settings: "设置",
     holding: "控股",
+    holdingDashboard: "控股仪表板",
     holdingCompanies: "公司管理",
     holdingCoa: "科目表",
     holdingJournals: "日记账",
