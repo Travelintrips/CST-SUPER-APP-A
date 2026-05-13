@@ -1,31 +1,30 @@
-import { db, suppliersTable, logisticOrderQuotesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 async function main() {
-  const quotes = await db.select({
-    id: logisticOrderQuotesTable.id,
-    vendorId: logisticOrderQuotesTable.vendorId,
-    vendorPrice: logisticOrderQuotesTable.vendorPrice,
-    markupPercentage: logisticOrderQuotesTable.markupPercentage,
-  }).from(logisticOrderQuotesTable)
-    .where(eq(logisticOrderQuotesTable.markupPercentage, "0.00"));
+  // Update all quotes that have markup_percentage=0 by pulling markup_pct from the supplier
+  const result = await db.execute(sql`
+    UPDATE logistic_order_quotes lq
+    SET
+      markup_percentage = s.markup_pct,
+      selling_price = (lq.vendor_price::numeric * (1 + s.markup_pct::numeric / 100))::text
+    FROM suppliers s
+    WHERE lq.vendor_id = s.id
+      AND lq.markup_percentage::numeric = 0
+      AND s.markup_pct::numeric > 0
+    RETURNING lq.id, lq.vendor_id, s.name, lq.vendor_price, s.markup_pct,
+              lq.selling_price
+  `);
 
-  console.log("Quotes with markup=0:", quotes.length);
-
-  for (const q of quotes) {
-    const [vendor] = await db.select({ markupPct: suppliersTable.markupPct, name: suppliersTable.name })
-      .from(suppliersTable).where(eq(suppliersTable.id, q.vendorId));
-    if (!vendor) { console.log("  skip quote", q.id, "- vendor not found"); continue; }
-    const mp = Number(vendor.markupPct ?? 0);
-    if (mp === 0) { console.log("  skip quote", q.id, "vendor:", vendor.name, "- supplier markup juga 0"); continue; }
-    const vp = Number(q.vendorPrice);
-    const sp = vp * (1 + mp / 100);
-    await db.update(logisticOrderQuotesTable)
-      .set({ markupPercentage: String(mp), sellingPrice: String(sp) })
-      .where(eq(logisticOrderQuotesTable.id, q.id));
-    console.log(`  Updated quote ${q.id} | vendor: ${vendor.name} | markup: ${mp}% | vendorPrice: ${vp} | sellingPrice: ${sp}`);
+  const rows = result.rows as Array<Record<string, unknown>>;
+  if (rows.length === 0) {
+    console.log("No quotes to update (all either already have markup, or vendor markup_pct = 0).");
+  } else {
+    console.log(`Updated ${rows.length} quote(s):`);
+    for (const r of rows) {
+      console.log(`  Quote #${r.id} | vendor: ${r.name} | vendorPrice: ${r.vendor_price} | markup: ${r.markup_pct}% | newSellingPrice: ${r.selling_price}`);
+    }
   }
-  console.log("Done.");
   process.exit(0);
 }
 
