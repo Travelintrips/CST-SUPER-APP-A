@@ -46,6 +46,9 @@ SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%4
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
 
+[userenv.production]
+GOOGLE_REDIRECT_BASE_URL = "https://cstlogistic.co.id"
+
 [nix]
 channel = "stable-25_05"
 packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tk", "zlib"]
