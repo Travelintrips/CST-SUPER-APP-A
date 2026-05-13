@@ -1027,4 +1027,172 @@ router.get("/reports/balance-sheet", async (req, res) => {
   });
 });
 
+// ============ Holding / Consolidated View ============
+
+/** GET /accounting/holding/groups — daftar holding group beserta member companies */
+router.get("/holding/groups", async (_req, res) => {
+  const groups = await db.execute(sql`
+    SELECT
+      hg.id,
+      hg.holding_name,
+      hg.holding_code,
+      hg.description,
+      hg.created_at,
+      json_agg(
+        json_build_object(
+          'memberId', chm.id,
+          'companyId', chm.company_id,
+          'companyName', c.company_name,
+          'companyCode', c.company_code,
+          'ownershipPercentage', chm.ownership_percentage,
+          'consolidationMethod', chm.consolidation_method
+        ) ORDER BY c.company_code
+      ) AS members
+    FROM holding_groups hg
+    LEFT JOIN company_holding_members chm ON chm.holding_group_id = hg.id
+    LEFT JOIN companies c ON c.id = chm.company_id
+    GROUP BY hg.id
+    ORDER BY hg.holding_code
+  `);
+  return res.json(groups.rows);
+});
+
+/** GET /accounting/holding/summary?holdingId=&from=&to= — ringkasan konsolidasi */
+router.get("/holding/summary", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT company_id FROM company_holding_members WHERE holding_group_id = ${holdingId}
+  `);
+  if (members.rows.length === 0) return res.json({ revenue: 0, expense: 0, netPL: 0, cashBalance: 0, receivable: 0, payable: 0, companyIds: [] });
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const companyIdsArr = sql`ARRAY[${sql.join(companyIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter = dateRange.from && dateRange.to
+    ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+    : dateRange.from
+    ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+    : dateRange.to
+    ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+    : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(
+        CASE WHEN coa.type = 'asset'
+          AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS cash_balance,
+      COALESCE(SUM(
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS receivable,
+      COALESCE(SUM(
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
+      ), 0) AS payable
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      AND ael.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+  `);
+
+  const row = result.rows[0] as { revenue: string; expense: string; cash_balance: string; receivable: string; payable: string } | undefined;
+  const revenue = Number(row?.revenue ?? 0);
+  const expense = Number(row?.expense ?? 0);
+  return res.json({
+    revenue,
+    expense,
+    netPL: revenue - expense,
+    cashBalance: Number(row?.cash_balance ?? 0),
+    receivable: Number(row?.receivable ?? 0),
+    payable: Number(row?.payable ?? 0),
+    companyIds,
+  });
+});
+
+/** GET /accounting/holding/breakdown?holdingId=&from=&to= — breakdown per perusahaan */
+router.get("/holding/breakdown", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${holdingId}
+    ORDER BY c.company_code
+  `);
+  if (members.rows.length === 0) return res.json([]);
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const companyIdsArr = sql`ARRAY[${sql.join(companyIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter = dateRange.from && dateRange.to
+    ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+    : dateRange.from
+    ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+    : dateRange.to
+    ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+    : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      ael.company_id,
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(
+        CASE WHEN coa.type = 'asset'
+          AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS cash_balance,
+      COALESCE(SUM(
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS receivable,
+      COALESCE(SUM(
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
+      ), 0) AS payable
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      AND ael.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+    GROUP BY ael.company_id
+  `);
+
+  const byCompanyId = new Map(
+    (result.rows as { company_id: number; revenue: string; expense: string; cash_balance: string; receivable: string; payable: string }[]).map((r) => [r.company_id, r])
+  );
+
+  const breakdown = (members.rows as { company_id: number; company_name: string; company_code: string }[]).map((m) => {
+    const r = byCompanyId.get(m.company_id);
+    const revenue = Number(r?.revenue ?? 0);
+    const expense = Number(r?.expense ?? 0);
+    return {
+      companyId: m.company_id,
+      companyName: m.company_name,
+      companyCode: m.company_code,
+      revenue,
+      expense,
+      netPL: revenue - expense,
+      cashBalance: Number(r?.cash_balance ?? 0),
+      receivable: Number(r?.receivable ?? 0),
+      payable: Number(r?.payable ?? 0),
+    };
+  });
+
+  return res.json(breakdown);
+});
+
 export default router;

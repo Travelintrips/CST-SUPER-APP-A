@@ -13,6 +13,7 @@ import { runOauthStateMigration } from "./lib/oauthStateMigration";
 import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 import { runKnowledgeBaseMigration } from "./lib/knowledgeBaseMigration";
 import { runCompaniesMigration } from "./lib/companiesMigration";
+import { runHoldingMigration } from "./lib/holdingMigration";
 
 const rawPort = process.env["PORT"];
 
@@ -39,6 +40,11 @@ app.listen(port, (err) => {
   // Buat tabel companies + company_id columns (idempotent)
   runCompaniesMigration().catch((err) => {
     logger.error({ err }, "Companies migration error");
+  });
+
+  // Buat tabel holding_groups + company_holding_members + seed CST-GROUP (idempotent)
+  runHoldingMigration().catch((err) => {
+    logger.error({ err }, "Holding migration error");
   });
 
   // Jalankan portal schema migration (idempotent — aman untuk prod)

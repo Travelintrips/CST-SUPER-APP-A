@@ -71,6 +71,7 @@ import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
+import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -311,6 +312,7 @@ function Router() {
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
         {/* Holding */}
+        <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
         <Route component={NotFound} />
       </Switch>

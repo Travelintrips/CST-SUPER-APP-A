@@ -220,6 +220,7 @@ export function AppShell({ children }: AppShellProps) {
       icon: Layers,
       roles: ["admin"],
       children: [
+        { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: BarChart2 },
         { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
         { titleKey: "holdingCoa", href: "/accounting/accounts", icon: Landmark },
         { titleKey: "holdingJournals", href: "/accounting/journals", icon: BookOpen },
