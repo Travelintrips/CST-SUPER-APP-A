@@ -30,6 +30,7 @@ import LogisticsFreightBLPage from "@/pages/logistics-freight-bl";
 import LogisticsPortalOrdersPage from "@/pages/logistics-portal-orders";
 import LogisticsPortalOrderDetailPage from "@/pages/logistics-portal-order-detail";
 import LogisticsDriversPage from "@/pages/logistics-drivers";
+import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
@@ -274,6 +275,9 @@ function Router() {
       </Route>
       <Route path="/logistics/drivers">
         <ProtectedRoute component={LogisticsDriversPage} />
+      </Route>
+      <Route path="/logistics/driver-performance">
+        <ProtectedRoute component={LogisticsDriverPerformancePage} />
       </Route>
       <Route path="/logistics/vendors">
         <ProtectedRoute component={LogisticsVendorsPage} />
