@@ -14,6 +14,18 @@ function getConfirmFormUrl(token: string): string {
 
 export const logisticRfqRouter = Router();
 
+/** Map calculatorType → vendor serviceType keyword */
+function calcTypeToServiceKeyword(calcType: string): string | null {
+  switch (calcType) {
+    case "trucking":   return "Trucking";
+    case "air_freight": return "Air Freight";
+    case "sea_fcl":
+    case "sea_lcl":
+    case "sea_freight": return "Sea Freight";
+    default: return null;
+  }
+}
+
 /** Auto-create RFQ and send WA with form link to matching vendors when a new order is created */
 export async function autoCreateRfqAndNotifyVendors(
   orderId: number,
@@ -26,19 +38,36 @@ export async function autoCreateRfqAndNotifyVendors(
     vehicleType?: string | null;
   }
 ): Promise<void> {
-  if (!order.shipmentType?.trim()) {
-    logger.warn({ orderNumber: order.orderNumber }, "autoCreateRfqAndNotifyVendors: shipmentType kosong — skip");
+  // Build set of service keywords: from shipmentType + derived from order items
+  const keywords = new Set<string>();
+  if (order.shipmentType?.trim()) keywords.add(order.shipmentType.trim());
+  if (order.vehicleType) keywords.add("Trucking");
+
+  // Fetch order items to derive additional keywords from calculatorType
+  const orderItems = await db.select({ calculatorType: logisticOrderItemsTable.calculatorType })
+    .from(logisticOrderItemsTable)
+    .where(eq(logisticOrderItemsTable.orderId, orderId));
+  for (const item of orderItems) {
+    const kw = calcTypeToServiceKeyword(item.calculatorType);
+    if (kw) keywords.add(kw);
+  }
+
+  if (keywords.size === 0) {
+    logger.warn({ orderNumber: order.orderNumber }, "autoCreateRfqAndNotifyVendors: tidak ada keyword — skip");
     return;
   }
 
-  const vendors = await db
-    .select()
-    .from(suppliersTable)
-    .where(and(eq(suppliersTable.isActive, true), sql`${suppliersTable.serviceType} ILIKE ${"%" + order.shipmentType + "%"}`));
+  // Search active vendors matching ANY keyword (OR logic)
+  const allActiveVendors = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
+  const matchingVendors = allActiveVendors.filter((v) => {
+    if (!v.serviceType?.trim()) return false;
+    const st = v.serviceType.toLowerCase();
+    return [...keywords].some((kw) => st.includes(kw.toLowerCase()));
+  });
 
-  const eligible = vendors.filter((v) => v.phone);
+  const eligible = matchingVendors.filter((v) => v.phone);
   if (eligible.length === 0) {
-    logger.info({ shipmentType: order.shipmentType }, "autoCreateRfqAndNotifyVendors: tidak ada vendor matching — skip");
+    logger.info({ keywords: [...keywords] }, "autoCreateRfqAndNotifyVendors: tidak ada vendor matching — skip");
     return;
   }
 
