@@ -25,7 +25,6 @@ export const GetCurrentAuthUserResponse = zod.object({
       firstName: zod.string().nullish(),
       lastName: zod.string().nullish(),
       profileImageUrl: zod.string().nullish(),
-      role: zod.string().nullish(),
     }),
     zod.null(),
   ]),
@@ -138,6 +137,14 @@ export const ListProductsResponseItem = zod.object({
   categories: zod.array(zod.string()),
   description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
+  mediaItems: zod
+    .array(
+      zod.object({
+        type: zod.enum(["image", "video"]),
+        url: zod.string(),
+      }),
+    )
+    .optional(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
   itemType: zod.enum(["barang", "jasa"]),
@@ -160,6 +167,14 @@ export const CreateProductBody = zod.object({
   categories: zod.array(zod.string()).optional(),
   description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
+  mediaItems: zod
+    .array(
+      zod.object({
+        type: zod.enum(["image", "video"]),
+        url: zod.string(),
+      }),
+    )
+    .optional(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
   itemType: zod.enum(["barang", "jasa"]),
@@ -185,6 +200,14 @@ export const GetProductResponse = zod.object({
   categories: zod.array(zod.string()),
   description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
+  mediaItems: zod
+    .array(
+      zod.object({
+        type: zod.enum(["image", "video"]),
+        url: zod.string(),
+      }),
+    )
+    .optional(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
   itemType: zod.enum(["barang", "jasa"]),
@@ -210,6 +233,14 @@ export const UpdateProductBody = zod.object({
   categories: zod.array(zod.string()).optional(),
   description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
+  mediaItems: zod
+    .array(
+      zod.object({
+        type: zod.enum(["image", "video"]),
+        url: zod.string(),
+      }),
+    )
+    .optional(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
   itemType: zod.enum(["barang", "jasa"]),
@@ -228,6 +259,14 @@ export const UpdateProductResponse = zod.object({
   categories: zod.array(zod.string()),
   description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
+  mediaItems: zod
+    .array(
+      zod.object({
+        type: zod.enum(["image", "video"]),
+        url: zod.string(),
+      }),
+    )
+    .optional(),
   defaultSalesTaxId: zod.number().nullish(),
   defaultPurchaseTaxId: zod.number().nullish(),
   itemType: zod.enum(["barang", "jasa"]),
@@ -4614,6 +4653,14 @@ export const ListPortalProductsResponseItem = zod.object({
   unit: zod.string().nullish(),
   description: zod.string().nullish(),
   imageUrl: zod.string().nullish(),
+  mediaItems: zod
+    .array(
+      zod.object({
+        type: zod.enum(["image", "video"]),
+        url: zod.string(),
+      }),
+    )
+    .optional(),
   subcategory: zod.string().nullish(),
   stock: zod.number(),
 });
@@ -4644,6 +4691,19 @@ export const CreateLogisticOrderBody = zod.object({
   namaPenerima: zod.string().nullish(),
   nomorPenerima: zod.string().nullish(),
   jamOrder: zod.string().nullish(),
+  // [MULTI-MODE] transport mode fields
+  transportMode: zod.string().nullish(),
+  originDistrict: zod.string().nullish(),
+  destDistrict: zod.string().nullish(),
+  pickupDate: zod.string().nullish(),
+  pickupTime: zod.string().nullish(),
+  truckType: zod.string().nullish(),
+  originPort: zod.string().nullish(),
+  destPort: zod.string().nullish(),
+  weightKg: zod.number().nullish(),
+  incoterm: zod.string().nullish(),
+  etd: zod.string().nullish(),
+  eta: zod.string().nullish(),
   subtotal: zod.number(),
   tax: zod.number(),
   grandTotal: zod.number(),

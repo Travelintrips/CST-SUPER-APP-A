@@ -1,3 +1,4 @@
+export * from "./companies";
 export * from "./users";
 export * from "./auth";
 export * from "./products";
@@ -21,10 +22,12 @@ export * from "./emailCorrespondences";
 export * from "./freightCustomsDocs";
 export * from "./portalCustomers";
 export * from "./logisticOrders";
+export * from "./vendorRates";
 export * from "./drivers";
 export * from "./driverJobs";
 export * from "./aiChat";
 export * from "./waAiIntakeLog";
 export * from "./portalProductOrders";
 export * from "./quotationReplyLogs";
+export * from "./holding";
 export * from "./waIncomingMessages";

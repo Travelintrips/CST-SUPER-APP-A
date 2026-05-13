@@ -6,14 +6,19 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useGetBalanceSheet, getGetBalanceSheetQueryKey } from "@workspace/api-client-react";
+import { useCompany } from "@/contexts/CompanyContext";
 import { Wallet, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
 
 export default function BalanceSheetPage() {
+  const { activeCompanyId } = useCompany();
   const [asOf, setAsOf] = useState("");
-  const params = useMemo(() => ({ ...(asOf ? { to: new Date(asOf + "T23:59:59").toISOString() } : {}) }), [asOf]);
+  const params = useMemo(() => ({
+    ...(asOf ? { to: new Date(asOf + "T23:59:59").toISOString() } : {}),
+    company: activeCompanyId,
+  }), [asOf, activeCompanyId]);
   const { data, isLoading } = useGetBalanceSheet(params, { query: { queryKey: getGetBalanceSheetQueryKey(params) } });
 
   function buildExportRows() {

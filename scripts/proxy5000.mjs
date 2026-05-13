@@ -1,6 +1,8 @@
 import http from "http";
+import { execSync } from "child_process";
 
-const TARGET = "http://localhost:8080";
+// Kill anything on port 5000 first
+try { execSync("fuser -k 5000/tcp", { stdio: "ignore" }); } catch {}
 
 const server = http.createServer((req, res) => {
   const options = {
@@ -22,5 +24,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(5000, "0.0.0.0", () => {
-  console.log("Proxy running on port 5000 → http://localhost:8080");
+  console.log("Proxy running: port 5000 → http://localhost:8080");
 });

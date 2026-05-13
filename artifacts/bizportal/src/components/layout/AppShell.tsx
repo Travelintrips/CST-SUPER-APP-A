@@ -34,6 +34,7 @@ import {
   Bot,
   ScanLine,
   MessageCircle,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -59,6 +60,7 @@ import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { CompanySwitcher } from "@/components/CompanySwitcher";
 
 interface AppShellProps {
   children: ReactNode;
@@ -211,6 +213,19 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen, roles: ["admin"] },
     { type: "flat", titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine, roles: ["admin"] },
     { type: "flat", titleKey: "settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
+    {
+      type: "group",
+      titleKey: "holding",
+      basePath: "/holding",
+      icon: Layers,
+      roles: ["admin"],
+      children: [
+        { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: BarChart2 },
+        { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
+        { titleKey: "holdingCoa", href: "/accounting/accounts", icon: Landmark },
+        { titleKey: "holdingJournals", href: "/accounting/journals", icon: BookOpen },
+      ],
+    },
   ];
 
   const getNavTitle = (key: string): string => {
@@ -393,7 +408,8 @@ export function AppShell({ children }: AppShellProps) {
               <NotificationBell />
             </div>
           </div>
-          <div className="hidden lg:flex sticky top-0 z-10 h-12 items-center justify-end border-b border-border bg-background px-6">
+          <div className="hidden lg:flex sticky top-0 z-10 h-12 items-center justify-between border-b border-border bg-background px-6">
+            <CompanySwitcher />
             <NotificationBell />
           </div>
           <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">

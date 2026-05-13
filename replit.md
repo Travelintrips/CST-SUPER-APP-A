@@ -74,6 +74,7 @@ Commands:
 - Ask for confirmation before major architectural or schema changes.
 - Provide detailed explanations for accounting logic and system integrations.
 - Do **not** make changes to files outside the `artifacts`, `lib`, and `packages` directories.
+- **Gunakan Bahasa Indonesia** dalam semua komunikasi dengan pengguna.
 
 ## Gotchas
 
