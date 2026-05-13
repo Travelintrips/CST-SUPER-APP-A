@@ -354,7 +354,21 @@ logisticRfqRouter.post("/vendor-quote", async (req: Request, res: Response) => {
     .where(eq(suppliersTable.id, Number(vendorId)));
 
   const vp = Number(vendorPrice);
-  const vendorMarkupPct = vendor ? Number(vendor.markupPct ?? 0) : 0;
+
+  // Look up markup from vendor catalog items: prefer item matching shipment type, else first active service item
+  const catalogItems = await db.select({
+    name: vendorCatalogItemsTable.name,
+    markupPct: vendorCatalogItemsTable.markupPct,
+    type: vendorCatalogItemsTable.type,
+  }).from(vendorCatalogItemsTable)
+    .where(and(eq(vendorCatalogItemsTable.vendorId, Number(vendorId)), eq(vendorCatalogItemsTable.isActive, true)));
+
+  const shipmentType = order.shipmentType ?? "";
+  const matchedItem = catalogItems.find(
+    (ci) => ci.name.toLowerCase() === shipmentType.toLowerCase()
+  ) ?? catalogItems.find((ci) => ci.type === "service") ?? catalogItems[0] ?? null;
+
+  const vendorMarkupPct = matchedItem ? Number(matchedItem.markupPct ?? 0) : 0;
   const computedSellingPrice = vp * (1 + vendorMarkupPct / 100);
 
   const [quote] = await db.insert(logisticOrderQuotesTable).values({
