@@ -33,41 +33,41 @@ name = "API Server"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=8080 pnpm --filter @workspace/api-server run dev"
-waitForPort = 8080
+args = "PORT=5000 pnpm --filter @workspace/api-server run dev"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "BizPortal"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/bizportal run dev"
-waitForPort = 18442
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=5000 pnpm --filter @workspace/bizportal run dev"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Customer Portal"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=23434 pnpm --filter @workspace/customer-portal run dev"
-waitForPort = 23434
+args = "PORT=3000 pnpm --filter @workspace/customer-portal run dev"
+waitForPort = 3000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
-integrations = ["google-drive:1.0.0"]
+integrations = ["google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
@@ -95,14 +95,6 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 5000
-externalPort = 8008
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
 externalPort = 80
 
 [[ports]]
@@ -144,3 +136,11 @@ externalPort = 8099
 [[ports]]
 localPort = 23434
 externalPort = 5173
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 8080
+externalPort = 8080

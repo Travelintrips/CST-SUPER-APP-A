@@ -5,6 +5,7 @@ import {
   aiChatSessionsTable,
   aiChatMessagesTable,
   aiAgentSettingsTable,
+  chatbotKnowledgeBaseTable,
   logisticOrdersTable,
   productsTable,
   ordersTable,
@@ -74,14 +75,34 @@ Layanan yang tersedia:
 
 Harga layanan logistik dikonfirmasi tim setelah order masuk. Harga produk sesuai katalog.`;
 
-/** Load the active system prompt from DB, fall back to the hardcoded default */
+/** Load the active system prompt from DB, fall back to the hardcoded default, then inject KB entries */
 async function getSystemPrompt(): Promise<string> {
   try {
-    const [row] = await db
+    const [settingRow] = await db
       .select()
       .from(aiAgentSettingsTable)
       .where(eq(aiAgentSettingsTable.key, "system_prompt"));
-    return row?.value ?? DEFAULT_SYSTEM_PROMPT;
+    const base = settingRow?.value ?? DEFAULT_SYSTEM_PROMPT;
+
+    // Inject active knowledge base entries
+    let kbEntries: Array<{ title: string; category: string; content: string }> = [];
+    try {
+      kbEntries = await db
+        .select({ title: chatbotKnowledgeBaseTable.title, category: chatbotKnowledgeBaseTable.category, content: chatbotKnowledgeBaseTable.content })
+        .from(chatbotKnowledgeBaseTable)
+        .where(eq(chatbotKnowledgeBaseTable.isActive, true))
+        .orderBy(asc(chatbotKnowledgeBaseTable.sortOrder), asc(chatbotKnowledgeBaseTable.id));
+    } catch {
+      // Table may not exist yet — silently skip
+    }
+
+    if (kbEntries.length === 0) return base;
+
+    const kbSection = kbEntries
+      .map((e) => `### ${e.title} [${e.category}]\n${e.content}`)
+      .join("\n\n");
+
+    return `${base}\n\n---\n## KNOWLEDGE BASE — Gunakan informasi ini saat menjawab pertanyaan pelanggan:\n\n${kbSection}`;
   } catch {
     return DEFAULT_SYSTEM_PROMPT;
   }
@@ -1026,6 +1047,116 @@ aiAgentRouter.get("/session/by-order/:orderId", async (req: Request, res: Respon
       createdAt: m.createdAt.toISOString(),
     })),
   });
+});
+
+// ── GET /api/ai-agent/knowledge-base ─────────────────────────────────────────
+aiAgentRouter.get("/knowledge-base", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const entries = await db
+      .select()
+      .from(chatbotKnowledgeBaseTable)
+      .orderBy(asc(chatbotKnowledgeBaseTable.sortOrder), asc(chatbotKnowledgeBaseTable.id));
+    return res.json(
+      entries.map((e) => ({
+        id: e.id,
+        title: e.title,
+        category: e.category,
+        content: e.content,
+        isActive: e.isActive,
+        sortOrder: e.sortOrder,
+        createdAt: e.createdAt.toISOString(),
+        updatedAt: e.updatedAt.toISOString(),
+      }))
+    );
+  } catch (err) {
+    logger.error({ err }, "KB list failed");
+    return res.status(500).json({ message: "Gagal memuat knowledge base" });
+  }
+});
+
+// ── POST /api/ai-agent/knowledge-base ────────────────────────────────────────
+aiAgentRouter.post("/knowledge-base", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { title, category, content, sortOrder } = req.body as {
+    title?: string; category?: string; content?: string; sortOrder?: number;
+  };
+  if (!title?.trim() || !content?.trim()) {
+    return res.status(400).json({ message: "title dan content tidak boleh kosong" });
+  }
+  try {
+    const [entry] = await db.insert(chatbotKnowledgeBaseTable).values({
+      title: title.trim(),
+      category: category?.trim() ?? "umum",
+      content: content.trim(),
+      sortOrder: sortOrder ?? 0,
+      isActive: true,
+    }).returning();
+    return res.status(201).json({
+      id: entry.id,
+      title: entry.title,
+      category: entry.category,
+      content: entry.content,
+      isActive: entry.isActive,
+      sortOrder: entry.sortOrder,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, "KB create failed");
+    return res.status(500).json({ message: "Gagal membuat entri" });
+  }
+});
+
+// ── PUT /api/ai-agent/knowledge-base/:id ─────────────────────────────────────
+aiAgentRouter.put("/knowledge-base/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { title, category, content, sortOrder, isActive } = req.body as {
+    title?: string; category?: string; content?: string; sortOrder?: number; isActive?: boolean;
+  };
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (title !== undefined) updates.title = title.trim();
+  if (category !== undefined) updates.category = category.trim();
+  if (content !== undefined) updates.content = content.trim();
+  if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+  if (isActive !== undefined) updates.isActive = isActive;
+  try {
+    const [entry] = await db
+      .update(chatbotKnowledgeBaseTable)
+      .set(updates)
+      .where(eq(chatbotKnowledgeBaseTable.id, id))
+      .returning();
+    if (!entry) return res.status(404).json({ message: "Entri tidak ditemukan" });
+    return res.json({
+      id: entry.id,
+      title: entry.title,
+      category: entry.category,
+      content: entry.content,
+      isActive: entry.isActive,
+      sortOrder: entry.sortOrder,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, "KB update failed");
+    return res.status(500).json({ message: "Gagal memperbarui entri" });
+  }
+});
+
+// ── DELETE /api/ai-agent/knowledge-base/:id ───────────────────────────────────
+aiAgentRouter.delete("/knowledge-base/:id", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  try {
+    await db.delete(chatbotKnowledgeBaseTable).where(eq(chatbotKnowledgeBaseTable.id, id));
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "KB delete failed");
+    return res.status(500).json({ message: "Gagal menghapus entri" });
+  }
 });
 
 // ── GET /api/ai-agent/settings ───────────────────────────────────────────────
