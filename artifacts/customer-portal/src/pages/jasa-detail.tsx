@@ -14,7 +14,7 @@ import {
   Ship, Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Calculator, ArrowLeft, ArrowRight, ShoppingCart, CheckCircle2,
-  Plus, Trash2,
+  Plus, Trash2, ChevronRight,
 } from "lucide-react";
 import {
   CATEGORIES, CATEGORY_COLORS_DETAIL,
@@ -706,85 +706,101 @@ export default function JasaDetail() {
     accentText: string;
     badgeBg: string;
     badgeText: string;
+    glowA: string;
+    glowB: string;
     image: string;
     iconBg: string;
     features: string[];
   }> = {
     Freight:    {
-      heroBg:      "linear-gradient(135deg, #FFFFFF 0%, #EEF6FF 40%, #E3F1FF 100%)",
-      accentColor: "#1251B5",
+      heroBg:      "linear-gradient(145deg, #FAFCFF 0%, #EEF5FF 35%, #E5EFFF 65%, #F0F6FF 100%)",
+      accentColor: "#1A56DB",
       accentLight: "#EEF4FF",
-      accentText:  "#1251B5",
+      accentText:  "#1A56DB",
       badgeBg:     "#DBEAFE",
       badgeText:   "#1e40af",
-      image:       "https://images.unsplash.com/photo-1566228015668-4c45dbc4e2f5?w=1400&q=85&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#EFF6FF,#BFDBFE)",
+      glowA:       "#3B82F6",
+      glowB:       "#60A5FA",
+      image:       "https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 100%)",
       features:    ["Air Freight", "Sea FCL / LCL", "Door-to-Door", "Multi-Modal"],
     },
     Customs:    {
-      heroBg:      "linear-gradient(135deg, #FFFFFF 0%, #ECFDF5 40%, #D1FAE5 100%)",
-      accentColor: "#065F46",
+      heroBg:      "linear-gradient(145deg, #FAFFFE 0%, #ECFDF8 35%, #D1FAE9 65%, #F0FDF7 100%)",
+      accentColor: "#047857",
       accentLight: "#ECFDF5",
-      accentText:  "#065F46",
+      accentText:  "#047857",
       badgeBg:     "#D1FAE5",
       badgeText:   "#065F46",
-      image:       "https://images.unsplash.com/photo-1494412574643-ff11b0a5716d?w=1400&q=85&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#ECFDF5,#A7F3D0)",
+      glowA:       "#10B981",
+      glowB:       "#34D399",
+      image:       "https://images.unsplash.com/photo-1605745341112-85968b19335b?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,#ECFDF5 0%,#A7F3D0 100%)",
       features:    ["Import & Export", "PIB / PEB", "HS Code Konsultasi", "PPJK Resmi"],
     },
     Handling:   {
-      heroBg:      "linear-gradient(135deg, #FFFFFF 0%, #F5F0FF 40%, #EDE9FE 100%)",
-      accentColor: "#5B21B6",
+      heroBg:      "linear-gradient(145deg, #FDFAFF 0%, #F5F0FF 35%, #EDE9FE 65%, #F8F5FF 100%)",
+      accentColor: "#6D28D9",
       accentLight: "#F5F0FF",
-      accentText:  "#5B21B6",
+      accentText:  "#6D28D9",
       badgeBg:     "#EDE9FE",
       badgeText:   "#5B21B6",
-      image:       "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1400&q=85&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#F5F3FF,#DDD6FE)",
+      glowA:       "#8B5CF6",
+      glowB:       "#A78BFA",
+      image:       "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,#F5F3FF 0%,#DDD6FE 100%)",
       features:    ["Origin Handling", "Destination Handling", "Kargo Berbahaya", "Tim Profesional"],
     },
     Storage:    {
-      heroBg:      "linear-gradient(135deg, #FFFFFF 0%, #F0FDFA 40%, #CCFBF1 100%)",
-      accentColor: "#0F766E",
+      heroBg:      "linear-gradient(145deg, #FAFFFD 0%, #F0FDFB 35%, #CCFBF1 65%, #F0FDFA 100%)",
+      accentColor: "#0D9488",
       accentLight: "#F0FDFA",
-      accentText:  "#0F766E",
+      accentText:  "#0D9488",
       badgeBg:     "#CCFBF1",
       badgeText:   "#0F766E",
-      image:       "https://images.unsplash.com/photo-1553413077-190dd305871c?w=1400&q=85&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#F0FDFA,#99F6E4)",
+      glowA:       "#14B8A6",
+      glowB:       "#2DD4BF",
+      image:       "https://images.unsplash.com/photo-1553413077-190dd305871c?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,#F0FDFA 0%,#99F6E4 100%)",
       features:    ["Gudang Umum", "Bonded Warehouse", "Cold Storage", "Sewa Fleksibel"],
     },
     Trucking:   {
-      heroBg:      "linear-gradient(135deg, #FFFFFF 0%, #FFFBEB 40%, #FEF3C7 100%)",
-      accentColor: "#92400E",
+      heroBg:      "linear-gradient(145deg, #FFFEFB 0%, #FFFBEB 35%, #FEF3C7 65%, #FFFAED 100%)",
+      accentColor: "#B45309",
       accentLight: "#FFFBEB",
-      accentText:  "#92400E",
-      badgeBg:     "#FDE68A",
+      accentText:  "#B45309",
+      badgeBg:     "#FEF3C7",
       badgeText:   "#92400E",
-      image:       "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=1400&q=85&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#FFFBEB,#FDE68A)",
+      glowA:       "#F59E0B",
+      glowB:       "#FCD34D",
+      image:       "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,#FFFBEB 0%,#FDE68A 100%)",
       features:    ["5 Jenis Armada", "Kalkulasi Otomatis", "Harga Transparan", "Berlisensi & Profesional"],
     },
     Document:   {
-      heroBg:      "linear-gradient(135deg, #FFFFFF 0%, #EEF2FF 40%, #E0E7FF 100%)",
-      accentColor: "#3730A3",
+      heroBg:      "linear-gradient(145deg, #FAFAFF 0%, #EEF2FF 35%, #E0E7FF 65%, #F5F3FF 100%)",
+      accentColor: "#4338CA",
       accentLight: "#EEF2FF",
-      accentText:  "#3730A3",
+      accentText:  "#4338CA",
       badgeBg:     "#E0E7FF",
       badgeText:   "#3730A3",
-      image:       "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1400&q=85&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#EEF2FF,#C7D2FE)",
+      glowA:       "#6366F1",
+      glowB:       "#818CF8",
+      image:       "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,#EEF2FF 0%,#C7D2FE 100%)",
       features:    ["Bill of Lading", "Air Waybill", "COO / SKA", "Packing List"],
     },
     Additional: {
-      heroBg:      "linear-gradient(135deg, #FFFFFF 0%, #FFF1F2 40%, #FFE4E6 100%)",
-      accentColor: "#9F1239",
+      heroBg:      "linear-gradient(145deg, #FFFAFB 0%, #FFF1F2 35%, #FFE4E6 65%, #FFF5F6 100%)",
+      accentColor: "#BE123C",
       accentLight: "#FFF1F2",
-      accentText:  "#9F1239",
+      accentText:  "#BE123C",
       badgeBg:     "#FFE4E6",
       badgeText:   "#9F1239",
-      image:       "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1400&q=85&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#FFF1F2,#FECDD3)",
+      glowA:       "#F43F5E",
+      glowB:       "#FB7185",
+      image:       "https://images.unsplash.com/photo-1516733968668-dbdce39c4651?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,#FFF1F2 0%,#FECDD3 100%)",
       features:    ["Asuransi Kargo", "Surveyor", "Perizinan", "BPOM / SNI"],
     },
   };
@@ -792,62 +808,133 @@ export default function JasaDetail() {
 
   return (
     <div className="min-h-screen pb-28" style={{ background: "linear-gradient(180deg,#F8FAFD 0%,#FFFFFF 100%)" }}>
-      {/* ── PREMIUM BRIGHT HERO ── */}
-      <div className="relative overflow-hidden" style={{ background: hero.heroBg, borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-        {/* Background logistics image — faded on right */}
+      {/* ── ENTERPRISE PREMIUM HERO ── */}
+      <div
+        className="relative overflow-hidden"
+        style={{ background: hero.heroBg, borderBottom: "1px solid rgba(0,0,0,0.055)" }}
+      >
+        {/* ── Layer 1: Ambient glow orbs ── */}
+        <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "600px", height: "500px",
+              top: "-180px", right: "5%",
+              background: `radial-gradient(ellipse, ${hero.glowA}20 0%, transparent 65%)`,
+              filter: "blur(40px)",
+            }}
+          />
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "420px", height: "380px",
+              bottom: "-120px", right: "35%",
+              background: `radial-gradient(ellipse, ${hero.glowB}14 0%, transparent 70%)`,
+              filter: "blur(50px)",
+            }}
+          />
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "300px", height: "280px",
+              top: "50%", right: "0",
+              transform: "translateY(-50%)",
+              background: `radial-gradient(ellipse, ${hero.glowA}10 0%, transparent 70%)`,
+              filter: "blur(30px)",
+            }}
+          />
+        </div>
+
+        {/* ── Layer 2: Premium grid mesh ── */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `
+              linear-gradient(${hero.accentColor}09 1px, transparent 1px),
+              linear-gradient(to right, ${hero.accentColor}09 1px, transparent 1px)
+            `,
+            backgroundSize: "56px 56px",
+          }}
+        />
+
+        {/* ── Layer 3: Cinematic background image (right side) ── */}
         <div className="absolute inset-0 pointer-events-none select-none">
           <img
             src={hero.image}
             alt=""
             aria-hidden="true"
-            className="absolute right-0 top-0 h-full object-cover"
-            style={{ width: "58%", opacity: 0.13, objectPosition: "center" }}
+            className="absolute top-0 right-0 h-full object-cover"
+            style={{
+              width: "55%",
+              opacity: 0.10,
+              objectPosition: "center 40%",
+              filter: "blur(0.5px) saturate(0.85)",
+            }}
             loading="eager"
           />
-          {/* White fade overlay from left */}
+          {/* Cinematic left-to-right fade */}
           <div
             className="absolute inset-0"
             style={{
-              background: "linear-gradient(90deg, #ffffff 25%, rgba(255,255,255,0.97) 42%, rgba(255,255,255,0.80) 65%, rgba(255,255,255,0.40) 82%, transparent 100%)",
+              background: `linear-gradient(100deg,
+                white 20%,
+                rgba(255,255,255,0.98) 38%,
+                rgba(255,255,255,0.88) 55%,
+                rgba(255,255,255,0.60) 72%,
+                rgba(255,255,255,0.20) 88%,
+                transparent 100%)`,
             }}
           />
-          {/* Subtle dot pattern */}
+          {/* Bottom vignette */}
           <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage: `radial-gradient(circle, ${hero.accentColor}18 1px, transparent 1px)`,
-              backgroundSize: "32px 32px",
-              opacity: 0.5,
-            }}
-          />
-          {/* Top accent line */}
-          <div
-            className="absolute top-0 left-0 right-0 h-[3px]"
-            style={{ background: `linear-gradient(90deg, ${hero.accentColor} 0%, ${hero.accentColor}40 60%, transparent 100%)` }}
+            className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none"
+            style={{ background: "linear-gradient(to bottom, transparent, rgba(255,255,255,0.5))" }}
           />
         </div>
 
-        <div className="container px-4 md:px-6 py-10 md:py-16 relative z-10">
-          {/* Back link */}
-          <Link
-            href="/jasa"
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium transition-all duration-200 mb-8 group hover:gap-2.5"
-            style={{ color: hero.accentColor, opacity: 0.65 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "0.65"; }}
-          >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-200 group-hover:-translate-x-0.5" />
-            Kembali ke Katalog Jasa
-          </Link>
+        {/* ── Layer 4: Top accent stripe ── */}
+        <div
+          className="absolute top-0 left-0 right-0 h-[2.5px] pointer-events-none"
+          style={{
+            background: `linear-gradient(90deg, ${hero.accentColor} 0%, ${hero.glowA}80 45%, transparent 75%)`,
+          }}
+        />
 
-          <div className="flex flex-col sm:flex-row items-start gap-6 md:gap-10">
-            {/* Icon card — premium light */}
+        {/* ── Content ── */}
+        <div className="container px-4 md:px-6 py-12 md:py-20 relative z-10">
+
+          {/* Breadcrumb — enterprise style */}
+          <nav className="flex items-center gap-0 mb-10" aria-label="breadcrumb">
+            <Link
+              href="/"
+              className="text-[12px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
+            >
+              CST Logistics
+            </Link>
+            <ChevronRight className="h-3.5 w-3.5 text-slate-300 mx-1.5 flex-shrink-0" />
+            <Link
+              href="/jasa"
+              className="text-[12px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
+            >
+              Katalog Jasa
+            </Link>
+            <ChevronRight className="h-3.5 w-3.5 text-slate-300 mx-1.5 flex-shrink-0" />
+            <span
+              className="text-[11.5px] font-bold px-2.5 py-0.5 rounded-md"
+              style={{ background: hero.badgeBg, color: hero.badgeText }}
+            >
+              {item.category}
+            </span>
+          </nav>
+
+          <div className="flex flex-col sm:flex-row items-start gap-7 md:gap-12">
+            {/* Icon card — premium glass effect */}
             <div
-              className="flex-shrink-0 rounded-2xl p-5 shadow-lg"
+              className="flex-shrink-0 rounded-[20px] p-5"
               style={{
                 background: hero.iconBg,
-                border: `1.5px solid ${hero.accentColor}22`,
-                boxShadow: `0 8px 32px ${hero.accentColor}1A, 0 2px 8px ${hero.accentColor}0F`,
+                border: `1.5px solid ${hero.accentColor}1F`,
+                boxShadow: `0 4px 6px -1px ${hero.accentColor}10, 0 16px 48px -8px ${hero.accentColor}18`,
               }}
             >
               {ct === "trucking" ? (
@@ -859,55 +946,50 @@ export default function JasaDetail() {
               )}
             </div>
 
-            {/* Text */}
+            {/* Text block */}
             <div className="flex-1 min-w-0">
-              {/* Eyebrow breadcrumb */}
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-[10.5px] font-bold uppercase tracking-[0.22em] text-slate-400">
-                  CST Logistics
-                </span>
-                <span className="text-slate-300">›</span>
-                <span className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-slate-400">Katalog Jasa</span>
-                <span className="text-slate-300">›</span>
-                <span
-                  className="text-[10.5px] font-bold uppercase tracking-[0.14em] px-2.5 py-1 rounded-full"
-                  style={{ background: hero.badgeBg, color: hero.badgeText }}
-                >
-                  {item.category}
-                </span>
-              </div>
-
-              {/* Title */}
+              {/* Service name with item.name */}
               <h1
-                className="font-bold leading-[1.12] tracking-tight mb-4"
+                className="font-bold leading-[1.1] mb-4"
                 style={{
-                  fontSize: "clamp(26px, 4vw, 46px)",
-                  color: "#0F172A",
-                  letterSpacing: "-0.02em",
+                  fontSize: "clamp(28px, 4.5vw, 50px)",
+                  color: "#0C1A2E",
+                  letterSpacing: "-0.025em",
                 }}
               >
                 {item.name}
               </h1>
 
               {/* Description */}
-              <p className="text-[15px] leading-relaxed mb-7 max-w-2xl" style={{ color: "#475569" }}>
+              <p
+                className="leading-[1.75] mb-8"
+                style={{
+                  fontSize: "clamp(14px, 1.6vw, 16px)",
+                  color: "#4A5568",
+                  maxWidth: "600px",
+                }}
+              >
                 {item.description}
               </p>
 
-              {/* Feature pills */}
-              <div className="flex flex-wrap gap-2">
+              {/* Feature pills — clean enterprise */}
+              <div className="flex flex-wrap gap-2.5">
                 {hero.features.map(f => (
                   <span
                     key={f}
-                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3.5 py-1.5 rounded-full transition-all duration-200"
+                    className="inline-flex items-center gap-2 text-[12.5px] font-semibold px-4 py-2 rounded-full"
                     style={{
-                      background: "#FFFFFF",
-                      border: `1.5px solid ${hero.accentColor}28`,
+                      background: "rgba(255,255,255,0.92)",
+                      border: `1px solid ${hero.accentColor}20`,
                       color: hero.accentText,
-                      boxShadow: `0 2px 8px ${hero.accentColor}10`,
+                      boxShadow: `0 1px 3px rgba(0,0,0,0.06), 0 4px 12px ${hero.accentColor}0C`,
+                      backdropFilter: "blur(8px)",
                     }}
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" style={{ color: hero.accentColor, opacity: 0.7 }} />
+                    <span
+                      className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ background: hero.accentColor, opacity: 0.6 }}
+                    />
                     {f}
                   </span>
                 ))}
@@ -915,9 +997,6 @@ export default function JasaDetail() {
             </div>
           </div>
         </div>
-
-        {/* Soft bottom shadow */}
-        <div className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none" style={{ background: "linear-gradient(to bottom, transparent, rgba(0,0,0,0.025))" }} />
       </div>
 
       <div className={`${ct === "trucking" ? "max-w-[1200px] mx-auto" : "container"} px-4 md:px-6 mt-8`}>
