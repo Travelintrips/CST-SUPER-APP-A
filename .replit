@@ -65,7 +65,7 @@ args = "PORT=23434 pnpm --filter @workspace/customer-portal run dev"
 waitForPort = 23434
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 integrations = ["google-drive:1.0.0"]
 
