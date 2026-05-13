@@ -44,13 +44,13 @@ waitForPort = 8080
 name = "BizPortal"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/bizportal run dev"
-waitForPort = 18442
-
-[workflows.workflow.metadata]
-outputType = "webview"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -95,11 +95,7 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 5000
-externalPort = 8008
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
+externalPort = 80
 
 [[ports]]
 localPort = 8081
