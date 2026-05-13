@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useParams } from "wouter";
 import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ThumbsUp, ThumbsDown } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -7,6 +6,14 @@ function apiUrl(path: string) { return `${BASE}${path}`; }
 
 function fmt(n: number) {
   return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+}
+
+function getTokenFromUrl(): string {
+  const pathname = window.location.pathname;
+  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+  const relative = pathname.startsWith(base) ? pathname.slice(base.length) : pathname;
+  const match = relative.match(/^\/confirm\/([^/]+)/);
+  return match?.[1] ?? "";
 }
 
 interface ConfirmData {
@@ -26,7 +33,7 @@ interface ConfirmData {
 }
 
 export default function ConfirmPage() {
-  const { token } = useParams<{ token: string }>();
+  const token = getTokenFromUrl();
   const [data, setData] = useState<ConfirmData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +41,11 @@ export default function ConfirmPage() {
   const [done, setDone] = useState<"confirmed" | "rejected" | null>(null);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setError("Link konfirmasi tidak valid.");
+      setLoading(false);
+      return;
+    }
     fetch(apiUrl(`/api/logistic/orders/confirm-form/${token}`))
       .then((r) => r.json())
       .then((d) => {
