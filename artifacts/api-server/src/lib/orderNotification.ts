@@ -76,10 +76,10 @@ function formatJamOrder(jam: string): string {
   return jam.replace(".", ":");
 }
 
-function getOrderUrl(orderId: number): string {
+function getApproveFormUrl(orderNumber: string): string {
   const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
   if (!domain) return "";
-  return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
+  return `https://${domain}/approve/${orderNumber}`;
 }
 
 function formatRupiah(amount: number): string {
@@ -93,7 +93,7 @@ function isFreightWithDimensions(shipmentType: string): boolean {
 }
 
 function buildAdminWaMessage(order: LogisticOrderData): string {
-  const orderUrl = getOrderUrl(order.id);
+  const approveUrl = getApproveFormUrl(order.orderNumber);
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : "";
   const jam = order.jamOrder ?? (order.createdAt ? formatJam(order.createdAt) : "");
   return (
@@ -117,7 +117,7 @@ function buildAdminWaMessage(order: LogisticOrderData): string {
     (order.requiredDate ? `Tgl Kirim       : ${order.requiredDate}\n` : ``) +
     (order.notes ? `Catatan         : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    (orderUrl ? `🔗 *Buka & Approve di BizPortal:*\n${orderUrl}\n\n` : ``) +
+    (approveUrl ? `📋 *Lihat penawaran vendor:*\n${approveUrl}\n\n` : ``) +
     `_Dikirim: ${nowWIB()}_`
   );
 }
@@ -485,7 +485,6 @@ async function notifyCustomer(order: LogisticOrderData): Promise<void> {
 export async function sendLogisticOrderNotification(order: LogisticOrderData): Promise<void> {
   await Promise.allSettled([
     notifyAdmin(order),
-    notifyVendors(order),
     notifyCustomer(order),
   ]);
 }
