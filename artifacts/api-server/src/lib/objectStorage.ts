@@ -140,6 +140,21 @@ export class ObjectStorageService {
   }
 
   /**
+   * Upload a buffer directly to the private object dir under uploads/.
+   * Returns the normalized objectPath: /objects/uploads/{uuid}
+   */
+  async uploadPrivateEntity(buffer: Buffer, contentType: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType, resumable: false });
+    return `/objects/uploads/${objectId}`;
+  }
+
+  /**
    * Upload a buffer directly to the public search path under portal-assets/.
    * Returns the serving URL: /api/storage/public-objects/portal-assets/{objectId}
    */

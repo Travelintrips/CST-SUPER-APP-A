@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
+import multer from "multer";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -8,6 +9,33 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+/**
+ * POST /storage/uploads/file
+ *
+ * Server-side file upload via multipart form.
+ * Accepts a single file field named "file" and saves it to private object storage.
+ * Returns { objectPath, url } where url = /api/storage/objects/...
+ */
+router.post("/storage/uploads/file", upload.single("file"), async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (!req.file) {
+    res.status(400).json({ error: "No file uploaded" });
+    return;
+  }
+
+  try {
+    const objectPath = await objectStorageService.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
+    res.json({ objectPath, url: `/api/storage${objectPath}` });
+  } catch (error) {
+    req.log.error({ err: error }, "Error uploading file");
+    res.status(500).json({ error: "Failed to upload file" });
+  }
+});
 
 /**
  * POST /storage/uploads/request-url

@@ -155,17 +155,19 @@ function resolveMediaUrl(url: string): string {
 async function uploadMediaFiles(files: File[], type: "image" | "video"): Promise<MediaItem[]> {
   const results: MediaItem[] = [];
   for (const file of files) {
-    const res = await fetch("/api/storage/uploads/request-url", {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/storage/uploads/file", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      body: fd,
     });
-    if (!res.ok) throw new Error(`Gagal mendapatkan URL upload untuk ${file.name}`);
-    const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
-    const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-    if (!putRes.ok) throw new Error(`Gagal mengunggah ${file.name}`);
-    results.push({ type, url: `/api/storage${objectPath}` });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(err.error ?? `Gagal mengunggah ${file.name} (${res.status})`);
+    }
+    const { url } = await res.json() as { url: string; objectPath: string };
+    results.push({ type, url });
   }
   return results;
 }
