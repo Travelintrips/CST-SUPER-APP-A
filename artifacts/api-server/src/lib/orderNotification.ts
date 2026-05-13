@@ -204,6 +204,12 @@ function buildTruckingVendorWaMessage(
   );
 }
 
+function getOrderUrl(orderId: number): string {
+  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").map((d) => d.trim()).filter(Boolean);
+  const domain = domains[0] ?? "cstlogistic.co.id";
+  return `https://${domain}/logistic/orders/${orderId}`;
+}
+
 function buildAdminGroupWaMessage(order: LogisticOrderData): string {
   const orderUrl = getOrderUrl(order.id);
   const tgl = order.createdAt ? formatTanggal(order.createdAt) : nowWIB();

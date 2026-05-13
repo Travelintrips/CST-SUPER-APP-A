@@ -168,6 +168,20 @@ export class ObjectStorageService {
     await file.save(buffer, { contentType, resumable: false });
     return `/api/storage/public-objects/portal-assets/${objectId}`;
   }
+
+  /** Generic upload: writes buffer to storagePath (e.g. "public/vendor-photos/uuid"). */
+  async uploadFile(buffer: Buffer, storagePath: string, contentType: string): Promise<void> {
+    const { bucketName, objectName } = parseObjectPath(storagePath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType, resumable: false });
+  }
+
+  /** Returns the public API serving URL for a given storagePath (e.g. "public/photos/uuid" → "/api/storage/public-objects/photos/uuid"). */
+  getPublicUrl(storagePath: string): string {
+    const { objectName } = parseObjectPath(storagePath);
+    return `/api/storage/public-objects/${objectName}`;
+  }
 }
 
 function parseObjectPath(path: string): { bucketName: string; objectName: string } {
@@ -203,6 +217,6 @@ async function signObjectURL({
   if (!response.ok) {
     throw new Error(`Failed to sign object URL, status: ${response.status}`);
   }
-  const { signed_url: signedURL } = await response.json();
+  const { signed_url: signedURL } = await response.json() as { signed_url: string };
   return signedURL;
 }

@@ -630,7 +630,7 @@ router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
   if (!allowed.includes(contentType) && !contentType.startsWith("image/"))
     return res.status(415).json({ message: "Tipe file tidak diizinkan" });
   try {
-    const uploadURL = await _objectStorage.getObjectEntityUploadURL("customer-attachments");
+    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
     const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
     return res.json({ uploadURL, objectPath });
   } catch (_err) {

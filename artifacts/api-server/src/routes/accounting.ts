@@ -743,7 +743,7 @@ router.post("/entries/:id/reverse", async (req, res) => {
         date: new Date(),
         ref: entry.ref ?? null,
         description: desc,
-        source: "reversal",
+        source: "reversal" as "manual",
         sourceId: entry.id,
         lines: reversalLines,
       },
@@ -774,13 +774,13 @@ router.patch("/entries/:id/status", async (req, res) => {
   if (entry.source !== "manual") {
     return res.status(400).json({ message: "Hanya jurnal manual yang bisa di-reset. Jurnal otomatis harus dibalik menggunakan endpoint /reverse." });
   }
-  if (entry.status === "cancelled") {
+  if ((entry.status as string) === "cancelled") {
     return res.status(400).json({ message: "Entri ini sudah dibatalkan" });
   }
 
   const [updated] = await db
     .update(accountingEntriesTable)
-    .set({ status, updatedAt: new Date() })
+    .set({ status })
     .where(eq(accountingEntriesTable.id, id))
     .returning();
 

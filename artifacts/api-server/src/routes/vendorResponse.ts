@@ -79,7 +79,7 @@ function formatWaAdminNotification(response: {
 }
 
 router.get("/:orderNumber", async (req: Request, res: Response) => {
-  const { orderNumber } = req.params;
+  const orderNumber = req.params["orderNumber"] as string;
   const vendorId = req.query.v ? parseInt(String(req.query.v), 10) : null;
 
   try {
@@ -155,7 +155,7 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/:orderNumber/photo", upload.single("photo"), async (req: Request, res: Response) => {
+router.post("/:orderNumber/photo", upload.single("photo") as any, async (req: Request, res: Response) => {
   if (!req.file) {
     res.status(400).json({ error: "Tidak ada foto yang diupload" });
     return;
@@ -173,7 +173,7 @@ router.post("/:orderNumber/photo", upload.single("photo"), async (req: Request, 
 });
 
 router.post("/:orderNumber", async (req: Request, res: Response) => {
-  const { orderNumber } = req.params;
+  const orderNumber = req.params["orderNumber"] as string;
   const {
     vendorName,
     status,

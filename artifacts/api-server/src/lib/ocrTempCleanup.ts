@@ -68,7 +68,7 @@ export async function cleanupOcrTempFiles(): Promise<{ deleted: number; errors: 
   let errors = 0;
 
   try {
-    const files = await listFilesRecursive(supabase, bucket, OCR_TEMP_FOLDER);
+    const files = await listFilesRecursive(supabase as any, bucket, OCR_TEMP_FOLDER);
 
     const toDelete = files.filter((f) => {
       if (!f.created_at) return false;

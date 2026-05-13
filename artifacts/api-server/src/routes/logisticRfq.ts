@@ -1010,7 +1010,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
 
 // GET /api/logistic/orders/approve-form/:orderNumber — public approve form data
 logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Response) => {
-  const { orderNumber } = req.params;
+  const orderNumber = req.params["orderNumber"] as string;
   if (!orderNumber) return res.status(400).json({ message: "orderNumber wajib diisi" });
 
   const [order] = await db.select().from(logisticOrdersTable)
@@ -1166,7 +1166,7 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
 
 // GET /api/logistic/orders/confirm-form/:token — public: load data for customer confirmation page
 logisticRfqRouter.get("/confirm-form/:token", async (req: Request, res: Response) => {
-  const { token } = req.params;
+  const token = req.params["token"] as string;
   if (!token) return res.status(400).json({ message: "Token wajib diisi" });
 
   const [order] = await db.select().from(logisticOrdersTable)
@@ -1214,7 +1214,7 @@ logisticRfqRouter.get("/confirm-form/:token", async (req: Request, res: Response
 
 // POST /api/logistic/orders/confirm/:token — public: customer confirms or rejects
 logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) => {
-  const { token } = req.params;
+  const token = req.params["token"] as string;
   const { action } = req.body as { action: "confirmed" | "rejected" };
 
   if (!token) return res.status(400).json({ message: "Token wajib diisi" });
@@ -1281,7 +1281,7 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
 
 // GET /:id/vendor-offers — list vendor offers for admin (with vendor name)
 logisticRfqRouter.get("/:id/vendor-offers", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(req.params["id"] as string, 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const offers = await db.select({
@@ -1316,7 +1316,7 @@ logisticRfqRouter.get("/:id/vendor-offers", async (req: Request, res: Response) 
 
 // POST /:id/vendor-offers — admin creates a vendor offer
 logisticRfqRouter.post("/:id/vendor-offers", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(req.params["id"] as string, 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { vendorId, offerPrice, finalCustomerPrice, vehicleYear, carrierName, transitDays, notes, transportMode } =
@@ -1364,7 +1364,7 @@ logisticRfqRouter.post("/:id/vendor-offers", async (req: Request, res: Response)
 
 // DELETE /vendor-offers/:offerId — admin removes an offer
 logisticRfqRouter.delete("/vendor-offers/:offerId", async (req: Request, res: Response) => {
-  const offerId = parseInt(req.params.offerId, 10);
+  const offerId = parseInt(req.params["offerId"] as string, 10);
   if (isNaN(offerId)) return res.status(400).json({ message: "ID tidak valid" });
 
   await db.delete(vendorOffersTable).where(eq(vendorOffersTable.id, offerId));
@@ -1373,7 +1373,7 @@ logisticRfqRouter.delete("/vendor-offers/:offerId", async (req: Request, res: Re
 
 // POST /:id/send-customer-options — admin sends anonymous options to customer via WA
 logisticRfqRouter.post("/:id/send-customer-options", async (req: Request, res: Response) => {
-  const orderId = parseInt(req.params.id, 10);
+  const orderId = parseInt(req.params["id"] as string, 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));

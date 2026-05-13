@@ -1274,7 +1274,7 @@ aiAgentRouter.post("/knowledge-base", async (req: Request, res: Response) => {
 // ── PUT /api/ai-agent/knowledge-base/:id ─────────────────────────────────────
 aiAgentRouter.put("/knowledge-base/:id", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { title, category, content, sortOrder, isActive } = req.body as {
     title?: string; category?: string; content?: string; sortOrder?: number; isActive?: boolean;
@@ -1311,7 +1311,7 @@ aiAgentRouter.put("/knowledge-base/:id", async (req: Request, res: Response) => 
 // ── DELETE /api/ai-agent/knowledge-base/:id ───────────────────────────────────
 aiAgentRouter.delete("/knowledge-base/:id", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   try {
     await db.delete(chatbotKnowledgeBaseTable).where(eq(chatbotKnowledgeBaseTable.id, id));

@@ -268,7 +268,7 @@ function mapIncoming(r: typeof waIncomingMessagesTable.$inferSelect) {
 
 // PATCH /api/whatsapp/inbox/:id/read — tandai sudah dibaca
 whatsappRouter.patch("/inbox/:id/read", async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
   await db
@@ -281,7 +281,7 @@ whatsappRouter.patch("/inbox/:id/read", async (req: Request, res: Response) => {
 
 // POST /api/whatsapp/inbox/:id/reply — balas pesan masuk
 whatsappRouter.post("/inbox/:id/reply", async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params["id"] as string);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
   const { message } = req.body as { message?: string };
