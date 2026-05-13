@@ -212,7 +212,13 @@ function AuthRouteGuard() {
     return <LoginScreen />;
   }
 
+  if (dbLoading) return <LoadingSpinner />;
 
+  const role = dbUser?.role ?? cachedRole;
+  const defaultPath = roleToPath(role);
+
+  return <Redirect to={defaultPath} />;
+}
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
