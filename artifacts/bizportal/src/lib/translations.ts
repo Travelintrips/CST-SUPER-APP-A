@@ -77,6 +77,10 @@ export interface Translations {
     aiKnowledgeBase: string;
     aiScanSettings: string;
     settings: string;
+    holding: string;
+    holdingCompanies: string;
+    holdingCoa: string;
+    holdingJournals: string;
   };
   common: {
     save: string;
@@ -448,6 +452,10 @@ const id: Translations = {
     aiKnowledgeBase: "Knowledge Base",
     aiScanSettings: "Scan Dokumen",
     settings: "Pengaturan",
+    holding: "Holding",
+    holdingCompanies: "Data Perusahaan",
+    holdingCoa: "Bagan Akun",
+    holdingJournals: "Jurnal",
   },
   common: {
     save: "Simpan",
@@ -819,6 +827,10 @@ const en: Translations = {
     aiKnowledgeBase: "Knowledge Base",
     aiScanSettings: "Document Scan",
     settings: "Settings",
+    holding: "Holding",
+    holdingCompanies: "Companies",
+    holdingCoa: "Chart of Accounts",
+    holdingJournals: "Journals",
   },
   common: {
     save: "Save",
@@ -1188,6 +1200,11 @@ const zhCN: DeepPartial<Translations> = {
     aiKnowledgeBase: "知识库",
     aiScanSettings: "扫描文档",
     settings: "设置",
+    holding: "控股",
+    holdingCompanies: "公司管理",
+    holdingCoa: "科目表",
+    holdingJournals: "日记账",
+    portalProductOrders: "产品订单",
   },
   common: {
     save: "保存",

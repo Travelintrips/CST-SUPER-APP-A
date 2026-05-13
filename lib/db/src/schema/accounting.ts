@@ -67,6 +67,7 @@ export const chartOfAccountsTable = pgTable("chart_of_accounts", {
   name: text("name").notNull(),
   type: accountTypeEnum("type").notNull(),
   parentId: integer("parent_id"),
+  companyId: integer("company_id"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

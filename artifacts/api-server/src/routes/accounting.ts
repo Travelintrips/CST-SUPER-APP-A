@@ -11,7 +11,7 @@ import {
   salesDocumentsTable,
   purchaseDocumentsTable,
 } from "@workspace/db";
-import { eq, ne, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
+import { eq, ne, desc, and, or, isNull, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
@@ -72,8 +72,13 @@ function parseDateRange(req: { query: Record<string, unknown> }):
 }
 
 // ============ Chart of Accounts ============
-router.get("/accounts", async (_req, res) => {
-  const rows = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
+router.get("/accounts", async (req, res) => {
+  const companyId = getCompanyId(req);
+  const rows = await db
+    .select()
+    .from(chartOfAccountsTable)
+    .where(or(isNull(chartOfAccountsTable.companyId), eq(chartOfAccountsTable.companyId, companyId)))
+    .orderBy(chartOfAccountsTable.code);
   return res.json(rows.map(serializeAccount));
 });
 

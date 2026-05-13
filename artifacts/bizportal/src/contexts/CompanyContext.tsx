@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
 export interface Company {
   id: number;
@@ -33,6 +34,7 @@ const CompanyContext = createContext<CompanyContextValue>({
 const STORAGE_KEY = "biz_active_company_id";
 
 export function CompanyProvider({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useSupabaseAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<number>(() => {
     try {
@@ -43,6 +45,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     }
   });
   const [isLoading, setIsLoading] = useState(true);
+  const fetchedRef = useRef(false);
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -50,20 +53,36 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return;
       const data = (await res.json()) as Company[];
       setCompanies(data);
-      // Make sure stored id is valid
-      if (data.length > 0 && !data.find((c) => c.id === activeCompanyId)) {
-        setActiveCompanyId(data[0].id);
+      if (data.length > 0) {
+        const storedId = (() => {
+          try { return Number(localStorage.getItem(STORAGE_KEY)) || 1; } catch { return 1; }
+        })();
+        if (!data.find((c) => c.id === storedId)) {
+          setActiveCompanyId(data[0].id);
+        }
       }
     } catch {
-      // silently ignore — user might not be logged in yet
+      // silently ignore
     } finally {
       setIsLoading(false);
     }
-  }, [activeCompanyId]);
+  }, []);
+
+  // Fetch whenever auth state becomes true
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchedRef.current = false;
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    void fetchCompanies();
-  }, [fetchCompanies]);
+    if (isAuthenticated && !fetchedRef.current) {
+      fetchedRef.current = true;
+      void fetchCompanies();
+    } else if (!isAuthenticated) {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, fetchCompanies]);
 
   const setActiveCompany = useCallback((company: Company) => {
     setActiveCompanyId(company.id);
@@ -94,7 +113,6 @@ export function useCompany() {
   return useContext(CompanyContext);
 }
 
-/** Returns `?company=<id>` suffix for fetch URLs inside accounting module */
 export function useCompanyQuery() {
   const { activeCompanyId } = useCompany();
   return `company=${activeCompanyId}`;

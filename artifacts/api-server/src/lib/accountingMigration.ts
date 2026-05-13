@@ -47,6 +47,12 @@ export async function runAccountingMigration(): Promise<void> {
       END $$
     `);
 
+    // ── chart_of_accounts: tambah company_id ────────────────────────────────
+    await db.execute(sql`
+      ALTER TABLE chart_of_accounts
+        ADD COLUMN IF NOT EXISTS company_id integer
+    `);
+
     logger.info("Accounting migration: selesai (invoice/bill/payment numbering + due date columns + reversal enum)");
   } catch (err) {
     logger.error({ err }, "Accounting migration error");

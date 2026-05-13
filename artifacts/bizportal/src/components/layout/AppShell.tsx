@@ -34,6 +34,7 @@ import {
   Bot,
   ScanLine,
   MessageCircle,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -212,6 +213,18 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen, roles: ["admin"] },
     { type: "flat", titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine, roles: ["admin"] },
     { type: "flat", titleKey: "settings", href: "/settings", icon: Settings, roles: ["admin", "ecommerce", "trading", "logistics", "pos"] },
+    {
+      type: "group",
+      titleKey: "holding",
+      basePath: "/holding",
+      icon: Layers,
+      roles: ["admin"],
+      children: [
+        { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
+        { titleKey: "holdingCoa", href: "/accounting/accounts", icon: Landmark },
+        { titleKey: "holdingJournals", href: "/accounting/journals", icon: BookOpen },
+      ],
+    },
   ];
 
   const getNavTitle = (key: string): string => {
