@@ -11,7 +11,7 @@ import {
   salesDocumentsTable,
   purchaseDocumentsTable,
 } from "@workspace/db";
-import { eq, ne, desc, and, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
+import { eq, ne, desc, and, or, isNull, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
@@ -47,6 +47,12 @@ function serializeSettings(s: typeof accountingSettingsTable.$inferSelect) {
   return { ...s, updatedAt: s.updatedAt.toISOString() };
 }
 
+function getCompanyId(req: { query: Record<string, unknown> }): number {
+  const raw = req.query["company"];
+  const id = Number(raw);
+  return !raw || Number.isNaN(id) || id <= 0 ? 1 : id;
+}
+
 function parseDateRange(req: { query: Record<string, unknown> }):
   | { from: Date | null; to: Date | null; error: null }
   | { from: null; to: null; error: string } {
@@ -66,8 +72,13 @@ function parseDateRange(req: { query: Record<string, unknown> }):
 }
 
 // ============ Chart of Accounts ============
-router.get("/accounts", async (_req, res) => {
-  const rows = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
+router.get("/accounts", async (req, res) => {
+  const companyId = getCompanyId(req);
+  const rows = await db
+    .select()
+    .from(chartOfAccountsTable)
+    .where(or(isNull(chartOfAccountsTable.companyId), eq(chartOfAccountsTable.companyId, companyId)))
+    .orderBy(chartOfAccountsTable.code);
   return res.json(rows.map(serializeAccount));
 });
 
@@ -119,12 +130,18 @@ router.delete("/accounts/:id", async (req, res) => {
 });
 
 // ============ Journals ============
-router.get("/journals", async (_req, res) => {
-  const rows = await db.select().from(accountingJournalsTable).orderBy(accountingJournalsTable.code);
+router.get("/journals", async (req, res) => {
+  const companyId = getCompanyId(req);
+  const rows = await db
+    .select()
+    .from(accountingJournalsTable)
+    .where(eq(accountingJournalsTable.companyId, companyId))
+    .orderBy(accountingJournalsTable.code);
   return res.json(rows.map(serializeJournal));
 });
 
 router.post("/journals", async (req, res) => {
+  const companyId = getCompanyId(req);
   const { code, name, type, defaultDebitAccountId, defaultCreditAccountId, isActive } = req.body ?? {};
   if (!code || !name || !type) return res.status(400).json({ message: "code, name, type required" });
   const validTypes = ["sales", "purchase", "bank", "cash", "general"];
@@ -136,6 +153,7 @@ router.post("/journals", async (req, res) => {
         code,
         name,
         type,
+        companyId,
         defaultDebitAccountId: defaultDebitAccountId ?? null,
         defaultCreditAccountId: defaultCreditAccountId ?? null,
         isActive: isActive ?? true,
@@ -196,9 +214,10 @@ router.patch("/taxes/:id", async (req, res) => {
 
 // ============ Journal Entries ============
 router.get("/entries", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [];
+  const conds: SQL<unknown>[] = [eq(accountingEntriesTable.companyId, companyId)];
   if (range.from) conds.push(gte(accountingEntriesTable.date, range.from.toISOString().split("T")[0]!));
   if (range.to) conds.push(lte(accountingEntriesTable.date, range.to.toISOString().split("T")[0]!));
   const journalId = req.query["journalId"] ? Number(req.query["journalId"]) : null;
@@ -206,7 +225,7 @@ router.get("/entries", async (req, res) => {
   const rows = await db
     .select()
     .from(accountingEntriesTable)
-    .where(conds.length ? and(...conds) : undefined)
+    .where(and(...conds))
     .orderBy(desc(accountingEntriesTable.date), desc(accountingEntriesTable.id))
     .limit(500);
   return res.json(rows.map(serializeEntry));
@@ -225,6 +244,7 @@ router.get("/entries/:id", async (req, res) => {
 });
 
 router.post("/entries", async (req, res) => {
+  const companyId = getCompanyId(req);
   const { journalId, date: dateStr, ref, description, lines } = req.body ?? {};
   if (!journalId || !dateStr || !Array.isArray(lines))
     return res.status(400).json({ message: "journalId, date, lines[] required" });
@@ -251,6 +271,7 @@ router.post("/entries", async (req, res) => {
         description: description ?? null,
         source: "manual",
         lines: postingLines,
+        companyId,
       },
       journal.code,
     );
@@ -266,9 +287,10 @@ router.post("/entries", async (req, res) => {
 
 // GET /accounting/entry-lines — list journal line items with joined entry info
 router.get("/entry-lines", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [];
+  const conds: SQL<unknown>[] = [eq(accountingEntriesTable.companyId, companyId)];
   if (range.from) conds.push(gte(accountingEntriesTable.date, range.from.toISOString().split("T")[0]!));
   if (range.to) conds.push(lte(accountingEntriesTable.date, range.to.toISOString().split("T")[0]!));
   const journalId = req.query["journalId"] ? Number(req.query["journalId"]) : null;
@@ -316,9 +338,10 @@ function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
 }
 
 router.get("/payments", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [];
+  const conds: SQL<unknown>[] = [eq(accountingPaymentsTable.companyId, companyId)];
   if (range.from) conds.push(gte(accountingPaymentsTable.date, range.from.toISOString().split("T")[0]!));
   if (range.to) conds.push(lte(accountingPaymentsTable.date, range.to.toISOString().split("T")[0]!));
   const typeFilter = typeof req.query["paymentType"] === "string" ? req.query["paymentType"] : null;
@@ -336,7 +359,7 @@ router.get("/payments", async (req, res) => {
   const rows = await db
     .select()
     .from(accountingPaymentsTable)
-    .where(conds.length ? and(...conds) : undefined)
+    .where(and(...conds))
     .orderBy(desc(accountingPaymentsTable.date), desc(accountingPaymentsTable.id))
     .limit(500);
   return res.json(rows.map(serializePayment));
@@ -359,6 +382,7 @@ router.get("/payments/:id", async (req, res) => {
 });
 
 router.post("/payments", async (req, res) => {
+  const companyId = getCompanyId(req);
   const { paymentType, amount, journalId, partnerName, date: dateStr, ref, memo, sourceType, sourceDocId } = req.body ?? {};
   if (!paymentType || !amount || !journalId || !dateStr)
     return res.status(400).json({ message: "paymentType, amount, journalId, date required" });
@@ -375,7 +399,7 @@ router.post("/payments", async (req, res) => {
   if (journal.type !== "bank" && journal.type !== "cash")
     return res.status(400).json({ message: "Journal must be of type bank or cash" });
 
-  const settings = await ensureAccountingSettings();
+  const settings = await ensureAccountingSettings(companyId);
 
   // Determine bank/cash account: prefer journal's default accounts, fall back to settings
   const bankCashAccountId =
@@ -414,6 +438,7 @@ router.post("/payments", async (req, res) => {
         ref: ref ?? null,
         description: memo ?? `Pembayaran ${paymentType === "inbound" ? "masuk" : "keluar"} - ${partner}`,
         source: "manual_payment",
+        companyId,
         lines,
       },
       journal.code,
@@ -434,6 +459,7 @@ router.post("/payments", async (req, res) => {
     const [payment] = await db
       .insert(accountingPaymentsTable)
       .values({
+        companyId,
         paymentNumber,
         paymentType,
         amount: String(round2(amt)),
@@ -724,7 +750,7 @@ router.post("/entries/:id/reverse", async (req, res) => {
         date: new Date(),
         ref: entry.ref ?? null,
         description: desc,
-        source: "reversal",
+        source: "reversal" as "manual",
         sourceId: entry.id,
         lines: reversalLines,
       },
@@ -755,13 +781,13 @@ router.patch("/entries/:id/status", async (req, res) => {
   if (entry.source !== "manual") {
     return res.status(400).json({ message: "Hanya jurnal manual yang bisa di-reset. Jurnal otomatis harus dibalik menggunakan endpoint /reverse." });
   }
-  if (entry.status === "cancelled") {
+  if ((entry.status as string) === "cancelled") {
     return res.status(400).json({ message: "Entri ini sudah dibatalkan" });
   }
 
   const [updated] = await db
     .update(accountingEntriesTable)
-    .set({ status, updatedAt: new Date() })
+    .set({ status })
     .where(eq(accountingEntriesTable.id, id))
     .returning();
 
@@ -770,13 +796,15 @@ router.patch("/entries/:id/status", async (req, res) => {
 });
 
 // ============ Settings ============
-router.get("/settings", async (_req, res) => {
-  const s = await ensureAccountingSettings();
+router.get("/settings", async (req, res) => {
+  const companyId = getCompanyId(req);
+  const s = await ensureAccountingSettings(companyId);
   return res.json(serializeSettings(s));
 });
 
 router.patch("/settings", async (req, res) => {
-  const s = await ensureAccountingSettings();
+  const companyId = getCompanyId(req);
+  const s = await ensureAccountingSettings(companyId);
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const k of [
     "arAccountId",
@@ -807,8 +835,11 @@ router.patch("/settings", async (req, res) => {
 });
 
 // ============ Reports ============
-async function buildLedgerWindow(from: Date | null, to: Date | null) {
-  const conds: SQL<unknown>[] = [eq(accountingEntriesTable.status, "posted")];
+async function buildLedgerWindow(from: Date | null, to: Date | null, companyId = 1) {
+  const conds: SQL<unknown>[] = [
+    eq(accountingEntriesTable.status, "posted"),
+    eq(accountingEntriesTable.companyId, companyId),
+  ];
   if (from) conds.push(gte(accountingEntriesTable.date, from.toISOString().split("T")[0]!));
   if (to) conds.push(lte(accountingEntriesTable.date, to.toISOString().split("T")[0]!));
   const entries = await db
@@ -826,10 +857,11 @@ async function buildLedgerWindow(from: Date | null, to: Date | null) {
 }
 
 router.get("/reports/trial-balance", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to);
+  const { lines } = await buildLedgerWindow(range.from, range.to, companyId);
   const totals = new Map<number, { debit: number; credit: number }>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? { debit: 0, credit: 0 };
@@ -863,11 +895,12 @@ router.get("/reports/trial-balance", async (req, res) => {
 });
 
 router.get("/reports/general-ledger", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accountId = req.query["accountId"] ? Number(req.query["accountId"]) : null;
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { entries, lines } = await buildLedgerWindow(range.from, range.to);
+  const { entries, lines } = await buildLedgerWindow(range.from, range.to, companyId);
   const entryById = new Map(entries.map((e) => [e.id, e]));
   const filtered = accountId ? lines.filter((l) => l.accountId === accountId) : lines;
   const grouped = new Map<number, { account: typeof accounts[number]; rows: Array<{ date: string; entryNumber: string; ref: string | null; description: string | null; debit: number; credit: number; balance: number }>; totalDebit: number; totalCredit: number }>();
@@ -922,10 +955,11 @@ router.get("/reports/general-ledger", async (req, res) => {
 });
 
 router.get("/reports/profit-loss", async (req, res) => {
+  const companyId = getCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to);
+  const { lines } = await buildLedgerWindow(range.from, range.to, companyId);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? 0;
@@ -957,12 +991,13 @@ router.get("/reports/profit-loss", async (req, res) => {
 });
 
 router.get("/reports/balance-sheet", async (req, res) => {
+  const companyId = getCompanyId(req);
   // Balance sheet is "as of" date — use 'to' as cutoff, ignore 'from'
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const asOf = range.to;
   const accounts = await db.select().from(chartOfAccountsTable).orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(null, asOf);
+  const { lines } = await buildLedgerWindow(null, asOf, companyId);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const acc = accounts.find((a) => a.id === l.accountId);
@@ -997,6 +1032,226 @@ router.get("/reports/balance-sheet", async (req, res) => {
     totalEquity,
     totalLiabilitiesAndEquity: Math.round((totalLiabilities + totalEquity) * 100) / 100,
   });
+});
+
+// ============ Holding / Consolidated View ============
+
+/** GET /accounting/holding/groups — daftar holding group beserta member companies */
+router.get("/holding/groups", async (_req, res) => {
+  const groups = await db.execute(sql`
+    SELECT
+      hg.id,
+      hg.holding_name,
+      hg.holding_code,
+      hg.description,
+      hg.created_at,
+      json_agg(
+        json_build_object(
+          'memberId', chm.id,
+          'companyId', chm.company_id,
+          'companyName', c.company_name,
+          'companyCode', c.company_code,
+          'ownershipPercentage', chm.ownership_percentage,
+          'consolidationMethod', chm.consolidation_method
+        ) ORDER BY c.company_code
+      ) AS members
+    FROM holding_groups hg
+    LEFT JOIN company_holding_members chm ON chm.holding_group_id = hg.id
+    LEFT JOIN companies c ON c.id = chm.company_id
+    GROUP BY hg.id
+    ORDER BY hg.holding_code
+  `);
+  return res.json(groups.rows);
+});
+
+/** GET /accounting/holding/summary?holdingId=&from=&to= — ringkasan konsolidasi */
+router.get("/holding/summary", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT company_id FROM company_holding_members WHERE holding_group_id = ${holdingId}
+  `);
+  if (members.rows.length === 0) return res.json({ revenue: 0, expense: 0, netPL: 0, cashBalance: 0, receivable: 0, payable: 0, companyIds: [] });
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const companyIdsArr = sql`ARRAY[${sql.join(companyIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter = dateRange.from && dateRange.to
+    ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+    : dateRange.from
+    ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+    : dateRange.to
+    ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+    : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(
+        CASE WHEN coa.type = 'asset'
+          AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS cash_balance,
+      COALESCE(SUM(
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS receivable,
+      COALESCE(SUM(
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
+      ), 0) AS payable
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      AND ael.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+  `);
+
+  const row = result.rows[0] as { revenue: string; expense: string; cash_balance: string; receivable: string; payable: string } | undefined;
+  const revenue = Number(row?.revenue ?? 0);
+  const expense = Number(row?.expense ?? 0);
+  return res.json({
+    revenue,
+    expense,
+    netPL: revenue - expense,
+    cashBalance: Number(row?.cash_balance ?? 0),
+    receivable: Number(row?.receivable ?? 0),
+    payable: Number(row?.payable ?? 0),
+    companyIds,
+  });
+});
+
+/** GET /accounting/holding/breakdown?holdingId=&from=&to= — breakdown per perusahaan */
+router.get("/holding/breakdown", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${holdingId}
+    ORDER BY c.company_code
+  `);
+  if (members.rows.length === 0) return res.json([]);
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const companyIdsArr = sql`ARRAY[${sql.join(companyIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter = dateRange.from && dateRange.to
+    ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+    : dateRange.from
+    ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+    : dateRange.to
+    ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+    : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      ael.company_id,
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense,
+      COALESCE(SUM(
+        CASE WHEN coa.type = 'asset'
+          AND (lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%')
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS cash_balance,
+      COALESCE(SUM(
+        CASE WHEN lower(coa.name) LIKE '%piutang%' AND coa.type = 'asset'
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END
+      ), 0) AS receivable,
+      COALESCE(SUM(
+        CASE WHEN (lower(coa.name) LIKE '%utang%' OR lower(coa.name) LIKE '%payable%') AND coa.type = 'liability'
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END
+      ), 0) AS payable
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      AND ael.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+    GROUP BY ael.company_id
+  `);
+
+  const byCompanyId = new Map(
+    (result.rows as { company_id: number; revenue: string; expense: string; cash_balance: string; receivable: string; payable: string }[]).map((r) => [r.company_id, r])
+  );
+
+  const breakdown = (members.rows as { company_id: number; company_name: string; company_code: string }[]).map((m) => {
+    const r = byCompanyId.get(m.company_id);
+    const revenue = Number(r?.revenue ?? 0);
+    const expense = Number(r?.expense ?? 0);
+    return {
+      companyId: m.company_id,
+      companyName: m.company_name,
+      companyCode: m.company_code,
+      revenue,
+      expense,
+      netPL: revenue - expense,
+      cashBalance: Number(r?.cash_balance ?? 0),
+      receivable: Number(r?.receivable ?? 0),
+      payable: Number(r?.payable ?? 0),
+    };
+  });
+
+  return res.json(breakdown);
+});
+
+/** GET /accounting/holding/entries?holdingId=&from=&to=&companyId= — transaksi gabungan per holding */
+router.get("/holding/entries", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const companyIdFilter = req.query["companyId"] ? Number(req.query["companyId"]) : null;
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${holdingId}
+    ORDER BY c.company_code
+  `);
+  if (members.rows.length === 0) return res.json([]);
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const effectiveIds = companyIdFilter ? [companyIdFilter] : companyIds;
+  const companyIdsArr = sql`ARRAY[${sql.join(effectiveIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter = dateRange.from && dateRange.to
+    ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+    : dateRange.from
+    ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+    : dateRange.to
+    ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+    : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      ae.id,
+      ae.entry_date,
+      ae.description,
+      ae.status,
+      ae.company_id,
+      c.company_name,
+      c.company_code,
+      COALESCE(SUM(CASE WHEN ael.debit IS NOT NULL AND ael.debit > 0 THEN ael.debit ELSE 0 END), 0) AS total_debit,
+      COALESCE(SUM(CASE WHEN ael.credit IS NOT NULL AND ael.credit > 0 THEN ael.credit ELSE 0 END), 0) AS total_credit
+    FROM accounting_entries ae
+    LEFT JOIN accounting_entry_lines ael ON ael.entry_id = ae.id
+    JOIN companies c ON c.id = ae.company_id
+    WHERE ae.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+    GROUP BY ae.id, ae.entry_date, ae.description, ae.status, ae.company_id, c.company_name, c.company_code
+    ORDER BY ae.entry_date DESC, ae.id DESC
+    LIMIT 200
+  `);
+
+  return res.json(result.rows);
 });
 
 export default router;

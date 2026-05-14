@@ -10,8 +10,9 @@ import {
   getListProductCategoriesQueryKey,
   type Product,
   type AccountingTax,
+  type MediaItem,
 } from "@workspace/api-client-react";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, Video, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Wrench, RefreshCw, ImageIcon, X, Video, Loader2, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const DEFAULT_SUBCATEGORIES = [
@@ -76,11 +77,6 @@ function useUsdRate(): number {
   return rate;
 }
 
-interface MediaItem {
-  type: "image" | "video";
-  url: string;
-}
-
 interface ItemForm {
   name: string;
   sku: string;
@@ -98,6 +94,30 @@ interface ItemForm {
   imageUrl: string;
   mediaItems: MediaItem[];
 }
+
+interface ImportRow {
+  nama: string;
+  sku: string;
+  tipe: string;
+  kategori: string;
+  satuan: string;
+  harga: string;
+  stok: string;
+  subkategori: string;
+  deskripsi: string;
+  aktif: string;
+}
+
+interface ImportResult {
+  row: number;
+  sku?: string;
+  name?: string;
+  status: "created" | "updated" | "error";
+  message?: string;
+}
+
+const IMPORT_COLS: (keyof ImportRow)[] = ["nama", "sku", "tipe", "kategori", "satuan", "harga", "stok", "subkategori", "deskripsi", "aktif"];
+const IMPORT_HEADERS = ["Nama Produk*", "SKU*", "Jenis (barang/jasa)*", "Kategori* (pisah ;)", "Satuan*", "Harga*", "Stok", "Sub-kategori", "Deskripsi", "Aktif (ya/tidak)"];
 
 const emptyForm = (): ItemForm => ({
   name: "",
@@ -117,12 +137,12 @@ const emptyForm = (): ItemForm => ({
   mediaItems: [],
 });
 
-function parseMediaItems(raw: unknown): MediaItem[] {
+function parseMediaItems(raw: MediaItem[] | string | null | undefined): MediaItem[] {
   if (!raw) return [];
   try {
     const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (!Array.isArray(arr)) return [];
-    return arr.filter((x) => x && typeof x.url === "string");
+    return arr.filter((x): x is MediaItem => !!x && typeof x.url === "string");
   } catch { return []; }
 }
 
@@ -132,26 +152,46 @@ function resolveMediaUrl(url: string): string {
   return url;
 }
 
+const ALLOWED_IMG_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const MAX_IMG_SIZE = 5 * 1024 * 1024; // 5MB
+
+function validateMediaFile(file: File, type: "image" | "video"): string | null {
+  if (type === "image") {
+    if (!ALLOWED_IMG_TYPES.includes(file.type)) {
+      return `${file.name}: Format tidak didukung. Gunakan JPG, JPEG, PNG, atau WEBP.`;
+    }
+    if (file.size > MAX_IMG_SIZE) {
+      return `${file.name}: Ukuran file melebihi batas maksimum 5MB (${(file.size / 1024 / 1024).toFixed(1)}MB).`;
+    }
+  }
+  return null;
+}
+
 async function uploadMediaFiles(files: File[], type: "image" | "video"): Promise<MediaItem[]> {
+  for (const file of files) {
+    const err = validateMediaFile(file, type);
+    if (err) throw new Error(err);
+  }
   const results: MediaItem[] = [];
   for (const file of files) {
-    const res = await fetch("/api/storage/uploads/request-url", {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/storage/uploads/file", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      body: fd,
     });
-    if (!res.ok) throw new Error(`Gagal mendapatkan URL upload untuk ${file.name}`);
-    const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
-    const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-    if (!putRes.ok) throw new Error(`Gagal mengunggah ${file.name}`);
-    results.push({ type, url: `/api/storage${objectPath}` });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(err.error ?? `Gagal mengunggah ${file.name} (${res.status})`);
+    }
+    const { url } = await res.json() as { url: string; objectPath: string };
+    results.push({ type, url });
   }
   return results;
 }
 
 function formFromProduct(p: Product): ItemForm {
-  const pp = p as unknown as { unitOptions?: string[]; stock?: number; imageUrl?: string; mediaItems?: unknown };
   return {
     name: p.name,
     sku: p.sku,
@@ -159,15 +199,15 @@ function formFromProduct(p: Product): ItemForm {
     categories: p.categories ?? [],
     subcategory: p.subcategory ?? "",
     unit: p.unit,
-    unitOptions: Array.isArray(pp.unitOptions) ? (pp.unitOptions ?? []) : [],
+    unitOptions: Array.isArray(p.unitOptions) ? (p.unitOptions ?? []) : [],
     price: String(p.price),
-    stock: String(pp.stock ?? 0),
+    stock: String(p.stock ?? 0),
     defaultSalesTaxId: p.defaultSalesTaxId ? String(p.defaultSalesTaxId) : "",
     defaultPurchaseTaxId: p.defaultPurchaseTaxId ? String(p.defaultPurchaseTaxId) : "",
     isActive: p.isActive,
     description: p.description ?? "",
-    imageUrl: pp.imageUrl ?? "",
-    mediaItems: parseMediaItems(pp.mediaItems),
+    imageUrl: p.imageUrl ?? "",
+    mediaItems: parseMediaItems(p.mediaItems),
   };
 }
 
@@ -201,6 +241,126 @@ export default function SalesItemsPage() {
   const [uploading, setUploading] = useState(false);
   const imgRef = useRef<HTMLInputElement>(null);
   const vidRef = useRef<HTMLInputElement>(null);
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importResults, setImportResults] = useState<ImportResult[] | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  const downloadImportTemplate = async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Template Import");
+    ws.addRow(IMPORT_HEADERS);
+    ws.getRow(1).font = { bold: true };
+    ws.addRow(["Pengiriman Udara", "SVC-AIR-001", "jasa", "Udara", "shipment", "5000000", "0", "Udara", "Layanan pengiriman udara internasional", "ya"]);
+    ws.addRow(["Pengiriman Laut FCL", "SVC-SEA-001", "jasa", "Laut", "container", "8000000", "0", "Laut", "Full Container Load (FCL)", "ya"]);
+    ws.addRow(["Karton Box 40x30x30", "PRD-BOX-001", "barang", "Handling", "pcs", "25000", "100", "Handling", "Karton box tebal double wall", "ya"]);
+    ws.columns = IMPORT_HEADERS.map((h, i) => ({ header: h, width: Math.max(h.length + 2, [20, 15, 12, 20, 10, 10, 6, 14, 30, 8][i] ?? 14) }));
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "template-import-produk.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const parseImportFile = async (file: File): Promise<ImportRow[]> => {
+    const isXlsx = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
+    if (isXlsx) {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const ws = wb.worksheets[0];
+      if (!ws) throw new Error("Worksheet tidak ditemukan dalam file Excel");
+      const headerRow = ws.getRow(1).values as (string | undefined)[];
+      const headers = (Array.isArray(headerRow) ? headerRow : []).slice(1).map((h) => String(h ?? "").trim().toLowerCase()
+        .replace("nama produk*", "nama").replace("sku*", "sku").replace("jenis (barang/jasa)*", "tipe")
+        .replace("kategori* (pisah ;)", "kategori").replace("satuan*", "satuan").replace("harga*", "harga")
+        .replace("stok", "stok").replace("sub-kategori", "subkategori").replace("deskripsi", "deskripsi")
+        .replace("aktif (ya/tidak)", "aktif")
+      );
+      const rows: ImportRow[] = [];
+      ws.eachRow((row, rowNum) => {
+        if (rowNum === 1) return;
+        const vals = (row.values as unknown[]).slice(1);
+        const obj: Record<string, string> = {};
+        headers.forEach((h, i) => { obj[h] = String(vals[i] ?? "").trim(); });
+        if (!obj.nama && !obj.sku) return;
+        rows.push({
+          nama: obj.nama ?? "", sku: obj.sku ?? "", tipe: obj.tipe ?? "barang",
+          kategori: obj.kategori ?? "", satuan: obj.satuan ?? "pcs", harga: obj.harga ?? "0",
+          stok: obj.stok ?? "0", subkategori: obj.subkategori ?? "", deskripsi: obj.deskripsi ?? "", aktif: obj.aktif ?? "ya",
+        });
+      });
+      return rows;
+    } else {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) throw new Error("File CSV kosong atau hanya berisi header");
+      const sep = lines[0].includes("\t") ? "\t" : ",";
+      const parse = (line: string) => line.split(sep).map((c) => c.trim().replace(/^"|"$/g, ""));
+      const hdrs = parse(lines[0]).map((h) => h.toLowerCase()
+        .replace("nama produk*", "nama").replace("sku*", "sku").replace("jenis (barang/jasa)*", "tipe")
+        .replace("kategori* (pisah ;)", "kategori").replace("satuan*", "satuan").replace("harga*", "harga")
+        .replace("sub-kategori", "subkategori").replace("aktif (ya/tidak)", "aktif")
+      );
+      return lines.slice(1).map((line) => {
+        const vals = parse(line);
+        const obj: Record<string, string> = {};
+        hdrs.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
+        return {
+          nama: obj.nama ?? "", sku: obj.sku ?? "", tipe: obj.tipe ?? "barang",
+          kategori: obj.kategori ?? "", satuan: obj.satuan ?? "pcs", harga: obj.harga ?? "0",
+          stok: obj.stok ?? "0", subkategori: obj.subkategori ?? "", deskripsi: obj.deskripsi ?? "", aktif: obj.aktif ?? "ya",
+        };
+      }).filter((r) => r.nama || r.sku);
+    }
+  };
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    setImportResults(null);
+    try {
+      const rows = await parseImportFile(file);
+      if (rows.length === 0) { setImportError("Tidak ada baris data yang ditemukan dalam file"); return; }
+      if (rows.length > 500) { setImportError("Maksimum 500 baris per import"); return; }
+      setImportRows(rows);
+    } catch (e) {
+      setImportError(String(e));
+    }
+    e.target.value = "";
+  };
+
+  const handleDoImport = async () => {
+    if (importRows.length === 0) return;
+    setImporting(true);
+    setImportResults(null);
+    try {
+      const res = await fetch("/api/ecommerce/products/bulk-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: importRows }),
+      });
+      const data = await res.json() as { results?: ImportResult[]; message?: string };
+      if (!res.ok) { setImportError(data.message ?? "Terjadi kesalahan pada server"); return; }
+      setImportResults(data.results ?? []);
+      const success = (data.results ?? []).filter((r) => r.status !== "error").length;
+      const errors = (data.results ?? []).filter((r) => r.status === "error").length;
+      qc.invalidateQueries({ queryKey: getListProductsQueryKey({}) });
+      toast({ title: `Import selesai: ${success} berhasil, ${errors} gagal` });
+    } catch (e) {
+      setImportError(String(e));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleUploadMedia = async (files: File[], type: "image" | "video") => {
     setUploading(true);
@@ -361,6 +521,14 @@ export default function SalesItemsPage() {
               <RefreshCw className={`h-4 w-4 mr-1.5 ${seeding ? "animate-spin" : ""}`} />
               Seed Item Awal
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-emerald-700 text-emerald-400 hover:bg-emerald-900/40"
+              onClick={() => { setImportOpen(true); setImportRows([]); setImportResults(null); setImportError(null); }}
+            >
+              <Upload className="h-4 w-4 mr-1.5" /> Import Excel/CSV
+            </Button>
             <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={openCreate}>
               <Plus className="h-4 w-4 mr-1.5" /> Tambah Item
             </Button>
@@ -451,9 +619,9 @@ export default function SalesItemsPage() {
                       <TableRow key={p.id} className="border-slate-700/50">
                         <TableCell className="text-slate-200 font-medium">
                           <div className="flex items-center gap-2.5">
-                            {(p as unknown as { imageUrl?: string }).imageUrl ? (
+                            {p.imageUrl ? (
                               <img
-                                src={(p as unknown as { imageUrl: string }).imageUrl}
+                                src={resolveMediaUrl(p.imageUrl)}
                                 alt={p.name}
                                 className="h-8 w-8 rounded object-cover shrink-0 border border-slate-700"
                                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -483,8 +651,8 @@ export default function SalesItemsPage() {
                         <TableCell className="text-slate-400 text-sm">
                           <div className="flex flex-wrap gap-1 items-center">
                             <span>{p.unit}</span>
-                            {p.itemType === "barang" && Array.isArray((p as unknown as { unitOptions?: string[] }).unitOptions) && ((p as unknown as { unitOptions?: string[] }).unitOptions ?? []).length > 0 && (
-                              (p as unknown as { unitOptions?: string[] }).unitOptions!.filter((u) => u !== p.unit).map((u) => (
+                            {p.itemType === "barang" && Array.isArray(p.unitOptions) && (p.unitOptions ?? []).length > 0 && (
+                              (p.unitOptions ?? []).filter((u) => u !== p.unit).map((u) => (
                                 <Badge key={u} className="text-[9px] px-1 py-0 h-4 bg-slate-700 text-slate-300 border-slate-600">{u}</Badge>
                               ))
                             )}
@@ -492,8 +660,8 @@ export default function SalesItemsPage() {
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-slate-300">
                           {p.itemType === "barang"
-                            ? <span className={((p as unknown as { stock?: number }).stock ?? 0) === 0 ? "text-red-400" : ""}>
-                                {(p as unknown as { stock?: number }).stock ?? 0}
+                            ? <span className={(p.stock ?? 0) === 0 ? "text-red-400" : ""}>
+                                {p.stock ?? 0}
                               </span>
                             : <span className="text-slate-500 text-xs">—</span>
                           }
@@ -760,7 +928,7 @@ export default function SalesItemsPage() {
               </Label>
 
               {/* Hidden file inputs */}
-              <input ref={imgRef} type="file" accept="image/*" multiple className="hidden"
+              <input ref={imgRef} type="file" accept="image/jpeg,image/jpg,image/png,image/webp" multiple className="hidden"
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
                   if (files.length) void handleUploadMedia(files, "image");
@@ -839,7 +1007,7 @@ export default function SalesItemsPage() {
                   Tambah Video
                 </Button>
               </div>
-              <p className="text-xs text-slate-500">Foto pertama jadi cover. Bisa upload lebih dari satu foto.</p>
+              <p className="text-xs text-slate-500">Foto pertama jadi cover. Format: JPG, PNG, WEBP. Maks. 5MB per file.</p>
 
               {/* URL alternatif */}
               <details className="group" open={!!form.imageUrl && form.mediaItems.length === 0}>
@@ -851,6 +1019,13 @@ export default function SalesItemsPage() {
                     <Input
                       value={form.imageUrl}
                       onChange={(e) => setF("imageUrl", e.target.value)}
+                      onBlur={(e) => {
+                        const url = e.target.value.trim();
+                        if (url) {
+                          try { new URL(url); }
+                          catch { toast({ title: "URL gambar tidak valid", description: "Masukkan URL lengkap diawali https://", variant: "destructive" }); }
+                        }
+                      }}
                       placeholder="https://example.com/gambar.jpg"
                       className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
                     />
@@ -944,6 +1119,134 @@ export default function SalesItemsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) setImportOpen(o); }}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-emerald-400" />
+              Import Produk dari Excel / CSV
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm text-slate-400">
+                Upload file <span className="text-slate-200 font-medium">.xlsx</span> atau <span className="text-slate-200 font-medium">.csv</span> sesuai format template.
+                SKU yang sudah ada akan di-<em>update</em>, SKU baru akan dibuat.
+              </p>
+              <Button variant="outline" size="sm" className="border-slate-600 text-slate-300 shrink-0" onClick={downloadImportTemplate}>
+                <Download className="h-3.5 w-3.5 mr-1.5" /> Unduh Template
+              </Button>
+            </div>
+
+            <div
+              className="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center cursor-pointer hover:border-emerald-600 transition-colors"
+              onClick={() => importFileRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { const dt = new DataTransfer(); dt.items.add(f); if (importFileRef.current) { importFileRef.current.files = dt.files; handleImportFileChange({ target: importFileRef.current } as React.ChangeEvent<HTMLInputElement>); } } }}
+            >
+              <Upload className="h-8 w-8 text-slate-500 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">Klik atau seret file ke sini</p>
+              <p className="text-xs text-slate-500 mt-1">Format: .xlsx, .xls, .csv — Maks. 500 baris</p>
+              <input ref={importFileRef} type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={handleImportFileChange} />
+            </div>
+
+            {importError && (
+              <div className="flex items-start gap-2 p-3 rounded bg-red-900/30 border border-red-700 text-red-300 text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                {importError}
+              </div>
+            )}
+
+            {importRows.length > 0 && !importResults && (
+              <div className="space-y-2">
+                <p className="text-sm text-slate-300 font-medium">{importRows.length} baris siap diimport — pratinjau:</p>
+                <div className="overflow-x-auto rounded border border-slate-700">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-800">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left text-slate-400 font-medium">#</th>
+                        {IMPORT_COLS.map((c) => (
+                          <th key={c} className="px-2 py-1.5 text-left text-slate-400 font-medium whitespace-nowrap">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importRows.slice(0, 10).map((row, i) => (
+                        <tr key={i} className="border-t border-slate-700/60 even:bg-slate-800/30">
+                          <td className="px-2 py-1 text-slate-500">{i + 1}</td>
+                          {IMPORT_COLS.map((c) => (
+                            <td key={c} className="px-2 py-1 text-slate-300 max-w-[120px] truncate" title={row[c]}>{row[c] || <span className="text-slate-600">—</span>}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {importRows.length > 10 && (
+                    <p className="text-xs text-slate-500 px-2 py-1.5 border-t border-slate-700">... dan {importRows.length - 10} baris lainnya</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {importResults && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-300">Hasil Import:</p>
+                <div className="flex gap-3 text-xs mb-2">
+                  <span className="text-emerald-400">{importResults.filter((r) => r.status === "created").length} dibuat</span>
+                  <span className="text-blue-400">{importResults.filter((r) => r.status === "updated").length} diperbarui</span>
+                  <span className="text-red-400">{importResults.filter((r) => r.status === "error").length} gagal</span>
+                </div>
+                <div className="overflow-x-auto rounded border border-slate-700 max-h-64 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-800 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Baris</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">SKU</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Nama</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Status</th>
+                        <th className="px-2 py-1.5 text-left text-slate-400">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importResults.map((r, i) => (
+                        <tr key={i} className="border-t border-slate-700/60 even:bg-slate-800/30">
+                          <td className="px-2 py-1 text-slate-400">{r.row}</td>
+                          <td className="px-2 py-1 text-slate-300 font-mono">{r.sku ?? "—"}</td>
+                          <td className="px-2 py-1 text-slate-300">{r.name ?? "—"}</td>
+                          <td className="px-2 py-1">
+                            {r.status === "created" && <span className="flex items-center gap-1 text-emerald-400"><CheckCircle2 className="h-3 w-3" /> Dibuat</span>}
+                            {r.status === "updated" && <span className="flex items-center gap-1 text-blue-400"><CheckCircle2 className="h-3 w-3" /> Diperbarui</span>}
+                            {r.status === "error" && <span className="flex items-center gap-1 text-red-400"><AlertCircle className="h-3 w-3" /> Gagal</span>}
+                          </td>
+                          <td className="px-2 py-1 text-slate-400">{r.message ?? ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-3 border-t border-slate-700 mt-2">
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing} className="border-slate-600 text-slate-300">
+              {importResults ? "Tutup" : "Batal"}
+            </Button>
+            {importRows.length > 0 && !importResults && (
+              <Button onClick={handleDoImport} disabled={importing} className="bg-emerald-700 hover:bg-emerald-600">
+                {importing ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Mengimport...</> : <><Upload className="h-4 w-4 mr-1.5" /> Import {importRows.length} Baris</>}
+              </Button>
+            )}
+            {importResults && (
+              <Button variant="outline" onClick={() => { setImportRows([]); setImportResults(null); setImportError(null); }} className="border-slate-600 text-slate-300">
+                Import Lagi
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

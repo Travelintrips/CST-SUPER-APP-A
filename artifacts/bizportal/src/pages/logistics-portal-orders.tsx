@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   useListLogisticOrders,
@@ -26,8 +26,9 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
@@ -94,6 +95,26 @@ export default function LogisticsPortalOrdersPage() {
   const [soDialog, setSoDialog] = useState<LogisticOrder | null>(null);
   const [viewPhoto, setViewPhoto] = useState<string | null>(null);
   const [detailDialog, setDetailDialog] = useState<LogisticOrder | null>(null);
+
+  const [newOrderCount, setNewOrderCount] = useState(0);
+  const [lastAutoRefresh, setLastAutoRefresh] = useState<Date | null>(null);
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { setOnNewOrder } = useOrderNotificationsContext();
+
+  useEffect(() => {
+    setOnNewOrder((n) => {
+      if (n.type !== "logistic") return;
+      queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+      setNewOrderCount((c) => c + 1);
+      setLastAutoRefresh(new Date());
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = setTimeout(() => setNewOrderCount(0), 10_000);
+    });
+    return () => {
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    };
+  }, [setOnNewOrder, queryClient]);
 
   const { data: soDetail } = useGetLogisticOrder(
     soDialog?.id ?? 0,
@@ -217,7 +238,7 @@ export default function LogisticsPortalOrdersPage() {
   return (
     <AppShell>
       <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <PackageOpen className="h-6 w-6" /> Portal Orders
@@ -226,9 +247,28 @@ export default function LogisticsPortalOrdersPage() {
               Pesanan masuk dari customer portal — ubah status atau konversi ke Sales Order
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {newOrderCount > 0 && (
+              <div className="flex items-center gap-1.5 rounded-full bg-green-500/10 border border-green-500/30 px-3 py-1.5 text-green-700 dark:text-green-400 animate-in fade-in slide-in-from-right-4 duration-300">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                </span>
+                <Zap className="h-3.5 w-3.5" />
+                <span className="text-xs font-semibold">
+                  {newOrderCount === 1 ? "1 order baru" : `${newOrderCount} order baru`} — diperbarui otomatis
+                </span>
+                {lastAutoRefresh && (
+                  <span className="text-[10px] text-green-600/70 dark:text-green-500/60">
+                    {lastAutoRefresh.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </span>
+                )}
+              </div>
+            )}
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Stat Cards */}

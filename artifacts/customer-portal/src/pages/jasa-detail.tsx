@@ -14,7 +14,7 @@ import {
   Ship, Plane, Download, Upload, MapPin, Home,
   Package, Warehouse, Truck, FileCheck, Shield, FileText,
   Calculator, ArrowLeft, ArrowRight, ShoppingCart, CheckCircle2,
-  Plus, Trash2,
+  Plus, Trash2, ChevronRight,
 } from "lucide-react";
 import {
   CATEGORIES, CATEGORY_COLORS_DETAIL,
@@ -279,6 +279,12 @@ export default function JasaDetail() {
   const [senderPhone, setSenderPhone] = useState("");
   const [receiverName, setReceiverName] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
+
+  useEffect(() => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    try { window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior }); } catch { window.scrollTo(0, 0); }
+  }, [params.id]);
 
   useEffect(() => {
     fetch("/api/portal/trucking-rates")
@@ -699,51 +705,424 @@ export default function JasaDetail() {
       calculatorType: (CAT_TO_CALC[(s.categories ?? [])[0] ?? ""] ?? "generic") as CalculatorType,
     }));
 
+  const CATEGORY_HERO: Record<string, {
+    heroBg: string;
+    accentColor: string;
+    accentLight: string;
+    accentText: string;
+    badgeBg: string;
+    badgeText: string;
+    glowA: string;
+    glowB: string;
+    image: string;
+    iconBg: string;
+    features: string[];
+    tintOverlay: string;
+  }> = {
+    Freight:    {
+      heroBg:      "linear-gradient(145deg, #EDF5FF 0%, #D0E6FF 28%, #BFDBFE 52%, #93C5FD 72%, #7EB5F5 100%)",
+      accentColor: "#1A56DB",
+      accentLight: "#EEF4FF",
+      accentText:  "#1A56DB",
+      badgeBg:     "#DBEAFE",
+      badgeText:   "#1e40af",
+      glowA:       "#3B82F6",
+      glowB:       "#60A5FA",
+      image:       "https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(219,234,254,0.72) 100%)",
+      tintOverlay: "rgba(59,130,246,0.07)",
+      features:    ["Air Freight", "Sea FCL / LCL", "Door-to-Door", "Multi-Modal"],
+    },
+    Customs:    {
+      heroBg:      "linear-gradient(145deg, #ECFDF7 0%, #C8F5E6 28%, #A7F3D0 52%, #6EE7B7 72%, #4DD9A8 100%)",
+      accentColor: "#047857",
+      accentLight: "#ECFDF5",
+      accentText:  "#047857",
+      badgeBg:     "#D1FAE5",
+      badgeText:   "#065F46",
+      glowA:       "#10B981",
+      glowB:       "#34D399",
+      image:       "https://images.unsplash.com/photo-1605745341112-85968b19335b?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(167,243,208,0.72) 100%)",
+      tintOverlay: "rgba(16,185,129,0.06)",
+      features:    ["Import & Export", "PIB / PEB", "HS Code Konsultasi", "PPJK Resmi"],
+    },
+    Handling:   {
+      heroBg:      "linear-gradient(145deg, #F4EFFF 0%, #E8DFFF 28%, #DDD6FE 52%, #C4B5FD 72%, #A78BFA 100%)",
+      accentColor: "#6D28D9",
+      accentLight: "#F5F0FF",
+      accentText:  "#6D28D9",
+      badgeBg:     "#EDE9FE",
+      badgeText:   "#5B21B6",
+      glowA:       "#8B5CF6",
+      glowB:       "#A78BFA",
+      image:       "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(221,214,254,0.72) 100%)",
+      tintOverlay: "rgba(109,40,217,0.06)",
+      features:    ["Origin Handling", "Destination Handling", "Kargo Berbahaya", "Tim Profesional"],
+    },
+    Storage:    {
+      heroBg:      "linear-gradient(145deg, #EDFDF9 0%, #C9FAF0 28%, #99F6E4 52%, #5EEAD4 72%, #2DD4C8 100%)",
+      accentColor: "#0D9488",
+      accentLight: "#F0FDFA",
+      accentText:  "#0D9488",
+      badgeBg:     "#CCFBF1",
+      badgeText:   "#0F766E",
+      glowA:       "#14B8A6",
+      glowB:       "#2DD4BF",
+      image:       "https://images.unsplash.com/photo-1553413077-190dd305871c?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(153,246,228,0.72) 100%)",
+      tintOverlay: "rgba(13,148,136,0.06)",
+      features:    ["Gudang Umum", "Bonded Warehouse", "Cold Storage", "Sewa Fleksibel"],
+    },
+    Trucking:   {
+      heroBg:      "linear-gradient(145deg, #FFFAEB 0%, #FEF3C7 28%, #FDE68A 52%, #FCD34D 72%, #FBBF24 100%)",
+      accentColor: "#B45309",
+      accentLight: "#FFFBEB",
+      accentText:  "#92400E",
+      badgeBg:     "#FEF3C7",
+      badgeText:   "#92400E",
+      glowA:       "#F59E0B",
+      glowB:       "#FCD34D",
+      image:       "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(253,230,138,0.72) 100%)",
+      tintOverlay: "rgba(245,158,11,0.07)",
+      features:    ["5 Jenis Armada", "Kalkulasi Otomatis", "Harga Transparan", "Berlisensi & Profesional"],
+    },
+    Document:   {
+      heroBg:      "linear-gradient(145deg, #F0EEFF 0%, #E0E7FF 28%, #C7D2FE 52%, #A5B4FC 72%, #818CF8 100%)",
+      accentColor: "#4338CA",
+      accentLight: "#EEF2FF",
+      accentText:  "#4338CA",
+      badgeBg:     "#E0E7FF",
+      badgeText:   "#3730A3",
+      glowA:       "#6366F1",
+      glowB:       "#818CF8",
+      image:       "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(199,210,254,0.72) 100%)",
+      tintOverlay: "rgba(99,102,241,0.06)",
+      features:    ["Bill of Lading", "Air Waybill", "COO / SKA", "Packing List"],
+    },
+    Additional: {
+      heroBg:      "linear-gradient(145deg, #FFF0F2 0%, #FFE4E6 28%, #FECDD3 52%, #FDA4AF 72%, #FB7185 100%)",
+      accentColor: "#BE123C",
+      accentLight: "#FFF1F2",
+      accentText:  "#BE123C",
+      badgeBg:     "#FFE4E6",
+      badgeText:   "#9F1239",
+      glowA:       "#F43F5E",
+      glowB:       "#FB7185",
+      image:       "https://images.unsplash.com/photo-1516733968668-dbdce39c4651?w=1600&q=90&auto=format&fit=crop",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(253,164,175,0.72) 100%)",
+      tintOverlay: "rgba(244,63,94,0.06)",
+      features:    ["Asuransi Kargo", "Surveyor", "Perizinan", "BPOM / SNI"],
+    },
+  };
+  const hero = CATEGORY_HERO[item.category] ?? CATEGORY_HERO["Freight"]!;
+
   return (
-    <div className={`min-h-screen pb-28 ${ct === "trucking" ? "bg-slate-50" : "bg-gray-50"}`}>
-      {/* Hero */}
-      <div className={ct === "trucking"
-        ? "bg-gradient-to-br from-sky-600 via-blue-700 to-indigo-800 text-white py-10 md:py-14 relative overflow-hidden"
-        : "bg-primary text-primary-foreground py-12 md:py-20"
-      }>
-        {ct === "trucking" && (
-          <div className="absolute inset-0 opacity-10" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"}}/>
-        )}
-        <div className="container px-4 md:px-6 relative z-10">
-          <Link href="/jasa" className={`inline-flex items-center gap-1.5 text-sm mb-5 transition-colors ${ct === "trucking" ? "text-white/60 hover:text-white" : "text-primary-foreground/60 hover:text-primary-foreground"}`}>
-            <ArrowLeft className="h-4 w-4" />
-            Kembali ke Katalog Jasa
-          </Link>
-          <div className="flex items-start gap-5">
-            {ct === "trucking" ? (
-              <div className="flex-shrink-0 bg-white/15 backdrop-blur-sm rounded-2xl p-3 ring-1 ring-white/20 shadow-lg">
-                <img
-                  src={cstLogo}
-                  alt="CST Logistic"
-                  className="h-14 w-auto sm:h-[72px] md:h-[88px] max-w-[160px] object-contain"
-                />
-              </div>
-            ) : (
-              <div className={`${colors.bg} rounded-2xl p-5 flex-shrink-0`}>
-                <IconComp className={`h-12 w-12 ${colors.text}`} />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <Badge className={ct === "trucking"
-                ? "bg-white/20 text-white border-white/30 font-medium mb-2 text-xs"
-                : `${colors.badge} border-0 font-medium mb-3`
-              }>{item.category}</Badge>
-              <h1 className={`font-display font-bold ${ct === "trucking" ? "text-2xl md:text-3xl mt-1 mb-1.5" : "text-3xl md:text-4xl mb-2"}`}>{item.name}</h1>
-              <p className={ct === "trucking" ? "text-white/75 text-base max-w-xl" : "text-primary-foreground/80 text-lg max-w-2xl"}>{item.description}</p>
-              {ct === "trucking" && (
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {["5 Jenis Armada", "Kalkulasi Jarak Otomatis", "Harga Transparan", "Berlisensi & Profesional"].map(f => (
-                    <span key={f} className="text-[11px] px-2.5 py-1 bg-white/10 rounded-full text-white/85 ring-1 ring-white/20 flex items-center gap-1">
-                      <span className="text-blue-200">✓</span> {f}
-                    </span>
-                  ))}
+    <div className="min-h-screen pb-28" style={{ background: "linear-gradient(180deg,#F4F8FD 0%,#FFFFFF 100%)" }}>
+      {/* ── ENTERPRISE PREMIUM HERO ── */}
+      <style>{`
+        @keyframes hero-pill-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+        .hero-pill {
+          transition: box-shadow 0.22s ease, transform 0.22s ease, border-color 0.22s ease;
+          animation: hero-pill-in 0.4s ease both;
+        }
+        .hero-pill:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px var(--pill-shadow), 0 2px 6px rgba(0,0,0,0.08) !important;
+          border-color: var(--pill-accent-border) !important;
+        }
+        .hero-icon-card {
+          transition: box-shadow 0.25s ease, transform 0.25s ease;
+        }
+        .hero-icon-card:hover { transform: translateY(-3px); }
+        @media (max-width: 640px) {
+          .hero-bg-img { width: 100% !important; right: -30% !important; opacity: 0.12 !important; }
+        }
+      `}</style>
+      <div
+        className="relative overflow-hidden"
+        style={{ background: hero.heroBg, borderBottom: "1px solid rgba(0,0,0,0.06)" }}
+      >
+        {/* ── Layer 0: Noise texture overlay ── */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E")`,
+            backgroundRepeat: "repeat",
+            opacity: 0.6,
+          }}
+        />
+
+        {/* ── Layer 1: Ambient glow orbs — stronger & richer ── */}
+        <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "680px", height: "560px",
+              top: "-200px", right: "0%",
+              background: `radial-gradient(ellipse, ${hero.glowA}38 0%, ${hero.glowA}14 40%, transparent 70%)`,
+              filter: "blur(48px)",
+            }}
+          />
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "460px", height: "400px",
+              bottom: "-140px", right: "28%",
+              background: `radial-gradient(ellipse, ${hero.glowB}28 0%, transparent 68%)`,
+              filter: "blur(56px)",
+            }}
+          />
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "360px", height: "320px",
+              top: "50%", left: "30%",
+              transform: "translateY(-60%)",
+              background: `radial-gradient(ellipse, ${hero.glowA}18 0%, transparent 68%)`,
+              filter: "blur(38px)",
+            }}
+          />
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "200px", height: "200px",
+              top: "10%", right: "12%",
+              background: `radial-gradient(ellipse, rgba(255,255,255,0.55) 0%, transparent 70%)`,
+              filter: "blur(22px)",
+            }}
+          />
+        </div>
+
+        {/* ── Layer 2: Premium grid mesh ── */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `
+              linear-gradient(${hero.accentColor}14 1px, transparent 1px),
+              linear-gradient(to right, ${hero.accentColor}14 1px, transparent 1px)
+            `,
+            backgroundSize: "52px 52px",
+          }}
+        />
+
+        {/* ── Layer 2b: Diagonal accent lines ── */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `repeating-linear-gradient(
+              -48deg,
+              transparent 0px, transparent 38px,
+              ${hero.accentColor}07 38px, ${hero.accentColor}07 39px
+            )`,
+          }}
+        />
+
+        {/* ── Layer 3: Cinematic background image (right side) ── */}
+        <div className="absolute inset-0 pointer-events-none select-none">
+          <img
+            src={hero.image}
+            alt=""
+            aria-hidden="true"
+            className="hero-bg-img absolute top-0 right-0 h-full object-cover"
+            style={{
+              width: "58%",
+              opacity: 0.22,
+              objectPosition: "center 38%",
+              filter: "saturate(1.1) contrast(1.02)",
+              mixBlendMode: "multiply",
+            }}
+            loading="eager"
+          />
+          {/* Sophisticated left-to-right fade with color tint */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(105deg,
+                white 0%,
+                rgba(255,255,255,0.97) 22%,
+                rgba(255,255,255,0.88) 42%,
+                rgba(255,255,255,0.62) 62%,
+                rgba(255,255,255,0.22) 82%,
+                transparent 100%)`,
+            }}
+          />
+          {/* Color tint overlay */}
+          <div
+            className="absolute inset-0"
+            style={{ background: hero.tintOverlay }}
+          />
+          {/* Bottom vignette */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-28 pointer-events-none"
+            style={{ background: `linear-gradient(to bottom, transparent, rgba(255,255,255,0.4))` }}
+          />
+        </div>
+
+        {/* ── Layer 4: Top accent stripe — 3px premium ── */}
+        <div
+          className="absolute top-0 left-0 right-0 h-[3px] pointer-events-none"
+          style={{
+            background: `linear-gradient(90deg, ${hero.accentColor} 0%, ${hero.glowA}CC 35%, ${hero.glowB}66 65%, transparent 85%)`,
+          }}
+        />
+        {/* Subtle top shimmer */}
+        <div
+          className="absolute top-0 left-0 right-0 h-16 pointer-events-none"
+          style={{
+            background: `linear-gradient(to bottom, rgba(255,255,255,0.28), transparent)`,
+          }}
+        />
+
+        {/* ── Content ── */}
+        <div className="container px-4 md:px-6 py-5 md:py-7 relative z-10">
+
+          {/* Back button + Breadcrumb row */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            {/* Kembali button */}
+            <button
+              onClick={() => window.history.length > 1 ? window.history.back() : setLocation("/jasa")}
+              className="inline-flex items-center gap-1.5 text-[12px] font-semibold transition-all duration-150 rounded-lg px-3 py-1.5 select-none"
+              style={{
+                color: hero.accentText,
+                background: hero.accentLight,
+                border: `1.5px solid ${hero.accentColor}22`,
+                boxShadow: `0 1px 4px ${hero.accentColor}12`,
+                transition: "all 0.16s ease",
+              }}
+              onMouseEnter={e => {
+                const el = e.currentTarget as HTMLElement;
+                el.style.background = hero.badgeBg;
+                el.style.boxShadow = `0 4px 12px ${hero.accentColor}22`;
+                el.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={e => {
+                const el = e.currentTarget as HTMLElement;
+                el.style.background = hero.accentLight;
+                el.style.boxShadow = `0 1px 4px ${hero.accentColor}12`;
+                el.style.transform = "translateY(0)";
+              }}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Kembali
+            </button>
+
+            {/* Breadcrumb */}
+            <nav className="flex items-center gap-0" aria-label="breadcrumb">
+              <Link
+                href="/"
+                className="text-[11.5px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
+              >
+                CST Logistics
+              </Link>
+              <ChevronRight className="h-3 w-3 text-slate-300 mx-1 flex-shrink-0" />
+              <Link
+                href="/jasa"
+                className="text-[11.5px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
+              >
+                Katalog Jasa
+              </Link>
+              <ChevronRight className="h-3 w-3 text-slate-300 mx-1 flex-shrink-0" />
+              <span
+                className="text-[11px] font-bold px-2 py-0.5 rounded-md"
+                style={{ background: hero.badgeBg, color: hero.badgeText }}
+              >
+                {item.category}
+              </span>
+            </nav>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start gap-4 md:gap-7">
+            {/* Icon card — premium glassmorphism */}
+            <div
+              className="hero-icon-card flex-shrink-0 rounded-[16px] p-3.5"
+              style={{
+                background: hero.iconBg,
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: `1.5px solid ${hero.accentColor}2E`,
+                boxShadow: [
+                  `0 2px 4px rgba(0,0,0,0.04)`,
+                  `0 8px 20px ${hero.accentColor}1A`,
+                  `0 24px 60px -8px ${hero.accentColor}22`,
+                  `inset 0 1px 0 rgba(255,255,255,0.90)`,
+                  `inset 0 -1px 0 ${hero.accentColor}0A`,
+                ].join(", "),
+              }}
+            >
+              {ct === "trucking" ? (
+                <img src={cstLogo} alt="CST Logistic" className="h-10 w-auto max-w-[90px] object-contain" />
+              ) : (
+                <div style={{ color: hero.accentColor, filter: `drop-shadow(0 4px 12px ${hero.accentColor}40)` }}>
+                  <IconComp className="h-10 w-10" />
                 </div>
               )}
+            </div>
+
+            {/* Text block */}
+            <div className="flex-1 min-w-0">
+              {/* Service name */}
+              <h1
+                className="font-bold leading-[1.08] mb-2"
+                style={{
+                  fontSize: "clamp(20px, 3vw, 34px)",
+                  color: "#0A1628",
+                  letterSpacing: "-0.025em",
+                  textShadow: "0 2px 12px rgba(0,0,0,0.06)",
+                }}
+              >
+                {item.name}
+              </h1>
+
+              {/* Description */}
+              <p
+                className="leading-[1.65] mb-4"
+                style={{
+                  fontSize: "clamp(13px, 1.3vw, 14.5px)",
+                  color: "#374151",
+                  maxWidth: "520px",
+                  fontWeight: 400,
+                }}
+              >
+                {item.description}
+              </p>
+
+              {/* Feature pills — premium animated */}
+              <div className="flex flex-wrap gap-2">
+                {hero.features.map((f, i) => (
+                  <span
+                    key={f}
+                    className="hero-pill inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-full"
+                    style={{
+                      background: `linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.88) 100%)`,
+                      border: `1.5px solid ${hero.accentColor}28`,
+                      color: hero.accentText,
+                      boxShadow: [
+                        `0 1px 3px rgba(0,0,0,0.06)`,
+                        `0 4px 16px ${hero.accentColor}12`,
+                        `inset 0 1px 0 rgba(255,255,255,0.95)`,
+                      ].join(", "),
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      animationDelay: `${i * 60}ms`,
+                      "--pill-shadow": `${hero.accentColor}28`,
+                      "--pill-accent-border": `${hero.accentColor}55`,
+                    } as React.CSSProperties}
+                  >
+                    <span
+                      className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${hero.accentColor}, ${hero.glowB})`,
+                        boxShadow: `0 0 6px ${hero.accentColor}60`,
+                      }}
+                    />
+                    {f}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -753,16 +1132,40 @@ export default function JasaDetail() {
         <div className={ct === "trucking" ? "flex flex-col lg:flex-row gap-8 items-start" : "grid grid-cols-1 lg:grid-cols-3 gap-8"}>
           {/* Calculator section */}
           <div className={ct === "trucking" ? "flex-1 min-w-0" : "lg:col-span-2"}>
-            <div className={ct === "trucking" ? "" : "bg-white rounded-2xl border border-border shadow-sm overflow-hidden"}>
+            <div
+              className={ct === "trucking" ? "" : "bg-white rounded-2xl overflow-hidden"}
+              style={ct !== "trucking" ? {
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.08)",
+                border: "1px solid rgba(0,0,0,0.07)",
+              } : undefined}
+            >
               {ct !== "trucking" && (
-                <div className="border-b border-border px-6 py-4 flex items-center gap-2">
-                  <Calculator className="h-5 w-5 text-accent" />
-                  <h2 className="text-lg font-bold">Kalkulator Estimasi Biaya</h2>
-                  <span className="text-sm text-muted-foreground ml-1">— isi data untuk mendapatkan estimasi</span>
+                <div
+                  className="px-7 pt-6 pb-5"
+                  style={{
+                    borderBottom: `2px solid ${hero.accentColor}14`,
+                    background: `linear-gradient(135deg, ${hero.accentLight}60 0%, #FFFFFF 100%)`,
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="h-11 w-11 mt-0.5 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}CC 100%)`,
+                        boxShadow: `0 4px 14px ${hero.accentColor}35`,
+                      }}
+                    >
+                      <Calculator className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-[18px] font-bold text-slate-900 leading-tight tracking-tight">Kalkulator Estimasi Biaya</h2>
+                      <p className="text-[13px] text-slate-400 mt-0.5">Isi parameter layanan untuk mendapatkan estimasi harga</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              <div className={ct === "trucking" ? "" : "p-6 space-y-4"}>
+              <div className={ct === "trucking" ? "" : "px-7 py-6 space-y-5"}>
                 {ct === "air_freight" && <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1477,38 +1880,62 @@ export default function JasaDetail() {
 
                 {ct !== "trucking" && (
                   <>
-                    <Separator />
+                    <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
-                    <div className={`rounded-xl p-4 flex items-center justify-between ${subtotal > 0 ? `${colors.bg} border ${colors.text.replace("text", "border").replace("700", "200")}` : "bg-muted"}`}>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Estimasi Subtotal</p>
-                        <p className={`text-2xl font-bold ${subtotal > 0 ? colors.text : "text-foreground"}`}>
-                          {subtotal > 0 ? formatCurrency(subtotal) : "—"}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5 italic">
-                          Harga estimasi, final dikonfirmasi tim kami
-                        </p>
+                    {/* Premium estimasi subtotal */}
+                    <div
+                      className="rounded-2xl p-5 transition-all duration-300"
+                      style={subtotal > 0 ? {
+                        background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}E0 100%)`,
+                        boxShadow: `0 8px 28px ${hero.accentColor}30`,
+                      } : {
+                        background: "#F8FAFC",
+                        border: "1.5px solid #E2E8F0",
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.15em] mb-2" style={{ color: subtotal > 0 ? "rgba(255,255,255,0.6)" : "#94A3B8" }}>
+                            Estimasi Subtotal
+                          </p>
+                          <p className="text-[2rem] font-bold tracking-tight leading-none" style={{ color: subtotal > 0 ? "#FFFFFF" : "#CBD5E1" }}>
+                            {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                          </p>
+                          <p className="text-[11px] mt-2" style={{ color: subtotal > 0 ? "rgba(255,255,255,0.5)" : "#94A3B8" }}>
+                            Estimasi harga · dikonfirmasi tim CST
+                          </p>
+                        </div>
+                        {subtotal > 0 && (
+                          <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+                            <CheckCircle2 className="h-5 w-5 text-white/80" />
+                          </div>
+                        )}
                       </div>
-                      {subtotal > 0 && <CheckCircle2 className={`h-8 w-8 ${colors.text} opacity-60`} />}
                     </div>
 
                     {!added ? (
-                      <Button
-                        size="lg"
-                        className="w-full gap-2 h-12 text-base"
+                      <button
+                        type="button"
                         onClick={handleAddToCart}
                         disabled={subtotal <= 0}
+                        className="w-full h-[52px] rounded-xl font-bold text-[15px] flex items-center justify-center gap-2.5 transition-all duration-200 active:scale-[0.985] disabled:opacity-35 disabled:cursor-not-allowed text-white"
+                        style={{
+                          background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}CC 100%)`,
+                          boxShadow: `0 4px 16px ${hero.accentColor}35`,
+                        }}
+                        onMouseEnter={e => { if (subtotal > 0) { (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px ${hero.accentColor}50`; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; } }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 16px ${hero.accentColor}35`; (e.currentTarget as HTMLElement).style.transform = "translateY(0)"; }}
                       >
                         <ShoppingCart className="h-5 w-5" />
                         Tambahkan ke Pesanan
-                      </Button>
+                      </button>
                     ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-green-600 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm font-medium">
-                          <CheckCircle2 className="h-4 w-4" />
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2.5 text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200/80 rounded-xl px-4 py-3 text-[13px] font-semibold">
+                          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
                           {item.name} berhasil ditambahkan ke pesanan
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <Button variant="outline" onClick={() => {
                             setAdded(false);
                             setState({});
@@ -1521,12 +1948,17 @@ export default function JasaDetail() {
                             setCargoPhotoFiles([]);
                             setCargoPhotoUrls([]);
                             setTruckingStep(1);
-                          }} className="gap-1.5">
+                          }} className="gap-1.5 rounded-xl border-slate-200 text-slate-600 h-11">
                             <Calculator className="h-4 w-4" /> Hitung Ulang
                           </Button>
-                          <Button onClick={handleProceed} className="gap-1.5">
+                          <button
+                            type="button"
+                            onClick={handleProceed}
+                            className="rounded-xl text-white font-semibold text-[13px] flex items-center justify-center gap-1.5 h-11 transition-all"
+                            style={{ background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}CC 100%)` }}
+                          >
                             <ArrowRight className="h-4 w-4" /> Lanjut Pesan
-                          </Button>
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1537,66 +1969,138 @@ export default function JasaDetail() {
           </div>
 
           {/* Sidebar */}
-          <div className={ct === "trucking" ? "w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 space-y-4" : "space-y-6"}>
-            {/* Info card */}
-            <div className={`bg-white rounded-2xl shadow-sm p-5 space-y-4 ${ct === "trucking" ? "border border-slate-200/80" : "border border-border"}`}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-foreground text-sm">Informasi Layanan</h3>
-                {ct === "trucking" && <span className="text-[10px] px-2 py-0.5 bg-green-50 text-green-700 rounded-full font-medium border border-green-200">Aktif</span>}
-              </div>
-              <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                  <span className="text-muted-foreground text-xs">Kategori</span>
-                  <Badge className={`${colors.badge} border-0 text-xs`}>{item.category}</Badge>
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                  <span className="text-muted-foreground text-xs">Harga</span>
-                  {ct === "trucking"
-                    ? <span className="font-semibold text-green-700 text-xs">Sesuai Kalkulasi Jarak</span>
-                    : <span className="font-semibold text-amber-600 text-xs">Negosiasi / Quotation</span>
-                  }
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                  <span className="text-muted-foreground text-xs">Estimasi</span>
-                  <span className={`font-bold text-sm ${subtotal > 0 ? "text-green-700" : "text-slate-400"}`}>
+          <div className={ct === "trucking" ? "w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 space-y-4" : "space-y-4"}>
+
+            {/* ── Premium info card ── */}
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{
+                boxShadow: `0 4px 6px -1px rgba(0,0,0,0.04), 0 12px 40px -4px rgba(0,0,0,0.10)`,
+                border: "1px solid rgba(0,0,0,0.07)",
+              }}
+            >
+              {/* Premium blue header */}
+              <div
+                className="px-5 py-5"
+                style={{
+                  background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}DD 100%)`,
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                {/* Decorative circles */}
+                <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full opacity-10" style={{ background: "white" }} />
+                <div className="absolute -bottom-6 -left-6 w-20 h-20 rounded-full opacity-10" style={{ background: "white" }} />
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">Informasi Layanan</p>
+                    <span className="text-[10px] px-2.5 py-0.5 bg-white/20 text-white/85 rounded-full font-semibold backdrop-blur-sm">
+                      {item.category}
+                    </span>
+                  </div>
+                  <p className={`text-[2rem] font-bold tracking-tight leading-none ${subtotal > 0 ? "text-white" : "text-white/30"}`}>
                     {subtotal > 0 ? formatCurrency(subtotal) : "—"}
+                  </p>
+                  <p className="text-[11.5px] text-white/55 mt-2 leading-snug">
+                    {ct === "trucking" ? "Sesuai kalkulasi jarak & armada" : "Negosiasi / Quotation"}
+                  </p>
+                </div>
+              </div>
+
+              {/* White body */}
+              <div className="bg-white divide-y divide-slate-100/80">
+                <div className="flex justify-between items-center px-5 py-3.5">
+                  <span className="text-[12px] text-slate-400 font-medium">Kategori</span>
+                  <span
+                    className="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+                    style={{ background: hero.badgeBg, color: hero.badgeText }}
+                  >{item.category}</span>
+                </div>
+                <div className="flex justify-between items-center px-5 py-3.5">
+                  <span className="text-[12px] text-slate-400 font-medium">Status</span>
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full ring-1 ring-emerald-200/80">
+                    ● Tersedia
                   </span>
                 </div>
                 {ct === "trucking" && state.vehicleType && (
-                  <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                    <span className="text-muted-foreground text-xs">Kendaraan</span>
-                    <span className="font-medium text-xs text-slate-700 text-right max-w-[140px] leading-tight">{state.vehicleType}</span>
+                  <div className="flex justify-between items-center px-5 py-3.5">
+                    <span className="text-[12px] text-slate-400 font-medium">Kendaraan</span>
+                    <span className="text-[11px] font-semibold text-slate-700 text-right max-w-[150px] leading-snug">{state.vehicleType}</span>
                   </div>
                 )}
                 {ct === "trucking" && state.distance && (
-                  <div className="flex justify-between items-center py-1.5">
-                    <span className="text-muted-foreground text-xs">Jarak</span>
-                    <span className="font-medium text-xs text-slate-700">{state.distance} km</span>
+                  <div className="flex justify-between items-center px-5 py-3.5">
+                    <span className="text-[12px] text-slate-400 font-medium">Jarak</span>
+                    <span className="text-[11px] font-semibold text-slate-700">{state.distance} km</span>
                   </div>
                 )}
               </div>
-              <button
-                onClick={requireAuthThenBook}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-slate-200 text-slate-700 text-sm font-semibold hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 transition-all duration-200"
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Lihat Keranjang Pesanan
-              </button>
+
+              {/* CTA button */}
+              <div className="bg-white px-5 pb-5 pt-3">
+                <button
+                  type="button"
+                  onClick={requireAuthThenBook}
+                  className="w-full h-[48px] rounded-xl flex items-center justify-center gap-2.5 text-[13.5px] font-bold transition-all duration-200 active:scale-[0.98] text-white"
+                  style={{
+                    background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}CC 100%)`,
+                    boxShadow: `0 4px 16px ${hero.accentColor}3A`,
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 24px ${hero.accentColor}55`; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 16px ${hero.accentColor}3A`; (e.currentTarget as HTMLElement).style.transform = "translateY(0)"; }}
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Lihat Keranjang Pesanan
+                </button>
+              </div>
             </div>
 
-            {/* Related services */}
+            {/* ── Trust badges ── */}
+            <div
+              className="bg-white rounded-2xl px-5 py-4"
+              style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
+            >
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-3">Mengapa CST Logistics?</p>
+              <div className="space-y-2.5">
+                {[
+                  { icon: "🛡️", text: "Berlisensi & Terdaftar Resmi" },
+                  { icon: "⏱️", text: "Respon Cepat & Profesional" },
+                  { icon: "📦", text: "Kargo Aman & Terlindungi" },
+                  { icon: "💬", text: "Dukungan WhatsApp 24/7" },
+                ].map(b => (
+                  <div key={b.text} className="flex items-center gap-2.5">
+                    <span className="text-base flex-shrink-0">{b.icon}</span>
+                    <span className="text-[12.5px] text-slate-600 font-medium">{b.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Related services ── */}
             {otherServices.length > 0 && (
-              <div className="bg-white rounded-2xl border border-border shadow-sm p-6 space-y-3">
-                <h3 className="font-bold text-foreground">Layanan {item.category} Lainnya</h3>
-                <div className="space-y-2">
+              <div
+                className="bg-white rounded-2xl overflow-hidden"
+                style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
+              >
+                <div className="px-5 pt-4 pb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Layanan {item.category} Lainnya
+                  </p>
+                </div>
+                <div className="divide-y divide-slate-100/80 px-2 pb-2">
                   {otherServices.map((s) => (
                     <Link key={s.id} href={`/jasa/${s.id}`}>
-                      <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                        <div>
-                          <p className="text-sm font-medium group-hover:text-accent transition-colors">{s.name}</p>
-                          <p className="text-xs text-muted-foreground leading-tight">{s.description}</p>
+                      <div className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-slate-800 group-hover:text-slate-900 truncate">{s.name}</p>
+                          <p className="text-[11px] text-slate-400 leading-tight mt-0.5 truncate">{s.description}</p>
                         </div>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-accent transition-colors flex-shrink-0" />
+                        <div
+                          className="h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all"
+                          style={{ background: hero.accentLight }}
+                        >
+                          <ArrowRight className="h-3.5 w-3.5 transition-colors" style={{ color: hero.accentColor }} />
+                        </div>
                       </div>
                     </Link>
                   ))}
@@ -1606,10 +2110,16 @@ export default function JasaDetail() {
 
             {/* Back to catalog */}
             <Link href="/jasa">
-              <Button variant="ghost" className="w-full gap-2 text-muted-foreground">
-                <ArrowLeft className="h-4 w-4" />
+              <button
+                type="button"
+                className="w-full h-10 rounded-xl flex items-center justify-center gap-2 text-[13px] font-medium text-slate-400 hover:text-slate-700 hover:bg-white transition-all duration-200"
+                style={{ border: "1px solid transparent" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.border = "1px solid rgba(0,0,0,0.08)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.border = "1px solid transparent"; }}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
                 Lihat Semua Layanan
-              </Button>
+              </button>
             </Link>
           </div>
         </div>
@@ -1620,21 +2130,21 @@ export default function JasaDetail() {
         <div
           className="fixed bottom-0 left-0 right-0 z-40"
           style={{
-            background: "rgba(255,255,255,0.95)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            borderTop: "1px solid #E2E8F0",
-            boxShadow: "0 -4px 24px rgba(15,23,42,0.08)",
+            background: "rgba(255,255,255,0.97)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderTop: "1px solid rgba(0,0,0,0.07)",
+            boxShadow: "0 -4px 32px rgba(0,0,0,0.08)",
           }}
         >
-          <div className="max-w-[1200px] mx-auto px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
+          <div className="max-w-[1200px] mx-auto px-4 py-3.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
             {!added ? (
               <>
                 {truckingStep > 1 ? (
                   <button
                     type="button"
                     onClick={() => setTruckingStep(truckingStep - 1)}
-                    className="sm:min-w-[130px] py-3.5 px-6 rounded-xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5"
+                    className="sm:min-w-[130px] py-3.5 px-6 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5"
                   >
                     ← Kembali
                   </button>
@@ -1644,7 +2154,8 @@ export default function JasaDetail() {
                     type="button"
                     onClick={handleNextStep}
                     disabled={truckingPayment === "transfer" && !truckingTransferTerm}
-                    className="sm:min-w-[200px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    className="sm:min-w-[200px] text-white py-3.5 px-8 rounded-xl font-bold text-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    style={{ background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}CC 100%)`, boxShadow: `0 4px 16px ${hero.accentColor}35` }}
                   >
                     Lanjut <ArrowRight className="h-4 w-4" />
                   </button>
@@ -1653,7 +2164,8 @@ export default function JasaDetail() {
                     type="button"
                     onClick={handleAddToCart}
                     disabled={subtotal <= 0}
-                    className="sm:min-w-[220px] bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white py-3.5 px-8 rounded-xl font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                    className="sm:min-w-[220px] text-white py-3.5 px-8 rounded-xl font-bold text-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                    style={{ background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}CC 100%)`, boxShadow: `0 4px 16px ${hero.accentColor}35` }}
                   >
                     <ShoppingCart className="h-4 w-4" />
                     Tambahkan ke Pesanan
@@ -1665,14 +2177,15 @@ export default function JasaDetail() {
                 <button
                   type="button"
                   onClick={() => { setAdded(false); setState({}); setTruckingStep(1); setTruckingStops([]); setOrderNow(false); setCargoCategory(""); setKoliQty(""); setGrossWeight(""); setDimensions([newDimRow()]); setCargoPhotoFiles([]); setCargoPhotoUrls([]); setTruckingPayment(""); setTruckingTransferTerm(""); setTruckingPayTerm(""); setTruckingDpNext(""); }}
-                  className="flex-1 sm:flex-none sm:min-w-[130px] py-3.5 px-5 rounded-xl border-2 border-slate-200 text-slate-700 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5"
+                  className="flex-1 sm:flex-none sm:min-w-[130px] py-3.5 px-5 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5"
                 >
                   <Calculator className="h-4 w-4" /> Hitung Ulang
                 </button>
                 <button
                   type="button"
                   onClick={handleProceed}
-                  className="flex-1 sm:flex-none sm:min-w-[160px] py-3.5 px-5 rounded-xl bg-gradient-to-r from-[#0B5CAD] to-[#0D6EFD] text-white font-bold text-sm shadow-md hover:from-[#083B70] hover:to-[#0B5CAD] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                  className="flex-1 sm:flex-none sm:min-w-[160px] text-white font-bold text-sm active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 py-3.5 px-5 rounded-xl"
+                  style={{ background: `linear-gradient(135deg, ${hero.accentColor} 0%, ${hero.accentColor}CC 100%)`, boxShadow: `0 4px 16px ${hero.accentColor}35` }}
                 >
                   Lanjut Pesan <ArrowRight className="h-4 w-4" />
                 </button>

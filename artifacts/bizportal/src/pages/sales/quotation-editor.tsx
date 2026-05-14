@@ -68,7 +68,7 @@ import {
   type Customer,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Send, Check, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal, Pencil, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Send, Check, CheckCircle, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal, Pencil, Loader2 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -219,16 +219,29 @@ interface LineDraft {
   unitPrice: number;
 }
 
-export default function SalesDocumentEditorPage() {
+interface EditorProps { kind?: "quote" | "order" }
+
+export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps = {}) {
   const [, paramsNew] = useRoute("/sales/quotations/new");
+  const [, paramsOrderNew] = useRoute("/sales/orders/new");
   const [, paramsQuote] = useRoute("/sales/quotations/:id");
   const [, paramsOrder] = useRoute("/sales/orders/:id");
   const [, navigate] = useLocation();
+
+  // Read URL query params for pre-fill when coming from portal order
+  const urlParams = new URLSearchParams(window.location.search);
+  const fromPortal = urlParams.get("fromPortal") ?? null;       // e.g. "CST/2026/000123"
+  // prop kind takes precedence, then URL param, then route detection
+  const urlKind = propKind ?? (paramsOrderNew !== null || paramsOrder !== null ? "order" : urlParams.get("kind"));
+  const urlCustomer = urlParams.get("customer") ?? "";
+  const urlOrigin = urlParams.get("origin") ?? "";
+  const urlDestination = urlParams.get("destination") ?? "";
+  const urlPrice = urlParams.get("price") ?? "";
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
 
-  const isNew = !!paramsNew;
+  const isNew = !!paramsNew || !!paramsOrderNew;
   const idStr = paramsQuote?.id ?? paramsOrder?.id;
   const id = idStr ? Number(idStr) : null;
 
@@ -448,6 +461,24 @@ export default function SalesDocumentEditorPage() {
     }
   }, [isNew, taxApplied, acctSettings]);
 
+  // Pre-fill form when navigating from a portal order (fromPortal query param)
+  const [portalPrefillDone, setPortalPrefillDone] = useState(false);
+  useEffect(() => {
+    if (!isNew || portalPrefillDone) return;
+    if (!fromPortal) return;
+    if (urlCustomer) setCustomerName(urlCustomer);
+    if (urlOrigin) setOrigin(urlOrigin);
+    if (urlDestination) setDestination(urlDestination);
+    if (urlPrice) {
+      const price = parseFloat(urlPrice);
+      if (!isNaN(price) && price > 0) {
+        setLines([{ name: "Jasa Pengiriman", quantity: 1, unitPrice: price }]);
+      }
+    }
+    setNotes(`Dibuat dari Portal Order: ${fromPortal}`);
+    setPortalPrefillDone(true);
+  }, [isNew, fromPortal, portalPrefillDone, urlCustomer, urlOrigin, urlDestination, urlPrice]);
+
   const subtotal = useMemo(
     () => lines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unitPrice || 0), 0),
     [lines],
@@ -588,8 +619,9 @@ export default function SalesDocumentEditorPage() {
       toast({ title: t.common.error, variant: "destructive" });
       return;
     }
+    const isPortalOrder = !!(fromPortal || urlKind === "order");
     const body = {
-      kind: "quote" as const,
+      kind: (isPortalOrder ? "order" : "quote") as "order" | "quote",
       customerId,
       customerName,
       taxRateId: taxRateId ?? null,
@@ -614,7 +646,9 @@ export default function SalesDocumentEditorPage() {
         const created = await createMut.mutateAsync({ data: body });
         qc.invalidateQueries({ queryKey: getListSalesDocumentsQueryKey() });
         toast({ title: t.common.success, description: created.docNumber });
-        navigate(`/sales/quotations/${created.id}`);
+        // Jika dibuat sebagai SO (dari portal order), navigasi ke halaman orders
+        const isPortalOrder2 = !!(fromPortal || urlKind === "order");
+        navigate(isPortalOrder2 ? `/sales/orders/${created.id}` : `/sales/quotations/${created.id}`);
       } else if (id) {
         await updateMut.mutateAsync({ id, data: body });
         qc.invalidateQueries({ queryKey: getGetSalesDocumentQueryKey(id) });
@@ -682,7 +716,7 @@ export default function SalesDocumentEditorPage() {
             </Link>
             <div>
               <h1 className="text-2xl font-bold">
-                {isNew ? "Quotation Baru" : doc?.docNumber}
+                {isNew ? (fromPortal ? "Buat Sales Order" : "Quotation Baru") : doc?.docNumber}
               </h1>
               {doc && (
                 <div className="flex items-center gap-2 mt-1">
@@ -810,6 +844,16 @@ export default function SalesDocumentEditorPage() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {fromPortal && isNew && (
+          <div className="flex items-center gap-3 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+            <CheckCircle className="h-4 w-4 shrink-0 text-green-600" />
+            <span>
+              Membuat <strong>Sales Order</strong> dari portal order{" "}
+              <strong>{fromPortal}</strong>. Formulir sudah diisi otomatis — periksa dan sesuaikan sebelum menyimpan.
+            </span>
+          </div>
         )}
 
         <Card>

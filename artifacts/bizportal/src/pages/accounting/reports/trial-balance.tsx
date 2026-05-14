@@ -6,18 +6,21 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useGetTrialBalance, getGetTrialBalanceQueryKey } from "@workspace/api-client-react";
+import { useCompany } from "@/contexts/CompanyContext";
 import { FileSpreadsheet, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
 export default function TrialBalancePage() {
+  const { activeCompanyId } = useCompany();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const params = useMemo(() => ({
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
-  }), [from, to]);
+    company: activeCompanyId,
+  }), [from, to, activeCompanyId]);
   const { data, isLoading } = useGetTrialBalance(params, { query: { queryKey: getGetTrialBalanceQueryKey(params) } });
 
   const rows = data?.rows ?? [];

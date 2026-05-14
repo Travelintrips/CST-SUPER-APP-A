@@ -1,11 +1,13 @@
 import path from "path";
 import fs from "fs";
+import type { IncomingMessage, ServerResponse } from "http";
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import pinoHttp from "pino-http";
+import { pinoHttp } from "pino-http";
 import router from "./routes";
 import authRouter from "./routes/auth";
+import companiesRouter from "./routes/companies";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
@@ -30,14 +32,14 @@ app.use(
   pinoHttp({
     logger,
     serializers: {
-      req(req) {
+      req(req: IncomingMessage & { id?: string }) {
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
         };
       },
-      res(res) {
+      res(res: ServerResponse) {
         return {
           statusCode: res.statusCode,
         };
@@ -56,6 +58,21 @@ app.use(authMiddleware);
 
 // Auth routes (login/callback/logout/mobile-auth) — mounted under /api
 app.use("/api", authRouter);
+
+// ─── Customer Portal Static Serving ──────────────────────────────────────────
+// Customer portal is built with base="/" so assets are at /assets/...
+// Serves at root "/" so confirm links (https://domain/confirm/:token) work.
+// Must come BEFORE /api routes for static assets, but SPA fallback is AFTER.
+
+const CUSTOMER_PORTAL_DIST = path.resolve(
+  process.cwd(),
+  "../customer-portal/dist/public",
+);
+
+if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
+  // Serve static files (JS/CSS/images) — these paths never conflict with /api/*
+  app.use(express.static(CUSTOMER_PORTAL_DIST, { index: false }));
+}
 
 // ─── BizPortal Static Serving ────────────────────────────────────────────────
 // BizPortal is built with base="/bizportal/" so all asset hrefs are /bizportal/...
@@ -107,7 +124,26 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+app.use("/api/companies", companiesRouter);
 app.use("/api", router);
+
+// ─── Customer Portal SPA Fallback ────────────────────────────────────────────
+// For any non-API, non-BizPortal path (e.g. /confirm/:token, /, /services, etc.)
+// serve the customer portal index.html so client-side routing works.
+if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
+  const PORTAL_SKIP = ["/api/", "/bizportal", "/login", "/logout", "/callback", "/auth", "/mobile-auth"];
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (PORTAL_SKIP.some((p) => req.path === p || req.path.startsWith(p + "/") || req.path.startsWith(p))) {
+      return next();
+    }
+    const indexPath = path.join(CUSTOMER_PORTAL_DIST, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      next();
+    }
+  });
+}
 
 // Global error handler — logs unhandled errors and returns JSON
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {

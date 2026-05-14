@@ -35,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
-  RefreshCw, MessageCircle,
+  RefreshCw, MessageCircle, Trash2, ListChecks,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -113,6 +113,14 @@ export default function LogisticsPortalOrderDetailPage() {
 
   const [approveDialog, setApproveDialog] = useState<LogisticQuote | null>(null);
   const [adminReply, setAdminReply] = useState("");
+
+  // [MULTI-MODE] Vendor Offers state
+  const [offerDialog, setOfferDialog] = useState(false);
+  const [offerForm, setOfferForm] = useState({
+    vendorId: "", offerPrice: "", finalCustomerPrice: "",
+    vehicleYear: "", carrierName: "", transitDays: "", notes: "",
+  });
+  const [sendingOptions, setSendingOptions] = useState(false);
   const [sendingReply, setSendingReply] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -130,6 +138,23 @@ export default function LogisticsPortalOrderDetailPage() {
       const res = await fetch("/api/logistic/orders/vendors");
       if (!res.ok) throw new Error("Failed to load vendors");
       return res.json() as Promise<VendorRow[]>;
+    },
+  });
+
+  // [MULTI-MODE] Vendor Offers query
+  interface VendorOffer {
+    id: number; orderId: number; vendorId: number | null; vendorName: string | null;
+    transportMode: string | null; offerPrice: number; vehicleYear: number | null;
+    carrierName: string | null; transitDays: number | null; notes: string | null;
+    isSelectedByAdmin: boolean; finalCustomerPrice: number | null;
+    optionLabel: string | null; status: string;
+  }
+  const { data: vendorOffers = [], refetch: refetchOffers } = useQuery<VendorOffer[]>({
+    queryKey: ["vendor-offers", orderId],
+    queryFn: async () => {
+      const res = await fetch(`/api/logistic/orders/${orderId}/vendor-offers`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<VendorOffer[]>;
     },
   });
 
@@ -186,6 +211,53 @@ export default function LogisticsPortalOrderDetailPage() {
     qc.invalidateQueries({ queryKey: getListLogisticOrderQuotesQueryKey(orderId) });
     qc.invalidateQueries({ queryKey: getGetLogisticOrderQueryKey(orderId) });
     qc.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+  }
+
+  // [MULTI-MODE] Vendor Offer handlers
+  async function handleCreateOffer() {
+    const vp = parseFloat(offerForm.offerPrice);
+    if (isNaN(vp) || vp <= 0) { toast({ title: "Harga vendor wajib diisi", variant: "destructive" }); return; }
+    const payload: Record<string, unknown> = { offerPrice: vp };
+    if (offerForm.vendorId) payload.vendorId = parseInt(offerForm.vendorId);
+    if (offerForm.finalCustomerPrice) payload.finalCustomerPrice = parseFloat(offerForm.finalCustomerPrice);
+    if (offerForm.vehicleYear) payload.vehicleYear = parseInt(offerForm.vehicleYear);
+    if (offerForm.carrierName) payload.carrierName = offerForm.carrierName;
+    if (offerForm.transitDays) payload.transitDays = parseInt(offerForm.transitDays);
+    if (offerForm.notes) payload.notes = offerForm.notes;
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/vendor-offers`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Gagal menyimpan");
+      toast({ title: "Opsi berhasil ditambahkan" });
+      setOfferDialog(false);
+      setOfferForm({ vendorId: "", offerPrice: "", finalCustomerPrice: "", vehicleYear: "", carrierName: "", transitDays: "", notes: "" });
+      void refetchOffers();
+    } catch { toast({ title: t.common.error, variant: "destructive" }); }
+  }
+
+  async function handleDeleteOffer(offerId: number) {
+    if (!confirm("Hapus opsi ini?")) return;
+    try {
+      await fetch(`/api/logistic/orders/vendor-offers/${offerId}`, { method: "DELETE" });
+      void refetchOffers();
+    } catch { toast({ title: t.common.error, variant: "destructive" }); }
+  }
+
+  async function handleSendOptions() {
+    setSendingOptions(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/send-customer-options`, { method: "POST" });
+      const body = await res.json() as { ok?: boolean; message?: string; optionCount?: number };
+      if (!res.ok) throw new Error(body.message ?? "Gagal");
+      toast({ title: `${body.optionCount ?? 0} opsi berhasil dikirim ke customer via WA` });
+      void refetchOffers();
+      invalidateAll();
+    } catch (e: unknown) {
+      toast({ title: (e as Error).message, variant: "destructive" });
+    } finally {
+      setSendingOptions(false);
+    }
   }
 
   function handleSendRfq() {
@@ -371,12 +443,31 @@ export default function LogisticsPortalOrderDetailPage() {
               {order.customerName} · {order.companyName} · {order.email} · {order.phone}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {order.status === "New Order" || order.status === "Under Review" ? (
               <Button size="sm" className="gap-2" onClick={() => setRfqDialog(true)}>
                 <Send className="h-4 w-4" /> Kirim RFQ ke Vendor
               </Button>
             ) : null}
+            {order.status === "Confirmed" && (
+              <Button
+                size="sm"
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    kind: "order",
+                    fromPortal: order.orderNumber,
+                    customer: order.customerName,
+                    origin: order.origin,
+                    destination: order.destination,
+                    ...(order.finalSellingPrice != null ? { price: String(order.finalSellingPrice) } : {}),
+                  });
+                  navigate(`/sales/quotations/new?${params.toString()}`);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Buat Sales Order
+              </Button>
+            )}
           </div>
         </div>
 
@@ -388,6 +479,15 @@ export default function LogisticsPortalOrderDetailPage() {
               {quotes.length > 0 && (
                 <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-blue-600 text-white text-[10px] w-4 h-4">
                   {quotes.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="options" className="gap-1.5">
+              <ListChecks className="h-3.5 w-3.5" />
+              Opsi Customer
+              {vendorOffers.length > 0 && (
+                <span className="ml-0.5 inline-flex items-center justify-center rounded-full bg-green-600 text-white text-[10px] w-4 h-4">
+                  {vendorOffers.length}
                 </span>
               )}
             </TabsTrigger>
@@ -629,7 +729,110 @@ export default function LogisticsPortalOrderDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          {/* ── Tab 3: Chat AI ── */}
+          {/* ── Tab 3: Opsi Customer (Multi-Mode) ── */}
+          <TabsContent value="options" className="space-y-4 mt-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Opsi Anonim untuk Customer ({vendorOffers.length})</CardTitle>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => setOfferDialog(true)}>
+                      <Plus className="h-3.5 w-3.5" /> Tambah Opsi
+                    </Button>
+                    {vendorOffers.some((o) => o.status !== "CUSTOMER_CHOSEN") && vendorOffers.length > 0 && (
+                      <Button
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs bg-green-600 hover:bg-green-700"
+                        onClick={() => void handleSendOptions()}
+                        disabled={sendingOptions}
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        {sendingOptions ? "Mengirim..." : "Kirim ke Customer via WA"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {vendorOffers.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">
+                    Belum ada opsi. Tambahkan minimal 1 opsi vendor, lalu kirim ke customer.
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-24">Label</TableHead>
+                        <TableHead>Vendor (Internal)</TableHead>
+                        <TableHead className="text-right">Harga Vendor</TableHead>
+                        <TableHead className="text-right">Harga Customer</TableHead>
+                        <TableHead>Info</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {vendorOffers.map((o) => (
+                        <TableRow key={o.id} className={o.status === "CUSTOMER_CHOSEN" ? "bg-green-50" : ""}>
+                          <TableCell className="font-medium text-sm">{o.optionLabel ?? `#${o.id}`}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{o.vendorName ?? o.carrierName ?? "—"}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{idr(o.offerPrice)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm font-semibold">
+                            {idr(o.finalCustomerPrice ?? o.offerPrice)}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground space-y-0.5">
+                            {o.vehicleYear && <div>Tahun: {o.vehicleYear}</div>}
+                            {o.transitDays && <div>Transit: {o.transitDays} hari</div>}
+                            {o.notes && <div className="max-w-[160px] truncate">{o.notes}</div>}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-xs ${
+                              o.status === "CUSTOMER_CHOSEN" ? "bg-green-100 text-green-800 border-green-200" :
+                              o.status === "OPTIONS_SENT" ? "bg-blue-100 text-blue-800 border-blue-200" :
+                              o.status === "CUSTOMER_REJECTED" ? "bg-red-100 text-red-800 border-red-200" :
+                              "bg-gray-100 text-gray-700"
+                            }`}>
+                              {o.status === "CUSTOMER_CHOSEN" ? "✓ Dipilih" :
+                               o.status === "OPTIONS_SENT" ? "Terkirim" :
+                               o.status === "CUSTOMER_REJECTED" ? "Ditolak" : "Menunggu"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {o.status === "PENDING" && (
+                              <Button
+                                size="sm" variant="ghost"
+                                className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
+                                onClick={() => void handleDeleteOffer(o.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            {(order as Record<string, unknown>).optionsToken && (
+              <Card className="border-blue-200 bg-blue-50/50">
+                <CardContent className="p-4 text-sm space-y-1">
+                  <p className="font-medium text-blue-800">Link opsi sudah dikirim ke customer:</p>
+                  <a
+                    href={`/choose-option/${(order as Record<string, unknown>).optionsToken as string}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-blue-600 underline text-xs break-all"
+                  >
+                    /choose-option/{(order as Record<string, unknown>).optionsToken as string}
+                  </a>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── Tab 4: Chat AI ── */}
           {isAiOrder && (
             <TabsContent value="chat-ai" className="mt-4">
               <Card>
@@ -1015,6 +1218,86 @@ export default function LogisticsPortalOrderDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* ── Dialog Tambah Opsi Vendor (Multi-Mode) ── */}
+      <Dialog open={offerDialog} onOpenChange={setOfferDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tambah Opsi untuk Customer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Vendor (opsional)</label>
+              <select
+                className="w-full mt-1 border rounded-md px-3 py-2 text-sm bg-background"
+                value={offerForm.vendorId}
+                onChange={(e) => setOfferForm({ ...offerForm, vendorId: e.target.value })}
+              >
+                <option value="">— Pilih vendor (opsional) —</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Harga Vendor (Rp) *</label>
+                <input
+                  type="number" min="0" placeholder="0"
+                  className="w-full mt-1 border rounded-md px-3 py-2 text-sm bg-background"
+                  value={offerForm.offerPrice}
+                  onChange={(e) => setOfferForm({ ...offerForm, offerPrice: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Harga Customer (Rp)</label>
+                <input
+                  type="number" min="0" placeholder="Sama dgn harga vendor"
+                  className="w-full mt-1 border rounded-md px-3 py-2 text-sm bg-background"
+                  value={offerForm.finalCustomerPrice}
+                  onChange={(e) => setOfferForm({ ...offerForm, finalCustomerPrice: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Tahun Unit</label>
+                <input
+                  type="number" min="2000" max="2030" placeholder="contoh: 2022"
+                  className="w-full mt-1 border rounded-md px-3 py-2 text-sm bg-background"
+                  value={offerForm.vehicleYear}
+                  onChange={(e) => setOfferForm({ ...offerForm, vehicleYear: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Transit (hari)</label>
+                <input
+                  type="number" min="1" placeholder="contoh: 3"
+                  className="w-full mt-1 border rounded-md px-3 py-2 text-sm bg-background"
+                  value={offerForm.transitDays}
+                  onChange={(e) => setOfferForm({ ...offerForm, transitDays: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Catatan</label>
+              <input
+                type="text" placeholder="Catatan untuk customer (opsional)"
+                className="w-full mt-1 border rounded-md px-3 py-2 text-sm bg-background"
+                value={offerForm.notes}
+                onChange={(e) => setOfferForm({ ...offerForm, notes: e.target.value })}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded-md p-2">
+              ⚠️ Nama vendor <strong>tidak</strong> akan ditampilkan ke customer — hanya label "Opsi 1", "Opsi 2", dst.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOfferDialog(false)}>Batal</Button>
+            <Button onClick={() => void handleCreateOffer()}>Simpan Opsi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </AppShell>
   );
 }

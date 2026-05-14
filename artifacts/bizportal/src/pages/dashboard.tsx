@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
@@ -364,6 +364,175 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* ── KPI Hero Section ── */}
+        {(() => {
+          const s = summary as (typeof summary & {
+            salesRevenueThisMonth?: number;
+            salesRevenuePrevMonth?: number;
+            salesOrdersThisMonth?: number;
+            salesOrdersPrevMonth?: number;
+            quotesActive?: number;
+            salesOrdersConfirmed?: number;
+            monthlyRevenueTrend?: { month: string; revenue: number }[];
+          }) | undefined;
+
+          const salesRevThis = s?.salesRevenueThisMonth ?? 0;
+          const salesRevPrev = s?.salesRevenuePrevMonth ?? 0;
+          const salesOrdThis = s?.salesOrdersThisMonth ?? 0;
+          const salesOrdPrev = s?.salesOrdersPrevMonth ?? 0;
+          const quotesAct = s?.quotesActive ?? 0;
+          const ordersConf = s?.salesOrdersConfirmed ?? 0;
+          const trend = s?.monthlyRevenueTrend ?? [];
+
+          const revDiff = salesRevPrev > 0 ? ((salesRevThis - salesRevPrev) / salesRevPrev) * 100 : null;
+          const ordDiff = salesOrdPrev > 0 ? ((salesOrdThis - salesOrdPrev) / salesOrdPrev) * 100 : null;
+
+          function TrendBadge({ diff }: { diff: number | null }) {
+            if (diff === null) return <span className="text-xs text-muted-foreground">—</span>;
+            if (diff > 0) return (
+              <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600 font-medium">
+                <TrendingUp className="h-3.5 w-3.5" />+{diff.toFixed(1)}%
+              </span>
+            );
+            if (diff < 0) return (
+              <span className="inline-flex items-center gap-0.5 text-xs text-destructive font-medium">
+                <TrendingDown className="h-3.5 w-3.5" />{diff.toFixed(1)}%
+              </span>
+            );
+            return <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"><Minus className="h-3.5 w-3.5" />0%</span>;
+          }
+
+          return (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Revenue Bulan Ini */}
+                <Link href="/sales/documents" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
+                  <Card className="h-full border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-white hover:shadow-md hover:border-emerald-300 transition-all">
+                    <CardContent className="pt-4 pb-3 px-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-emerald-100">
+                            <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground">Revenue Bulan Ini</span>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      {isLoading
+                        ? <Skeleton className="h-7 w-32 bg-muted mb-1" />
+                        : <p className="text-xl font-bold text-emerald-700 truncate">{formatIDR(salesRevThis)}</p>
+                      }
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <TrendBadge diff={revDiff} />
+                        <span className="text-[10px] text-muted-foreground">vs bulan lalu</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+
+                {/* Orders Terkonfirmasi Bulan Ini */}
+                <Link href="/sales/documents?kind=order&status=confirmed" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
+                  <Card className="h-full border-blue-200/60 bg-gradient-to-br from-blue-50 to-white hover:shadow-md hover:border-blue-300 transition-all">
+                    <CardContent className="pt-4 pb-3 px-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-blue-100">
+                            <ShoppingCart className="h-3.5 w-3.5 text-blue-600" />
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground">Order Bulan Ini</span>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      {isLoading
+                        ? <Skeleton className="h-7 w-16 bg-muted mb-1" />
+                        : <p className="text-3xl font-bold text-blue-700">{formatNumber(salesOrdThis)}</p>
+                      }
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <TrendBadge diff={ordDiff} />
+                        <span className="text-[10px] text-muted-foreground">vs bulan lalu</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+
+                {/* Quotation Aktif */}
+                <Link href="/sales/documents?kind=quote&status=draft" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
+                  <Card className="h-full border-amber-200/60 bg-gradient-to-br from-amber-50 to-white hover:shadow-md hover:border-amber-300 transition-all">
+                    <CardContent className="pt-4 pb-3 px-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-amber-100">
+                            <FileText className="h-3.5 w-3.5 text-amber-600" />
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground">Penawaran Aktif</span>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      {isLoading
+                        ? <Skeleton className="h-7 w-16 bg-muted mb-1" />
+                        : <p className="text-3xl font-bold text-amber-700">{formatNumber(quotesAct)}</p>
+                      }
+                      <p className="text-[10px] text-muted-foreground mt-1">{formatNumber(ordersConf)} order terkonfirmasi</p>
+                    </CardContent>
+                  </Card>
+                </Link>
+
+                {/* Freight Aktif */}
+                <Link href="/logistics/freight" className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
+                  <Card className="h-full border-indigo-200/60 bg-gradient-to-br from-indigo-50 to-white hover:shadow-md hover:border-indigo-300 transition-all">
+                    <CardContent className="pt-4 pb-3 px-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-indigo-100">
+                            <Ship className="h-3.5 w-3.5 text-indigo-600" />
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground">Freight Aktif</span>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      {isLoading
+                        ? <Skeleton className="h-7 w-16 bg-muted mb-1" />
+                        : <p className="text-3xl font-bold text-indigo-700">{formatNumber(activeFreightCount)}</p>
+                      }
+                      <div className="flex items-center gap-2 mt-1">
+                        {awaitingQuoteCount > 0 && (
+                          <span className="text-[10px] text-amber-600">{awaitingQuoteCount} menunggu quote</span>
+                        )}
+                        {inTransitCount > 0 && (
+                          <span className="text-[10px] text-indigo-500">{inTransitCount} dalam transit</span>
+                        )}
+                        {awaitingQuoteCount === 0 && inTransitCount === 0 && (
+                          <span className="text-[10px] text-muted-foreground">Tidak ada pengiriman aktif</span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </div>
+
+              {/* Mini Sparkline Revenue 6 Bulan */}
+              {!isLoading && trend.length > 0 && (
+                <Card className="border-border">
+                  <CardHeader className="pb-2 pt-3 px-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BarChart2 className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Tren Revenue Sales (6 Bulan Terakhir)</CardTitle>
+                      </div>
+                      <Button variant="ghost" size="sm" asChild className="h-7 text-xs">
+                        <Link href="/sales/documents">Lihat Semua <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link>
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3">
+                    <RevenueSparkline data={trend} />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── Portal Orders — always at the TOP ── */}
         <Card className="border-primary/20">
@@ -947,5 +1116,63 @@ function ResponseTimeTrendCard({ entries }: { entries: ResponseTimeEntry[] }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function RevenueSparkline({ data }: { data: { month: string; revenue: number }[] }) {
+  if (!data.length) return null;
+
+  const W = 600;
+  const H = 72;
+  const PAD = 8;
+  const maxRev = Math.max(...data.map((d) => d.revenue), 1);
+  const step = (W - PAD * 2) / Math.max(data.length - 1, 1);
+
+  const pts = data.map((d, i) => ({
+    x: PAD + i * step,
+    y: PAD + (1 - d.revenue / maxRev) * (H - PAD * 2),
+    ...d,
+  }));
+
+  const polyline = pts.map((p) => `${p.x},${p.y}`).join(" ");
+  const areaPath = `M ${pts[0]!.x},${H} ${pts.map((p) => `L ${p.x},${p.y}`).join(" ")} L ${pts[pts.length - 1]!.x},${H} Z`;
+
+  const formatMonth = (m: string) => {
+    const [y, mo] = m.split("-");
+    const d = new Date(Number(y), Number(mo) - 1, 1);
+    return d.toLocaleDateString("id-ID", { month: "short" });
+  };
+
+  const formatIDRShort = (v: number) => {
+    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}M`;
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(0)}jt`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(0)}rb`;
+    return String(v);
+  };
+
+  return (
+    <div className="w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-16 overflow-visible" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgb(16,185,129)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="rgb(16,185,129)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill="url(#sparkGrad)" />
+        <polyline points={polyline} fill="none" stroke="rgb(16,185,129)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="3" fill="white" stroke="rgb(16,185,129)" strokeWidth="2" />
+        ))}
+      </svg>
+      <div className="flex justify-between mt-1 px-1">
+        {pts.map((p, i) => (
+          <div key={i} className="flex flex-col items-center gap-0.5" style={{ minWidth: 0 }}>
+            <span className="text-[10px] font-semibold text-emerald-700">{formatIDRShort(p.revenue)}</span>
+            <span className="text-[9px] text-muted-foreground">{formatMonth(p.month)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

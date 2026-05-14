@@ -111,8 +111,10 @@ async function upsertUser(claims: Record<string, unknown>) {
       .where(and(eq(usersTable.email, email), ne(usersTable.id, id)));
   }
 
-  // Auto-promote to admin if email matches ADMIN_EMAIL or ADMIN_EMAILS env var
+  // Auto-promote to admin if email matches hardcoded list or ADMIN_EMAIL/ADMIN_EMAILS env var
   const adminEmails = [
+    "admcst001@gmail.com",
+    "divatranssoetta@gmail.com",
     ...(process.env.ADMIN_EMAIL ?? "").split(","),
     ...(process.env.ADMIN_EMAILS ?? "").split(","),
   ]

@@ -9,12 +9,14 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useGetGeneralLedger, useListAccounts, getGetGeneralLedgerQueryKey } from "@workspace/api-client-react";
+import { useCompany } from "@/contexts/CompanyContext";
 import { BookOpen, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 
 const idr = (n: number) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n);
 
 export default function GeneralLedgerPage() {
+  const { activeCompanyId } = useCompany();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [accountId, setAccountId] = useState<number | undefined>();
@@ -22,7 +24,8 @@ export default function GeneralLedgerPage() {
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
     ...(accountId ? { accountId } : {}),
-  }), [from, to, accountId]);
+    company: activeCompanyId,
+  }), [from, to, accountId, activeCompanyId]);
   const { data, isLoading } = useGetGeneralLedger(params, { query: { queryKey: getGetGeneralLedgerQueryKey(params) } });
   const { data: accounts } = useListAccounts();
 

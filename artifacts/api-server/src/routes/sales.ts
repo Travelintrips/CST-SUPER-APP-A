@@ -18,6 +18,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
@@ -479,6 +480,28 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   const detail = await loadDocWithLines(id);
+
+  // Broadcast real-time notification to admin SSE clients
+  const actionLabels: Record<string, string> = {
+    send: "Dikirim ke Customer",
+    confirm: "Dikonfirmasi sebagai Sales Order",
+    cancel: "Dibatalkan",
+    draft: "Dikembalikan ke Draft",
+    mark_invoiced: "Invoice Dibuat",
+    cancel_invoice: "Invoice Dibatalkan",
+    mark_delivered: "Tandai Terkirim",
+  };
+  broadcastToAdmins("sales_order_update", {
+    docId: id,
+    docNumber: doc.docNumber,
+    customerName: doc.customerName,
+    action,
+    actionLabel: actionLabels[action] ?? action,
+    newStatus: (patch["status"] as string | undefined) ?? doc.status,
+    totalAmount: Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0),
+    updatedAt: new Date().toISOString(),
+  });
+
   return res.json(detail);
 });
 

@@ -10,23 +10,24 @@ globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
+
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
-  await esbuild({
+  const t0 = Date.now();
+  const result = await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",
     bundle: true,
     format: "esm",
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
-    logLevel: "info",
-    // Some packages may not be bundleable, so we externalize them, we can add more here as needed.
-    // Some of the packages below may not be imported or installed, but we're adding them in case they are in the future.
-    // Examples of unbundleable packages:
-    // - uses native modules and loads them dynamically (e.g. sharp)
-    // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
+    // Silent: suppress esbuild's built-in reporter (which adds ⚠️ for files >500KB).
+    // We print our own summary below using metafile data.
+    logLevel: "error",
+    metafile: true,
+    // Keep explicit list for native addons that can't be bundled.
     external: [
       "*.node",
       "pdfkit",
@@ -107,7 +108,7 @@ async function buildAll() {
     sourcemap: process.env.NODE_ENV !== "production" ? "linked" : false,
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
@@ -121,6 +122,18 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // Custom build summary — no ⚠️ threshold noise.
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+  const outputs = Object.entries(result.metafile.outputs)
+    .filter(([f]) => !f.endsWith(".map"))
+    .sort((a, b) => b[1].bytes - a[1].bytes);
+  const pad = Math.max(...outputs.map(([f]) => f.length));
+  for (const [file, { bytes }] of outputs) {
+    const kb = (bytes / 1024).toFixed(1).padStart(7);
+    console.log(`  ${file.padEnd(pad)}  ${kb} kb`);
+  }
+  console.log(`\n⚡ Done in ${elapsed}s`);
 }
 
 buildAll().catch((err) => {

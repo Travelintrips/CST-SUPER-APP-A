@@ -67,12 +67,14 @@ export const chartOfAccountsTable = pgTable("chart_of_accounts", {
   name: text("name").notNull(),
   type: accountTypeEnum("type").notNull(),
   parentId: integer("parent_id"),
+  companyId: integer("company_id"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const accountingJournalsTable = pgTable("accounting_journals", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
   type: journalTypeEnum("type").notNull(),
@@ -102,6 +104,7 @@ export const accountingTaxesTable = pgTable("accounting_taxes", {
 
 export const accountingEntriesTable = pgTable("accounting_entries", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
   entryNumber: text("entry_number").notNull().unique(),
   journalId: integer("journal_id")
     .notNull()
@@ -135,9 +138,9 @@ export const accountingEntryLinesTable = pgTable("accounting_entry_lines", {
   credit: numeric("credit", { precision: 14, scale: 2 }).notNull().default("0"),
 });
 
-// Singleton: id=1 always
 export const accountingSettingsTable = pgTable("accounting_settings", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
   arAccountId: integer("ar_account_id").references(() => chartOfAccountsTable.id, {
     onDelete: "set null",
   }),
@@ -210,6 +213,7 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
 
 export const accountingPaymentsTable = pgTable("accounting_payments", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
   paymentNumber: text("payment_number"),
   paymentType: accountingPaymentTypeEnum("payment_type").notNull(),
   status: accountingPaymentStatusEnum("status").notNull().default("posted"),

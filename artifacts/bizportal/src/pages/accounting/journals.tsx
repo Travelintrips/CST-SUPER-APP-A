@@ -13,29 +13,135 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import {
-  useListJournals, useCreateJournal, useUpdateJournal, useListAccounts,
-  getListJournalsQueryKey, type AccountingJournal,
+  type AccountingJournal,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, BookOpen, Printer, Download } from "lucide-react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { Pencil, Plus, BookOpen, Printer, Download, ChevronsUpDown, Check } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
+import { cn } from "@/lib/utils";
 
 const TYPE_LABELS: Record<string, string> = {
   sales: "Penjualan", purchase: "Pembelian", bank: "Bank", cash: "Kas", general: "Umum",
 };
 
+interface AccountComboboxProps {
+  value: number | null;
+  onChange: (val: number | null) => void;
+  accounts: { id: number; code: string; name: string }[];
+  placeholder?: string;
+}
+
+function AccountCombobox({ value, onChange, accounts, placeholder = "— Pilih akun —" }: AccountComboboxProps) {
+  const [popOpen, setPopOpen] = useState(false);
+
+  const selected = value != null ? accounts.find((a) => a.id === value) : null;
+  const label = selected ? `${selected.code} ${selected.name}` : placeholder;
+
+  return (
+    <Popover open={popOpen} onOpenChange={setPopOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={popOpen}
+          className="w-full justify-between font-normal text-sm h-9 px-3"
+        >
+          <span className="truncate text-left flex-1">{label}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[420px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Cari kode atau nama akun..." />
+          <CommandList className="max-h-64">
+            <CommandEmpty>Akun tidak ditemukan</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="— Tidak ada —"
+                onSelect={() => { onChange(null); setPopOpen(false); }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", value == null ? "opacity-100" : "opacity-0")} />
+                <span className="text-muted-foreground">— Tidak ada —</span>
+              </CommandItem>
+              {accounts.map((a) => (
+                <CommandItem
+                  key={a.id}
+                  value={`${a.code} ${a.name}`}
+                  onSelect={() => { onChange(a.id); setPopOpen(false); }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === a.id ? "opacity-100" : "opacity-0")} />
+                  <span className="font-mono text-xs mr-2 text-muted-foreground">{a.code}</span>
+                  <span>{a.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function JournalsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { data: journals } = useListJournals();
-  const { data: accounts } = useListAccounts();
-  const createMut = useCreateJournal();
-  const updateMut = useUpdateJournal();
+  const { activeCompanyId } = useCompany();
+
+  const journalsQK = ["journals", activeCompanyId] as const;
+  const { data: journals } = useQuery<AccountingJournal[]>({
+    queryKey: journalsQK,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/accounting/journals?company=${activeCompanyId}`, { credentials: "include", signal });
+      if (!res.ok) throw new Error("Gagal memuat jurnal");
+      return res.json() as Promise<AccountingJournal[]>;
+    },
+  });
+
+  const accountsQK = ["accounts", activeCompanyId] as const;
+  const { data: accounts } = useQuery<{ id: number; code: string; name: string }[]>({
+    queryKey: accountsQK,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/accounting/accounts?company=${activeCompanyId}`, { credentials: "include", signal });
+      if (!res.ok) throw new Error("Gagal memuat akun");
+      return res.json();
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: async (data: typeof form) => {
+      const res = await fetch(`/api/accounting/journals?company=${activeCompanyId}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: typeof form }) => {
+      const res = await fetch(`/api/accounting/journals/${id}?company=${activeCompanyId}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AccountingJournal | null>(null);
@@ -61,10 +167,10 @@ export default function JournalsPage() {
         await updateMut.mutateAsync({ id: editing.id, data: form });
         toast({ title: t.common.success });
       } else {
-        await createMut.mutateAsync({ data: form });
+        await createMut.mutateAsync(form);
         toast({ title: t.common.success });
       }
-      qc.invalidateQueries({ queryKey: getListJournalsQueryKey() });
+      qc.invalidateQueries({ queryKey: journalsQK });
       reset(); setOpen(false);
     } catch (e: any) {
       toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
@@ -77,6 +183,7 @@ export default function JournalsPage() {
     return a ? `${a.code} ${a.name}` : `#${id}`;
   };
 
+  const accList = accounts ?? [];
   const rows = journals ?? [];
   const headers = ["Kode", "Nama", "Tipe", "Akun Debit Default", "Akun Kredit Default", "Status"];
   const xlsxRows = () => rows.map((j) => [
@@ -113,6 +220,22 @@ export default function JournalsPage() {
                       <SelectTrigger data-testid="select-journal-type"><SelectValue /></SelectTrigger>
                       <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => (<SelectItem key={k} value={k}>{v}</SelectItem>))}</SelectContent>
                     </Select>
+                  </div>
+                  <div>
+                    <Label>Akun Debit Default</Label>
+                    <AccountCombobox
+                      value={form.defaultDebitAccountId}
+                      onChange={(v) => setForm({ ...form, defaultDebitAccountId: v })}
+                      accounts={accList}
+                    />
+                  </div>
+                  <div>
+                    <Label>Akun Kredit Default</Label>
+                    <AccountCombobox
+                      value={form.defaultCreditAccountId}
+                      onChange={(v) => setForm({ ...form, defaultCreditAccountId: v })}
+                      accounts={accList}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <input type="checkbox" id="active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />

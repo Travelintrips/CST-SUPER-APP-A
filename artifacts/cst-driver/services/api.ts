@@ -2,7 +2,7 @@ import { Job, ShipmentStatus } from '@/types';
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : '';
+  : process.env.EXPO_PUBLIC_API_URL ?? 'https://cstlogistic.co.id';
 
 const BASE_URL = `${API_BASE_URL}/api`;
 

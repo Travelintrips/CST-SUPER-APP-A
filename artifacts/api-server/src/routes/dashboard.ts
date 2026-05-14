@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable, apiResponseTimesTable } from "@workspace/db";
-import { sql, and, ne, eq } from "drizzle-orm";
+import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable, apiResponseTimesTable, salesDocumentsTable } from "@workspace/db";
+import { sql, and, ne, eq, gte, lt } from "drizzle-orm";
 import { getRecentResponseTimesFromDb } from "../lib/responseTimeLog";
 
 const router = Router();
@@ -9,6 +9,11 @@ const router = Router();
 router.get("/summary", async (req, res) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  const now = new Date();
+  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endOfPrevMonth = startOfThisMonth;
 
   const [
     [orderCount],
@@ -20,6 +25,14 @@ router.get("/summary", async (req, res) => {
     [activeFreight],
     [awaitingQuote],
     [inTransit],
+    // Sales metrics
+    [salesRevenueThisMonth],
+    [salesRevenuePrevMonth],
+    [salesOrdersThisMonth],
+    [salesOrdersPrevMonth],
+    [quotesActive],
+    [salesOrdersConfirmed],
+    monthlyTrend,
   ] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(ordersTable),
     db.select({ total: sql<number>`coalesce(sum(total_amount), 0)` }).from(ordersTable),
@@ -35,7 +48,71 @@ router.get("/summary", async (req, res) => {
       .where(eq(freightShipmentsTable.status, "rfq_sent")),
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
       .where(eq(freightShipmentsTable.status, "in_transit")),
+    // Revenue dari sales orders bulan ini (confirmed/done)
+    db.select({ total: sql<number>`coalesce(sum(grand_total), 0)` })
+      .from(salesDocumentsTable)
+      .where(and(
+        eq(salesDocumentsTable.kind, "order"),
+        sql`status IN ('confirmed','done')`,
+        gte(salesDocumentsTable.createdAt, startOfThisMonth),
+      )),
+    // Revenue dari sales orders bulan lalu
+    db.select({ total: sql<number>`coalesce(sum(grand_total), 0)` })
+      .from(salesDocumentsTable)
+      .where(and(
+        eq(salesDocumentsTable.kind, "order"),
+        sql`status IN ('confirmed','done')`,
+        gte(salesDocumentsTable.createdAt, startOfPrevMonth),
+        lt(salesDocumentsTable.createdAt, endOfPrevMonth),
+      )),
+    // Jumlah order bulan ini
+    db.select({ count: sql<number>`count(*)` })
+      .from(salesDocumentsTable)
+      .where(and(
+        eq(salesDocumentsTable.kind, "order"),
+        sql`status IN ('confirmed','done')`,
+        gte(salesDocumentsTable.createdAt, startOfThisMonth),
+      )),
+    // Jumlah order bulan lalu
+    db.select({ count: sql<number>`count(*)` })
+      .from(salesDocumentsTable)
+      .where(and(
+        eq(salesDocumentsTable.kind, "order"),
+        sql`status IN ('confirmed','done')`,
+        gte(salesDocumentsTable.createdAt, startOfPrevMonth),
+        lt(salesDocumentsTable.createdAt, endOfPrevMonth),
+      )),
+    // Quotation aktif (draft/sent)
+    db.select({ count: sql<number>`count(*)` })
+      .from(salesDocumentsTable)
+      .where(and(
+        eq(salesDocumentsTable.kind, "quote"),
+        sql`status IN ('draft','sent')`,
+      )),
+    // Sales orders confirmed (all time, belum done)
+    db.select({ count: sql<number>`count(*)` })
+      .from(salesDocumentsTable)
+      .where(and(
+        eq(salesDocumentsTable.kind, "order"),
+        eq(salesDocumentsTable.status, "confirmed"),
+      )),
+    // Tren revenue 6 bulan terakhir
+    db.execute<{ month: string; revenue: string }>(sql`
+      SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+             coalesce(sum(grand_total), 0)::text AS revenue
+      FROM sales_documents
+      WHERE kind = 'order'
+        AND status IN ('confirmed','done')
+        AND created_at >= date_trunc('month', now()) - INTERVAL '5 months'
+      GROUP BY date_trunc('month', created_at)
+      ORDER BY 1
+    `),
   ]);
+
+  const trend = monthlyTrend.rows.map((r) => ({
+    month: r.month,
+    revenue: Number(r.revenue),
+  }));
 
   return res.json({
     totalOrders: Number(orderCount.count),
@@ -47,6 +124,14 @@ router.get("/summary", async (req, res) => {
     activeFreightCount: Number(activeFreight.count),
     awaitingQuoteCount: Number(awaitingQuote.count),
     inTransitCount: Number(inTransit.count),
+    // Sales metrics
+    salesRevenueThisMonth: Number(salesRevenueThisMonth.total),
+    salesRevenuePrevMonth: Number(salesRevenuePrevMonth.total),
+    salesOrdersThisMonth: Number(salesOrdersThisMonth.count),
+    salesOrdersPrevMonth: Number(salesOrdersPrevMonth.count),
+    quotesActive: Number(quotesActive.count),
+    salesOrdersConfirmed: Number(salesOrdersConfirmed.count),
+    monthlyRevenueTrend: trend,
   });
 });
 

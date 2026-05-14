@@ -1,12 +1,15 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable } from "@workspace/db";
 import { eq, inArray, and, sql, desc } from "drizzle-orm";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
 import { broadcastToAdmins } from "../lib/sseManager";
+import multer from "multer";
+import { randomUUID } from "crypto";
+import { compressImageBuffer } from "../lib/imageCompress.js";
 
 const router = Router();
 
@@ -463,12 +466,13 @@ function sanitizeText(val: unknown): string | null {
 router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, imageUrl } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
   if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
+  if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(Array.isArray(mediaItems) ? mediaItems : []);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);
@@ -600,19 +604,21 @@ router.delete("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   return res.json({ ok: true });
 });
 
-// POST /api/portal/admin/upload-url  — get presigned upload URL (admin only → public-assets)
+// POST /api/portal/admin/upload  — direct image upload, returns { url } (admin only)
 const _objectStorage = new ObjectStorageService();
-router.post("/admin/upload-url", requirePortalAdmin, async (req, res) => {
-  const { contentType } = req.body ?? {};
-  if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
-  if (!contentType.startsWith("image/") && !contentType.startsWith("video/"))
-    return res.status(415).json({ message: "Hanya file gambar atau video yang diizinkan" });
+const _multerUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+router.post("/admin/upload", requirePortalAdmin, _multerUpload.single("file"), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ message: "File gambar wajib diisi" });
+  if (!file.mimetype.startsWith("image/")) return res.status(415).json({ message: "Hanya file gambar yang diizinkan" });
   try {
-    const uploadURL = await _objectStorage.getPublicAssetUploadURL();
-    const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
-    return res.json({ uploadURL, objectPath });
-  } catch (_err) {
-    return res.status(500).json({ message: "Gagal membuat URL upload" });
+    const { buffer, contentType } = await compressImageBuffer(file.buffer, file.mimetype, "photo");
+    const objectId = randomUUID();
+    const url = await _objectStorage.uploadPublicAsset(buffer, objectId, contentType);
+    return res.json({ url });
+  } catch (err) {
+    return res.status(500).json({ message: "Gagal mengunggah gambar" });
   }
 });
 
@@ -625,7 +631,7 @@ router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
   if (!allowed.includes(contentType) && !contentType.startsWith("image/"))
     return res.status(415).json({ message: "Tipe file tidak diizinkan" });
   try {
-    const uploadURL = await _objectStorage.getObjectEntityUploadURL("customer-attachments");
+    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
     const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
     return res.json({ uploadURL, objectPath });
   } catch (_err) {

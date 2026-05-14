@@ -44,6 +44,10 @@ import ResetPassword from "@/pages/reset-password";
 import ProductOrder from "@/pages/product-order";
 import VendorResponsePage from "@/pages/vendor-response";
 import ApprovePage from "@/pages/approve";
+import ConfirmPage from "@/pages/confirm";
+import VendorQuoteFormPage from "@/pages/vendor-quote-form";
+import VendorConfirmPage from "@/pages/vendor-confirm"; // [TRUCKING-FIX]
+import ChooseOptionPage from "@/pages/choose-option"; // [MULTI-MODE]
 
 const queryClient = new QueryClient();
 
@@ -54,7 +58,7 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve"];
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option"]; // [TRUCKING-FIX] [MULTI-MODE]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -128,7 +132,11 @@ function AppShell() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/order-produk" component={ProductOrder} />
       <Route path="/vendor-response/:orderNumber" component={VendorResponsePage} />
+      <Route path="/vendor-quote" component={VendorQuoteFormPage} />
+      <Route path="/vendor-confirm" component={VendorConfirmPage} />    {/* [TRUCKING-FIX] */}
+      <Route path="/choose-option/:token" component={ChooseOptionPage} />   {/* [MULTI-MODE] */}
       <Route path="/approve/:orderNumber" component={ApprovePage} />
+      <Route path="/confirm/:token" component={ConfirmPage} />
       <Route component={NotFound} />
     </Switch>
   );

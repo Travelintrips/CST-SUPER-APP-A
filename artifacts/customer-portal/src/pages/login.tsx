@@ -118,9 +118,9 @@ export default function Login() {
       return;
     }
     setErrorMsg("");
-    // Redirect to /bizportal/ which is already whitelisted in Supabase redirect URLs.
-    // BizPortal's main.tsx will detect the Supabase hash and forward back to the portal root.
-    const redirectTo = `${window.location.origin}/bizportal/`;
+    // Redirect to /bizportal/?portal=customer which is whitelisted in Supabase redirect URLs.
+    // The ?portal=customer param tells BizPortal's main.tsx to forward tokens back to Customer Portal.
+    const redirectTo = `${window.location.origin}/bizportal/?portal=customer`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

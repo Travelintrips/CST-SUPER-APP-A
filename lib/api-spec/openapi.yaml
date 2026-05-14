@@ -3657,6 +3657,16 @@ components:
           type: string
       required: [name]
 
+    MediaItem:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [image, video]
+        url:
+          type: string
+      required: [type, url]
+
     Product:
       type: object
       properties:
@@ -3680,6 +3690,10 @@ components:
         imageUrl:
           type: string
           nullable: true
+        mediaItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaItem"
         defaultSalesTaxId:
           type: integer
           nullable: true
@@ -3725,6 +3739,10 @@ components:
         imageUrl:
           type: string
           nullable: true
+        mediaItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaItem"
         defaultSalesTaxId:
           type: integer
           nullable: true
@@ -6183,6 +6201,10 @@ components:
         unit: { type: string, nullable: true }
         description: { type: string, nullable: true }
         imageUrl: { type: string, nullable: true }
+        mediaItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaItem"
         subcategory: { type: string, nullable: true }
         stock: { type: integer }
       required: [id, name, sku, price, stock]

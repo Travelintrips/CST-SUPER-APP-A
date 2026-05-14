@@ -16,9 +16,11 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { AccountCombobox } from "@/components/accounting/AccountCombobox";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import {
   useListAccountingEntries, useCreateAccountingEntry, useListJournals, useListAccounts,
   getListAccountingEntriesQueryKey,
@@ -161,12 +163,14 @@ export default function EntriesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { activeCompanyId } = useCompany();
   const [filter, setFilter] = useState<{ journalId?: number; from?: string; to?: string }>({});
   const params = useMemo(() => ({
     ...(filter.journalId ? { journalId: filter.journalId } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
-  }), [filter]);
+    company: activeCompanyId,
+  }), [filter, activeCompanyId]);
   const { data: entries } = useListAccountingEntries(params, { query: { queryKey: getListAccountingEntriesQueryKey(params) } });
   const { data: journals } = useListJournals();
   const { data: accounts } = useListAccounts();
@@ -276,10 +280,12 @@ export default function EntriesPage() {
                         {form.lines.map((l, i) => (
                           <TableRow key={i}>
                             <TableCell>
-                              <Select value={String(l.accountId || "")} onValueChange={(v) => { const lines = [...form.lines]; lines[i] = { ...lines[i]!, accountId: parseInt(v) }; setForm({ ...form, lines }); }}>
-                                <SelectTrigger data-testid={`select-line-account-${i}`}><SelectValue placeholder="Pilih akun" /></SelectTrigger>
-                                <SelectContent>{(accounts ?? []).filter((a) => a.isActive).map((a) => (<SelectItem key={a.id} value={String(a.id)}>{a.code} {a.name}</SelectItem>))}</SelectContent>
-                              </Select>
+                              <AccountCombobox
+                                accounts={accounts ?? []}
+                                value={l.accountId || null}
+                                onChange={(v) => { const lines = [...form.lines]; lines[i] = { ...lines[i]!, accountId: v }; setForm({ ...form, lines }); }}
+                                data-testid={`select-line-account-${i}`}
+                              />
                             </TableCell>
                             <TableCell><Input data-testid={`input-line-debit-${i}`} type="number" step="0.01" value={l.debit || ""} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...lines[i]!, debit: parseFloat(e.target.value) || 0, credit: 0 }; setForm({ ...form, lines }); }} /></TableCell>
                             <TableCell><Input data-testid={`input-line-credit-${i}`} type="number" step="0.01" value={l.credit || ""} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...lines[i]!, credit: parseFloat(e.target.value) || 0, debit: 0 }; setForm({ ...form, lines }); }} /></TableCell>

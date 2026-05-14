@@ -3,31 +3,13 @@ import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import {
-  useGetCurrentUser,
-  getGetCurrentUserQueryKey,
-} from "@workspace/api-client-react";
-import {
-  SupabaseAuthProvider,
-  useSupabaseAuth,
-} from "@/contexts/SupabaseAuthContext";
+import { SupabaseAuthProvider, useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
-
-const ROLE_CACHE_KEY = "biz_user_role_v1";
-function readRoleCache(): string | null {
-  try {
-    return sessionStorage.getItem(ROLE_CACHE_KEY);
-  } catch {
-    return null;
-  }
-}
-function writeRoleCache(role: string | null) {
-  try {
-    if (role) sessionStorage.setItem(ROLE_CACHE_KEY, role);
-    else sessionStorage.removeItem(ROLE_CACHE_KEY);
-  } catch {}
-}
-
+import { CompanyProvider } from "@/contexts/CompanyContext";
+import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { AppRoutes } from "@/routes";
+import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
@@ -88,11 +70,43 @@ import ExpenseReportsPage from "@/pages/expense/reports";
 import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
+import HoldingPage from "@/pages/HoldingPage";
+import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 
 const queryClient = new QueryClient();
-
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+const ROLE_CACHE_KEY = "biz_user_role_v1";
+function readRoleCache() {
+  try {
+    return sessionStorage.getItem(ROLE_CACHE_KEY);
+  } catch {
+    return null;
+  }
+}
+function writeRoleCache(role: string | null) {
+  try {
+    if (role) sessionStorage.setItem(ROLE_CACHE_KEY, role);
+    else sessionStorage.removeItem(ROLE_CACHE_KEY);
+  } catch {}
+}
+
+function roleToPath(role?: string | null) {
+  switch (role) {
+    case "admin":
+      return "/dashboard";
+    case "ecommerce":
+      return "/ecommerce";
+    case "trading":
+      return "/trading";
+    case "logistics":
+      return "/logistics";
+    case "pos":
+      return "/pos";
+    default:
+      return "/welcome";
+  }
+}
 function LoadingSpinner() {
   return (
     <div className="flex h-screen items-center justify-center bg-slate-950">
@@ -121,11 +135,8 @@ function LoginScreen() {
         body: JSON.stringify({ email: devEmail }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) {
-        setDevError(data.error || "Login gagal");
-      } else {
-        window.location.reload();
-      }
+      if (!res.ok || !data.ok) setDevError(data.error || "Login gagal");
+      else window.location.reload();
     } catch {
       setDevError("Tidak bisa terhubung ke server");
     } finally {
@@ -169,7 +180,6 @@ function LoginScreen() {
           </svg>
           Masuk dengan Google
         </button>
-
         {IS_DEV && (
           <>
             <div className="flex items-center gap-3">
@@ -202,27 +212,9 @@ function LoginScreen() {
   );
 }
 
-function roleToPath(role: string | null | undefined): string {
-  switch (role) {
-    case "admin":
-      return "/dashboard";
-    case "ecommerce":
-      return "/ecommerce";
-    case "trading":
-      return "/trading";
-    case "logistics":
-      return "/logistics";
-    case "pos":
-      return "/pos";
-    default:
-      return "/welcome";
-  }
-}
-
 function AuthRouteGuard() {
   const { isAuthenticated, isLoading } = useSupabaseAuth();
   const cachedRole = readRoleCache();
-
   const { data: dbUser, isLoading: dbLoading } = useGetCurrentUser({
     query: {
       enabled: isAuthenticated,
@@ -231,40 +223,16 @@ function AuthRouteGuard() {
       retry: 1,
     },
   });
-
   React.useEffect(() => {
     if (dbUser?.role) writeRoleCache(dbUser.role);
   }, [dbUser?.role]);
-
   if (isLoading) return <LoadingSpinner />;
-
   if (!isAuthenticated) {
     writeRoleCache(null);
     return <LoginScreen />;
   }
-
   if (dbLoading) return <LoadingSpinner />;
-
-  const role = dbUser?.role ?? cachedRole;
-  const defaultPath = roleToPath(role);
-
-  return <Redirect to={defaultPath} />;
-}
-
-function ProtectedRoute({
-  component: Component,
-}: {
-  component: React.ComponentType;
-}) {
-  const { isAuthenticated, isLoading } = useSupabaseAuth();
-
-  if (isLoading) return <LoadingSpinner />;
-
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
-
-  return <Component />;
+  return <Redirect to={roleToPath(dbUser?.role ?? cachedRole)} />;
 }
 
 function Router() {
@@ -294,6 +262,30 @@ function Router() {
         <Route path="/sales/documents" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
         <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/documents/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
+        {/* Logistics */}
+        <Route path="/logistics" component={() => <ProtectedRoute component={LogisticsPage} />} />
+        <Route path="/logistics/freight" component={() => <ProtectedRoute component={LogisticsFreightPage} />} />
+        <Route path="/logistics/freight/new" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
+        <Route path="/logistics/freight/:id" component={() => <ProtectedRoute component={LogisticsFreightDetailPage} />} />
+        <Route path="/logistics/freight/:id/edit" component={() => <ProtectedRoute component={LogisticsFreightEditorPage} />} />
+        <Route path="/logistics/freight/:id/bl" component={() => <ProtectedRoute component={LogisticsFreightBLPage} />} />
+        <Route path="/logistics/portal-orders" component={() => <ProtectedRoute component={LogisticsPortalOrdersPage} />} />
+        <Route path="/logistics/portal-orders/:id" component={() => <ProtectedRoute component={LogisticsPortalOrderDetailPage} />} />
+        <Route path="/logistics/drivers" component={() => <ProtectedRoute component={LogisticsDriversPage} />} />
+        <Route path="/logistics/driver-performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
+        <Route path="/logistics/vendors" component={() => <ProtectedRoute component={LogisticsVendorsPage} />} />
+        <Route path="/logistics/quotation-reply" component={() => <ProtectedRoute component={LogisticsQuotationReplyPage} />} />
+        <Route path="/logistics/vendor-quote/:id" component={() => <ProtectedRoute component={LogisticsVendorQuotePage} />} />
+        <Route path="/portal-product-orders" component={() => <ProtectedRoute component={PortalProductOrdersPage} />} />
+        {/* Sales */}
+        <Route path="/sales" component={() => <ProtectedRoute component={SalesDashboardPage} />} />
+        <Route path="/sales/documents" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
+        <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/documents/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
+        <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
+        <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
         <Route path="/sales/ai-drafts" component={() => <ProtectedRoute component={AiDraftsPage} />} />
         <Route path="/sales/customers" component={() => <ProtectedRoute component={CustomersPage} />} />
         <Route path="/sales/invoices" component={() => <ProtectedRoute component={SalesInvoicesPage} />} />
@@ -305,10 +297,20 @@ function Router() {
         <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
         <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
         <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
+        {/* Purchase */}
+        <Route path="/purchase" component={() => <ProtectedRoute component={PurchaseDashboardPage} />} />
+        <Route path="/purchase/documents" component={() => <ProtectedRoute component={PurchaseDocumentsListPage} />} />
+        <Route path="/purchase/documents/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/documents/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
+        <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
+        <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
+        {/* Reports */}
         <Route path="/reports/sales" component={() => <ProtectedRoute component={ReportsSalesPage} />} />
         <Route path="/reports/purchase" component={() => <ProtectedRoute component={ReportsPurchasePage} />} />
         <Route path="/reports/ar-aging" component={() => <ProtectedRoute component={ReportsArAgingPage} />} />
         <Route path="/reports/ap-aging" component={() => <ProtectedRoute component={ReportsApAgingPage} />} />
+        {/* Accounting */}
         <Route path="/accounting/accounts" component={() => <ProtectedRoute component={AccountingAccountsPage} />} />
         <Route path="/accounting/journals" component={() => <ProtectedRoute component={AccountingJournalsPage} />} />
         <Route path="/accounting/taxes" component={() => <ProtectedRoute component={AccountingTaxesPage} />} />
@@ -318,6 +320,8 @@ function Router() {
         <Route path="/accounting/payments" component={() => <ProtectedRoute component={AccountingPaymentsPage} />} />
         <Route path="/accounting/settings" component={() => <ProtectedRoute component={AccountingSettingsPage} />} />
         <Route path="/accounting/reconciliation" component={() => <ProtectedRoute component={AccountingReconciliationPage} />} />
+        <Route path="/accounting/reconciliation" component={() => <ProtectedRoute component={AccountingReconciliationPage} />} />
+        <Route path="/accounting/settings" component={() => <ProtectedRoute component={AccountingSettingsPage} />} />
         <Route path="/accounting/reports/trial-balance" component={() => <ProtectedRoute component={AccountingTrialBalancePage} />} />
         <Route path="/accounting/reports/general-ledger" component={() => <ProtectedRoute component={AccountingGeneralLedgerPage} />} />
         <Route path="/accounting/reports/profit-loss" component={() => <ProtectedRoute component={AccountingProfitLossPage} />} />
@@ -330,6 +334,16 @@ function Router() {
         <Route path="/expense/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
         <Route path="/expense/reports" component={() => <ProtectedRoute component={ExpenseReportsPage} />} />
         <Route path="/portal-product-orders" component={() => <ProtectedRoute component={PortalProductOrdersPage} />} />
+        {/* Expenses */}
+        <Route path="/expenses" component={() => <ProtectedRoute component={ExpenseListPage} />} />
+        <Route path="/expenses/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
+        <Route path="/expenses/:id" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
+        <Route path="/expenses/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
+        <Route path="/expenses/reports" component={() => <ProtectedRoute component={ExpenseReportsPage} />} />
+        {/* Correspondence & Email */}
+        <Route path="/correspondences" component={() => <ProtectedRoute component={CorrespondencesPage} />} />
+        <Route path="/email-inbox" component={() => <ProtectedRoute component={EmailInboxPage} />} />
+        {/* Settings & Users */}
         <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
         <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
@@ -337,6 +351,12 @@ function Router() {
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
         <Route component={NotFound} />
       </Switch>
+        {/* Holding */}
+        <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
+        <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
+        <Route component={NotFound} />
+      </Switch>
+      <AppRoutes rootGuard={AuthRouteGuard} />
     </WouterRouter>
   );
 }
@@ -346,10 +366,14 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <SupabaseAuthProvider>
         <LanguageProvider>
-          <TooltipProvider>
-            <Router />
-            <Toaster />
-          </TooltipProvider>
+          <CompanyProvider>
+          <OrderNotificationsProvider>
+            <TooltipProvider>
+              <Router />
+              <Toaster />
+            </TooltipProvider>
+          </OrderNotificationsProvider>
+          </CompanyProvider>
         </LanguageProvider>
       </SupabaseAuthProvider>
     </QueryClientProvider>

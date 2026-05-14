@@ -23,11 +23,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
-  useListAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount,
-  getListAccountsQueryKey, type Account,
+  useCreateAccount, useUpdateAccount, useDeleteAccount,
+  type Account,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCompany } from "@/contexts/CompanyContext";
+import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check, Building2 } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
   asset: "Aset",
@@ -93,7 +94,23 @@ export default function AccountsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { data: accounts = [] } = useListAccounts();
+  const { companies, activeCompanyId } = useCompany();
+
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const companyId = selectedCompanyId ?? activeCompanyId ?? 1;
+
+  const { data: accounts = [] } = useQuery<Account[]>({
+    queryKey: ["/api/accounting/accounts", companyId],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/accounting/accounts?company=${companyId}`, {
+        credentials: "include",
+        signal,
+      });
+      if (!res.ok) throw new Error("Gagal memuat akun");
+      return res.json();
+    },
+  });
+
   const createMut = useCreateAccount();
   const updateMut = useUpdateAccount();
   const deleteMut = useDeleteAccount();
@@ -141,7 +158,7 @@ export default function AccountsPage() {
         await createMut.mutateAsync({ data: payload });
         toast({ title: t.common.success });
       }
-      qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+      qc.invalidateQueries({ queryKey: ["/api/accounting/accounts", companyId] });
       reset(); setOpen(false);
     } catch (e: any) {
       toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
@@ -153,7 +170,7 @@ export default function AccountsPage() {
     try {
       await deleteMut.mutateAsync({ id: a.id });
       toast({ title: t.common.success });
-      qc.invalidateQueries({ queryKey: getListAccountsQueryKey() });
+      qc.invalidateQueries({ queryKey: ["/api/accounting/accounts", companyId] });
     } catch (e: any) {
       toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
     }
@@ -194,98 +211,122 @@ export default function AccountsPage() {
             </h1>
             <p className="text-sm text-muted-foreground">Chart of Accounts (CoA) — hierarki akun buku besar</p>
           </div>
-          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-account"><Plus className="h-4 w-4 mr-2" />Tambah Akun</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{editing ? "Edit Akun" : "Akun Baru"}</DialogTitle></DialogHeader>
-              <div className="space-y-3">
-                <div>
-                  <Label>Kode</Label>
-                  <Input data-testid="input-account-code" value={form.code}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    placeholder="5-2010" />
+          <div className="flex items-center gap-2">
+            {companies.length > 1 && (
+              <Select
+                value={String(companyId)}
+                onValueChange={(v) => {
+                  setSelectedCompanyId(Number(v));
+                  setSearch("");
+                  setCollapsed(new Set());
+                }}
+              >
+                <SelectTrigger className="w-56">
+                  <Building2 className="h-4 w-4 mr-1 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="Pilih perusahaan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {companies.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.companyCode} — {c.companyName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-account"><Plus className="h-4 w-4 mr-2" />Tambah Akun</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{editing ? "Edit Akun" : "Akun Baru"}</DialogTitle></DialogHeader>
+                <div className="space-y-3">
+                  <div>
+                    <Label>Kode</Label>
+                    <Input data-testid="input-account-code" value={form.code}
+                      onChange={(e) => setForm({ ...form, code: e.target.value })}
+                      placeholder="5-2010" />
+                  </div>
+                  <div>
+                    <Label>Nama</Label>
+                    <Input data-testid="input-account-name" value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="Beban Gaji" />
+                  </div>
+                  <div>
+                    <Label>Tipe</Label>
+                    <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as Account["type"] })}>
+                      <SelectTrigger data-testid="select-account-type"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Akun Induk (opsional)</Label>
+                    <Popover open={parentPopoverOpen} onOpenChange={setParentPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="w-full justify-between font-normal"
+                        >
+                          {form.parentId
+                            ? (() => {
+                                const a = accounts.find((x) => x.id === form.parentId);
+                                return a ? `${a.code} — ${a.name}` : "— Tidak ada (akun akar) —";
+                              })()
+                            : "— Tidak ada (akun akar) —"}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Cari kode atau nama akun..." />
+                          <CommandList>
+                            <CommandEmpty>Akun tidak ditemukan</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="none"
+                                onSelect={() => { setForm({ ...form, parentId: null }); setParentPopoverOpen(false); }}
+                              >
+                                <Check className={`mr-2 h-4 w-4 ${!form.parentId ? "opacity-100" : "opacity-0"}`} />
+                                — Tidak ada (akun akar) —
+                              </CommandItem>
+                              {accounts
+                                .filter((a) => a.id !== editing?.id)
+                                .sort((a, b) => a.code.localeCompare(b.code))
+                                .map((a) => (
+                                  <CommandItem
+                                    key={a.id}
+                                    value={`${a.code} ${a.name}`}
+                                    onSelect={() => { setForm({ ...form, parentId: a.id }); setParentPopoverOpen(false); }}
+                                  >
+                                    <Check className={`mr-2 h-4 w-4 ${form.parentId === a.id ? "opacity-100" : "opacity-0"}`} />
+                                    {a.code} — {a.name}
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="active" checked={form.isActive}
+                      onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
+                    <Label htmlFor="active">Aktif</Label>
+                  </div>
                 </div>
-                <div>
-                  <Label>Nama</Label>
-                  <Input data-testid="input-account-name" value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Beban Gaji" />
-                </div>
-                <div>
-                  <Label>Tipe</Label>
-                  <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as Account["type"] })}>
-                    <SelectTrigger data-testid="select-account-type"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Akun Induk (opsional)</Label>
-                  <Popover open={parentPopoverOpen} onOpenChange={setParentPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        className="w-full justify-between font-normal"
-                      >
-                        {form.parentId
-                          ? (() => {
-                              const a = accounts.find((x) => x.id === form.parentId);
-                              return a ? `${a.code} — ${a.name}` : "— Tidak ada (akun akar) —";
-                            })()
-                          : "— Tidak ada (akun akar) —"}
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[400px] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Cari kode atau nama akun..." />
-                        <CommandList>
-                          <CommandEmpty>Akun tidak ditemukan</CommandEmpty>
-                          <CommandGroup>
-                            <CommandItem
-                              value="none"
-                              onSelect={() => { setForm({ ...form, parentId: null }); setParentPopoverOpen(false); }}
-                            >
-                              <Check className={`mr-2 h-4 w-4 ${!form.parentId ? "opacity-100" : "opacity-0"}`} />
-                              — Tidak ada (akun akar) —
-                            </CommandItem>
-                            {accounts
-                              .filter((a) => a.id !== editing?.id)
-                              .sort((a, b) => a.code.localeCompare(b.code))
-                              .map((a) => (
-                                <CommandItem
-                                  key={a.id}
-                                  value={`${a.code} ${a.name}`}
-                                  onSelect={() => { setForm({ ...form, parentId: a.id }); setParentPopoverOpen(false); }}
-                                >
-                                  <Check className={`mr-2 h-4 w-4 ${form.parentId === a.id ? "opacity-100" : "opacity-0"}`} />
-                                  {a.code} — {a.name}
-                                </CommandItem>
-                              ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="active" checked={form.isActive}
-                    onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
-                  <Label htmlFor="active">Aktif</Label>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
-                <Button onClick={submit} data-testid="button-save-account">Simpan</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>Batal</Button>
+                  <Button onClick={submit} data-testid="button-save-account">Simpan</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <Card>

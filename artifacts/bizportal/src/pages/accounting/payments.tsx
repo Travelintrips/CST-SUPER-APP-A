@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, ArrowDownLeft, ArrowUpRight, ExternalLink, FileText, ChevronDown, ChevronUp, Users, Ban, MessageSquare, ShoppingCart, Printer, Download } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
@@ -177,13 +178,15 @@ export default function PaymentsPage() {
   const [sourceDocIdText, setSourceDocIdText] = useState("");
   const [refSearch, setRefSearch] = useState("");
 
+  const { activeCompanyId } = useCompany();
   const params = useMemo(() => ({
     ...(filter.paymentType ? { paymentType: filter.paymentType } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
     ...(filter.sourceType && filter.sourceType !== "all" ? { sourceType: filter.sourceType } : {}),
     ...(filter.sourceDocId ? { sourceDocId: filter.sourceDocId } : {}),
-  }), [filter]);
+    company: activeCompanyId,
+  }), [filter, activeCompanyId]);
 
   const { data: allPayments = [] as AccountingPayment[], isLoading } = useListAccountingPayments(params, {
     query: { queryKey: getListAccountingPaymentsQueryKey(params) },
