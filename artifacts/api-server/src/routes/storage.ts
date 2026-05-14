@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission, getObjectAclPolicy } from "../lib/objectAcl.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -17,8 +18,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
  *
  * Server-side file upload via multipart form.
  * Accepts a single file field named "file" and saves it to private object storage.
- * Sets ACL metadata recording the uploader as the owner so the download endpoint
- * can enforce ownership-based access without requiring admin rights.
+ * Sets ACL metadata recording the uploader as the owner so that the download
+ * endpoint can enforce owner-based access without requiring admin rights.
  * Returns { objectPath, url } where url = /api/storage/objects/...
  */
 router.post("/storage/uploads/file", upload.single("file"), async (req: Request, res: Response) => {
@@ -34,12 +35,17 @@ router.post("/storage/uploads/file", upload.single("file"), async (req: Request,
   try {
     const objectPath = await objectStorageService.uploadPrivateEntity(req.file.buffer, req.file.mimetype);
 
-    // Record the uploader as the owner via ACL metadata.  This enables the download
-    // endpoint to honour ownership-based access without falling back to admin-only.
-    await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
-      owner: req.user.id,
-      visibility: "private",
-    });
+    // Stamp ownership on the object immediately so downloads can enforce access
+    // without falling back to admin-only.  Errors here are non-fatal: the upload
+    // already succeeded, and the download endpoint falls back to requireAdmin.
+    try {
+      await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+        owner: req.user.id,
+        visibility: "private",
+      });
+    } catch (aclErr) {
+      req.log.warn({ err: aclErr }, "Could not set ACL on uploaded object; admin-only fallback applies");
+    }
 
     res.json({ objectPath, url: `/api/storage${objectPath}` });
   } catch (error) {
@@ -54,6 +60,12 @@ router.post("/storage/uploads/file", upload.single("file"), async (req: Request,
  * Request a presigned GCS URL for file upload.
  * The client sends JSON metadata (name, size, contentType) — NOT the file.
  * Client then uploads the file directly to the returned presigned URL (GCS).
+ *
+ * Note: ACL metadata cannot be set at this point because the GCS object does
+ * not yet exist.  Objects created through this flow will have no ACL metadata
+ * at the time of upload; the business route that ultimately saves the objectPath
+ * is responsible for calling trySetObjectEntityAclPolicy.  Until then the
+ * download endpoint applies the admin-only fallback for these objects.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -122,22 +134,25 @@ router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Resp
  *
  * Serve private object entities from PRIVATE_OBJECT_DIR.
  *
- * Authorization strategy (layered):
+ * Authorization (three layers, evaluated in order):
  *
- * 1. Authentication gate: unauthenticated callers always receive 401.
- *    Private objects must never be accessible without a session regardless of
- *    whether the caller knows the path.
+ * 1. Authentication gate — unauthenticated callers always receive 401.
+ *    Private objects must never be downloadable without a valid session,
+ *    regardless of whether the caller knows the path.
  *
- * 2. ACL-based owner check (new objects): when ACL metadata is present on the
- *    object (set at upload time by POST /storage/uploads/file), access is granted
- *    only to the recorded owner or to callers explicitly permitted by an ACL rule.
- *    Any other authenticated caller receives 403.
+ * 2. ACL enforcement for objects with metadata — when ACL metadata is present
+ *    on the object (written by POST /storage/uploads/file or by a business
+ *    route that calls trySetObjectEntityAclPolicy), access is granted only to
+ *    the recorded owner or to a caller covered by an explicit ACL rule.  Any
+ *    other authenticated caller receives 403.
  *
- * 3. Legacy fallback (objects without ACL metadata): objects uploaded before the
- *    ACL convention was introduced carry no metadata.  To avoid a regression for
- *    existing attachment flows (correspondences, expenses, freight docs, etc.),
- *    these objects remain accessible to any authenticated user.  Future uploads
- *    always set ACL metadata so this fallback will narrow over time.
+ * 3. Admin fallback for objects without metadata — objects that carry no ACL
+ *    metadata (legacy uploads or presigned-URL uploads whose business route has
+ *    not yet stamped ownership) are restricted to admin-role users.  This is
+ *    the default-deny posture for unknown ownership: only a trusted admin may
+ *    access a file whose provenance cannot be verified from metadata alone.
+ *    As the upload paths progressively stamp ACL metadata, layer 2 will handle
+ *    an increasing share of requests and the admin fallback will narrow.
  */
 router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -154,7 +169,7 @@ router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
     const aclPolicy = await getObjectAclPolicy(objectFile);
 
     if (aclPolicy !== null) {
-      // Object has ACL metadata — enforce owner/ACL-rule access.
+      // Object has ACL metadata — enforce owner / ACL-rule access.
       const userId = req.user.id;
       const aclAllowed = await objectStorageService.canAccessObjectEntity({
         userId,
@@ -165,8 +180,11 @@ router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
+    } else {
+      // No ACL metadata (legacy or presigned-URL upload) — fall back to admin
+      // rule.  requireAdmin sends 403 itself and returns false if denied.
+      if (!(await requireAdmin(req, res))) return;
     }
-    // No ACL metadata → legacy object; any authenticated user may read it.
 
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);

@@ -13,9 +13,11 @@ import {
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
 router.use(requireAdmin);
+const objectStorageService = new ObjectStorageService();
 
 // ===================== Serialize helpers =====================
 
@@ -591,6 +593,16 @@ router.post("/:id/attachments", async (req, res) => {
     fileName: String(fileName),
     contentType: contentType ? String(contentType) : null,
   }).returning();
+
+  // Stamp ownership on the GCS object so the storage download endpoint can
+  // enforce owner-based access.  Fire-and-forget; never block the response.
+  if (req.user?.id) {
+    objectStorageService.trySetObjectEntityAclPolicy(String(objectPath), {
+      owner: req.user.id,
+      visibility: "private",
+    }).catch(() => undefined);
+  }
+
   return res.status(201).json(att);
 });
 

@@ -284,6 +284,16 @@ router.post("/:id/attachments", async (req, res) => {
     mimeType: mimeType ?? null,
     extractedText: extractedText ?? null,
   }).returning();
+
+  // Stamp ownership on the GCS object so the storage download endpoint can
+  // enforce owner-based access.  Fire-and-forget; never block the response.
+  if (normalizedPath.startsWith("/objects/") && req.user?.id) {
+    objectStorageService.trySetObjectEntityAclPolicy(normalizedPath, {
+      owner: req.user.id,
+      visibility: "private",
+    }).catch(() => undefined);
+  }
+
   return res.status(201).json(serializeAttachment(att));
 });
 
