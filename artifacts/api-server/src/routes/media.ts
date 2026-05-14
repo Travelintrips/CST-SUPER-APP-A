@@ -160,36 +160,42 @@ router.post("/:id/copy-public", async (req, res) => {
     const [asset] = await db.select().from(mediaAssetsTable).where(eq(mediaAssetsTable.id, id));
     if (!asset) return res.status(404).json({ error: "Asset tidak ditemukan" });
 
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    // File Supabase sudah public — return URL langsung
+    if (isSupabaseUrl(asset.url)) {
+      if (!asset.publicUrl) {
+        await db.update(mediaAssetsTable).set({ publicUrl: asset.url }).where(eq(mediaAssetsTable.id, id));
+      }
+      return res.json({ ok: true, publicUrl: asset.url, cached: true });
+    }
 
-    // Sudah punya publicUrl — kembalikan langsung
+    // Sudah punya publicUrl yang tersimpan — kembalikan langsung
     if (asset.publicUrl) {
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
       const absoluteUrl = asset.publicUrl.startsWith("http")
         ? asset.publicUrl
         : `${baseUrl}${asset.publicUrl}`;
       return res.json({ ok: true, publicUrl: absoluteUrl, cached: true });
     }
 
-    // Download dari private storage
-    const objectFile = await objectStorageService.getObjectEntityFile(asset.objectPath);
-    const [fileBuffer] = await objectFile.download();
+    // File lama dari private GCS — download lalu re-upload ke Supabase public
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    let fileBuffer: Buffer;
+    if (asset.objectPath.startsWith("supabase:media/")) {
+      const storagePath = asset.objectPath.replace("supabase:media/", "");
+      fileBuffer = await downloadFromSupabase(storagePath);
+    } else {
+      // GCS path — coba download via serving URL
+      const serveUrl = asset.url.startsWith("http") ? asset.url : `${baseUrl}${asset.url}`;
+      const resp = await fetch(serveUrl, { headers: { cookie: req.headers.cookie ?? "" } });
+      if (!resp.ok) throw new Error(`Gagal download file asal (${resp.status})`);
+      fileBuffer = Buffer.from(await resp.arrayBuffer());
+    }
 
-    // Upload ke public storage dengan nama unik
-    const shareId = randomUUID();
-    const relativeUrl = await objectStorageService.uploadPublicAsset(
-      Buffer.from(fileBuffer),
-      `share-${shareId}`,
-      asset.contentType,
-    );
+    // Upload ke Supabase public bucket
+    const { publicUrl } = await uploadToSupabase(fileBuffer, asset.contentType, "shared");
 
-    // Simpan publicUrl ke DB agar tidak di-copy ulang
-    await db
-      .update(mediaAssetsTable)
-      .set({ publicUrl: relativeUrl })
-      .where(eq(mediaAssetsTable.id, id));
-
-    const absoluteUrl = `${baseUrl}${relativeUrl}`;
-    res.json({ ok: true, publicUrl: absoluteUrl });
+    await db.update(mediaAssetsTable).set({ publicUrl }).where(eq(mediaAssetsTable.id, id));
+    res.json({ ok: true, publicUrl });
   } catch (err: any) {
     console.error("[media/copy-public] Error:", err?.message ?? err);
     res.status(500).json({ error: err?.message ?? "Gagal membuat URL publik" });
