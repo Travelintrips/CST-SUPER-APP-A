@@ -5,9 +5,10 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
+import { getPreferredDomain } from "../lib/domain.js";
 
 function getConfirmFormUrl(token: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/confirm/${token}`;
 }
@@ -255,33 +256,33 @@ function buildRfqWaMessage(order: {
 }
 
 function getOrderUrl(orderId: number): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
 }
 
 function getApproveFormUrl(orderNumber: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/approve/${orderNumber}`;
 }
 
 function getVendorFormUrl(rfqNumber: string, vendorId: number): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/vendor-quote?rfq=${encodeURIComponent(rfqNumber)}&v=${vendorId}`;
 }
 
 // [TRUCKING-FIX] Confirm link for vendor YES/NO page
 function getVendorConfirmUrl(orderId: number, token: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/vendor-confirm?orderId=${orderId}&token=${encodeURIComponent(token)}`;
 }
 
 // [MULTI-MODE] URL for customer to choose from anonymous options
 function getChooseOptionUrl(token: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/choose-option/${token}`;
 }

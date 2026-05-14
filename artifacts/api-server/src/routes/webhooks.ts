@@ -5,6 +5,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { processWaForAiIntake, processWaMediaForAiIntake, buildAiReplyWa, getAiIntakeSettings } from "../lib/aiOrderIntake.js";
+import { getPreferredDomain } from "../lib/domain.js";
 
 const router = Router();
 
@@ -46,7 +47,7 @@ function getAdminPhones(): string[] {
 }
 
 function getOrderUrl(orderId: number): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/bizportal/logistics/portal-orders/${orderId}`;
 }
@@ -334,7 +335,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
       }
 
       if (mediaResult) {
-        const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+        const domain = getPreferredDomain();
         const draftUrl = domain ? `https://${domain}/bizportal/sales/ai-drafts` : "";
         const fileLabel = mediaResult.mimeType === "application/pdf" ? "📄 PDF" : "🖼️ Gambar";
 
@@ -804,7 +805,7 @@ router.post("/webhook/fonnte", async (req: Request, res: Response) => {
           // AI created a draft — notify admin and optionally reply to sender
           logger.info({ sender, docId: aiResult.docId, docNumber: aiResult.docNumber }, "AI intake: WA draft created");
 
-          const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+          const domain = getPreferredDomain();
           const draftUrl = domain ? `https://${domain}/bizportal/sales/ai-drafts` : "";
 
           if (adminWa) {

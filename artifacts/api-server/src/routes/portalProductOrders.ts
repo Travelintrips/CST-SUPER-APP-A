@@ -8,6 +8,7 @@ import {
 import { eq, ilike, and, or, sql } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa";
+import { getPreferredDomain } from "../lib/domain";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { broadcastToAdmins } from "../lib/sseManager";
@@ -59,7 +60,7 @@ function formatRupiah(amount: number): string {
 }
 
 async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, items: ReturnType<typeof toItem>[]) {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   const orderUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : "";
 
   const itemList = items.map((i) => `• ${i.productName} × ${i.qty} (${i.unit ?? "pcs"}) — Rp ${formatRupiah(i.subtotal)}`).join("\n");

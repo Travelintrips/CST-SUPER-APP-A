@@ -2,6 +2,7 @@ import { db, suppliersTable, vendorCatalogItemsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { sendWhatsApp } from "./fonnte";
 import { getAdminWa, getAdminGroupWa } from "./adminWa";
+import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
 
@@ -77,7 +78,7 @@ function formatJamOrder(jam: string): string {
 }
 
 function getApproveFormUrl(orderNumber: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim();
+  const domain = getPreferredDomain();
   if (!domain) return "";
   return `https://${domain}/approve/${orderNumber}`;
 }
@@ -159,7 +160,7 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
 }
 
 function getVendorResponseUrl(orderNumber: string): string {
-  const domain = (process.env.REPLIT_DOMAINS ?? "").split(",")[0].trim() || "cstlogistic.co.id";
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
   return `https://${domain}/vendor-response/${orderNumber}`;
 }
 
@@ -205,8 +206,7 @@ function buildTruckingVendorWaMessage(
 }
 
 function getOrderUrl(orderId: number): string {
-  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").map((d) => d.trim()).filter(Boolean);
-  const domain = domains[0] ?? "cstlogistic.co.id";
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
   return `https://${domain}/logistic/orders/${orderId}`;
 }
 
