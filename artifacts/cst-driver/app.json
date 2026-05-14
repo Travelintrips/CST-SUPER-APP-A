@@ -30,7 +30,6 @@
       "favicon": "./assets/images/icon.png",
       "bundler": "metro"
     },
-    "platforms": ["android", "ios"],
     "plugins": [
       [
         "expo-router",
