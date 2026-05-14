@@ -1103,6 +1103,170 @@ router.get("/cargo-types", async (_req, res) => {
   }
 });
 
+// POST /api/portal/request-quote — public, no auth required
+router.post("/request-quote", async (req, res) => {
+  const {
+    name, email, whatsapp, service, origin, destination,
+    weight, length, width, height, incoterms, insurance, express, result,
+  } = req.body as {
+    name: string; email?: string; whatsapp: string;
+    service: string; origin: string; destination: string;
+    weight?: string; length?: string; width?: string; height?: string;
+    incoterms?: string; insurance?: boolean; express?: boolean;
+    result?: {
+      baseCost?: number; weightCost?: number; handlingFee?: number;
+      customsFee?: number; insuranceFee?: number; expressFee?: number;
+      total?: number; chargeableWeight?: number; cbm?: number;
+    };
+  };
+
+  if (!name?.trim() || !whatsapp?.trim()) {
+    return res.status(400).json({ error: "Nama dan WhatsApp wajib diisi" });
+  }
+
+  const fmt = (n?: number) =>
+    n ? new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n) : "-";
+
+  const serviceLabels: Record<string, string> = {
+    seaFreight: "Sea Freight 🚢", airFreight: "Air Freight ✈️",
+    customs: "Bea Cukai 📦", domestic: "Domestik/Trucking 🚚",
+    warehousing: "Gudang/Warehousing 🏠", projectCargo: "Project Cargo 🌐",
+  };
+  const svcLabel = serviceLabels[service] ?? service;
+  const ts = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+
+  const waLines = [
+    `🚢 *REQUEST QUOTE BARU — CST Logistics*`,
+    `───────────────────────────`,
+    `👤 *Nama:* ${name}`,
+    `📧 *Email:* ${email || "-"}`,
+    `📱 *WhatsApp:* ${whatsapp}`,
+    `───────────────────────────`,
+    `📦 *Layanan:* ${svcLabel}`,
+    `🌍 *Rute:* ${origin} → ${destination}`,
+    weight ? `⚖️ *Berat:* ${weight} kg` : null,
+    (length && width && height) ? `📐 *Dimensi:* ${length}×${width}×${height} cm` : null,
+    incoterms ? `📋 *Incoterms:* ${incoterms}` : null,
+    insurance ? `🛡️ *Asuransi:* Ya` : null,
+    express ? `⚡ *Express:* Ya` : null,
+    `───────────────────────────`,
+    result?.total ? `💰 *Estimasi Total:* ${fmt(result.total)}` : null,
+    result?.chargeableWeight != null ? `  • Chargeable: ${result.chargeableWeight} kg` : null,
+    result?.cbm != null ? `  • Volume: ${result.cbm} CBM` : null,
+    result?.baseCost ? `  • Biaya Dasar: ${fmt(result.baseCost)}` : null,
+    result?.weightCost ? `  • Biaya Berat/CBM: ${fmt(result.weightCost)}` : null,
+    result?.handlingFee ? `  • Handling: ${fmt(result.handlingFee)}` : null,
+    result?.customsFee ? `  • Bea Cukai: ${fmt(result.customsFee)}` : null,
+    result?.insuranceFee ? `  • Asuransi: ${fmt(result.insuranceFee)}` : null,
+    result?.expressFee ? `  • Express: ${fmt(result.expressFee)}` : null,
+    `───────────────────────────`,
+    `🕐 ${ts}`,
+    ``,
+    `_Segera tindaklanjuti permintaan ini._`,
+  ].filter(Boolean).join("\n");
+
+  const errors: string[] = [];
+
+  // WhatsApp ke admin
+  try {
+    const adminTarget = await getAdminWa();
+    if (adminTarget) await sendWhatsApp(adminTarget, waLines);
+  } catch (err) {
+    errors.push("WA-admin: " + String(err));
+  }
+
+  // WhatsApp konfirmasi ke customer
+  try {
+    if (whatsapp?.trim()) {
+      const confirmLines = [
+        `✅ *Halo ${name}!*`,
+        ``,
+        `Terima kasih telah menghubungi *CST Logistics*.`,
+        `Tim kami telah menerima permintaan penawaran Anda:`,
+        ``,
+        `📦 *Layanan:* ${svcLabel}`,
+        `🌍 *Rute:* ${origin} → ${destination}`,
+        result?.total ? `💰 *Estimasi:* ${fmt(result.total)}` : null,
+        ``,
+        `Kami akan menghubungi Anda dalam *1×24 jam kerja* untuk konfirmasi dan penawaran resmi.`,
+        ``,
+        `_Salam,_`,
+        `_Tim CST Logistics 🚢_`,
+      ].filter(Boolean).join("\n");
+      await sendWhatsApp(whatsapp, confirmLines);
+    }
+  } catch (err) {
+    errors.push("WA-customer: " + String(err));
+  }
+
+  // Email ke admin
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL?.split(",")[0]?.trim();
+    if (adminEmail && isSmtpConfigured()) {
+      const row = (c: string, v: string) =>
+        `<tr><td style="color:#64748B;padding:4px 0;width:140px;font-size:12px;">${c}</td><td style="font-weight:600;color:#1E293B;font-size:12px;">${v}</td></tr>`;
+
+      const emailHtml = `
+        <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;background:#F8FAFC;padding:20px;border-radius:12px;">
+          <div style="background:linear-gradient(135deg,#0B3D6B,#1A73D4);padding:18px 22px;border-radius:10px 10px 0 0;">
+            <h2 style="color:white;margin:0;font-size:17px;">🚢 Request Quote Baru</h2>
+            <p style="color:rgba(255,255,255,0.70);margin:3px 0 0;font-size:11px;">${ts}</p>
+          </div>
+          <div style="background:white;padding:18px 22px;border-radius:0 0 10px 10px;border:1px solid #E2E8F0;border-top:none;">
+            <h4 style="color:#0B3D6B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 10px;">Kontak</h4>
+            <table style="width:100%;border-collapse:collapse;">
+              ${row("Nama", name)}
+              ${row("Email", email || "-")}
+              ${row("WhatsApp", whatsapp)}
+            </table>
+            <hr style="border:none;border-top:1px solid #E2E8F0;margin:14px 0;">
+            <h4 style="color:#0B3D6B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 10px;">Detail Pengiriman</h4>
+            <table style="width:100%;border-collapse:collapse;">
+              ${row("Layanan", svcLabel)}
+              ${row("Rute", `${origin} → ${destination}`)}
+              ${weight ? row("Berat", `${weight} kg`) : ""}
+              ${length && width && height ? row("Dimensi", `${length} × ${width} × ${height} cm`) : ""}
+              ${incoterms ? row("Incoterms", incoterms) : ""}
+              ${insurance ? row("Asuransi", "✅ Ya") : ""}
+              ${express ? row("Express", "✅ Ya") : ""}
+            </table>
+            ${result?.total ? `
+            <hr style="border:none;border-top:1px solid #E2E8F0;margin:14px 0;">
+            <h4 style="color:#1D4ED8;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 10px;">Estimasi Biaya</h4>
+            <table style="width:100%;border-collapse:collapse;">
+              ${result.chargeableWeight != null ? row("Chargeable", `${result.chargeableWeight} kg`) : ""}
+              ${result.cbm != null ? row("Volume", `${result.cbm} CBM`) : ""}
+              ${result.baseCost ? row("Biaya Dasar", fmt(result.baseCost)) : ""}
+              ${result.weightCost ? row("Berat/CBM", fmt(result.weightCost)) : ""}
+              ${result.handlingFee ? row("Handling", fmt(result.handlingFee)) : ""}
+              ${result.customsFee ? row("Bea Cukai", fmt(result.customsFee)) : ""}
+              ${result.insuranceFee ? row("Asuransi", fmt(result.insuranceFee)) : ""}
+              ${result.expressFee ? row("Express", fmt(result.expressFee)) : ""}
+            </table>
+            <div style="margin-top:12px;padding:12px 14px;background:#EFF6FF;border-radius:8px;border:1px solid #BFDBFE;display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-weight:700;color:#1D4ED8;font-size:12px;">TOTAL ESTIMASI</span>
+              <span style="font-weight:800;color:#0B3D6B;font-size:20px;">${fmt(result.total)}</span>
+            </div>` : ""}
+            <div style="margin-top:18px;padding:10px 14px;background:#F1F5F9;border-radius:8px;text-align:center;font-size:10px;color:#94A3B8;">
+              CST Logistics — Sistem Manajemen Logistik Terintegrasi
+            </div>
+          </div>
+        </div>`;
+
+      await sendMail({
+        to: adminEmail,
+        subject: `[Request Quote] ${svcLabel.replace(/[^\w\s→/-]/g, "").trim()} — ${name} — ${origin} → ${destination}`,
+        html: emailHtml,
+        text: waLines,
+      });
+    }
+  } catch (err) {
+    errors.push("Email: " + String(err));
+  }
+
+  return res.json({ ok: true, warnings: errors.length ? errors : undefined });
+});
+
 // GET /api/portal/calculator-rates — public, returns current calculator rates
 router.get("/calculator-rates", async (_req, res) => {
   try {

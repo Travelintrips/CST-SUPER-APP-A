@@ -5,6 +5,7 @@ import {
   Calculator, ArrowRight, Ship, Plane, Truck, Package,
   Warehouse, Globe, Info, RefreshCw, MessageCircle, Phone,
   Lock, CheckCircle2, ChevronRight, Sparkles, ArrowLeft,
+  Send, User, X,
 } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext";
 
@@ -83,6 +84,15 @@ export default function CalculatorPage() {
   const [result, setResult] = useState<CalcResult | null>(null);
   const [error, setError] = useState("");
   const [calculated, setCalculated] = useState(false);
+
+  // Request Quote form state
+  const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [quoteName, setQuoteName] = useState("");
+  const [quoteEmail, setQuoteEmail] = useState("");
+  const [quoteWa, setQuoteWa] = useState("");
+  const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+  const [quoteSuccess, setQuoteSuccess] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
 
   const cbmAuto = useMemo(() => {
     const l = parseFloat(length);
@@ -218,6 +228,49 @@ export default function CalculatorPage() {
     setLength(""); setWidth(""); setHeight(""); setCargoType("");
     setIncoterms(""); setInsurance(false); setExpress(false);
     setResult(null); setCalculated(false); setError("");
+    setShowQuoteForm(false); setQuoteName(""); setQuoteEmail("");
+    setQuoteWa(""); setQuoteSuccess(false); setQuoteError("");
+  }
+
+  async function handleQuoteSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setQuoteError("");
+    if (!quoteName.trim()) { setQuoteError("Nama wajib diisi"); return; }
+    if (!quoteWa.trim()) { setQuoteError("Nomor WhatsApp wajib diisi"); return; }
+    setQuoteSubmitting(true);
+    try {
+      const res = await fetch("/api/portal/request-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: quoteName.trim(),
+          email: quoteEmail.trim() || undefined,
+          whatsapp: quoteWa.trim(),
+          service,
+          origin,
+          destination,
+          weight: weight || undefined,
+          length: length || undefined,
+          width: width || undefined,
+          height: height || undefined,
+          incoterms: incoterms || undefined,
+          insurance,
+          express,
+          result,
+        }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setQuoteError(data.error ?? "Gagal mengirim. Silakan coba lagi.");
+      } else {
+        setQuoteSuccess(true);
+        setShowQuoteForm(false);
+      }
+    } catch {
+      setQuoteError("Tidak dapat terhubung ke server. Cek koneksi Anda.");
+    } finally {
+      setQuoteSubmitting(false);
+    }
   }
 
   const svc = service ? SERVICE_CONFIG[service] : null;
