@@ -1,11 +1,12 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable } from "@workspace/db";
-import { eq, inArray, and, sql, desc } from "drizzle-orm";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable } from "@workspace/db";
+import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { requirePortalAuth, requirePortalAdmin, type PortalAuthReq } from "../lib/supabaseAuth";
+import { requireClerkUser } from "../lib/requireAdmin";
 import { broadcastToAdmins } from "../lib/sseManager";
 import multer from "multer";
 import { randomUUID } from "crypto";

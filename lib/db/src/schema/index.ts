@@ -31,3 +31,4 @@ export * from "./portalProductOrders";
 export * from "./quotationReplyLogs";
 export * from "./holding";
 export * from "./waIncomingMessages";
+export * from "./quoteRequests";

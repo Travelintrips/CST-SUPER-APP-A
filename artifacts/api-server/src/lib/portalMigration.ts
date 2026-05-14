@@ -39,7 +39,35 @@ export async function runPortalMigration(): Promise<void> {
       `);
     }
 
-    logger.info("Portal migration: selesai (role column + portal_content table + admin email promotion)");
+    // Buat tabel quote_requests jika belum ada
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS quote_requests (
+        id                         SERIAL PRIMARY KEY,
+        name                       TEXT NOT NULL,
+        email                      TEXT,
+        whatsapp                   TEXT NOT NULL,
+        service                    TEXT NOT NULL,
+        origin                     TEXT NOT NULL,
+        destination                TEXT NOT NULL,
+        weight                     TEXT,
+        length                     TEXT,
+        width                      TEXT,
+        height                     TEXT,
+        incoterms                  TEXT,
+        insurance                  BOOLEAN DEFAULT FALSE,
+        express                    BOOLEAN DEFAULT FALSE,
+        estimated_total            NUMERIC(14,2),
+        estimated_cbm              NUMERIC(10,4),
+        estimated_chargeable_weight NUMERIC(10,2),
+        status                     TEXT NOT NULL DEFAULT 'new',
+        notes                      TEXT,
+        handled_by                 TEXT,
+        created_at                 TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at                 TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    logger.info("Portal migration: selesai (role column + portal_content table + admin email promotion + quote_requests)");
   } catch (err) {
     logger.error({ err }, "Portal migration gagal");
   }
