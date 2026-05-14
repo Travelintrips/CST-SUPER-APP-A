@@ -24,7 +24,10 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0F3460"
       },
-      "permissions": []
+      "permissions": [
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png",
@@ -38,7 +41,16 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FF6B00",
+          "androidMode": "default",
+          "androidCollapsedTitle": "CST Driver"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
