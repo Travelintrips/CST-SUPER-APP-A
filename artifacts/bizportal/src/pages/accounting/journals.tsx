@@ -44,16 +44,9 @@ interface AccountComboboxProps {
 
 function AccountCombobox({ value, onChange, accounts, placeholder = "— Pilih akun —" }: AccountComboboxProps) {
   const [popOpen, setPopOpen] = useState(false);
-  const [search, setSearch] = useState("");
 
   const selected = value != null ? accounts.find((a) => a.id === value) : null;
   const label = selected ? `${selected.code} ${selected.name}` : placeholder;
-
-  const filtered = accounts.filter((a) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q);
-  });
 
   return (
     <Popover open={popOpen} onOpenChange={setPopOpen}>
@@ -69,27 +62,23 @@ function AccountCombobox({ value, onChange, accounts, placeholder = "— Pilih a
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[420px] p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder="Cari kode atau nama akun..."
-            value={search}
-            onValueChange={setSearch}
-          />
+        <Command>
+          <CommandInput placeholder="Cari kode atau nama akun..." />
           <CommandList className="max-h-64">
             <CommandEmpty>Akun tidak ditemukan</CommandEmpty>
             <CommandGroup>
               <CommandItem
-                value="__none__"
-                onSelect={() => { onChange(null); setSearch(""); setPopOpen(false); }}
+                value="— Tidak ada —"
+                onSelect={() => { onChange(null); setPopOpen(false); }}
               >
                 <Check className={cn("mr-2 h-4 w-4", value == null ? "opacity-100" : "opacity-0")} />
                 <span className="text-muted-foreground">— Tidak ada —</span>
               </CommandItem>
-              {filtered.map((a) => (
+              {accounts.map((a) => (
                 <CommandItem
                   key={a.id}
-                  value={String(a.id)}
-                  onSelect={() => { onChange(a.id); setSearch(""); setPopOpen(false); }}
+                  value={`${a.code} ${a.name}`}
+                  onSelect={() => { onChange(a.id); setPopOpen(false); }}
                 >
                   <Check className={cn("mr-2 h-4 w-4", value === a.id ? "opacity-100" : "opacity-0")} />
                   <span className="font-mono text-xs mr-2 text-muted-foreground">{a.code}</span>
