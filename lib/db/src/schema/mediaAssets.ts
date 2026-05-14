@@ -8,5 +8,6 @@ export const mediaAssetsTable = pgTable("media_assets", {
   url: text("url").notNull(),
   objectPath: text("object_path").notNull(),
   uploadedBy: text("uploaded_by"),
+  folder: text("folder").notNull().default("Umum"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
