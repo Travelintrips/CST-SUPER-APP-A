@@ -268,7 +268,8 @@ export default function MediaManagerPage() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [lightboxId, lightboxIndex, filtered.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightboxId, lightboxIndex]);
 
   const folders = foldersData?.folders ?? [];
   const allFolderNames = folders.map((f) => f.folder);
