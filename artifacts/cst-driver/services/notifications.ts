@@ -1,19 +1,28 @@
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// expo-notifications dropped push/remote notification support in Expo Go since
+// SDK 53. The notification handler and channel setup only work in a custom
+// development build (APK). Skip silently when running inside Expo Go so the
+// console error doesn't appear — the APK build gets full functionality.
+const isExpoGo = Constants.appOwnership === 'expo';
+
+if (!isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === 'web') return false;
+  if (Platform.OS === 'web' || isExpoGo) return false;
   try {
     const { status: existing } = await Notifications.getPermissionsAsync();
     let final = existing;
@@ -45,6 +54,8 @@ export function notifyNewJob(
   customerName: string,
   pickupAddress: string,
 ): void {
+  if (isExpoGo) return;
+
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
   Notifications.scheduleNotificationAsync({
