@@ -130,12 +130,18 @@ router.delete("/accounts/:id", async (req, res) => {
 });
 
 // ============ Journals ============
-router.get("/journals", async (_req, res) => {
-  const rows = await db.select().from(accountingJournalsTable).orderBy(accountingJournalsTable.code);
+router.get("/journals", async (req, res) => {
+  const companyId = getCompanyId(req);
+  const rows = await db
+    .select()
+    .from(accountingJournalsTable)
+    .where(eq(accountingJournalsTable.companyId, companyId))
+    .orderBy(accountingJournalsTable.code);
   return res.json(rows.map(serializeJournal));
 });
 
 router.post("/journals", async (req, res) => {
+  const companyId = getCompanyId(req);
   const { code, name, type, defaultDebitAccountId, defaultCreditAccountId, isActive } = req.body ?? {};
   if (!code || !name || !type) return res.status(400).json({ message: "code, name, type required" });
   const validTypes = ["sales", "purchase", "bank", "cash", "general"];
@@ -147,6 +153,7 @@ router.post("/journals", async (req, res) => {
         code,
         name,
         type,
+        companyId,
         defaultDebitAccountId: defaultDebitAccountId ?? null,
         defaultCreditAccountId: defaultCreditAccountId ?? null,
         isActive: isActive ?? true,

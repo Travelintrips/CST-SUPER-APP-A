@@ -214,61 +214,83 @@ export async function seedAccountingDefaults(): Promise<void> {
     return a;
   };
 
-  // ── Journals (global, upsert: keep existing) ─────────────────────────────
-  // Reference company 1 accounts for journal defaults (shared journals)
-  const c1cash        = needFor("1-1010", 1);
-  const c1bankMandiri = needFor("1-1020", 1);
-  const c1ar          = needFor("1-1030", 1);
-  const c1ap          = needFor("2-1010", 1);
-  const c1salesIncome = needFor("4-1010", 1);
-  const c1cogs        = needFor("5-1010", 1);
+  // ── Journals: ensure company_id column exists ─────────────────────────────
+  await db.execute(sql`
+    ALTER TABLE accounting_journals ADD COLUMN IF NOT EXISTS company_id integer
+  `);
 
-  await db
-    .insert(accountingJournalsTable)
-    .values([
-      {
-        code: "SAL", name: "Penjualan", type: "sales",
-        defaultDebitAccountId: c1ar.id,
-        defaultCreditAccountId: c1salesIncome.id,
-      },
-      {
-        code: "PUR", name: "Pembelian", type: "purchase",
-        defaultDebitAccountId: c1cogs.id,
-        defaultCreditAccountId: c1ap.id,
-      },
-      {
-        code: "BNK", name: "Bank Mandiri CST", type: "bank",
-        defaultDebitAccountId: c1bankMandiri.id,
-        defaultCreditAccountId: c1bankMandiri.id,
-      },
-      {
-        code: "CSH", name: "Kas", type: "cash",
-        defaultDebitAccountId: c1cash.id,
-        defaultCreditAccountId: c1cash.id,
-      },
-      {
-        code: "GEN", name: "Memorial / Penyesuaian", type: "general",
-        defaultDebitAccountId: null,
-        defaultCreditAccountId: null,
-      },
-      {
-        code: "EXP", name: "Beban & Reimburse", type: "purchase",
-        defaultDebitAccountId: c1cogs.id,
-        defaultCreditAccountId: c1ap.id,
-      },
-    ])
-    .onConflictDoUpdate({
-      target: accountingJournalsTable.code,
-      set: { name: sql`excluded.name` },
-    });
+  // ── Migrate legacy global journals (no company_id) → assign to company 1 ─
+  const LEGACY_RENAME: Record<string, string> = {
+    SAL: "SAL-CST",
+    PUR: "PUR-CST",
+    BNK: "BNK-CST",
+    CSH: "CSH-CST",
+    GEN: "GEN-CST",
+    EXP: "EXP-CST",
+  };
+  for (const [oldCode, newCode] of Object.entries(LEGACY_RENAME)) {
+    await db.execute(sql`
+      UPDATE accounting_journals
+         SET code = ${newCode}, company_id = 1
+       WHERE code = ${oldCode} AND (company_id IS NULL)
+    `);
+  }
+
+  // ── Per-company journal templates ─────────────────────────────────────────
+  interface JournalTemplate {
+    suffix: string;
+    label: string;
+    type: "sales" | "purchase" | "bank" | "cash" | "general";
+    debitBase: string | null;
+    creditBase: string | null;
+  }
+  const JOURNAL_TEMPLATES: JournalTemplate[] = [
+    { suffix: "SAL", label: "Penjualan",              type: "sales",    debitBase: "1-1030", creditBase: "4-1010" },
+    { suffix: "PUR", label: "Pembelian",              type: "purchase", debitBase: "5-1010", creditBase: "2-1010" },
+    { suffix: "BNK", label: "Bank Mandiri",           type: "bank",     debitBase: "1-1020", creditBase: "1-1020" },
+    { suffix: "CSH", label: "Kas",                    type: "cash",     debitBase: "1-1010", creditBase: "1-1010" },
+    { suffix: "GEN", label: "Memorial / Penyesuaian", type: "general",  debitBase: null,     creditBase: null     },
+    { suffix: "EXP", label: "Beban & Reimburse",      type: "purchase", debitBase: "5-1010", creditBase: "2-1010" },
+  ];
+
+  for (const companyId of ALL_COMPANY_IDS) {
+    const abbr = COMPANY_ABBR[companyId]!;
+    for (const tpl of JOURNAL_TEMPLATES) {
+      const code = `${tpl.suffix}-${abbr}`;
+      const name = tpl.label + (tpl.suffix === "BNK" ? ` ${abbr}` : "");
+      const debitId  = tpl.debitBase  ? (byCode.get(`${tpl.debitBase}-${abbr}`)?.id  ?? null) : null;
+      const creditId = tpl.creditBase ? (byCode.get(`${tpl.creditBase}-${abbr}`)?.id ?? null) : null;
+      await db
+        .insert(accountingJournalsTable)
+        .values({
+          code,
+          name,
+          type: tpl.type,
+          companyId,
+          defaultDebitAccountId:  debitId,
+          defaultCreditAccountId: creditId,
+        })
+        .onConflictDoUpdate({
+          target: accountingJournalsTable.code,
+          set: { companyId, name: sql`excluded.name` },
+        });
+    }
+  }
 
   const allJournals = await db.select().from(accountingJournalsTable);
   const journalByCode = new Map(allJournals.map((j) => [j.code, j]));
-  const salesJ = journalByCode.get("SAL")!;
-  const purJ   = journalByCode.get("PUR")!;
-  const bankJ  = journalByCode.get("BNK")!;
-  const cashJ  = journalByCode.get("CSH")!;
-  const expJ   = journalByCode.get("EXP")!;
+
+  const getJournal = (suffix: string, companyId: number) => {
+    const abbr = COMPANY_ABBR[companyId]!;
+    return journalByCode.get(`${suffix}-${abbr}`)!;
+  };
+
+  // aliases for company 1 (used below for taxes & expense categories)
+  const salesJ = getJournal("SAL", 1);
+  const purJ   = getJournal("PUR", 1);
+  const bankJ  = getJournal("BNK", 1);
+  const cashJ  = getJournal("CSH", 1);
+  const expJ   = getJournal("EXP", 1);
 
   // ── Taxes: ensure PPN sale + purchase exist ───────────────────────────────
   const c1ppnOut = needFor("2-1020", 1);
@@ -306,6 +328,11 @@ export async function seedAccountingDefaults(): Promise<void> {
     const salesIncome = needFor("4-1010", companyId);
     const cogs        = needFor("5-1010", companyId);
 
+    const cSalesJ = getJournal("SAL", companyId);
+    const cPurJ   = getJournal("PUR", companyId);
+    const cBankJ  = getJournal("BNK", companyId);
+    const cCashJ  = getJournal("CSH", companyId);
+
     const settingsBase = {
       arAccountId:             ar.id,
       apAccountId:             ap.id,
@@ -315,10 +342,10 @@ export async function seedAccountingDefaults(): Promise<void> {
       defaultCashAccountId:    cash.id,
       ppnOutputAccountId:      ppnOut.id,
       ppnInputAccountId:       ppnIn.id,
-      salesJournalId:          salesJ.id,
-      purchaseJournalId:       purJ.id,
-      bankJournalId:           bankJ.id,
-      cashJournalId:           cashJ.id,
+      salesJournalId:          cSalesJ?.id ?? salesJ.id,
+      purchaseJournalId:       cPurJ?.id   ?? purJ.id,
+      bankJournalId:           cBankJ?.id  ?? bankJ.id,
+      cashJournalId:           cCashJ?.id  ?? cashJ.id,
       defaultSalesTaxId:       saleTax.id,
       defaultPurchaseTaxId:    purchaseTax.id,
       inventoryAccountId:      inventory.id,
@@ -346,6 +373,7 @@ export async function seedAccountingDefaults(): Promise<void> {
         return [baseCode, a];
       }),
   );
+  const c1ap = needFor("2-1010", 1);
   await seedExpenseCategories(c1ExpByCode, expJ.id, c1ap.id);
 
   logger.info("Accounting seed: complete (4 perusahaan, per-company COA).");
