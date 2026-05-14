@@ -19,9 +19,10 @@ config.resolver.nodeModulesPaths = [
 // and pnpm installs. FallbackWatcher (used when Watchman is unavailable) calls
 // fs.watch() on every dir it finds; if one vanishes mid-crawl it throws ENOENT,
 // crashing Metro. Patterns covered:
-//   expo-notifications_tmp_*  — Expo notifications temp build artefacts
-//   .local/**                 — agent skill temp dirs + pnpm install temp dirs
+//   expo-notifications_tmp_*          — Expo notifications temp build artefacts
+//   react-native-keyboard-controller_tmp_* — keyboard-controller postinstall temp
+//   .local/**                         — agent skill temp dirs + pnpm install temp dirs
 config.resolver.blockList =
-  /expo-notifications_tmp_[^/]+\/.*|[/\\]\.local[/\\].*/;
+  /expo-notifications_tmp_[^/]+\/.*|react-native-keyboard-controller_tmp_[^/]+\/.*|[/\\]\.local[/\\].*/;
 
 module.exports = config;

@@ -42,7 +42,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+<<<<<<< HEAD
 args = "cd artifacts/api-server && PORT=8080 node --enable-source-maps ./dist/index.mjs"
+=======
+args = "cd artifacts/api-server && PORT=8080 pnpm run dev"
+>>>>>>> 2566e3ff0ba7dd43388a1800cb96b22e8e9e5204
 waitForPort = 8080
 
 [workflows.workflow.metadata]
@@ -68,6 +72,7 @@ ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
 VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
+EXPO_TOKEN = "IevWo60wnJ1OaG9XRQwsYH_9ss83ChbNLc4cr3iX"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
