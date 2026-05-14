@@ -6,6 +6,7 @@ import {
   productsTable,
 } from "@workspace/db";
 import { eq, ilike, and, or, sql } from "drizzle-orm";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendWhatsApp } from "../lib/fonnte";
 import { getAdminWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
@@ -220,6 +221,7 @@ portalProductOrdersRouter.post("/orders", async (req: Request, res: Response) =>
 
 // GET /api/portal-product/orders — list orders (admin)
 portalProductOrdersRouter.get("/orders", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const status = typeof req.query["status"] === "string" ? req.query["status"] : null;
   const search = typeof req.query["search"] === "string" ? req.query["search"].trim() : null;
 
@@ -244,6 +246,7 @@ portalProductOrdersRouter.get("/orders", async (req: Request, res: Response) => 
 
 // DELETE /api/portal-product/orders/:id — delete order (admin)
 portalProductOrdersRouter.delete("/orders/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -258,6 +261,7 @@ portalProductOrdersRouter.delete("/orders/:id", async (req: Request, res: Respon
 
 // PATCH /api/portal-product/orders/items/:itemId/link — re-link item to master product (admin)
 portalProductOrdersRouter.patch("/orders/items/:itemId/link", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const itemId = parseInt(String(req.params.itemId), 10);
   if (isNaN(itemId)) return res.status(400).json({ message: "Item ID tidak valid" });
 
@@ -284,6 +288,7 @@ portalProductOrdersRouter.patch("/orders/items/:itemId/link", async (req: Reques
 
 // GET /api/portal-product/orders/:id — get order detail (admin)
 portalProductOrdersRouter.get("/orders/:id", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -297,6 +302,7 @@ portalProductOrdersRouter.get("/orders/:id", async (req: Request, res: Response)
 
 // PUT /api/portal-product/orders/:id/status — update status (admin)
 portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
 
