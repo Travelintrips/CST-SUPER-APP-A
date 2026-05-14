@@ -1,16 +1,14 @@
 import { Router } from "express";
 import multer from "multer";
-import { randomUUID } from "crypto";
 
 import { db, mediaAssetsTable } from "@workspace/db";
 import { eq, desc, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { uploadToSupabase, downloadFromSupabase, isSupabaseUrl } from "../lib/supabaseStorage";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
-const objectStorageService = new ObjectStorageService();
 
 router.use(async (req, res, next) => {
   if (!(await requireClerkUser(req, res))) return;
@@ -54,7 +52,7 @@ router.get("/", async (req, res) => {
   res.json({ items });
 });
 
-// POST /api/media/upload — upload dan kompres gambar, simpan sebagai public asset
+// POST /api/media/upload — upload dan kompres gambar, simpan ke Supabase Storage
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -72,19 +70,18 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       finalContentType = compressed.contentType;
     }
 
-    // Upload ke private storage (tidak memerlukan PUBLIC_OBJECT_SEARCH_PATHS)
-    const objectPath = await objectStorageService.uploadPrivateEntity(buffer, finalContentType);
-    // objectPath = "/objects/uploads/{uuid}" — serve via /api/storage/objects/...
-    const url = `/api/storage${objectPath}`; // e.g. /api/storage/objects/uploads/{uuid}
+    // Upload ke Supabase Storage (bucket "media", public)
+    const { publicUrl, storagePath } = await uploadToSupabase(buffer, finalContentType, "uploads");
 
     const [inserted] = await db.insert(mediaAssetsTable).values({
       originalName: originalname,
       contentType: finalContentType,
       sizeBytes: buffer.byteLength,
-      url,
-      objectPath,
+      url: publicUrl,
+      objectPath: `supabase:media/${storagePath}`,
       uploadedBy: (req as any).user?.email ?? null,
       folder,
+      publicUrl,
     }).returning();
 
     res.json({ ok: true, item: inserted });
