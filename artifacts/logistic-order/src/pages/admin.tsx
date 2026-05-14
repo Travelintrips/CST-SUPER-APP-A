@@ -152,19 +152,39 @@ export default function AdminPage() {
     }
   }
 
-  function handleLogin() {
+  async function handleLogin() {
     if (!password.trim()) {
       setLoginError("Masukkan password.");
       return;
     }
-    // Store the entered password for use in API calls.
-    // The actual secret lives only in the server env — any wrong password will be
-    // rejected by the backend with a 403 when the user attempts a write operation.
-    localStorage.setItem(ADMIN_KEY, "1");
-    localStorage.setItem(ADMIN_TOKEN_KEY, password);
-    setAuthToken(password);
-    setAuthed(true);
     setLoginError("");
+    try {
+      // Fetch the current rates first (public GET) so the verification PUT is a no-op
+      // and does not overwrite any existing custom rates.
+      const ratesRes = await fetch("/api/logistic/orders/trucking-rates");
+      const currentRates = ratesRes.ok ? await ratesRes.json() : ratesEditing;
+
+      const verifyRes = await fetch("/api/logistic/orders/trucking-rates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify(currentRates),
+      });
+
+      if (verifyRes.ok) {
+        localStorage.setItem(ADMIN_KEY, "1");
+        localStorage.setItem(ADMIN_TOKEN_KEY, password);
+        setAuthToken(password);
+        setRates(currentRates);
+        setRatesEditing(currentRates);
+        setAuthed(true);
+      } else if (verifyRes.status === 503) {
+        setLoginError("Admin password belum dikonfigurasi di server.");
+      } else {
+        setLoginError("Password salah. Coba lagi.");
+      }
+    } catch {
+      setLoginError("Gagal menghubungi server.");
+    }
   }
 
   function handleLogout() {
