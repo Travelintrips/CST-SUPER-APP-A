@@ -114,6 +114,36 @@ export default function JournalsPage() {
                       <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => (<SelectItem key={k} value={k}>{v}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label>Akun Debit Default</Label>
+                    <Select
+                      value={form.defaultDebitAccountId != null ? String(form.defaultDebitAccountId) : "none"}
+                      onValueChange={(v) => setForm({ ...form, defaultDebitAccountId: v === "none" ? null : Number(v) })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="— Tidak ada —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— Tidak ada —</SelectItem>
+                        {(accounts ?? []).map((a) => (
+                          <SelectItem key={a.id} value={String(a.id)}>{a.code} {a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Akun Kredit Default</Label>
+                    <Select
+                      value={form.defaultCreditAccountId != null ? String(form.defaultCreditAccountId) : "none"}
+                      onValueChange={(v) => setForm({ ...form, defaultCreditAccountId: v === "none" ? null : Number(v) })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="— Tidak ada —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— Tidak ada —</SelectItem>
+                        {(accounts ?? []).map((a) => (
+                          <SelectItem key={a.id} value={String(a.id)}>{a.code} {a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex items-center gap-2">
                     <input type="checkbox" id="active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
                     <Label htmlFor="active">Aktif</Label>
