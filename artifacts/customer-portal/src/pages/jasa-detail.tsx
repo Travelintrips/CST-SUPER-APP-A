@@ -978,36 +978,67 @@ export default function JasaDetail() {
         />
 
         {/* ── Content ── */}
-        <div className="container px-4 md:px-6 py-12 md:py-20 relative z-10">
+        <div className="container px-4 md:px-6 py-5 md:py-7 relative z-10">
 
-          {/* Breadcrumb — enterprise style */}
-          <nav className="flex items-center gap-0 mb-10" aria-label="breadcrumb">
-            <Link
-              href="/"
-              className="text-[12px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
+          {/* Back button + Breadcrumb row */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            {/* Kembali button */}
+            <button
+              onClick={() => window.history.length > 1 ? window.history.back() : setLocation("/jasa")}
+              className="inline-flex items-center gap-1.5 text-[12px] font-semibold transition-all duration-150 rounded-lg px-3 py-1.5 select-none"
+              style={{
+                color: hero.accentText,
+                background: hero.accentLight,
+                border: `1.5px solid ${hero.accentColor}22`,
+                boxShadow: `0 1px 4px ${hero.accentColor}12`,
+                transition: "all 0.16s ease",
+              }}
+              onMouseEnter={e => {
+                const el = e.currentTarget as HTMLElement;
+                el.style.background = hero.badgeBg;
+                el.style.boxShadow = `0 4px 12px ${hero.accentColor}22`;
+                el.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={e => {
+                const el = e.currentTarget as HTMLElement;
+                el.style.background = hero.accentLight;
+                el.style.boxShadow = `0 1px 4px ${hero.accentColor}12`;
+                el.style.transform = "translateY(0)";
+              }}
             >
-              CST Logistics
-            </Link>
-            <ChevronRight className="h-3.5 w-3.5 text-slate-300 mx-1.5 flex-shrink-0" />
-            <Link
-              href="/jasa"
-              className="text-[12px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
-            >
-              Katalog Jasa
-            </Link>
-            <ChevronRight className="h-3.5 w-3.5 text-slate-300 mx-1.5 flex-shrink-0" />
-            <span
-              className="text-[11.5px] font-bold px-2.5 py-0.5 rounded-md"
-              style={{ background: hero.badgeBg, color: hero.badgeText }}
-            >
-              {item.category}
-            </span>
-          </nav>
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Kembali
+            </button>
 
-          <div className="flex flex-col sm:flex-row items-start gap-7 md:gap-12">
+            {/* Breadcrumb */}
+            <nav className="flex items-center gap-0" aria-label="breadcrumb">
+              <Link
+                href="/"
+                className="text-[11.5px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
+              >
+                CST Logistics
+              </Link>
+              <ChevronRight className="h-3 w-3 text-slate-300 mx-1 flex-shrink-0" />
+              <Link
+                href="/jasa"
+                className="text-[11.5px] font-medium text-slate-400 hover:text-slate-600 transition-colors duration-150"
+              >
+                Katalog Jasa
+              </Link>
+              <ChevronRight className="h-3 w-3 text-slate-300 mx-1 flex-shrink-0" />
+              <span
+                className="text-[11px] font-bold px-2 py-0.5 rounded-md"
+                style={{ background: hero.badgeBg, color: hero.badgeText }}
+              >
+                {item.category}
+              </span>
+            </nav>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start gap-4 md:gap-7">
             {/* Icon card — premium glassmorphism */}
             <div
-              className="hero-icon-card flex-shrink-0 rounded-[22px] p-5"
+              className="hero-icon-card flex-shrink-0 rounded-[16px] p-3.5"
               style={{
                 background: hero.iconBg,
                 backdropFilter: "blur(20px)",
@@ -1023,10 +1054,10 @@ export default function JasaDetail() {
               }}
             >
               {ct === "trucking" ? (
-                <img src={cstLogo} alt="CST Logistic" className="h-16 w-auto max-w-[120px] object-contain" />
+                <img src={cstLogo} alt="CST Logistic" className="h-10 w-auto max-w-[90px] object-contain" />
               ) : (
                 <div style={{ color: hero.accentColor, filter: `drop-shadow(0 4px 12px ${hero.accentColor}40)` }}>
-                  <IconComp className="h-14 w-14" />
+                  <IconComp className="h-10 w-10" />
                 </div>
               )}
             </div>
@@ -1035,11 +1066,11 @@ export default function JasaDetail() {
             <div className="flex-1 min-w-0">
               {/* Service name */}
               <h1
-                className="font-bold leading-[1.08] mb-4"
+                className="font-bold leading-[1.08] mb-2"
                 style={{
-                  fontSize: "clamp(30px, 4.8vw, 54px)",
+                  fontSize: "clamp(20px, 3vw, 34px)",
                   color: "#0A1628",
-                  letterSpacing: "-0.03em",
+                  letterSpacing: "-0.025em",
                   textShadow: "0 2px 12px rgba(0,0,0,0.06)",
                 }}
               >
@@ -1048,11 +1079,11 @@ export default function JasaDetail() {
 
               {/* Description */}
               <p
-                className="leading-[1.78] mb-8"
+                className="leading-[1.65] mb-4"
                 style={{
-                  fontSize: "clamp(14px, 1.55vw, 16.5px)",
+                  fontSize: "clamp(13px, 1.3vw, 14.5px)",
                   color: "#374151",
-                  maxWidth: "580px",
+                  maxWidth: "520px",
                   fontWeight: 400,
                 }}
               >
@@ -1060,11 +1091,11 @@ export default function JasaDetail() {
               </p>
 
               {/* Feature pills — premium animated */}
-              <div className="flex flex-wrap gap-2.5">
+              <div className="flex flex-wrap gap-2">
                 {hero.features.map((f, i) => (
                   <span
                     key={f}
-                    className="hero-pill inline-flex items-center gap-2 text-[12.5px] font-semibold px-4 py-2 rounded-full"
+                    className="hero-pill inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-full"
                     style={{
                       background: `linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.88) 100%)`,
                       border: `1.5px solid ${hero.accentColor}28`,

@@ -207,6 +207,18 @@ sendLogisticOrderNotification({
     req.log.error({ err }, "autoCreateRfqAndNotifyVendors failed");
   });
 
+  broadcastToAdmins("new_logistic_order", {
+    orderId: order.id,
+    orderNumber,
+    customerName: body.customerName,
+    companyName: body.companyName ?? null,
+    shipmentType: body.shipmentType,
+    origin: body.origin,
+    destination: body.destination,
+    grandTotal: Number(body.grandTotal),
+    createdAt: order.createdAt.toISOString(),
+  });
+
   return res.status(201).json({
     ...toOrder(order),
     items: items.map(toItem),
@@ -560,6 +572,15 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
       `Terima kasih telah menggunakan layanan kami. Hubungi kami jika ada pertanyaan.`;
     sendWhatsApp(updated.phone, msg).catch(() => undefined);
   }
+
+  broadcastToAdmins("logistic_order_status_changed", {
+    orderId: updated.id,
+    orderNumber: updated.orderNumber,
+    customerName: updated.customerName,
+    companyName: updated.companyName ?? null,
+    status: updated.status,
+    updatedAt: new Date().toISOString(),
+  });
 
   return res.json(toOrder(updated));
 });

@@ -22,11 +22,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import {
-  useListJournals, useCreateJournal, useUpdateJournal, useListAccounts,
-  getListJournalsQueryKey, type AccountingJournal,
+  type AccountingJournal,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Pencil, Plus, BookOpen, Printer, Download, ChevronsUpDown, Check } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 import { cn } from "@/lib/utils";
@@ -97,10 +97,51 @@ export default function JournalsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { data: journals } = useListJournals();
-  const { data: accounts } = useListAccounts();
-  const createMut = useCreateJournal();
-  const updateMut = useUpdateJournal();
+  const { activeCompanyId } = useCompany();
+
+  const journalsQK = ["journals", activeCompanyId] as const;
+  const { data: journals } = useQuery<AccountingJournal[]>({
+    queryKey: journalsQK,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/accounting/journals?company=${activeCompanyId}`, { credentials: "include", signal });
+      if (!res.ok) throw new Error("Gagal memuat jurnal");
+      return res.json() as Promise<AccountingJournal[]>;
+    },
+  });
+
+  const accountsQK = ["accounts", activeCompanyId] as const;
+  const { data: accounts } = useQuery<{ id: number; code: string; name: string }[]>({
+    queryKey: accountsQK,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/accounting/accounts?company=${activeCompanyId}`, { credentials: "include", signal });
+      if (!res.ok) throw new Error("Gagal memuat akun");
+      return res.json();
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: async (data: typeof form) => {
+      const res = await fetch(`/api/accounting/journals?company=${activeCompanyId}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: typeof form }) => {
+      const res = await fetch(`/api/accounting/journals/${id}?company=${activeCompanyId}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AccountingJournal | null>(null);
@@ -126,10 +167,10 @@ export default function JournalsPage() {
         await updateMut.mutateAsync({ id: editing.id, data: form });
         toast({ title: t.common.success });
       } else {
-        await createMut.mutateAsync({ data: form });
+        await createMut.mutateAsync(form);
         toast({ title: t.common.success });
       }
-      qc.invalidateQueries({ queryKey: getListJournalsQueryKey() });
+      qc.invalidateQueries({ queryKey: journalsQK });
       reset(); setOpen(false);
     } catch (e: any) {
       toast({ title: t.common.error, description: e?.message ?? String(e), variant: "destructive" });
