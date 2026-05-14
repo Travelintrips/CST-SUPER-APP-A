@@ -265,6 +265,9 @@ function Router() {
         <Route path="/sales/documents" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
         <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/documents/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
+        <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
+        <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
         <Route path="/sales/ai-drafts" component={() => <ProtectedRoute component={AiDraftsPage} />} />
         <Route path="/sales/customers" component={() => <ProtectedRoute component={CustomersPage} />} />
         <Route path="/sales/invoices" component={() => <ProtectedRoute component={SalesInvoicesPage} />} />
