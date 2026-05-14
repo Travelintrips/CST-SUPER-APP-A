@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { randomUUID } from "crypto";
 
 import { db, mediaAssetsTable } from "@workspace/db";
 import { eq, desc, sql, inArray } from "drizzle-orm";
@@ -151,6 +152,51 @@ router.patch("/:id/folder", async (req, res) => {
     .where(eq(mediaAssetsTable.id, id))
     .returning();
   res.json({ ok: true, item: updated });
+});
+
+// POST /api/media/:id/copy-public — salin ke public storage, kembalikan URL absolut
+router.post("/:id/copy-public", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "ID tidak valid" });
+
+  try {
+    const [asset] = await db.select().from(mediaAssetsTable).where(eq(mediaAssetsTable.id, id));
+    if (!asset) return res.status(404).json({ error: "Asset tidak ditemukan" });
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    // Sudah punya publicUrl — kembalikan langsung
+    if (asset.publicUrl) {
+      const absoluteUrl = asset.publicUrl.startsWith("http")
+        ? asset.publicUrl
+        : `${baseUrl}${asset.publicUrl}`;
+      return res.json({ ok: true, publicUrl: absoluteUrl, cached: true });
+    }
+
+    // Download dari private storage
+    const objectFile = await objectStorageService.getObjectEntityFile(asset.objectPath);
+    const [fileBuffer] = await objectFile.download();
+
+    // Upload ke public storage dengan nama unik
+    const shareId = randomUUID();
+    const relativeUrl = await objectStorageService.uploadPublicAsset(
+      Buffer.from(fileBuffer),
+      `share-${shareId}`,
+      asset.contentType,
+    );
+
+    // Simpan publicUrl ke DB agar tidak di-copy ulang
+    await db
+      .update(mediaAssetsTable)
+      .set({ publicUrl: relativeUrl })
+      .where(eq(mediaAssetsTable.id, id));
+
+    const absoluteUrl = `${baseUrl}${relativeUrl}`;
+    res.json({ ok: true, publicUrl: absoluteUrl });
+  } catch (err: any) {
+    console.error("[media/copy-public] Error:", err?.message ?? err);
+    res.status(500).json({ error: err?.message ?? "Gagal membuat URL publik" });
+  }
 });
 
 // DELETE /api/media/:id — hapus metadata dari DB

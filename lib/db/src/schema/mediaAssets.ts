@@ -10,4 +10,5 @@ export const mediaAssetsTable = pgTable("media_assets", {
   uploadedBy: text("uploaded_by"),
   folder: text("folder").notNull().default("Umum"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  publicUrl: text("public_url"),
 });

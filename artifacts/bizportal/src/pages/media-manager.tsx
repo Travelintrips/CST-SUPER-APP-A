@@ -24,7 +24,7 @@ import {
   ExternalLink, FolderOpen, FolderPlus, FolderIcon, MoreVertical,
   ArrowRightLeft, ChevronRight, ChevronLeft, Images, Pencil, FolderX,
   CheckSquare2, Square, MousePointerClick, X as XIcon, ZoomIn, Info,
-  Scissors, RotateCcw, ScanLine,
+  Scissors, RotateCcw, ScanLine, Link2, Globe,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ interface MediaAsset {
   uploadedBy: string | null;
   folder: string;
   createdAt: string;
+  publicUrl: string | null;
 }
 
 interface FolderStat {
@@ -72,7 +73,8 @@ function fmtDate(val: string) {
 }
 
 function getAbsoluteUrl(url: string) {
-  return url.startsWith("http") ? url : `${window.location.origin}/api${url}`;
+  if (url.startsWith("http")) return url;
+  return `${window.location.origin}${url}`;
 }
 
 async function apiFetch(url: string, opts?: RequestInit) {
@@ -92,6 +94,8 @@ export default function MediaManagerPage() {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copyingPublicId, setCopyingPublicId] = useState<number | null>(null);
+  const [copiedPublicId, setCopiedPublicId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaAsset | null>(null);
   const [activeFolder, setActiveFolder] = useState<string>(ALL_FOLDER);
 
@@ -458,7 +462,30 @@ export default function MediaManagerPage() {
     await navigator.clipboard.writeText(url);
     setCopiedId(asset.id);
     setTimeout(() => setCopiedId(null), 2000);
-    toast({ title: "URL disalin ke clipboard!" });
+    toast({ title: "URL (sesi) disalin ke clipboard!" });
+  }
+
+  async function copyPublicUrl(asset: MediaAsset) {
+    setCopyingPublicId(asset.id);
+    try {
+      const res = await fetch(`/api/media/${asset.id}/copy-public`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Gagal");
+      await navigator.clipboard.writeText(json.publicUrl);
+      setCopiedPublicId(asset.id);
+      setTimeout(() => setCopiedPublicId(null), 3000);
+      toast({
+        title: "URL Publik disalin!",
+        description: "Link bisa dibuka siapa saja tanpa login.",
+      });
+    } catch (err: any) {
+      toast({ title: "Gagal membuat URL publik", description: err?.message, variant: "destructive" });
+    } finally {
+      setCopyingPublicId(null);
+    }
   }
 
   function handleCreateFolder() {
@@ -755,16 +782,20 @@ export default function MediaManagerPage() {
                         {/* Overlay actions (normal mode) */}
                         {!selectMode && (
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                            {/* Salin URL Publik — utama */}
                             <Button
                               size="icon"
                               variant="secondary"
                               className="h-7 w-7"
-                              title="Salin URL"
-                              onClick={() => copyUrl(asset)}
+                              title="Salin URL Publik (tanpa login)"
+                              onClick={(e) => { e.stopPropagation(); copyPublicUrl(asset); }}
+                              disabled={copyingPublicId === asset.id}
                             >
-                              {copiedId === asset.id
-                                ? <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
-                                : <Copy className="w-3.5 h-3.5" />}
+                              {copyingPublicId === asset.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : copiedPublicId === asset.id
+                                  ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                  : <Globe className="w-3.5 h-3.5" />}
                             </Button>
                             <Button
                               size="icon"
@@ -783,6 +814,18 @@ export default function MediaManagerPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel className="text-xs">Aksi</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => copyPublicUrl(asset)} disabled={copyingPublicId === asset.id}>
+                                  {copyingPublicId === asset.id
+                                    ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                                    : <Globe className="w-3.5 h-3.5 mr-2 text-emerald-600" />}
+                                  Salin URL Publik
+                                  {asset.publicUrl && <span className="ml-auto text-[10px] text-muted-foreground pl-2">✓ cached</span>}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => copyUrl(asset)}>
+                                  <Link2 className="w-3.5 h-3.5 mr-2 text-blue-500" />
+                                  Salin URL Internal
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => openMoveDialog(asset)}>
                                   <ArrowRightLeft className="w-3.5 h-3.5 mr-2" />
