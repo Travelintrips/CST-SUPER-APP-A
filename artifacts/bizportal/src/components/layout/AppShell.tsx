@@ -196,6 +196,7 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
     { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
+    { type: "flat", titleKey: "Thai Tea CST", href: "/pos-kasir", icon: ShoppingBag, roles: ["admin"] },
     {
       type: "group",
       titleKey: "expense",

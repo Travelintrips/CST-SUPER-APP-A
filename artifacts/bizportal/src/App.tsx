@@ -74,6 +74,7 @@ import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
+import PosKasirAdminPage from "@/pages/pos-kasir-admin";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -333,6 +334,8 @@ function Router() {
         {/* Holding */}
         <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
+        {/* POS Kasir Thai Tea */}
+        <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
         <Route component={NotFound} />
       </Switch>
       <AppRoutes rootGuard={AuthRouteGuard} />
