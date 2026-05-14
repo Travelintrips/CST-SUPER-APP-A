@@ -412,9 +412,14 @@ logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response)
 });
 
 // PUT /api/logistic/orders/trucking-rates — admin only
+const TRUCKING_ADMIN_PASSWORD = process.env.LOGISTIC_ADMIN_PASSWORD ?? "";
+
 logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) => {
+  if (!TRUCKING_ADMIN_PASSWORD) {
+    return res.status(503).json({ message: "Admin password tidak dikonfigurasi di server" });
+  }
   const adminPassword = req.headers["x-admin-password"];
-  if (adminPassword !== "admin123") {
+  if (!adminPassword || adminPassword !== TRUCKING_ADMIN_PASSWORD) {
     return res.status(403).json({ message: "Akses ditolak" });
   }
   const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;

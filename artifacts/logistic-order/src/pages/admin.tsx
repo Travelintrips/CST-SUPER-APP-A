@@ -32,6 +32,7 @@ const DEFAULT_RATES: TruckingRates = {
 };
 
 const ADMIN_KEY = "logistic_admin_auth";
+const ADMIN_TOKEN_KEY = "logistic_admin_token";
 const CARD_STYLE_KEY = "logistic_admin_card_styles";
 
 type CardStyle = { logoUrl?: string; bgCustom?: string };
@@ -63,6 +64,7 @@ const ADMIN_GRADIENT_PRESETS = [
 export default function AdminPage() {
   const [, setLocation] = useLocation();
   const [authed, setAuthed] = useState(() => localStorage.getItem(ADMIN_KEY) === "1");
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) ?? "");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const { toast } = useToast();
@@ -132,9 +134,14 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/logistic/orders/trucking-rates", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-admin-password": "admin123" },
+        headers: { "Content-Type": "application/json", "x-admin-password": authToken },
         body: JSON.stringify(ratesEditing),
       });
+      if (res.status === 403) {
+        toast({ title: "Sesi habis. Silakan login ulang.", variant: "destructive" });
+        handleLogout();
+        return;
+      }
       if (!res.ok) throw new Error("Gagal menyimpan");
       setRates(ratesEditing);
       toast({ title: "Tarif trucking berhasil disimpan" });
@@ -146,18 +153,25 @@ export default function AdminPage() {
   }
 
   function handleLogin() {
-    if (password === "admin123") {
-      localStorage.setItem(ADMIN_KEY, "1");
-      setAuthed(true);
-      setLoginError("");
-    } else {
-      setLoginError("Password salah. Coba lagi.");
+    if (!password.trim()) {
+      setLoginError("Masukkan password.");
+      return;
     }
+    // Store the entered password for use in API calls.
+    // The actual secret lives only in the server env — any wrong password will be
+    // rejected by the backend with a 403 when the user attempts a write operation.
+    localStorage.setItem(ADMIN_KEY, "1");
+    localStorage.setItem(ADMIN_TOKEN_KEY, password);
+    setAuthToken(password);
+    setAuthed(true);
+    setLoginError("");
   }
 
   function handleLogout() {
     localStorage.removeItem(ADMIN_KEY);
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
     setAuthed(false);
+    setAuthToken("");
     setPassword("");
   }
 

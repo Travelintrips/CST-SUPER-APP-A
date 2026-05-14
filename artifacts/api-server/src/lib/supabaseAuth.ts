@@ -32,7 +32,9 @@ export async function requirePortalAuth(req: Request, res: Response, next: NextF
   if (!customer) {
     const meta = supabaseUser.user_metadata ?? {};
     const isAdmin = PORTAL_ADMIN_EMAILS.includes(supabaseUser.email.toLowerCase());
-    const role = isAdmin ? "admin" : ((meta.role as string) ?? "customer");
+    // Never trust client-supplied role from user_metadata — always default to "customer".
+    // Admin elevation is handled exclusively via the PORTAL_ADMIN_EMAILS allowlist.
+    const role = isAdmin ? "admin" : "customer";
 
     const [created] = await db
       .insert(portalCustomersTable)

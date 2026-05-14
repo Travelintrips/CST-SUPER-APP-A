@@ -86,22 +86,10 @@ router.get("/products", async (_req, res) => {
   return res.json(await listByType("barang"));
 });
 
-// ── Admin jasa management (protected by X-Admin-Password header) ──────────
-const LOGISTIC_ADMIN_PASSWORD = process.env.LOGISTIC_ADMIN_PASSWORD ?? "admin123";
-
-function requireLogisticAdmin(req: Request, res: Response, next: NextFunction) {
-  const pw = req.headers["x-admin-password"];
-  if (!pw || pw !== LOGISTIC_ADMIN_PASSWORD) {
-    res.status(403).json({ message: "Akses admin diperlukan" });
-    return;
-  }
-  next();
-}
-
-// ── Routes khusus untuk /logistic-admin (auth: X-Admin-Password) ──────────
+// ── Routes khusus untuk /logistic-admin (auth: portal admin JWT) ──────────
 
 // GET /api/portal/logistic-admin/services — semua jasa (incl. inactive)
-router.get("/logistic-admin/services", requireLogisticAdmin, async (_req, res) => {
+router.get("/logistic-admin/services", requirePortalAdmin, async (_req, res) => {
   const rows = await db
     .select()
     .from(productsTable)
@@ -120,7 +108,7 @@ router.get("/logistic-admin/services", requireLogisticAdmin, async (_req, res) =
 });
 
 // POST /api/portal/logistic-admin/services — tambah jasa baru
-router.post("/logistic-admin/services", requireLogisticAdmin, async (req, res) => {
+router.post("/logistic-admin/services", requirePortalAdmin, async (req, res) => {
   const { name, sku, price, subcategory, unit, description } = req.body ?? {};
   if (!name || !sku) return res.status(400).json({ message: "Nama dan SKU wajib diisi" });
   const [inserted] = await db.insert(productsTable).values({
@@ -139,7 +127,7 @@ router.post("/logistic-admin/services", requireLogisticAdmin, async (req, res) =
 });
 
 // PUT /api/portal/logistic-admin/services/:id
-router.put("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res) => {
+router.put("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const { name, price, subcategory, unit, description, isActive } = req.body ?? {};
   const updates: Record<string, unknown> = {};
@@ -156,7 +144,7 @@ router.put("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res
 });
 
 // DELETE /api/portal/logistic-admin/services/:id
-router.delete("/logistic-admin/services/:id", requireLogisticAdmin, async (req, res) => {
+router.delete("/logistic-admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(productsTable).where(eq(productsTable.id, id));
   return res.json({ ok: true });
