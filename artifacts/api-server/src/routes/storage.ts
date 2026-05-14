@@ -6,6 +6,8 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
+import { ObjectPermission } from "../lib/objectAcl.js";
+import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -124,6 +126,23 @@ router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+
+    // Enforce object-level authorization.
+    // First, check the ACL policy stored on the object (owner match or explicit ACL grant).
+    // If the ACL check passes (e.g. the requesting user owns the object or it is marked
+    // public), proceed immediately.  Otherwise fall back to requiring admin role — admins
+    // are trusted to view all private documents in the system, and existing objects were
+    // uploaded before the ACL metadata convention was established.
+    const userId = req.user.id;
+    const aclAllowed = await objectStorageService.canAccessObjectEntity({
+      userId,
+      objectFile,
+      requestedPermission: ObjectPermission.READ,
+    });
+
+    if (!aclAllowed) {
+      if (!(await requireAdmin(req, res))) return;
+    }
 
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
