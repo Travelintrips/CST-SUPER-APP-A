@@ -270,6 +270,10 @@ function Router() {
         <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/documents/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/documents/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
+        <Route path="/sales/quotations/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
         <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
         <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
