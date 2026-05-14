@@ -42,6 +42,23 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash: "Tunai", qris: "QRIS", debit: "Debit", credit: "Kredit", transfer: "Transfer",
 };
 
+const MENU_IMAGES: Record<string, string> = {
+  "Thai Tea Original":    "/menu/thai-tea-original.png",
+  "Thai Tea Cheese":      "/menu/thai-tea-cheese.png",
+  "Thai Tea Brown Sugar": "/menu/thai-tea-brown-sugar.png",
+  "Thai Tea Taro":        "/menu/thai-tea-taro.png",
+  "Thai Tea Matcha":      "/menu/thai-tea-matcha.png",
+  "Thai Tea Pandan":      "/menu/thai-tea-pandan.png",
+  "Milk Tea Original":    "/menu/milk-tea-original.png",
+  "Boba Thai Tea":        "/menu/boba-thai-tea.png",
+  "Thai Tea Large":       "/menu/thai-tea-large.png",
+  "Snack Roti Bakar":     "/menu/roti-bakar.png",
+};
+
+function getMenuImage(name: string): string {
+  return MENU_IMAGES[name] ?? "/menu/thai-tea-original.png";
+}
+
 function fmt(n: number | string) {
   return Number(n).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 }
@@ -293,11 +310,20 @@ export default function KasirPage() {
                         <button
                           key={p.id}
                           onClick={() => addToCart(p)}
-                          className="bg-white rounded-xl p-3 text-left shadow-sm hover:shadow-md hover:border-amber-300 border border-gray-100 transition-all active:scale-95"
+                          className="bg-white rounded-xl text-left shadow-sm hover:shadow-md hover:border-amber-300 border border-gray-100 transition-all active:scale-95 overflow-hidden"
                         >
-                          <div className="text-xl mb-1">🧋</div>
-                          <p className="text-xs font-semibold text-gray-800 leading-tight">{p.name}</p>
-                          <p className="text-amber-600 font-bold text-sm mt-1">{fmt(p.price)}</p>
+                          <div className="w-full aspect-square bg-amber-50 overflow-hidden">
+                            <img
+                              src={p.imageUrl ?? getMenuImage(p.name)}
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).src = "/menu/thai-tea-original.png"; }}
+                            />
+                          </div>
+                          <div className="p-2">
+                            <p className="text-xs font-semibold text-gray-800 leading-tight">{p.name}</p>
+                            <p className="text-amber-600 font-bold text-sm mt-0.5">{fmt(p.price)}</p>
+                          </div>
                         </button>
                       ))}
                     </div>
