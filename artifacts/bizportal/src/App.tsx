@@ -257,6 +257,8 @@ function Router() {
         <Route path="/logistics/portal-orders/:id" component={() => <ProtectedRoute component={LogisticsPortalOrderDetailPage} />} />
         <Route path="/logistics/drivers" component={() => <ProtectedRoute component={LogisticsDriversPage} />} />
         <Route path="/logistics/drivers/:id/performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
+        <Route path="/logistics/driver-performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />
+        <Route path="/logistics/quote-requests" component={() => <ProtectedRoute component={LogisticsQuoteRequestsPage} />} />
         <Route path="/logistics/vendors" component={() => <ProtectedRoute component={LogisticsVendorsPage} />} />
         <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
         <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
