@@ -9,28 +9,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Customer Portal"
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=5000 BASE_PATH=/ pnpm run dev"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -44,14 +22,12 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com"
+ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,skylogistic00@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,skylogistic00@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
-ADMIN_EMAIL = "admcst001@gmail.com"
+ADMIN_EMAIL = "admcst001@gmail.com,skylogistic00@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
-VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -64,28 +40,22 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
-localPort = 5000
-externalPort = 80
+localPort = 3000
+externalPort = 6800
 
 [[ports]]
-<<<<<<< HEAD
-=======
-localPort = 5173
+localPort = 5000
 externalPort = 8008
 
 [[ports]]
->>>>>>> a74ccd7f53cb23c16fb36636be3ab5847aa53617
 localPort = 8080
 externalPort = 8080
 
 [[ports]]
-<<<<<<< HEAD
-=======
 localPort = 8081
-externalPort = 9000
+externalPort = 80
 
 [[ports]]
->>>>>>> a74ccd7f53cb23c16fb36636be3ab5847aa53617
 localPort = 8082
 externalPort = 3002
 
@@ -110,10 +80,6 @@ localPort = 18442
 externalPort = 3000
 
 [[ports]]
-localPort = 18443
-externalPort = 6800
-
-[[ports]]
 localPort = 19368
 externalPort = 6000
 
@@ -128,7 +94,3 @@ externalPort = 8099
 [[ports]]
 localPort = 23434
 externalPort = 5173
-
-[[ports]]
-localPort = 23435
-externalPort = 8081
