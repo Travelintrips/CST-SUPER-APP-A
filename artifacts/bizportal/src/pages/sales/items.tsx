@@ -152,7 +152,26 @@ function resolveMediaUrl(url: string): string {
   return url;
 }
 
+const ALLOWED_IMG_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const MAX_IMG_SIZE = 5 * 1024 * 1024; // 5MB
+
+function validateMediaFile(file: File, type: "image" | "video"): string | null {
+  if (type === "image") {
+    if (!ALLOWED_IMG_TYPES.includes(file.type)) {
+      return `${file.name}: Format tidak didukung. Gunakan JPG, JPEG, PNG, atau WEBP.`;
+    }
+    if (file.size > MAX_IMG_SIZE) {
+      return `${file.name}: Ukuran file melebihi batas maksimum 5MB (${(file.size / 1024 / 1024).toFixed(1)}MB).`;
+    }
+  }
+  return null;
+}
+
 async function uploadMediaFiles(files: File[], type: "image" | "video"): Promise<MediaItem[]> {
+  for (const file of files) {
+    const err = validateMediaFile(file, type);
+    if (err) throw new Error(err);
+  }
   const results: MediaItem[] = [];
   for (const file of files) {
     const fd = new FormData();
@@ -909,7 +928,7 @@ export default function SalesItemsPage() {
               </Label>
 
               {/* Hidden file inputs */}
-              <input ref={imgRef} type="file" accept="image/*" multiple className="hidden"
+              <input ref={imgRef} type="file" accept="image/jpeg,image/jpg,image/png,image/webp" multiple className="hidden"
                 onChange={(e) => {
                   const files = Array.from(e.target.files ?? []);
                   if (files.length) void handleUploadMedia(files, "image");
@@ -988,7 +1007,7 @@ export default function SalesItemsPage() {
                   Tambah Video
                 </Button>
               </div>
-              <p className="text-xs text-slate-500">Foto pertama jadi cover. Bisa upload lebih dari satu foto.</p>
+              <p className="text-xs text-slate-500">Foto pertama jadi cover. Format: JPG, PNG, WEBP. Maks. 5MB per file.</p>
 
               {/* URL alternatif */}
               <details className="group" open={!!form.imageUrl && form.mediaItems.length === 0}>
@@ -1000,6 +1019,13 @@ export default function SalesItemsPage() {
                     <Input
                       value={form.imageUrl}
                       onChange={(e) => setF("imageUrl", e.target.value)}
+                      onBlur={(e) => {
+                        const url = e.target.value.trim();
+                        if (url) {
+                          try { new URL(url); }
+                          catch { toast({ title: "URL gambar tidak valid", description: "Masukkan URL lengkap diawali https://", variant: "destructive" }); }
+                        }
+                      }}
                       placeholder="https://example.com/gambar.jpg"
                       className="bg-slate-900 border-slate-600 text-slate-200 text-sm placeholder:text-slate-500 flex-1"
                     />
