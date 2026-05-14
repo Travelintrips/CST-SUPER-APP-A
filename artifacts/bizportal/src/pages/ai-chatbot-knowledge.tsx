@@ -35,6 +35,7 @@ import {
   FileUp,
   Sparkles,
   CheckCheck,
+  ListChecks,
 } from "lucide-react";
 
 interface KnowledgeEntry {
@@ -105,6 +106,11 @@ export default function AiChatbotKnowledgePage() {
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [filterCategory, setFilterCategory] = useState("all");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+
+  // Bulk select state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Import state
   const [importTab, setImportTab] = useState<"file" | "paste">("file");
@@ -219,6 +225,55 @@ export default function AiChatbotKnowledgePage() {
       toast({ title: "Gagal mengubah status", variant: "destructive" });
     } finally {
       setTogglingId(null);
+    }
+  }
+
+  // ─── Bulk select handlers ─────────────────────────────────────────────────
+
+  function toggleSelectMode() {
+    setSelectMode((prev) => {
+      if (prev) setSelectedIds(new Set());
+      return !prev;
+    });
+  }
+
+  function toggleSelectEntry(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllEntries() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((e) => e.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedIds.size} entri yang dipilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/ai-agent/knowledge-base/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: `${selectedIds.size} entri berhasil dihapus` });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      await loadEntries();
+    } catch {
+      toast({ title: "Gagal menghapus entri", variant: "destructive" });
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -353,24 +408,35 @@ export default function AiChatbotKnowledgePage() {
               <p className="text-sm text-gray-500">SOP, FAQ, dan informasi referensi otomatis chatbot</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             <Button
               variant="outline"
-              onClick={() => { setViewMode(viewMode === "import" ? "list" : "import"); setParsedEntries([]); }}
+              onClick={() => { setViewMode(viewMode === "import" ? "list" : "import"); setParsedEntries([]); if (selectMode) toggleSelectMode(); }}
               className="gap-2"
             >
               {viewMode === "import" ? <X className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
               {viewMode === "import" ? "Tutup Import" : "Import Dokumen"}
             </Button>
             {viewMode === "list" && (
-              <Button
-                onClick={openCreate}
-                className="gap-2 bg-emerald-600 hover:bg-emerald-500"
-                disabled={showForm}
-              >
-                <Plus className="h-4 w-4" />
-                Tambah Entri
-              </Button>
+              <>
+                <Button
+                  variant={selectMode ? "secondary" : "outline"}
+                  onClick={toggleSelectMode}
+                  className="gap-2"
+                  disabled={entries.length === 0}
+                >
+                  <ListChecks className="h-4 w-4" />
+                  {selectMode ? "Batal Pilih" : "Pilih"}
+                </Button>
+                <Button
+                  onClick={openCreate}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-500"
+                  disabled={showForm}
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Entri
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -686,6 +752,42 @@ export default function AiChatbotKnowledgePage() {
         {/* ─── FILTER + LIST ─────────────────────────────────────────────────── */}
         {viewMode === "list" && (
           <>
+            {/* Bulk action bar */}
+            {selectMode && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={toggleSelectAllEntries}
+                    className="flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-gray-900"
+                  >
+                    {selectedIds.size === filtered.length && filtered.length > 0
+                      ? <CheckSquare className="h-4 w-4 text-red-600" />
+                      : <Square className="h-4 w-4 text-gray-400" />}
+                    {selectedIds.size === filtered.length && filtered.length > 0
+                      ? "Batalkan semua"
+                      : "Pilih semua"}
+                  </button>
+                  {selectedIds.size > 0 && (
+                    <span className="text-sm text-red-700 font-semibold">
+                      {selectedIds.size} entri dipilih
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting || selectedIds.size === 0}
+                  className="gap-2"
+                >
+                  {bulkDeleting
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Trash2 className="h-3.5 w-3.5" />}
+                  Hapus {selectedIds.size > 0 ? `${selectedIds.size} ` : ""}Entri
+                </Button>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => setFilterCategory("all")}
@@ -726,58 +828,84 @@ export default function AiChatbotKnowledgePage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filtered.map((entry) => (
-                  <Card key={entry.id} className={`transition-all duration-200 ${!entry.isActive ? "opacity-50" : ""}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[entry.category] ?? "bg-gray-100 text-gray-600"}`}>
-                              {CATEGORIES.find((c) => c.value === entry.category)?.label ?? entry.category}
-                            </span>
-                            {!entry.isActive && (
-                              <span className="text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Nonaktif</span>
-                            )}
-                            <span className="text-[11px] text-gray-400">#{entry.sortOrder}</span>
+                {filtered.map((entry) => {
+                  const isChecked = selectedIds.has(entry.id);
+                  return (
+                    <Card
+                      key={entry.id}
+                      className={`transition-all duration-200 ${!entry.isActive && !selectMode ? "opacity-50" : ""} ${
+                        selectMode && isChecked ? "border-red-300 ring-1 ring-red-200" : ""
+                      }`}
+                      onClick={selectMode ? () => toggleSelectEntry(entry.id) : undefined}
+                      style={selectMode ? { cursor: "pointer" } : undefined}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          {/* Checkbox (only in select mode) */}
+                          {selectMode && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSelectEntry(entry.id); }}
+                              className="mt-0.5 shrink-0"
+                            >
+                              {isChecked
+                                ? <CheckSquare className="h-4 w-4 text-red-600" />
+                                : <Square className="h-4 w-4 text-gray-400" />}
+                            </button>
+                          )}
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[entry.category] ?? "bg-gray-100 text-gray-600"}`}>
+                                {CATEGORIES.find((c) => c.value === entry.category)?.label ?? entry.category}
+                              </span>
+                              {!entry.isActive && (
+                                <span className="text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Nonaktif</span>
+                              )}
+                              <span className="text-[11px] text-gray-400">#{entry.sortOrder}</span>
+                            </div>
+                            <h3 className="text-sm font-semibold text-gray-800 truncate">{entry.title}</h3>
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">{entry.content}</p>
                           </div>
-                          <h3 className="text-sm font-semibold text-gray-800 truncate">{entry.title}</h3>
-                          <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">{entry.content}</p>
+
+                          {/* Action buttons (hidden in select mode) */}
+                          {!selectMode && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleToggleActive(entry)}
+                                disabled={togglingId === entry.id}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+                                title={entry.isActive ? "Nonaktifkan" : "Aktifkan"}
+                              >
+                                {togglingId === entry.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : entry.isActive ? (
+                                  <ToggleRight className="h-4 w-4 text-emerald-600" />
+                                ) : (
+                                  <ToggleLeft className="h-4 w-4" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => openEdit(entry)}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(entry.id)}
+                                disabled={deletingId === entry.id}
+                                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                title="Hapus"
+                              >
+                                {deletingId === entry.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => handleToggleActive(entry)}
-                            disabled={togglingId === entry.id}
-                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
-                            title={entry.isActive ? "Nonaktifkan" : "Aktifkan"}
-                          >
-                            {togglingId === entry.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : entry.isActive ? (
-                              <ToggleRight className="h-4 w-4 text-emerald-600" />
-                            ) : (
-                              <ToggleLeft className="h-4 w-4" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => openEdit(entry)}
-                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(entry.id)}
-                            disabled={deletingId === entry.id}
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                            title="Hapus"
-                          >
-                            {deletingId === entry.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </>

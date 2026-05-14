@@ -1212,6 +1212,25 @@ aiAgentRouter.post("/knowledge-base/bulk", async (req: Request, res: Response) =
   }
 });
 
+// ── DELETE /api/ai-agent/knowledge-base/bulk ─────────────────────────────────
+// Delete multiple KB entries by IDs
+aiAgentRouter.delete("/knowledge-base/bulk", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const { ids } = req.body as { ids?: number[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ message: "ids tidak boleh kosong" });
+  }
+  try {
+    await db
+      .delete(chatbotKnowledgeBaseTable)
+      .where(inArray(chatbotKnowledgeBaseTable.id, ids));
+    return res.json({ deleted: ids.length });
+  } catch (err) {
+    logger.error({ err }, "KB bulk delete failed");
+    return res.status(500).json({ message: "Gagal menghapus entri" });
+  }
+});
+
 // ── GET /api/ai-agent/knowledge-base ─────────────────────────────────────────
 aiAgentRouter.get("/knowledge-base", async (req: Request, res: Response) => {
   if (!(await requireAdmin(req, res))) return;
