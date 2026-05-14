@@ -34,7 +34,8 @@
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.10",
     "expo-location": "~19.0.8",
-    "expo-notifications": "~0.29.14",
+    "expo-notifications": "~0.32.17",
+    "react-native-worklets": "^0.5.0",
     "expo-router": "~6.0.17",
     "expo-splash-screen": "~31.0.12",
     "expo-status-bar": "~3.0.9",
@@ -46,7 +47,7 @@
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-keyboard-controller": "1.18.5",
-    "react-native-reanimated": "~4.1.1",
+    "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
@@ -57,6 +58,6 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
-    "expo-notifications": "~0.29.14"
+    "expo-notifications": "~0.32.17"
   }
 }
