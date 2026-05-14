@@ -17,8 +17,6 @@ import {
   Download,
 } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 function fmt(n: number) {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -53,7 +51,7 @@ async function fetchSummary(from: string, to: string): Promise<HoldingSummary> {
   const params = new URLSearchParams({ holdingId: "1" });
   if (from) params.set("from", from);
   if (to) params.set("to", to);
-  const res = await fetch(`${BASE}/api/accounting/holding/summary?${params}`, {
+  const res = await fetch(`/api/accounting/holding/summary?${params}`, {
     credentials: "include",
   });
   if (!res.ok) throw new Error("Gagal memuat data summary");
@@ -64,7 +62,7 @@ async function fetchBreakdown(from: string, to: string): Promise<CompanyBreakdow
   const params = new URLSearchParams({ holdingId: "1" });
   if (from) params.set("from", from);
   if (to) params.set("to", to);
-  const res = await fetch(`${BASE}/api/accounting/holding/breakdown?${params}`, {
+  const res = await fetch(`/api/accounting/holding/breakdown?${params}`, {
     credentials: "include",
   });
   if (!res.ok) throw new Error("Gagal memuat data breakdown");
