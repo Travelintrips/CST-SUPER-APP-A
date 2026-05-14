@@ -234,7 +234,20 @@ async function downloadFile(url, outputPath) {
 }
 
 async function downloadBundle(platform, timestamp) {
-  const entryPath = path.resolve(projectRoot, "node_modules", "expo-router", "entry");
+  // Resolve the pnpm symlink to the real store path.
+  // In the deployment container Metro cannot follow symlinks inside
+  // node_modules/.pnpm, but it CAN serve files directly from that real path
+  // (as seen in successful builds where Metro logs show the .pnpm path).
+  let entryPath;
+  try {
+    const routerDir = fs.realpathSync(
+      path.resolve(projectRoot, "node_modules", "expo-router"),
+    );
+    entryPath = path.join(routerDir, "entry");
+  } catch {
+    // Fallback: symlink resolution failed — use the symlink path as-is
+    entryPath = path.resolve(projectRoot, "node_modules", "expo-router", "entry");
+  }
   const bundlePath = path.relative(workspaceRoot, entryPath);
   const url = new URL(`http://localhost:8081/${bundlePath}.bundle`);
   url.searchParams.set("platform", platform);
