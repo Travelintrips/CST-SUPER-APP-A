@@ -771,31 +771,125 @@ export default function CalculatorPage() {
 
                 {/* CTA */}
                 <div className="space-y-2.5">
-                  <Link href="/jasa">
+                  {/* Request Quote — primary CTA */}
+                  {quoteSuccess ? (
+                    <div className="flex items-start gap-3 rounded-xl px-4 py-3.5" style={{ background:"linear-gradient(135deg,#ECFDF5,#D1FAE5)", border:"1.5px solid #6EE7B7" }}>
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-emerald-800 text-[13px]">Permintaan terkirim!</p>
+                        <p className="text-emerald-700 text-[11.5px] mt-0.5">Tim CST akan menghubungi Anda via WhatsApp dalam 1×24 jam kerja.</p>
+                      </div>
+                    </div>
+                  ) : (
                     <button
+                      onClick={() => setShowQuoteForm((v) => !v)}
                       className="w-full flex items-center justify-center gap-2 font-bold rounded-xl transition-all duration-200"
-                      style={{ height:"44px", fontSize:"13.5px", background:"linear-gradient(135deg,#0B5CAD,#1A73D4)", color:"white", border:"none", boxShadow:"0 4px 16px rgba(11,92,173,0.30)" }}
-                      onMouseEnter={e => { const el=e.currentTarget as HTMLElement; el.style.transform="translateY(-1px)"; el.style.boxShadow="0 8px 24px rgba(11,92,173,0.38)"; }}
-                      onMouseLeave={e => { const el=e.currentTarget as HTMLElement; el.style.transform="translateY(0)"; el.style.boxShadow="0 4px 16px rgba(11,92,173,0.30)"; }}
+                      style={{
+                        height: "46px", fontSize: "13.5px",
+                        background: showQuoteForm
+                          ? "linear-gradient(135deg,#059669,#10B981)"
+                          : "linear-gradient(135deg,#0B5CAD,#1A73D4)",
+                        color: "white", border: "none",
+                        boxShadow: showQuoteForm
+                          ? "0 4px 16px rgba(5,150,105,0.35)"
+                          : "0 4px 16px rgba(11,92,173,0.30)",
+                      }}
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(-1px)"; el.style.boxShadow = "0 8px 24px rgba(11,92,173,0.40)"; }}
+                      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(0)"; }}
                     >
-                      {t("calculator.ctaQuote")} <ArrowRight className="h-4 w-4" />
+                      <Send className="h-4 w-4" />
+                      {showQuoteForm ? "Tutup Form" : "Request Quote — Minta Penawaran"}
+                      {!showQuoteForm && <ArrowRight className="h-4 w-4 opacity-70" />}
                     </button>
-                  </Link>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <a href="/#kontak">
-                      <button className="w-full flex items-center justify-center gap-1.5 font-semibold rounded-xl border transition-all duration-150 hover:bg-slate-50" style={{ height:"40px", fontSize:"12.5px", borderColor:"#E2E8F0", color:"#475569" }}>
-                        <MessageCircle className="h-4 w-4" /> {t("calculator.ctaContact")}
-                      </button>
-                    </a>
-                    <Link href="/jasa">
-                      <button className="w-full flex items-center justify-center gap-1.5 font-semibold rounded-xl border transition-all duration-150" style={{ height:"40px", fontSize:"12.5px", borderColor:"#BFDBFE", color:"#1D4ED8", background:"#EFF6FF" }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background="#DBEAFE"; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background="#EFF6FF"; }}
-                      >
-                        <Phone className="h-4 w-4" /> {t("calculator.ctaSend")}
-                      </button>
-                    </Link>
-                  </div>
+                  )}
+
+                  {/* Inline Quote Form */}
+                  {showQuoteForm && !quoteSuccess && (
+                    <div className="rounded-xl overflow-hidden" style={{ border:"1.5px solid #BFDBFE", background:"#F0F7FF", animation:"slide-up-fade 0.25s ease both" }}>
+                      <div className="flex items-center justify-between px-4 py-3" style={{ background:"linear-gradient(135deg,#0B3D6B,#1A73D4)" }}>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-white" />
+                          <span className="font-bold text-white text-[13px]">Data Kontak Anda</span>
+                        </div>
+                        <button onClick={() => setShowQuoteForm(false)} className="text-white/70 hover:text-white transition-colors">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <form onSubmit={handleQuoteSubmit} className="p-4 space-y-3">
+                        <div>
+                          <label className="calc-label">Nama Lengkap *</label>
+                          <input
+                            type="text"
+                            value={quoteName}
+                            onChange={(e) => setQuoteName(e.target.value)}
+                            placeholder="Nama Anda"
+                            className="calc-input"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="calc-label">Nomor WhatsApp *</label>
+                          <input
+                            type="tel"
+                            value={quoteWa}
+                            onChange={(e) => setQuoteWa(e.target.value)}
+                            placeholder="08xxxxxxxxxx"
+                            className="calc-input"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="calc-label">Email <span className="text-slate-400 normal-case font-normal">(opsional)</span></label>
+                          <input
+                            type="email"
+                            value={quoteEmail}
+                            onChange={(e) => setQuoteEmail(e.target.value)}
+                            placeholder="email@domain.com"
+                            className="calc-input"
+                          />
+                        </div>
+                        {quoteError && (
+                          <div className="flex items-center gap-2 text-red-600 rounded-lg px-3 py-2.5 text-[12px] font-medium" style={{ background:"#FEF2F2", border:"1.5px solid #FECACA" }}>
+                            <Info className="h-3.5 w-3.5 shrink-0" /> {quoteError}
+                          </div>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={quoteSubmitting}
+                          className="w-full flex items-center justify-center gap-2 font-bold rounded-xl transition-all duration-200 disabled:opacity-60"
+                          style={{ height:"42px", fontSize:"13px", background:"linear-gradient(135deg,#059669,#10B981)", color:"white", border:"none", boxShadow:"0 4px 14px rgba(5,150,105,0.30)" }}
+                        >
+                          {quoteSubmitting ? (
+                            <><RefreshCw className="h-4 w-4 animate-spin" /> Mengirim...</>
+                          ) : (
+                            <><Send className="h-4 w-4" /> Kirim Permintaan</>
+                          )}
+                        </button>
+                        <p className="text-[10.5px] text-slate-400 text-center leading-relaxed">
+                          Detail estimasi ini akan dikirim ke tim CST via WhatsApp & email.
+                        </p>
+                      </form>
+                    </div>
+                  )}
+
+                  {/* Secondary CTAs */}
+                  {!showQuoteForm && (
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <a href="/#kontak">
+                        <button className="w-full flex items-center justify-center gap-1.5 font-semibold rounded-xl border transition-all duration-150 hover:bg-slate-50" style={{ height:"38px", fontSize:"12px", borderColor:"#E2E8F0", color:"#475569" }}>
+                          <MessageCircle className="h-3.5 w-3.5" /> Hubungi Kami
+                        </button>
+                      </a>
+                      <Link href="/jasa">
+                        <button className="w-full flex items-center justify-center gap-1.5 font-semibold rounded-xl border transition-all duration-150" style={{ height:"38px", fontSize:"12px", borderColor:"#BFDBFE", color:"#1D4ED8", background:"#EFF6FF" }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background="#DBEAFE"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background="#EFF6FF"; }}
+                        >
+                          <Phone className="h-3.5 w-3.5" /> Lihat Layanan
+                        </button>
+                      </Link>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
