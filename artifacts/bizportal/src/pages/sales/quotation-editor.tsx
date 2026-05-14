@@ -219,8 +219,11 @@ interface LineDraft {
   unitPrice: number;
 }
 
-export default function SalesDocumentEditorPage() {
+interface EditorProps { kind?: "quote" | "order" }
+
+export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps = {}) {
   const [, paramsNew] = useRoute("/sales/quotations/new");
+  const [, paramsOrderNew] = useRoute("/sales/orders/new");
   const [, paramsQuote] = useRoute("/sales/quotations/:id");
   const [, paramsOrder] = useRoute("/sales/orders/:id");
   const [, navigate] = useLocation();
@@ -228,7 +231,8 @@ export default function SalesDocumentEditorPage() {
   // Read URL query params for pre-fill when coming from portal order
   const urlParams = new URLSearchParams(window.location.search);
   const fromPortal = urlParams.get("fromPortal") ?? null;       // e.g. "CST/2026/000123"
-  const urlKind = urlParams.get("kind");                        // "order" → create as SO directly
+  // prop kind takes precedence, then URL param, then route detection
+  const urlKind = propKind ?? (paramsOrderNew !== null || paramsOrder !== null ? "order" : urlParams.get("kind"));
   const urlCustomer = urlParams.get("customer") ?? "";
   const urlOrigin = urlParams.get("origin") ?? "";
   const urlDestination = urlParams.get("destination") ?? "";
@@ -237,7 +241,7 @@ export default function SalesDocumentEditorPage() {
   const { toast } = useToast();
   const { t } = useLanguage();
 
-  const isNew = !!paramsNew;
+  const isNew = !!paramsNew || !!paramsOrderNew;
   const idStr = paramsQuote?.id ?? paramsOrder?.id;
   const id = idStr ? Number(idStr) : null;
 
