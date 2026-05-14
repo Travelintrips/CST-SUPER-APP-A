@@ -110,8 +110,15 @@ router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Resp
  * GET /storage/objects/*
  *
  * Serve private object entities from PRIVATE_OBJECT_DIR.
+ * Requires authentication — these objects are private and must not be
+ * accessible to unauthenticated callers regardless of whether they know the path.
  */
 router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
