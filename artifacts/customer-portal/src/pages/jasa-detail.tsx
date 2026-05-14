@@ -717,9 +717,10 @@ export default function JasaDetail() {
     image: string;
     iconBg: string;
     features: string[];
+    tintOverlay: string;
   }> = {
     Freight:    {
-      heroBg:      "linear-gradient(145deg, #FAFCFF 0%, #EEF5FF 35%, #E5EFFF 65%, #F0F6FF 100%)",
+      heroBg:      "linear-gradient(145deg, #EDF5FF 0%, #D0E6FF 28%, #BFDBFE 52%, #93C5FD 72%, #7EB5F5 100%)",
       accentColor: "#1A56DB",
       accentLight: "#EEF4FF",
       accentText:  "#1A56DB",
@@ -728,11 +729,12 @@ export default function JasaDetail() {
       glowA:       "#3B82F6",
       glowB:       "#60A5FA",
       image:       "https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=1600&q=90&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 100%)",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(219,234,254,0.72) 100%)",
+      tintOverlay: "rgba(59,130,246,0.07)",
       features:    ["Air Freight", "Sea FCL / LCL", "Door-to-Door", "Multi-Modal"],
     },
     Customs:    {
-      heroBg:      "linear-gradient(145deg, #FAFFFE 0%, #ECFDF8 35%, #D1FAE9 65%, #F0FDF7 100%)",
+      heroBg:      "linear-gradient(145deg, #ECFDF7 0%, #C8F5E6 28%, #A7F3D0 52%, #6EE7B7 72%, #4DD9A8 100%)",
       accentColor: "#047857",
       accentLight: "#ECFDF5",
       accentText:  "#047857",
@@ -741,11 +743,12 @@ export default function JasaDetail() {
       glowA:       "#10B981",
       glowB:       "#34D399",
       image:       "https://images.unsplash.com/photo-1605745341112-85968b19335b?w=1600&q=90&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#ECFDF5 0%,#A7F3D0 100%)",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(167,243,208,0.72) 100%)",
+      tintOverlay: "rgba(16,185,129,0.06)",
       features:    ["Import & Export", "PIB / PEB", "HS Code Konsultasi", "PPJK Resmi"],
     },
     Handling:   {
-      heroBg:      "linear-gradient(145deg, #FDFAFF 0%, #F5F0FF 35%, #EDE9FE 65%, #F8F5FF 100%)",
+      heroBg:      "linear-gradient(145deg, #F4EFFF 0%, #E8DFFF 28%, #DDD6FE 52%, #C4B5FD 72%, #A78BFA 100%)",
       accentColor: "#6D28D9",
       accentLight: "#F5F0FF",
       accentText:  "#6D28D9",
@@ -754,11 +757,12 @@ export default function JasaDetail() {
       glowA:       "#8B5CF6",
       glowB:       "#A78BFA",
       image:       "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1600&q=90&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#F5F3FF 0%,#DDD6FE 100%)",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(221,214,254,0.72) 100%)",
+      tintOverlay: "rgba(109,40,217,0.06)",
       features:    ["Origin Handling", "Destination Handling", "Kargo Berbahaya", "Tim Profesional"],
     },
     Storage:    {
-      heroBg:      "linear-gradient(145deg, #FAFFFD 0%, #F0FDFB 35%, #CCFBF1 65%, #F0FDFA 100%)",
+      heroBg:      "linear-gradient(145deg, #EDFDF9 0%, #C9FAF0 28%, #99F6E4 52%, #5EEAD4 72%, #2DD4C8 100%)",
       accentColor: "#0D9488",
       accentLight: "#F0FDFA",
       accentText:  "#0D9488",
@@ -767,24 +771,26 @@ export default function JasaDetail() {
       glowA:       "#14B8A6",
       glowB:       "#2DD4BF",
       image:       "https://images.unsplash.com/photo-1553413077-190dd305871c?w=1600&q=90&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#F0FDFA 0%,#99F6E4 100%)",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(153,246,228,0.72) 100%)",
+      tintOverlay: "rgba(13,148,136,0.06)",
       features:    ["Gudang Umum", "Bonded Warehouse", "Cold Storage", "Sewa Fleksibel"],
     },
     Trucking:   {
-      heroBg:      "linear-gradient(145deg, #FFFEFB 0%, #FFFBEB 35%, #FEF3C7 65%, #FFFAED 100%)",
+      heroBg:      "linear-gradient(145deg, #FFFAEB 0%, #FEF3C7 28%, #FDE68A 52%, #FCD34D 72%, #FBBF24 100%)",
       accentColor: "#B45309",
       accentLight: "#FFFBEB",
-      accentText:  "#B45309",
+      accentText:  "#92400E",
       badgeBg:     "#FEF3C7",
       badgeText:   "#92400E",
       glowA:       "#F59E0B",
       glowB:       "#FCD34D",
       image:       "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=1600&q=90&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#FFFBEB 0%,#FDE68A 100%)",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(253,230,138,0.72) 100%)",
+      tintOverlay: "rgba(245,158,11,0.07)",
       features:    ["5 Jenis Armada", "Kalkulasi Otomatis", "Harga Transparan", "Berlisensi & Profesional"],
     },
     Document:   {
-      heroBg:      "linear-gradient(145deg, #FAFAFF 0%, #EEF2FF 35%, #E0E7FF 65%, #F5F3FF 100%)",
+      heroBg:      "linear-gradient(145deg, #F0EEFF 0%, #E0E7FF 28%, #C7D2FE 52%, #A5B4FC 72%, #818CF8 100%)",
       accentColor: "#4338CA",
       accentLight: "#EEF2FF",
       accentText:  "#4338CA",
@@ -793,11 +799,12 @@ export default function JasaDetail() {
       glowA:       "#6366F1",
       glowB:       "#818CF8",
       image:       "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1600&q=90&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#EEF2FF 0%,#C7D2FE 100%)",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(199,210,254,0.72) 100%)",
+      tintOverlay: "rgba(99,102,241,0.06)",
       features:    ["Bill of Lading", "Air Waybill", "COO / SKA", "Packing List"],
     },
     Additional: {
-      heroBg:      "linear-gradient(145deg, #FFFAFB 0%, #FFF1F2 35%, #FFE4E6 65%, #FFF5F6 100%)",
+      heroBg:      "linear-gradient(145deg, #FFF0F2 0%, #FFE4E6 28%, #FECDD3 52%, #FDA4AF 72%, #FB7185 100%)",
       accentColor: "#BE123C",
       accentLight: "#FFF1F2",
       accentText:  "#BE123C",
@@ -806,47 +813,86 @@ export default function JasaDetail() {
       glowA:       "#F43F5E",
       glowB:       "#FB7185",
       image:       "https://images.unsplash.com/photo-1516733968668-dbdce39c4651?w=1600&q=90&auto=format&fit=crop",
-      iconBg:      "linear-gradient(135deg,#FFF1F2 0%,#FECDD3 100%)",
+      iconBg:      "linear-gradient(135deg,rgba(255,255,255,0.88) 0%,rgba(253,164,175,0.72) 100%)",
+      tintOverlay: "rgba(244,63,94,0.06)",
       features:    ["Asuransi Kargo", "Surveyor", "Perizinan", "BPOM / SNI"],
     },
   };
   const hero = CATEGORY_HERO[item.category] ?? CATEGORY_HERO["Freight"]!;
 
   return (
-    <div className="min-h-screen pb-28" style={{ background: "linear-gradient(180deg,#F8FAFD 0%,#FFFFFF 100%)" }}>
+    <div className="min-h-screen pb-28" style={{ background: "linear-gradient(180deg,#F4F8FD 0%,#FFFFFF 100%)" }}>
       {/* ── ENTERPRISE PREMIUM HERO ── */}
+      <style>{`
+        @keyframes hero-pill-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+        .hero-pill {
+          transition: box-shadow 0.22s ease, transform 0.22s ease, border-color 0.22s ease;
+          animation: hero-pill-in 0.4s ease both;
+        }
+        .hero-pill:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px var(--pill-shadow), 0 2px 6px rgba(0,0,0,0.08) !important;
+          border-color: var(--pill-accent-border) !important;
+        }
+        .hero-icon-card {
+          transition: box-shadow 0.25s ease, transform 0.25s ease;
+        }
+        .hero-icon-card:hover { transform: translateY(-3px); }
+        @media (max-width: 640px) {
+          .hero-bg-img { width: 100% !important; right: -30% !important; opacity: 0.12 !important; }
+        }
+      `}</style>
       <div
         className="relative overflow-hidden"
-        style={{ background: hero.heroBg, borderBottom: "1px solid rgba(0,0,0,0.055)" }}
+        style={{ background: hero.heroBg, borderBottom: "1px solid rgba(0,0,0,0.06)" }}
       >
-        {/* ── Layer 1: Ambient glow orbs ── */}
+        {/* ── Layer 0: Noise texture overlay ── */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E")`,
+            backgroundRepeat: "repeat",
+            opacity: 0.6,
+          }}
+        />
+
+        {/* ── Layer 1: Ambient glow orbs — stronger & richer ── */}
         <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
           <div
             className="absolute rounded-full"
             style={{
-              width: "600px", height: "500px",
-              top: "-180px", right: "5%",
-              background: `radial-gradient(ellipse, ${hero.glowA}20 0%, transparent 65%)`,
-              filter: "blur(40px)",
+              width: "680px", height: "560px",
+              top: "-200px", right: "0%",
+              background: `radial-gradient(ellipse, ${hero.glowA}38 0%, ${hero.glowA}14 40%, transparent 70%)`,
+              filter: "blur(48px)",
             }}
           />
           <div
             className="absolute rounded-full"
             style={{
-              width: "420px", height: "380px",
-              bottom: "-120px", right: "35%",
-              background: `radial-gradient(ellipse, ${hero.glowB}14 0%, transparent 70%)`,
-              filter: "blur(50px)",
+              width: "460px", height: "400px",
+              bottom: "-140px", right: "28%",
+              background: `radial-gradient(ellipse, ${hero.glowB}28 0%, transparent 68%)`,
+              filter: "blur(56px)",
             }}
           />
           <div
             className="absolute rounded-full"
             style={{
-              width: "300px", height: "280px",
-              top: "50%", right: "0",
-              transform: "translateY(-50%)",
-              background: `radial-gradient(ellipse, ${hero.glowA}10 0%, transparent 70%)`,
-              filter: "blur(30px)",
+              width: "360px", height: "320px",
+              top: "50%", left: "30%",
+              transform: "translateY(-60%)",
+              background: `radial-gradient(ellipse, ${hero.glowA}18 0%, transparent 68%)`,
+              filter: "blur(38px)",
+            }}
+          />
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: "200px", height: "200px",
+              top: "10%", right: "12%",
+              background: `radial-gradient(ellipse, rgba(255,255,255,0.55) 0%, transparent 70%)`,
+              filter: "blur(22px)",
             }}
           />
         </div>
@@ -856,10 +902,22 @@ export default function JasaDetail() {
           className="absolute inset-0 pointer-events-none"
           style={{
             backgroundImage: `
-              linear-gradient(${hero.accentColor}09 1px, transparent 1px),
-              linear-gradient(to right, ${hero.accentColor}09 1px, transparent 1px)
+              linear-gradient(${hero.accentColor}14 1px, transparent 1px),
+              linear-gradient(to right, ${hero.accentColor}14 1px, transparent 1px)
             `,
-            backgroundSize: "56px 56px",
+            backgroundSize: "52px 52px",
+          }}
+        />
+
+        {/* ── Layer 2b: Diagonal accent lines ── */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `repeating-linear-gradient(
+              -48deg,
+              transparent 0px, transparent 38px,
+              ${hero.accentColor}07 38px, ${hero.accentColor}07 39px
+            )`,
           }}
         />
 
@@ -869,40 +927,53 @@ export default function JasaDetail() {
             src={hero.image}
             alt=""
             aria-hidden="true"
-            className="absolute top-0 right-0 h-full object-cover"
+            className="hero-bg-img absolute top-0 right-0 h-full object-cover"
             style={{
-              width: "55%",
-              opacity: 0.10,
-              objectPosition: "center 40%",
-              filter: "blur(0.5px) saturate(0.85)",
+              width: "58%",
+              opacity: 0.22,
+              objectPosition: "center 38%",
+              filter: "saturate(1.1) contrast(1.02)",
+              mixBlendMode: "multiply",
             }}
             loading="eager"
           />
-          {/* Cinematic left-to-right fade */}
+          {/* Sophisticated left-to-right fade with color tint */}
           <div
             className="absolute inset-0"
             style={{
-              background: `linear-gradient(100deg,
-                white 20%,
-                rgba(255,255,255,0.98) 38%,
-                rgba(255,255,255,0.88) 55%,
-                rgba(255,255,255,0.60) 72%,
-                rgba(255,255,255,0.20) 88%,
+              background: `linear-gradient(105deg,
+                white 0%,
+                rgba(255,255,255,0.97) 22%,
+                rgba(255,255,255,0.88) 42%,
+                rgba(255,255,255,0.62) 62%,
+                rgba(255,255,255,0.22) 82%,
                 transparent 100%)`,
             }}
           />
+          {/* Color tint overlay */}
+          <div
+            className="absolute inset-0"
+            style={{ background: hero.tintOverlay }}
+          />
           {/* Bottom vignette */}
           <div
-            className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none"
-            style={{ background: "linear-gradient(to bottom, transparent, rgba(255,255,255,0.5))" }}
+            className="absolute bottom-0 left-0 right-0 h-28 pointer-events-none"
+            style={{ background: `linear-gradient(to bottom, transparent, rgba(255,255,255,0.4))` }}
           />
         </div>
 
-        {/* ── Layer 4: Top accent stripe ── */}
+        {/* ── Layer 4: Top accent stripe — 3px premium ── */}
         <div
-          className="absolute top-0 left-0 right-0 h-[2.5px] pointer-events-none"
+          className="absolute top-0 left-0 right-0 h-[3px] pointer-events-none"
           style={{
-            background: `linear-gradient(90deg, ${hero.accentColor} 0%, ${hero.glowA}80 45%, transparent 75%)`,
+            background: `linear-gradient(90deg, ${hero.accentColor} 0%, ${hero.glowA}CC 35%, ${hero.glowB}66 65%, transparent 85%)`,
+          }}
+        />
+        {/* Subtle top shimmer */}
+        <div
+          className="absolute top-0 left-0 right-0 h-16 pointer-events-none"
+          style={{
+            background: `linear-gradient(to bottom, rgba(255,255,255,0.28), transparent)`,
           }}
         />
 
@@ -934,19 +1005,27 @@ export default function JasaDetail() {
           </nav>
 
           <div className="flex flex-col sm:flex-row items-start gap-7 md:gap-12">
-            {/* Icon card — premium glass effect */}
+            {/* Icon card — premium glassmorphism */}
             <div
-              className="flex-shrink-0 rounded-[20px] p-5"
+              className="hero-icon-card flex-shrink-0 rounded-[22px] p-5"
               style={{
                 background: hero.iconBg,
-                border: `1.5px solid ${hero.accentColor}1F`,
-                boxShadow: `0 4px 6px -1px ${hero.accentColor}10, 0 16px 48px -8px ${hero.accentColor}18`,
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: `1.5px solid ${hero.accentColor}2E`,
+                boxShadow: [
+                  `0 2px 4px rgba(0,0,0,0.04)`,
+                  `0 8px 20px ${hero.accentColor}1A`,
+                  `0 24px 60px -8px ${hero.accentColor}22`,
+                  `inset 0 1px 0 rgba(255,255,255,0.90)`,
+                  `inset 0 -1px 0 ${hero.accentColor}0A`,
+                ].join(", "),
               }}
             >
               {ct === "trucking" ? (
                 <img src={cstLogo} alt="CST Logistic" className="h-16 w-auto max-w-[120px] object-contain" />
               ) : (
-                <div style={{ color: hero.accentColor }}>
+                <div style={{ color: hero.accentColor, filter: `drop-shadow(0 4px 12px ${hero.accentColor}40)` }}>
                   <IconComp className="h-14 w-14" />
                 </div>
               )}
@@ -954,13 +1033,14 @@ export default function JasaDetail() {
 
             {/* Text block */}
             <div className="flex-1 min-w-0">
-              {/* Service name with item.name */}
+              {/* Service name */}
               <h1
-                className="font-bold leading-[1.1] mb-4"
+                className="font-bold leading-[1.08] mb-4"
                 style={{
-                  fontSize: "clamp(28px, 4.5vw, 50px)",
-                  color: "#0C1A2E",
-                  letterSpacing: "-0.025em",
+                  fontSize: "clamp(30px, 4.8vw, 54px)",
+                  color: "#0A1628",
+                  letterSpacing: "-0.03em",
+                  textShadow: "0 2px 12px rgba(0,0,0,0.06)",
                 }}
               >
                 {item.name}
@@ -968,33 +1048,45 @@ export default function JasaDetail() {
 
               {/* Description */}
               <p
-                className="leading-[1.75] mb-8"
+                className="leading-[1.78] mb-8"
                 style={{
-                  fontSize: "clamp(14px, 1.6vw, 16px)",
-                  color: "#4A5568",
-                  maxWidth: "600px",
+                  fontSize: "clamp(14px, 1.55vw, 16.5px)",
+                  color: "#374151",
+                  maxWidth: "580px",
+                  fontWeight: 400,
                 }}
               >
                 {item.description}
               </p>
 
-              {/* Feature pills — clean enterprise */}
+              {/* Feature pills — premium animated */}
               <div className="flex flex-wrap gap-2.5">
-                {hero.features.map(f => (
+                {hero.features.map((f, i) => (
                   <span
                     key={f}
-                    className="inline-flex items-center gap-2 text-[12.5px] font-semibold px-4 py-2 rounded-full"
+                    className="hero-pill inline-flex items-center gap-2 text-[12.5px] font-semibold px-4 py-2 rounded-full"
                     style={{
-                      background: "rgba(255,255,255,0.92)",
-                      border: `1px solid ${hero.accentColor}20`,
+                      background: `linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.88) 100%)`,
+                      border: `1.5px solid ${hero.accentColor}28`,
                       color: hero.accentText,
-                      boxShadow: `0 1px 3px rgba(0,0,0,0.06), 0 4px 12px ${hero.accentColor}0C`,
-                      backdropFilter: "blur(8px)",
-                    }}
+                      boxShadow: [
+                        `0 1px 3px rgba(0,0,0,0.06)`,
+                        `0 4px 16px ${hero.accentColor}12`,
+                        `inset 0 1px 0 rgba(255,255,255,0.95)`,
+                      ].join(", "),
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      animationDelay: `${i * 60}ms`,
+                      "--pill-shadow": `${hero.accentColor}28`,
+                      "--pill-accent-border": `${hero.accentColor}55`,
+                    } as React.CSSProperties}
                   >
                     <span
-                      className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ background: hero.accentColor, opacity: 0.6 }}
+                      className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${hero.accentColor}, ${hero.glowB})`,
+                        boxShadow: `0 0 6px ${hero.accentColor}60`,
+                      }}
                     />
                     {f}
                   </span>
