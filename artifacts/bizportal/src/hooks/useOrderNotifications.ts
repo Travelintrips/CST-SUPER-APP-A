@@ -30,7 +30,7 @@ function playNotificationChime() {
 
 export interface OrderNotification {
   id: string;
-  type: "logistic" | "portal_sales" | "product";
+  type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status";
   orderId: number;
   orderNumber: string;
   customerName: string;
@@ -38,8 +38,10 @@ export interface OrderNotification {
   shipmentType?: string;
   origin?: string;
   destination?: string;
-  grandTotal: number;
+  grandTotal?: number;
   itemCount?: number;
+  status?: string;
+  actionLabel?: string;
   createdAt: string;
   readAt: number | null;
 }
@@ -72,6 +74,14 @@ export function useOrderNotifications() {
     onNewOrderRef.current = fn;
   }, []);
 
+  function pushNotification(notification: OrderNotification) {
+    setNotifications((prev) =>
+      [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
+    );
+    playNotificationChime();
+    onNewOrderRef.current?.(notification);
+  }
+
   useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout>;
     let mounted = true;
@@ -85,11 +95,12 @@ export function useOrderNotifications() {
         if (mounted) setConnected(true);
       });
 
+      // Portal orders (existing)
       es.addEventListener("new_order", (e: MessageEvent) => {
         if (!mounted) return;
         try {
           const data = JSON.parse(e.data);
-          const notification: OrderNotification = {
+          pushNotification({
             id: generateId(),
             type: data.type,
             orderId: data.orderId,
@@ -103,12 +114,71 @@ export function useOrderNotifications() {
             itemCount: data.itemCount,
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
-          };
-          setNotifications((prev) =>
-            [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
-          );
-          playNotificationChime();
-          onNewOrderRef.current?.(notification);
+          });
+        } catch {
+        }
+      });
+
+      // New logistic order from customer portal ordering system
+      es.addEventListener("new_logistic_order", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            type: "logistic",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: data.companyName ?? null,
+            shipmentType: data.shipmentType,
+            origin: data.origin,
+            destination: data.destination,
+            grandTotal: data.grandTotal,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch {
+        }
+      });
+
+      // Logistic order status change (admin action)
+      es.addEventListener("logistic_order_status_changed", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            type: "logistic_status",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: data.companyName ?? null,
+            status: data.status,
+            createdAt: data.updatedAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch {
+        }
+      });
+
+      // Sales order action (confirm, send, invoice, etc.)
+      es.addEventListener("sales_order_update", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            type: "sales_update",
+            orderId: data.docId,
+            orderNumber: data.docNumber,
+            customerName: data.customerName,
+            companyName: null,
+            actionLabel: data.actionLabel,
+            grandTotal: data.totalAmount,
+            createdAt: data.updatedAt ?? new Date().toISOString(),
+            readAt: null,
+          });
         } catch {
         }
       });

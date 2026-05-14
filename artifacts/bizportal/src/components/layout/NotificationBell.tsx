@@ -1,7 +1,6 @@
 import { useRef } from "react";
-import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2 } from "lucide-react";
+import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { useLink } from "wouter";
 import {
   Popover,
   PopoverContent,
@@ -12,20 +11,25 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useOrderNotificationsContext, type OrderNotification } from "@/contexts/OrderNotificationsContext";
 
 function typeLabel(type: OrderNotification["type"]) {
-  if (type === "logistic") return "Order Logistik";
+  if (type === "logistic") return "Order Logistik Baru";
+  if (type === "logistic_status") return "Update Status Logistik";
   if (type === "portal_sales") return "Order Portal";
+  if (type === "sales_update") return "Update Sales Order";
   return "Order Produk";
 }
 
 function typeIcon(type: OrderNotification["type"]) {
   if (type === "logistic") return <Ship size={14} className="text-blue-500 shrink-0" />;
+  if (type === "logistic_status") return <RefreshCw size={14} className="text-cyan-500 shrink-0" />;
   if (type === "portal_sales") return <ShoppingBag size={14} className="text-purple-500 shrink-0" />;
+  if (type === "sales_update") return <FileText size={14} className="text-orange-500 shrink-0" />;
   return <Package size={14} className="text-green-500 shrink-0" />;
 }
 
 function orderHref(n: OrderNotification) {
-  if (n.type === "logistic") return `/logistics/portal-orders/${n.orderId}`;
+  if (n.type === "logistic" || n.type === "logistic_status") return `/logistics/portal-orders/${n.orderId}`;
   if (n.type === "portal_sales") return `/logistics/portal-orders`;
+  if (n.type === "sales_update") return `/sales/documents/${n.orderId}`;
   return `/portal-product-orders`;
 }
 
@@ -43,6 +47,20 @@ function timeAgo(isoDate: string) {
   return `${Math.floor(hrs / 24)} hari lalu`;
 }
 
+function notifDescription(n: OrderNotification): string {
+  if (n.type === "logistic") {
+    return `${n.shipmentType ?? ""} · ${n.origin ?? ""} → ${n.destination ?? ""}`;
+  }
+  if (n.type === "logistic_status") {
+    return `Status: ${n.status ?? ""}`;
+  }
+  if (n.type === "sales_update") {
+    const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
+    return `${n.actionLabel ?? ""}${total}`;
+  }
+  return `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal ?? 0)}`;
+}
+
 export function NotificationBell() {
   const { notifications, unreadCount, markAllRead, clearAll, setOnNewOrder } = useOrderNotificationsContext();
   const initialized = useRef(false);
@@ -51,10 +69,8 @@ export function NotificationBell() {
     initialized.current = true;
     setOnNewOrder((n) => {
       const label = typeLabel(n.type);
-      const desc = n.type === "logistic"
-        ? `${n.shipmentType ?? ""} · ${n.origin ?? ""} → ${n.destination ?? ""}`
-        : `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal)}`;
-      toast.info(`${label} Baru!`, {
+      const desc = notifDescription(n);
+      toast.info(`${label}`, {
         description: `${n.customerName}${n.companyName ? ` (${n.companyName})` : ""} — ${desc}`,
         duration: 8_000,
         action: {
@@ -68,7 +84,7 @@ export function NotificationBell() {
   return (
     <Popover onOpenChange={(open) => { if (open && unreadCount > 0) markAllRead(); }}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-9 w-9" aria-label="Notifikasi order baru">
+        <Button variant="ghost" size="icon" className="relative h-9 w-9" aria-label="Notifikasi">
           <Bell size={18} />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white leading-none">
@@ -79,7 +95,7 @@ export function NotificationBell() {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0 shadow-lg">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <span className="text-sm font-semibold">Notifikasi Order</span>
+          <span className="text-sm font-semibold">Notifikasi</span>
           {notifications.length > 0 && (
             <button
               onClick={clearAll}
@@ -112,13 +128,14 @@ export function NotificationBell() {
                       <span className="text-xs font-semibold text-foreground truncate">{n.orderNumber}</span>
                       <span className="text-[10px] text-muted-foreground shrink-0">{timeAgo(n.createdAt)}</span>
                     </div>
-                    <p className="text-xs text-foreground truncate mt-0.5">
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {typeLabel(n.type)}
+                    </p>
+                    <p className="text-xs text-foreground truncate">
                       {n.customerName}{n.companyName ? ` · ${n.companyName}` : ""}
                     </p>
                     <p className="text-[11px] text-muted-foreground truncate">
-                      {n.type === "logistic"
-                        ? `${n.shipmentType ?? ""} · ${n.origin ?? ""} → ${n.destination ?? ""}`
-                        : `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal)}`}
+                      {notifDescription(n)}
                     </p>
                   </div>
                 </a>
