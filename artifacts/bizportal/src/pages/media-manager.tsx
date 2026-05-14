@@ -1,5 +1,7 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,7 @@ import {
   ExternalLink, FolderOpen, FolderPlus, FolderIcon, MoreVertical,
   ArrowRightLeft, ChevronRight, ChevronLeft, Images, Pencil, FolderX,
   CheckSquare2, Square, MousePointerClick, X as XIcon, ZoomIn, Info,
+  Scissors, RotateCcw, ScanLine,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +119,18 @@ export default function MediaManagerPage() {
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   const [bulkMoveFolder, setBulkMoveFolder] = useState("");
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+
+  // ── State Crop/Resize ──
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
+  const [cropQueueTotal, setCropQueueTotal] = useState(0);
+  const [cropQueueDone, setCropQueueDone] = useState(0);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropSrc, setCropSrc] = useState<string>("");
+  const [cropOpen, setCropOpen] = useState(false);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [cropAspect, setCropAspect] = useState<number | undefined>(undefined);
 
   const { data: foldersData, isLoading: foldersLoading } = useQuery<{ folders: FolderStat[] }>({
     queryKey: ["media-folders"],
@@ -247,6 +262,15 @@ export default function MediaManagerPage() {
     setMoveFolder(asset.folder);
   }
 
+  const folders = foldersData?.folders ?? [];
+  const allFolderNames = folders.map((f) => f.folder);
+  const totalCount = folders.reduce((sum, f) => sum + f.count, 0);
+
+  const items = data?.items ?? [];
+  const filtered = items.filter((a) =>
+    !search.trim() || a.originalName.toLowerCase().includes(search.toLowerCase())
+  );
+
   // ── Lightbox helpers ──
   const lightboxIndex = lightboxId !== null ? filtered.findIndex((a) => a.id === lightboxId) : -1;
   const lightboxAsset = lightboxIndex >= 0 ? filtered[lightboxIndex] : null;
@@ -271,64 +295,152 @@ export default function MediaManagerPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightboxId, lightboxIndex]);
 
-  const folders = foldersData?.folders ?? [];
-  const allFolderNames = folders.map((f) => f.folder);
-  const totalCount = folders.reduce((sum, f) => sum + f.count, 0);
-
-  const items = data?.items ?? [];
-  const filtered = items.filter((a) =>
-    !search.trim() || a.originalName.toLowerCase().includes(search.toLowerCase())
-  );
-
   const allFilteredSelected = filtered.length > 0 && filtered.every((a) => selectedIds.has(a.id));
   const selectedCount = selectedIds.size;
   const currentFolder = activeFolder === ALL_FOLDER ? "Semua Folder" : activeFolder;
 
-  async function uploadFiles(files: FileList | File[]) {
+  // ── Buka crop dialog untuk file pertama dalam antrian ──
+  function openCropFor(queue: File[]) {
+    if (queue.length === 0) return;
+    const file = queue[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropSrc(reader.result as string);
+      setCropFile(file);
+      setCrop(undefined);
+      setCompletedCrop(undefined);
+      setCropAspect(undefined);
+      setCropQueue(queue.slice(1));
+      setCropOpen(true);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Inisiasi antrian crop saat file dipilih ──
+  function uploadFiles(files: FileList | File[]) {
     const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (!arr.length) {
       toast({ title: "Hanya file gambar yang didukung", variant: "destructive" });
       return;
     }
-    setUploading(true);
-    let successCount = 0;
+    setCropQueueTotal(arr.length);
+    setCropQueueDone(0);
+    openCropFor(arr);
+  }
+
+  // ── Upload satu file ke server ──
+  async function uploadSingleFile(file: File, blobOverride?: Blob) {
     const targetFolder = activeFolder === ALL_FOLDER ? "Umum" : activeFolder;
-    const errors: string[] = [];
-    for (const file of arr) {
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("folder", targetFolder);
-        const res = await fetch("/api/media/upload", {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        });
-        if (res.ok) {
-          successCount++;
-        } else {
-          let msg = `HTTP ${res.status}`;
-          try { const j = await res.json(); msg = j.error ?? j.message ?? msg; } catch {}
-          errors.push(`${file.name}: ${msg}`);
-        }
-      } catch (err) {
-        errors.push(`${file.name}: ${err instanceof Error ? err.message : "Network error"}`);
-      }
+    const formData = new FormData();
+    const fileToUpload = blobOverride
+      ? new File([blobOverride], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" })
+      : file;
+    formData.append("file", fileToUpload);
+    formData.append("folder", targetFolder);
+    const res = await fetch("/api/media/upload", {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const j = await res.json(); msg = j.error ?? j.message ?? msg; } catch {}
+      throw new Error(msg);
     }
-    setUploading(false);
-    qc.invalidateQueries({ queryKey: ["media-assets"] });
-    qc.invalidateQueries({ queryKey: ["media-folders"] });
-    if (successCount > 0) {
-      toast({ title: `${successCount} gambar diunggah ke folder "${targetFolder}"` });
+  }
+
+  // ── Potong gambar dari canvas ──
+  async function getCroppedBlob(): Promise<Blob | null> {
+    const image = imgRef.current;
+    if (!image || !completedCrop?.width || !completedCrop?.height) return null;
+    const canvas = document.createElement("canvas");
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    canvas.width = Math.round(completedCrop.width * scaleX);
+    canvas.height = Math.round(completedCrop.height * scaleY);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(
+      image,
+      completedCrop.x * scaleX,
+      completedCrop.y * scaleY,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY,
+      0, 0,
+      canvas.width,
+      canvas.height,
+    );
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  }
+
+  // ── Selesai crop → proses file berikutnya ──
+  function afterUploadNext() {
+    setCropQueueDone((prev) => prev + 1);
+    if (cropQueue.length > 0) {
+      setTimeout(() => openCropFor(cropQueue), 80);
+    } else {
+      qc.invalidateQueries({ queryKey: ["media-assets"] });
+      qc.invalidateQueries({ queryKey: ["media-folders"] });
+      setCropQueueTotal(0);
+      setCropQueueDone(0);
     }
-    if (errors.length > 0) {
+  }
+
+  // ── Tombol "Potong & Unggah" ──
+  async function handleCropUpload() {
+    if (!cropFile) return;
+    setCropOpen(false);
+    setUploading(true);
+    try {
+      const blob = completedCrop?.width ? await getCroppedBlob() : null;
+      await uploadSingleFile(cropFile, blob ?? undefined);
+      toast({ title: `"${cropFile.name}" berhasil diunggah` });
+    } catch (err) {
       toast({
-        title: `${errors.length} gambar gagal diunggah`,
-        description: errors.slice(0, 3).join("\n"),
+        title: `Gagal mengunggah "${cropFile?.name}"`,
+        description: err instanceof Error ? err.message : "Terjadi kesalahan",
         variant: "destructive",
       });
     }
+    setUploading(false);
+    afterUploadNext();
   }
+
+  // ── Tombol "Lewati, Unggah Asli" ──
+  async function handleSkipCrop() {
+    if (!cropFile) return;
+    setCropOpen(false);
+    setUploading(true);
+    try {
+      await uploadSingleFile(cropFile);
+      toast({ title: `"${cropFile.name}" diunggah tanpa pemotongan` });
+    } catch (err) {
+      toast({
+        title: `Gagal mengunggah "${cropFile?.name}"`,
+        description: err instanceof Error ? err.message : "Terjadi kesalahan",
+        variant: "destructive",
+      });
+    }
+    setUploading(false);
+    afterUploadNext();
+  }
+
+  // ── Tutup dialog (batalkan semua antrian tersisa) ──
+  function handleCloseCropDialog() {
+    setCropOpen(false);
+    setCropQueue([]);
+    setCropQueueTotal(0);
+    setCropQueueDone(0);
+    qc.invalidateQueries({ queryKey: ["media-assets"] });
+    qc.invalidateQueries({ queryKey: ["media-folders"] });
+  }
+
+  // ── Saat gambar dimuat di crop, set crop awal ──
+  const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+    const aspect = cropAspect ?? w / h;
+    setCrop(centerCrop(makeAspectCrop({ unit: "%", width: 90 }, aspect, w, h), w, h));
+  }, [cropAspect]);
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     if (e.target.files) uploadFiles(e.target.files);
@@ -1019,6 +1131,116 @@ export default function MediaManagerPage() {
           </div>
         </div>
       )}
+
+      {/* ── Dialog Crop & Resize Gambar ── */}
+      <Dialog open={cropOpen} onOpenChange={(open) => { if (!open) handleCloseCropDialog(); }}>
+        <DialogContent className="max-w-2xl w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="w-5 h-5 text-primary" />
+              Potong &amp; Sesuaikan Gambar
+              {cropQueueTotal > 1 && (
+                <Badge variant="secondary" className="ml-auto text-xs font-semibold">
+                  {cropQueueDone + 1} / {cropQueueTotal}
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Pilihan rasio */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground font-semibold shrink-0">Rasio:</span>
+            {[
+              { label: "Bebas", value: undefined },
+              { label: "1:1 (Kotak)", value: 1 },
+              { label: "4:3", value: 4 / 3 },
+              { label: "16:9 (Lebar)", value: 16 / 9 },
+              { label: "3:4 (Potret)", value: 3 / 4 },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => {
+                  setCropAspect(opt.value);
+                  if (imgRef.current) {
+                    const { naturalWidth: w, naturalHeight: h } = imgRef.current;
+                    const aspect = opt.value ?? w / h;
+                    setCrop(centerCrop(makeAspectCrop({ unit: "%", width: 90 }, aspect, w, h), w, h));
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                  cropAspect === opt.value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border hover:bg-muted/50 text-muted-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <button
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => {
+                setCrop(undefined);
+                setCompletedCrop(undefined);
+                if (imgRef.current) {
+                  const { naturalWidth: w, naturalHeight: h } = imgRef.current;
+                  const aspect = cropAspect ?? w / h;
+                  setCrop(centerCrop(makeAspectCrop({ unit: "%", width: 90 }, aspect, w, h), w, h));
+                }
+              }}
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Atur Ulang
+            </button>
+          </div>
+
+          {/* Area crop */}
+          <div className="flex items-center justify-center bg-muted/40 rounded-xl overflow-hidden min-h-[200px] max-h-[400px]">
+            {cropSrc ? (
+              <ReactCrop
+                crop={crop}
+                onChange={(c) => setCrop(c)}
+                onComplete={(c) => setCompletedCrop(c)}
+                aspect={cropAspect}
+                className="max-h-[400px]"
+              >
+                <img
+                  ref={imgRef}
+                  src={cropSrc}
+                  onLoad={onImageLoad}
+                  alt="Preview gambar untuk dipotong"
+                  style={{ maxHeight: "400px", width: "auto", display: "block" }}
+                  crossOrigin="anonymous"
+                />
+              </ReactCrop>
+            ) : (
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            )}
+          </div>
+
+          <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1.5">
+            <ScanLine className="w-3.5 h-3.5 shrink-0" />
+            Seret sudut seleksi untuk memotong. Jika tidak ingin memotong, klik <strong>"Unggah Asli"</strong>.
+          </p>
+
+          <DialogFooter className="gap-2 sm:gap-2 flex-col sm:flex-row">
+            {cropQueueTotal > 1 && cropQueue.length > 0 && (
+              <p className="text-xs text-muted-foreground self-center mr-auto">
+                Tersisa {cropQueue.length} gambar lagi
+              </p>
+            )}
+            <Button variant="outline" onClick={handleSkipCrop} disabled={uploading} className="gap-1.5">
+              <Upload className="w-4 h-4" />
+              Unggah Asli
+            </Button>
+            <Button onClick={handleCropUpload} disabled={uploading} className="gap-1.5">
+              {uploading
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Scissors className="w-4 h-4" />
+              }
+              {completedCrop?.width ? "Potong &amp; Unggah" : "Unggah Tanpa Potong"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Konfirmasi Hapus Folder ── */}
       <AlertDialog open={!!deleteFolderTarget} onOpenChange={(open) => !open && setDeleteFolderTarget(null)}>
