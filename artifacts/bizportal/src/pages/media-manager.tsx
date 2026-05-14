@@ -20,7 +20,7 @@ import {
 import {
   ImageIcon, Upload, Copy, Trash2, Search, Loader2, CheckCheck,
   ExternalLink, FolderOpen, FolderPlus, FolderIcon, MoreVertical,
-  ArrowRightLeft, ChevronRight, Images, Pencil,
+  ArrowRightLeft, ChevronRight, Images, Pencil, FolderX,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -103,6 +103,9 @@ export default function MediaManagerPage() {
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [renameNewName, setRenameNewName] = useState("");
 
+  // Dialog hapus folder
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<FolderStat | null>(null);
+
   const { data: foldersData, isLoading: foldersLoading } = useQuery<{ folders: FolderStat[] }>({
     queryKey: ["media-folders"],
     queryFn: () => apiFetch("/api/media/folders"),
@@ -166,6 +169,19 @@ export default function MediaManagerPage() {
     setRenameTarget(folderName);
     setRenameNewName(folderName);
   }
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (name: string) =>
+      apiFetch(`/api/media/folders/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    onSuccess: (_data, name) => {
+      qc.invalidateQueries({ queryKey: ["media-assets"] });
+      qc.invalidateQueries({ queryKey: ["media-folders"] });
+      if (activeFolder === name) setActiveFolder(ALL_FOLDER);
+      setDeleteFolderTarget(null);
+      toast({ title: `Folder dihapus, gambar dipindahkan ke "Umum"` });
+    },
+    onError: () => toast({ title: "Gagal menghapus folder", variant: "destructive" }),
+  });
 
   const folders = foldersData?.folders ?? [];
   const allFolderNames = folders.map((f) => f.folder);
@@ -296,13 +312,24 @@ export default function MediaManagerPage() {
                   <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 group-hover:hidden">
                     {f.count}
                   </Badge>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openRenameDialog(f.folder); }}
-                    title="Ubah nama folder"
-                    className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
+                  <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openRenameDialog(f.folder); }}
+                      title="Ubah nama folder"
+                      className="flex items-center justify-center w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    {f.folder !== "Umum" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteFolderTarget(f); }}
+                        title="Hapus folder"
+                        className="flex items-center justify-center w-5 h-5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <FolderX className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -652,6 +679,41 @@ export default function MediaManagerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Konfirmasi Hapus Folder ── */}
+      <AlertDialog open={!!deleteFolderTarget} onOpenChange={(open) => !open && setDeleteFolderTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <FolderX className="w-5 h-5 text-destructive" />
+              Hapus folder ini?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Folder <strong>"{deleteFolderTarget?.folder}"</strong> akan dihapus.{" "}
+              {deleteFolderTarget && deleteFolderTarget.count > 0 ? (
+                <>
+                  Sebanyak <strong>{deleteFolderTarget.count} gambar</strong> di dalamnya akan
+                  dipindahkan otomatis ke folder <strong>"Umum"</strong>.
+                </>
+              ) : (
+                "Folder ini kosong dan akan langsung dihapus dari daftar."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteFolderTarget && deleteFolderMutation.mutate(deleteFolderTarget.folder)}
+            >
+              {deleteFolderMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                : null}
+              Ya, Hapus Folder
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Konfirmasi Hapus ── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

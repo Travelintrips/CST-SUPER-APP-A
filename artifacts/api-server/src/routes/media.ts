@@ -94,6 +94,19 @@ router.patch("/folders/rename", async (req, res) => {
   res.json({ ok: true, affected: (result as any).rowCount ?? 0 });
 });
 
+// DELETE /api/media/folders/:name — hapus folder, pindahkan isinya ke "Umum"
+router.delete("/folders/:name", async (req, res) => {
+  const name = decodeURIComponent(req.params.name).trim();
+  if (!name || name === "Umum") {
+    return res.status(400).json({ error: "Folder ini tidak dapat dihapus" });
+  }
+  const result = await db
+    .update(mediaAssetsTable)
+    .set({ folder: "Umum" })
+    .where(eq(mediaAssetsTable.folder, name));
+  res.json({ ok: true, moved: (result as any).rowCount ?? 0 });
+});
+
 // PATCH /api/media/:id/folder — pindahkan gambar ke folder lain
 router.patch("/:id/folder", async (req, res) => {
   const id = Number(req.params.id);
