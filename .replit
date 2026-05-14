@@ -40,16 +40,8 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
-localPort = 3000
-externalPort = 6800
-
-[[ports]]
 localPort = 5000
 externalPort = 8008
-
-[[ports]]
-localPort = 5001
-externalPort = 8081
 
 [[ports]]
 localPort = 8080
@@ -98,10 +90,3 @@ externalPort = 8099
 [[ports]]
 localPort = 23434
 externalPort = 5173
-<<<<<<< HEAD
-
-[[ports]]
-localPort = 23435
-externalPort = 9000
-=======
->>>>>>> 74b9d18eaa8436ff74d2d529b47751e1eb0e0113
