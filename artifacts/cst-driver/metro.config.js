@@ -32,22 +32,19 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// Include the monorepo root so Metro can resolve workspace packages
-config.watchFolders = [workspaceRoot];
+// Watch only shared source directories, NOT the entire workspace root.
+// Watching workspaceRoot would include node_modules/.pnpm/ and its transient
+// *_tmp_NNNN directories created/destroyed during pnpm installs; the
+// FallbackWatcher (used when Watchman is unavailable) crashes with ENOENT
+// if a watched directory disappears mid-crawl.
+config.watchFolders = [
+  path.resolve(workspaceRoot, "lib"),
+];
 
 // Resolve node_modules from both the package and the monorepo root (pnpm hoisting)
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(workspaceRoot, "node_modules"),
 ];
-
-// Exclude transient temp directories that appear and disappear during agent sessions
-// and pnpm installs. FallbackWatcher (used when Watchman is unavailable) calls
-// fs.watch() on every dir it finds; if one vanishes mid-crawl it throws ENOENT,
-// crashing Metro. Patterns covered:
-//   expo-notifications_tmp_*  — Expo notifications temp build artefacts
-//   .local/**                 — agent skill temp dirs + pnpm install temp dirs
-config.resolver.blockList =
-  /expo-notifications_tmp_[^/]+\/.*|[/\\]\.local[/\\].*/;
 
 module.exports = config;

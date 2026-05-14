@@ -35,7 +35,15 @@
     },
     "ignoredBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "packageExtensions": {
+      "react-native-worklets@*": {
+        "exports": {
+          ".": "./lib/module/index",
+          "./plugin": "./plugin/index.js"
+        }
+      }
+    }
   },
   "dependencies": {
     "@replit/connectors-sdk": "^0.4.0",

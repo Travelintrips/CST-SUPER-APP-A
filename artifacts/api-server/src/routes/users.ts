@@ -70,6 +70,7 @@ router.get("/me", async (req, res) => {
   const authUser = req.user;
   const fullName = [authUser.firstName, authUser.lastName].filter(Boolean).join(" ") || null;
   const u = await ensureUserRecord(authUser.id, authUser.email, fullName);
+  if (!u) return res.status(500).json({ message: "Failed to retrieve user record" });
   return res.json({
     id: u.id,
     email: u.email,
