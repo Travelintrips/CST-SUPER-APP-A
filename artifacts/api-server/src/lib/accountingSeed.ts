@@ -148,6 +148,22 @@ async function applyRuntimeMigrations(): Promise<void> {
   for (const q of [...companyColMigrations, ...accountingColMigrations]) {
     try { await db.execute(sql.raw(q)); } catch { /* column/index already exists or duplicate */ }
   }
+  // Deduplicate chart_of_accounts keeping lowest id per (company_id, code) before creating unique index
+  await db.execute(sql.raw(`
+    DELETE FROM chart_of_accounts
+    WHERE id NOT IN (
+      SELECT MIN(id) FROM chart_of_accounts
+      GROUP BY COALESCE(company_id::text, '__null__'), code
+    )
+  `));
+  // Deduplicate accounting_journals
+  await db.execute(sql.raw(`
+    DELETE FROM accounting_journals
+    WHERE id NOT IN (
+      SELECT MIN(id) FROM accounting_journals
+      GROUP BY COALESCE(company_id::text, '__null__'), code
+    )
+  `));
   // Ensure compound unique indexes exist (ignore error if already exists)
   const indexes = [
     `CREATE UNIQUE INDEX IF NOT EXISTS coa_company_code_uniq ON chart_of_accounts (company_id, code)`,

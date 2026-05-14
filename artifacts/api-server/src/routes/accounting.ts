@@ -14,7 +14,8 @@ import {
 } from "@workspace/db";
 import { eq, ne, desc, and, or, isNull, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { ensureAccountingSettings } from "../lib/accountingSeed.js";
+import { ensureAccountingSettings, seedAccountingDefaults } from "../lib/accountingSeed.js";
+import { logger } from "../lib/logger.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
 
 /** Parse companyId from query param or body; defaults to 1 (first/default company) */
@@ -94,6 +95,10 @@ router.post("/companies", async (req, res) => {
   if (!name || !code) return res.status(400).json({ message: "name and code required" });
   try {
     const [created] = await db.insert(companiesTable).values({ name, code, isHolding: isHolding ?? false, parentCompanyId: parentCompanyId ?? null, address, npwp, logoUrl, isActive: isActive ?? true }).returning();
+    // Seed default CoA for the new company (fire-and-forget)
+    seedAccountingDefaults(created!.id).catch((e) =>
+      logger.warn({ err: e }, "Company CoA seed failed"),
+    );
     return res.status(201).json(serializeCompany(created!));
   } catch {
     return res.status(409).json({ message: "Company code already exists" });
