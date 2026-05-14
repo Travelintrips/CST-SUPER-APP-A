@@ -6,7 +6,7 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
-import { ObjectPermission, getObjectAclPolicy } from "../lib/objectAcl.js";
+import { ObjectPermission } from "../lib/objectAcl.js";
 import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router: IRouter = Router();
@@ -134,25 +134,22 @@ router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Resp
  *
  * Serve private object entities from PRIVATE_OBJECT_DIR.
  *
- * Authorization (three layers, evaluated in order):
+ * Authorization (two layers, evaluated in order):
  *
  * 1. Authentication gate — unauthenticated callers always receive 401.
  *    Private objects must never be downloadable without a valid session,
  *    regardless of whether the caller knows the path.
  *
- * 2. ACL enforcement for objects with metadata — when ACL metadata is present
- *    on the object (written by POST /storage/uploads/file or by a business
- *    route that calls trySetObjectEntityAclPolicy), access is granted only to
- *    the recorded owner or to a caller covered by an explicit ACL rule.  Any
- *    other authenticated caller receives 403.
- *
- * 3. Admin fallback for objects without metadata — objects that carry no ACL
- *    metadata (legacy uploads or presigned-URL uploads whose business route has
- *    not yet stamped ownership) are restricted to admin-role users.  This is
- *    the default-deny posture for unknown ownership: only a trusted admin may
- *    access a file whose provenance cannot be verified from metadata alone.
- *    As the upload paths progressively stamp ACL metadata, layer 2 will handle
- *    an increasing share of requests and the admin fallback will narrow.
+ * 2. Owner / ACL / admin check —
+ *    a) canAccessObjectEntity() is called first.  If the requesting user is
+ *       the recorded owner of the object (set via ACL metadata at upload time)
+ *       or is covered by an explicit ACL rule, access is granted immediately.
+ *    b) If canAccessObjectEntity() returns false — either because the object
+ *       has ACL metadata that does not cover this user, or because the object
+ *       has no ACL metadata at all (legacy or presigned-URL uploads) — the
+ *       caller must have admin role.  requireAdmin() handles the 403.  This
+ *       ensures authorized admin/staff users are never locked out of
+ *       business-critical documents regardless of who originally uploaded them.
  */
 router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -166,23 +163,21 @@ router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
-    const aclPolicy = await getObjectAclPolicy(objectFile);
+    // Try ACL-based owner / rule check first.
+    // canAccessObjectEntity() returns false both when ACL metadata is absent
+    // (legacy / presigned-URL objects) and when metadata exists but does not
+    // cover the requesting user.  In either case fall back to admin override so
+    // that authorized staff are never locked out.
+    const userId = req.user.id;
+    const aclAllowed = await objectStorageService.canAccessObjectEntity({
+      userId,
+      objectFile,
+      requestedPermission: ObjectPermission.READ,
+    });
 
-    if (aclPolicy !== null) {
-      // Object has ACL metadata — enforce owner / ACL-rule access.
-      const userId = req.user.id;
-      const aclAllowed = await objectStorageService.canAccessObjectEntity({
-        userId,
-        objectFile,
-        requestedPermission: ObjectPermission.READ,
-      });
-      if (!aclAllowed) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-    } else {
-      // No ACL metadata (legacy or presigned-URL upload) — fall back to admin
-      // rule.  requireAdmin sends 403 itself and returns false if denied.
+    if (!aclAllowed) {
+      // Not the ACL-designated owner — require admin role.
+      // requireAdmin() sends its own 403 and returns false if denied.
       if (!(await requireAdmin(req, res))) return;
     }
 
