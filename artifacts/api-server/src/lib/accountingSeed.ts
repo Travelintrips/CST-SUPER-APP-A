@@ -232,23 +232,7 @@ export async function seedAccountingDefaults(): Promise<void> {
     await db.execute(sql`
       UPDATE accounting_journals
          SET code = ${newCode}, company_id = 1
-       WHERE code = ${oldCode}
-         AND (company_id IS NULL OR company_id = 1)
-         AND NOT EXISTS (
-           SELECT 1 FROM accounting_journals AS j2
-            WHERE j2.code = ${newCode}
-         )
-    `);
-  }
-
-  // ── Deactivate any remaining old legacy journals that were not renamed ─────
-  // (happens when a per-company duplicate already existed, preventing rename)
-  const LEGACY_CODES = Object.keys(LEGACY_RENAME);
-  for (const code of LEGACY_CODES) {
-    await db.execute(sql`
-      UPDATE accounting_journals
-         SET is_active = false
-       WHERE code = ${code} AND company_id = 1
+       WHERE code = ${oldCode} AND (company_id IS NULL)
     `);
   }
 

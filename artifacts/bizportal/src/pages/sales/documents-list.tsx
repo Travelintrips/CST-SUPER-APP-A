@@ -82,9 +82,9 @@ function isOverdue(doc: SalesDocument): boolean {
   return new Date(doc.expectedDate) < new Date(new Date().toDateString());
 }
 
-interface Props { kind?: "quote" | "order" }
+interface Props { kind: "quote" | "order" }
 
-export default function SalesDocumentsListPage({ kind = "quote" }: Props) {
+export default function SalesDocumentsListPage({ kind }: Props) {
   const isQuote = kind === "quote";
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();

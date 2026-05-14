@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "PORT=${PORT:-8080} fuser -k ${PORT:-8080}/tcp 2>/dev/null || true && pnpm run build && PORT=${PORT:-8080} node --enable-source-maps ./dist/index.mjs",
+    "dev": "PORT=${PORT:-8080} fuser -k ${PORT:-8080}/tcp 2>/dev/null || true && export NODE_ENV=development && (cd ../bizportal && pnpm run build || echo 'BizPortal build skipped') && (cd ../customer-portal && BASE_PATH=/ pnpm run build || echo 'Customer Portal build skipped') && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"

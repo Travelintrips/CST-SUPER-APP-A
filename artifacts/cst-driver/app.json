@@ -24,14 +24,7 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0F3460"
       },
-      "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
-      ]
+      "permissions": []
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -49,12 +42,6 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "ba0ae84b-06c4-434b-add9-b08446ac062a"
-      }
-    },
-    "owner": "admcst"
+    }
   }
 }

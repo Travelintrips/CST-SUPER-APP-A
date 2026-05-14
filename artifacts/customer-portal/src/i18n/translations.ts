@@ -144,7 +144,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       t1Role: "Direktur Operasional · PT. Karya Maju Bersama",
       t1Text:
         "CST Logistics membantu kami mengekspor produk furnitur ke 12 negara tanpa hambatan. Proses kepabeanan yang cepat benar-benar mengubah cara kami berbisnis secara global.",
-      t2Name: "Lulu Paijrah",
+      t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
       t2Text:
         "Platform tracking real-time mereka sangat membantu. Kami bisa pantau kargo dari gudang asal hingga tangan pelanggan kami di luar negeri kapan saja.",
@@ -635,7 +635,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       t1Role: "Operations Director · PT. Karya Maju Bersama",
       t1Text:
         "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
-      t2Name: "Lulu Paijrah",
+      t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
       t2Text:
         "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
@@ -1115,7 +1115,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       t1Role: "Operations Director · PT. Karya Maju Bersama",
       t1Text:
         "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
-      t2Name: "Lulu Paijrah",
+      t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
       t2Text:
         "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
@@ -2937,7 +2937,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       t1Role: "Operations Director · PT. Karya Maju Bersama",
       t1Text:
         "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
-      t2Name: "Lulu Paijrah",
+      t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
       t2Text:
         "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
@@ -5706,7 +5706,7 @@ export const TRANSLATIONS: Record<string, DeepRecord> = {
       t1Role: "Operations Director · PT. Karya Maju Bersama",
       t1Text:
         "CST Logistics helped us export furniture products to 12 countries without any hurdles. Their fast customs clearance truly changed the way we do business globally.",
-      t2Name: "Lulu Paijrah",
+      t2Name: "Sari Dewi",
       t2Role: "Supply Chain Manager · Retailindo Group",
       t2Text:
         "Their real-time tracking platform is incredibly helpful. We can monitor cargo from the origin warehouse all the way to our overseas customers at any time.",
