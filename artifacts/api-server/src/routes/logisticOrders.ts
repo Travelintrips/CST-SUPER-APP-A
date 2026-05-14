@@ -58,7 +58,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     nomorPenerima: row.nomorPenerima ?? null,
     jamOrder: row.jamOrder ?? null,
     source: row.source ?? "manual",
-    aiSessionToken: row.aiSessionToken ?? null,
+
     subtotal: parseFloat(row.subtotal),
     tax: parseFloat(row.tax),
     grandTotal: parseFloat(row.grandTotal),

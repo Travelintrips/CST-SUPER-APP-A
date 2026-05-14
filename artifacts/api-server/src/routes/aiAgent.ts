@@ -121,12 +121,10 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_order_status",
-      description: "Cek status order logistik pelanggan. Otomatis mencari berdasarkan sesi chat ini. Jika pelanggan menyebut nomor WhatsApp lain, gunakan parameter phone.",
+      description: "Cek status order logistik pelanggan. Mencari berdasarkan sesi chat ini saja.",
       parameters: {
         type: "object",
-        properties: {
-          phone: { type: "string", description: "Nomor WhatsApp pelanggan (opsional, untuk mencari order dari nomor lain)" },
-        },
+        properties: {},
         required: [],
       },
     },
@@ -276,14 +274,9 @@ async function handleToolCall(
 
   if (toolName === "get_order_status") {
     try {
-      const { phone } = args as { phone?: string };
-
-      // Build OR condition: match by current session token, or by phone if provided
-      const conditions = [eq(logisticOrdersTable.aiSessionToken, sessionToken)];
-      if (phone && phone.trim()) {
-        conditions.push(eq(logisticOrdersTable.phone, phone.trim()));
-      }
-
+      // Only look up orders belonging to the current chat session.
+      // Accepting an arbitrary phone number here would allow any anonymous user
+      // to enumerate another customer's order history by phone number.
       const orders = await db
         .select({
           id: logisticOrdersTable.id,
@@ -297,13 +290,13 @@ async function handleToolCall(
           createdAt: logisticOrdersTable.createdAt,
         })
         .from(logisticOrdersTable)
-        .where(or(...conditions))
+        .where(eq(logisticOrdersTable.aiSessionToken, sessionToken))
         .orderBy(asc(logisticOrdersTable.createdAt));
 
       if (orders.length === 0) {
         return JSON.stringify({
           found: false,
-          message: "Tidak ada order yang ditemukan untuk sesi ini. Jika Anda memiliki nomor WhatsApp yang terdaftar, silakan sebutkan.",
+          message: "Tidak ada order yang ditemukan untuk sesi chat ini. Pastikan order dibuat melalui sesi yang sama.",
         });
       }
 
