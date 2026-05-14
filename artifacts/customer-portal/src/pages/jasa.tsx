@@ -234,16 +234,50 @@ export default function Jasa() {
       {/* ── Page Body ──────────────────────────────────────────────── */}
       <div className="max-w-6xl mx-auto px-4 md:px-8 mt-7">
 
-        {/* Category filter chips */}
+        {/* Category filter chips — premium */}
+        <style>{`
+          .cat-chip {
+            transition: all 0.20s cubic-bezier(0.4,0,0.2,1);
+            position: relative;
+            overflow: hidden;
+          }
+          .cat-chip::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%);
+            pointer-events: none;
+          }
+          .cat-chip:not(.active):hover {
+            background: linear-gradient(135deg, #EEF4FF 0%, #F5F8FF 100%) !important;
+            border-color: rgba(11,92,173,0.35) !important;
+            color: #0B5CAD !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(11,92,173,0.12), 0 1px 4px rgba(11,92,173,0.06) !important;
+          }
+          .cat-chip.active {
+            background: linear-gradient(135deg, #0B5CAD 0%, #1A73D4 100%) !important;
+            border-color: #0B5CAD !important;
+            color: white !important;
+            box-shadow: 0 4px 16px rgba(11,92,173,0.30), 0 1px 4px rgba(11,92,173,0.15), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+            transform: translateY(-1px);
+          }
+          .cat-chip.active:hover { box-shadow: 0 6px 22px rgba(11,92,173,0.38), 0 2px 6px rgba(11,92,173,0.18), inset 0 1px 0 rgba(255,255,255,0.18) !important; }
+        `}</style>
         <div className="flex flex-wrap gap-2 mb-7">
           <button
             key="__all__"
             onClick={() => setActiveCategory("__all__")}
-            className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all border ${
-              activeCategory === "__all__"
-                ? "bg-[#0B5CAD] text-white border-[#0B5CAD] shadow-md shadow-blue-200"
-                : "bg-white text-slate-500 border-slate-200 hover:border-[#0B5CAD]/40 hover:text-slate-700 hover:shadow-sm"
-            }`}
+            className={`cat-chip px-4 py-2 rounded-full text-[13px] font-semibold border ${activeCategory === "__all__" ? "active" : ""}`}
+            style={{
+              background: activeCategory === "__all__" ? undefined : "rgba(255,255,255,0.95)",
+              borderColor: activeCategory === "__all__" ? undefined : "rgba(203,213,225,0.8)",
+              color: activeCategory === "__all__" ? undefined : "#64748B",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              boxShadow: activeCategory === "__all__" ? undefined : "0 1px 3px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
+            }}
           >
             {t("jasa.all")}
           </button>
@@ -251,11 +285,15 @@ export default function Jasa() {
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all border ${
-                activeCategory === cat
-                  ? "bg-[#0B5CAD] text-white border-[#0B5CAD] shadow-md shadow-blue-200"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-[#0B5CAD]/40 hover:text-slate-700 hover:shadow-sm"
-              }`}
+              className={`cat-chip px-4 py-2 rounded-full text-[13px] font-semibold border ${activeCategory === cat ? "active" : ""}`}
+              style={{
+                background: activeCategory === cat ? undefined : "rgba(255,255,255,0.95)",
+                borderColor: activeCategory === cat ? undefined : "rgba(203,213,225,0.8)",
+                color: activeCategory === cat ? undefined : "#64748B",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                boxShadow: activeCategory === cat ? undefined : "0 1px 3px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
+              }}
             >
               {translateCategory(cat, locale)}
             </button>
