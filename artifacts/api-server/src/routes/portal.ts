@@ -1265,7 +1265,63 @@ router.post("/request-quote", async (req, res) => {
     errors.push("Email: " + String(err));
   }
 
+  // Simpan ke database
+  try {
+    await db.insert(quoteRequestsTable).values({
+      name: name.trim(),
+      email: email?.trim() || null,
+      whatsapp: whatsapp.trim(),
+      service,
+      origin: origin.trim(),
+      destination: destination.trim(),
+      weight: weight ?? null,
+      length: length ?? null,
+      width: width ?? null,
+      height: height ?? null,
+      incoterms: incoterms ?? null,
+      insurance: insurance ?? false,
+      express: express ?? false,
+      estimatedTotal: result?.total != null ? String(result.total) : null,
+      estimatedCbm: result?.cbm != null ? String(result.cbm) : null,
+      estimatedChargeableWeight: result?.chargeableWeight != null ? String(result.chargeableWeight) : null,
+      status: "new",
+    });
+  } catch (err) {
+    errors.push("DB-save: " + String(err));
+  }
+
   return res.json({ ok: true, warnings: errors.length ? errors : undefined });
+});
+
+// GET /api/portal/quote-requests — daftar semua request quote (BizPortal admin)
+router.get("/quote-requests", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const status = req.query.status as string | undefined;
+  const conditions = status ? [eq(quoteRequestsTable.status, status)] : [];
+  const items = await db
+    .select()
+    .from(quoteRequestsTable)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(quoteRequestsTable.createdAt));
+  res.json({ items, total: items.length });
+});
+
+// PATCH /api/portal/quote-requests/:id — update status/notes/handledBy (BizPortal admin)
+router.patch("/quote-requests/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "invalid id" });
+  const { status, notes, handledBy } = req.body ?? {};
+  await db
+    .update(quoteRequestsTable)
+    .set({
+      ...(status != null ? { status } : {}),
+      ...(notes != null ? { notes } : {}),
+      ...(handledBy != null ? { handledBy } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(quoteRequestsTable.id, id));
+  res.json({ ok: true });
 });
 
 // GET /api/portal/calculator-rates — public, returns current calculator rates
