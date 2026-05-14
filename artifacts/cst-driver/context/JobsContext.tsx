@@ -43,7 +43,7 @@ function toAbsoluteUrl(url: string): string {
 }
 
 const LOCATION_INTERVAL_MS = 60_000;
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 15_000;
 
 export function JobsProvider({ children }: { children: React.ReactNode }) {
   const { token, driver, isAuthenticated } = useAuth();
@@ -51,7 +51,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const locationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const knownJobIdsRef = useRef<Set<string> | null>(null);
+  // Track both job ID and last known status so we fire notification whenever
+  // a job transitions INTO 'ASSIGNED' (new assignment OR re-assignment).
+  const knownJobsRef = useRef<Map<string, ShipmentStatus> | null>(null);
 
   const refreshJobs = useCallback(async () => {
     if (!token) return;
@@ -61,18 +63,22 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
       const data = await api.getJobs(token);
       const newJobs = (data as unknown as Record<string, unknown>[]).map(mapApiJob);
 
-      if (knownJobIdsRef.current === null) {
-        knownJobIdsRef.current = new Set(newJobs.map((j) => j.id));
+      if (knownJobsRef.current === null) {
+        // First load — seed the map, no notifications
+        knownJobsRef.current = new Map(newJobs.map((j) => [j.id, j.status]));
       } else {
         for (const job of newJobs) {
+          const prevStatus = knownJobsRef.current.get(job.id);
+          // Notify when: new job that is ASSIGNED, OR existing job whose
+          // status just changed TO ASSIGNED (re-assignment after cancellation)
           if (
-            !knownJobIdsRef.current.has(job.id) &&
-            job.status === 'ASSIGNED'
+            job.status === 'ASSIGNED' &&
+            prevStatus !== 'ASSIGNED'
           ) {
             notifyNewJob(job.jobNumber, job.customerName, job.pickupAddress);
           }
         }
-        knownJobIdsRef.current = new Set(newJobs.map((j) => j.id));
+        knownJobsRef.current = new Map(newJobs.map((j) => [j.id, j.status]));
       }
 
       setJobs(newJobs);
@@ -104,11 +110,14 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         { event: '*', schema: 'public', table: 'driver_jobs' },
         (payload) => {
           const record = (payload.new ?? payload.old) as Record<string, unknown>;
+          const oldRecord = (payload.old ?? {}) as Record<string, unknown>;
           if (Number(record?.driver_id) === driverIdNum) {
             refreshJobs();
+            // Fire notification on INSERT or UPDATE that transitions status to ASSIGNED
+            const isNowAssigned = record.status === 'ASSIGNED';
+            const wasAssigned = oldRecord.status === 'ASSIGNED';
             if (
-              payload.eventType === 'INSERT' &&
-              record.status === 'ASSIGNED' &&
+              isNowAssigned && !wasAssigned &&
               record.job_number
             ) {
               notifyNewJob(
