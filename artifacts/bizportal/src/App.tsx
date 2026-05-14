@@ -31,6 +31,7 @@ import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UsersPage from "@/pages/users";
+import MediaManagerPage from "@/pages/media-manager";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
 import SalesDocumentsListPage from "@/pages/sales/documents-list";
@@ -324,6 +325,7 @@ function Router() {
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
+        <Route path="/media" component={() => <ProtectedRoute component={MediaManagerPage} />} />
         {/* Holding */}
         <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
