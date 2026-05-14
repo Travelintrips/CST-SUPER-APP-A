@@ -1,10 +1,8 @@
 import { Router } from "express";
 import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable } from "@workspace/db";
 import { eq, desc, inArray, sum, and } from "drizzle-orm";
-import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
-const objectStorageService = new ObjectStorageService();
 
 function nextNumber(prefix: string) {
   const now = new Date();
@@ -491,16 +489,6 @@ router.post("/freight-shipments/:shipmentId/attachments", async (req, res) => {
     docStatus: docStatus || null,
     invoiceId: invoiceId ? Number(invoiceId) : null,
   }).returning();
-
-  // Stamp ownership on the GCS object so the storage download endpoint can
-  // enforce owner-based access.  Fire-and-forget; never block the response.
-  if (req.user?.id) {
-    objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
-      owner: req.user.id,
-      visibility: "private",
-    }).catch(() => undefined);
-  }
-
   return res.status(201).json({ ...attachment!, createdAt: attachment!.createdAt.toISOString() });
 });
 
