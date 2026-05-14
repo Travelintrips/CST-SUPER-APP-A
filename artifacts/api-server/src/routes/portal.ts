@@ -466,12 +466,13 @@ function sanitizeText(val: unknown): string | null {
 router.put("/admin/services/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, imageUrl } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
   if (price !== undefined) updates.price = parseFloat(String(price)).toFixed(2);
   if (imageUrl !== undefined) updates.imageUrl = sanitizeText(imageUrl);
+  if (mediaItems !== undefined) updates.mediaItems = JSON.stringify(Array.isArray(mediaItems) ? mediaItems : []);
   if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
   const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
   return res.json(updated);

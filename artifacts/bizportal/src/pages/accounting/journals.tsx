@@ -13,6 +13,12 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -21,12 +27,71 @@ import {
   getListJournalsQueryKey, type AccountingJournal,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, BookOpen, Printer, Download } from "lucide-react";
+import { Pencil, Plus, BookOpen, Printer, Download, ChevronsUpDown, Check } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
+import { cn } from "@/lib/utils";
 
 const TYPE_LABELS: Record<string, string> = {
   sales: "Penjualan", purchase: "Pembelian", bank: "Bank", cash: "Kas", general: "Umum",
 };
+
+interface AccountComboboxProps {
+  value: number | null;
+  onChange: (val: number | null) => void;
+  accounts: { id: number; code: string; name: string }[];
+  placeholder?: string;
+}
+
+function AccountCombobox({ value, onChange, accounts, placeholder = "— Pilih akun —" }: AccountComboboxProps) {
+  const [popOpen, setPopOpen] = useState(false);
+
+  const selected = value != null ? accounts.find((a) => a.id === value) : null;
+  const label = selected ? `${selected.code} ${selected.name}` : placeholder;
+
+  return (
+    <Popover open={popOpen} onOpenChange={setPopOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={popOpen}
+          className="w-full justify-between font-normal text-sm h-9 px-3"
+        >
+          <span className="truncate text-left flex-1">{label}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[420px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Cari kode atau nama akun..." />
+          <CommandList className="max-h-64">
+            <CommandEmpty>Akun tidak ditemukan</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="— Tidak ada —"
+                onSelect={() => { onChange(null); setPopOpen(false); }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", value == null ? "opacity-100" : "opacity-0")} />
+                <span className="text-muted-foreground">— Tidak ada —</span>
+              </CommandItem>
+              {accounts.map((a) => (
+                <CommandItem
+                  key={a.id}
+                  value={`${a.code} ${a.name}`}
+                  onSelect={() => { onChange(a.id); setPopOpen(false); }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === a.id ? "opacity-100" : "opacity-0")} />
+                  <span className="font-mono text-xs mr-2 text-muted-foreground">{a.code}</span>
+                  <span>{a.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function JournalsPage() {
   const qc = useQueryClient();
@@ -77,6 +142,7 @@ export default function JournalsPage() {
     return a ? `${a.code} ${a.name}` : `#${id}`;
   };
 
+  const accList = accounts ?? [];
   const rows = journals ?? [];
   const headers = ["Kode", "Nama", "Tipe", "Akun Debit Default", "Akun Kredit Default", "Status"];
   const xlsxRows = () => rows.map((j) => [
@@ -113,6 +179,22 @@ export default function JournalsPage() {
                       <SelectTrigger data-testid="select-journal-type"><SelectValue /></SelectTrigger>
                       <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => (<SelectItem key={k} value={k}>{v}</SelectItem>))}</SelectContent>
                     </Select>
+                  </div>
+                  <div>
+                    <Label>Akun Debit Default</Label>
+                    <AccountCombobox
+                      value={form.defaultDebitAccountId}
+                      onChange={(v) => setForm({ ...form, defaultDebitAccountId: v })}
+                      accounts={accList}
+                    />
+                  </div>
+                  <div>
+                    <Label>Akun Kredit Default</Label>
+                    <AccountCombobox
+                      value={form.defaultCreditAccountId}
+                      onChange={(v) => setForm({ ...form, defaultCreditAccountId: v })}
+                      accounts={accList}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <input type="checkbox" id="active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />

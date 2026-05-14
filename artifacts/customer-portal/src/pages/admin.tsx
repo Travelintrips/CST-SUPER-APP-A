@@ -222,6 +222,21 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+function validateImageFile(file: File, toast: ReturnType<typeof useToast>["toast"]): boolean {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    toast({ title: "Format file tidak didukung", description: "Hanya JPG, JPEG, PNG, atau WEBP yang diizinkan.", variant: "destructive" });
+    return false;
+  }
+  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    toast({ title: "Ukuran file terlalu besar", description: `Maksimum 5MB per file. File ini ${(file.size / 1024 / 1024).toFixed(1)}MB.`, variant: "destructive" });
+    return false;
+  }
+  return true;
+}
+
 function ImageUploader({
   currentUrl,
   onUpload,
@@ -239,10 +254,7 @@ function ImageUploader({
   }, [currentUrl]);
 
   async function handleFile(file: File) {
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Hanya file gambar", variant: "destructive" });
-      return;
-    }
+    if (!validateImageFile(file, toast)) return;
     setUploading(true);
     try {
       const formData = new FormData();
@@ -268,7 +280,14 @@ function ImageUploader({
     <div className="space-y-2">
       {preview && (
         <div className="relative rounded-lg overflow-hidden border border-border bg-muted h-40 flex items-center justify-center">
-          <img src={preview} alt="preview" className="h-full w-full object-cover" />
+          <img src={preview} alt="preview" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <button
+            type="button"
+            onClick={() => { setPreview(null); onUpload(""); }}
+            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </div>
       )}
       {!preview && (
@@ -280,24 +299,28 @@ function ImageUploader({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) void handleFile(file);
+          e.target.value = "";
         }}
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-2"
-        disabled={uploading}
-        onClick={() => inputRef.current?.click()}
-      >
-        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-        {uploading ? "Mengunggah..." : "Unggah Gambar"}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {uploading ? "Mengunggah..." : "Unggah Gambar"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Format: JPG, PNG, WEBP. Maks. 5MB.</p>
     </div>
   );
 }
@@ -432,8 +455,15 @@ function MediaUploader({
   const imgRef = useRef<HTMLInputElement>(null);
   const vidRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [showUrlInput, setShowUrlInput] = useState(false);
 
   async function uploadFiles(files: File[], type: "image" | "video") {
+    if (type === "image") {
+      for (const file of files) {
+        if (!validateImageFile(file, toast)) return;
+      }
+    }
     setUploading(true);
     const newItems: MediaItem[] = [];
     try {
@@ -461,6 +491,18 @@ function MediaUploader({
     }
   }
 
+  function addUrlItem() {
+    const trimmed = urlInput.trim();
+    if (!trimmed) return;
+    try { new URL(trimmed); } catch {
+      toast({ title: "URL tidak valid", description: "Masukkan URL gambar yang lengkap (diawali https://)", variant: "destructive" });
+      return;
+    }
+    onChange([...mediaItems, { type: "image", url: trimmed }]);
+    setUrlInput("");
+    setShowUrlInput(false);
+  }
+
   function remove(idx: number) {
     onChange(mediaItems.filter((_, i) => i !== idx));
   }
@@ -475,7 +517,7 @@ function MediaUploader({
               {m.type === "video" ? (
                 <VideoThumbCell src={resolveImageUrl(m.url) ?? m.url} />
               ) : (
-                <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" />
+                <img src={resolveImageUrl(m.url) ?? ""} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
               )}
               <button
                 onClick={() => remove(i)}
@@ -514,7 +556,7 @@ function MediaUploader({
       )}
 
       {/* Upload buttons */}
-      <input ref={imgRef} type="file" accept="image/*" multiple className="hidden"
+      <input ref={imgRef} type="file" accept="image/jpeg,image/jpg,image/png,image/webp" multiple className="hidden"
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           if (files.length) void uploadFiles(files, "image");
@@ -540,7 +582,27 @@ function MediaUploader({
           Tambah Video
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">Foto pertama jadi cover. Foto bisa lebih dari satu.</p>
+      {showUrlInput ? (
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addUrlItem(); } }}
+            placeholder="https://example.com/gambar.jpg"
+            className="flex-1 h-8 rounded-md border border-input bg-background px-3 py-1 text-sm"
+          />
+          <Button type="button" size="sm" onClick={addUrlItem} className="h-8">Tambah</Button>
+          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => { setShowUrlInput(false); setUrlInput(""); }}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setShowUrlInput(true)} className="text-xs text-primary hover:underline underline-offset-2">
+          atau masukkan URL gambar secara manual
+        </button>
+      )}
+      <p className="text-xs text-muted-foreground">Foto pertama jadi cover. Format: JPG, PNG, WEBP. Maks. 5MB.</p>
     </div>
   );
 }
@@ -558,12 +620,11 @@ function ItemEditCard({
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description ?? "");
   const [price, setPrice] = useState(String(item.price));
-  const firstMediaImage = (item as Service | Product).mediaItems?.find((m) => m.type === "image")?.url ?? null;
+  const existingMedia = (item as Service | Product).mediaItems ?? [];
+  const firstMediaImage = existingMedia.find((m) => m.type === "image")?.url ?? null;
   const [imageUrl, setImageUrl] = useState<string | null>(item.imageUrl ?? firstMediaImage);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>(() => {
-    if (type !== "products") return [];
-    const existing = (item as Product).mediaItems ?? [];
-    if (existing.length > 0) return existing;
+    if (existingMedia.length > 0) return existingMedia;
     if (item.imageUrl) return [{ type: "image" as const, url: item.imageUrl }];
     return [];
   });
@@ -578,16 +639,15 @@ function ItemEditCard({
   async function handleSave() {
     setSaving(true);
     try {
+      const coverImage = mediaItems.find((m) => m.type === "image")?.url ?? imageUrl;
       const payload: Partial<Service & Product & { mediaItems: MediaItem[] }> = {
         name,
         description: description || null,
         price: parseFloat(price) || 0,
-        imageUrl: type === "products" && mediaItems.length > 0
-          ? (mediaItems.find((m) => m.type === "image")?.url ?? imageUrl)
-          : imageUrl,
+        imageUrl: mediaItems.length > 0 ? coverImage : imageUrl,
+        mediaItems,
       };
       if (type === "products") {
-        payload.mediaItems = mediaItems;
         payload.unit = unit.trim() || "pcs";
         payload.unitOptions = unitOptionsRaw
           .split(",")
@@ -667,25 +727,23 @@ function ItemEditCard({
             )}
           </div>
           <div className="space-y-1.5">
-            {type === "products" ? (
-              <>
-                <Label className="text-sm">Foto & Video Produk</Label>
-                <MediaUploader
-                  mediaItems={mediaItems}
-                  onChange={setMediaItems}
-                  fallbackSrc={getProductFallbackImage(
-                    (item as Product).categories ?? [],
-                    item.name,
-                    (item as Product).subcategory ?? null
-                  )}
-                />
-              </>
-            ) : (
-              <>
-                <Label className="text-sm">Gambar</Label>
-                <ImageUploader currentUrl={imageUrl} onUpload={(url) => setImageUrl(url)} />
-              </>
-            )}
+            <Label className="text-sm">
+              {type === "products" ? "Foto & Video Produk" : "Foto Layanan"}
+              <span className="ml-1 text-xs font-normal text-muted-foreground">(tampil di website publik)</span>
+            </Label>
+            <MediaUploader
+              mediaItems={mediaItems}
+              onChange={(items) => {
+                setMediaItems(items);
+                const cover = items.find((m) => m.type === "image")?.url ?? null;
+                if (cover) setImageUrl(cover);
+              }}
+              fallbackSrc={type === "products" ? getProductFallbackImage(
+                (item as Product).categories ?? [],
+                item.name,
+                (item as Product).subcategory ?? null
+              ) : null}
+            />
           </div>
         </div>
         <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">

@@ -74,6 +74,7 @@ export const chartOfAccountsTable = pgTable("chart_of_accounts", {
 
 export const accountingJournalsTable = pgTable("accounting_journals", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
   type: journalTypeEnum("type").notNull(),
