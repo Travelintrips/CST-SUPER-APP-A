@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { db, mediaAssetsTable } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { compressImageBuffer, isCompressibleImage } from "../lib/imageCompress";
@@ -105,6 +105,26 @@ router.delete("/folders/:name", async (req, res) => {
     .set({ folder: "Umum" })
     .where(eq(mediaAssetsTable.folder, name));
   res.json({ ok: true, moved: (result as any).rowCount ?? 0 });
+});
+
+// POST /api/media/bulk-move — pindahkan banyak gambar ke satu folder
+router.post("/bulk-move", async (req, res) => {
+  const ids = (req.body.ids as number[]) ?? [];
+  const folder = (req.body.folder as string)?.trim();
+  if (!ids.length || !folder) return res.status(400).json({ error: "ids dan folder wajib diisi" });
+  const result = await db
+    .update(mediaAssetsTable)
+    .set({ folder })
+    .where(inArray(mediaAssetsTable.id, ids));
+  res.json({ ok: true, affected: (result as any).rowCount ?? 0 });
+});
+
+// POST /api/media/bulk-delete — hapus banyak gambar sekaligus
+router.post("/bulk-delete", async (req, res) => {
+  const ids = (req.body.ids as number[]) ?? [];
+  if (!ids.length) return res.status(400).json({ error: "ids wajib diisi" });
+  const result = await db.delete(mediaAssetsTable).where(inArray(mediaAssetsTable.id, ids));
+  res.json({ ok: true, affected: (result as any).rowCount ?? 0 });
 });
 
 // PATCH /api/media/:id/folder — pindahkan gambar ke folder lain
