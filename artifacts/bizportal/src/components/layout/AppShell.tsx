@@ -191,6 +191,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship },
         { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2 },
+        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText },
       ],
     },
     { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
