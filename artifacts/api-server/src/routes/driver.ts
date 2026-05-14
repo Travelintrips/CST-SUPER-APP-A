@@ -747,7 +747,7 @@ adminRouter.post("/jobs", async (req, res) => {
       job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
       ``,
       `Ketuk link berikut untuk membuka aplikasi CST Driver:`,
-      `cst-driver://(tabs)/jobs`,
+      `cst-driver://jobs`,
     ].filter(Boolean).join("\n");
     sendWhatsApp(driver.phone, msg).catch((err: unknown) => {
       req.log.error({ err, driverId: driver.id, phone: driver.phone }, "sendWhatsApp failed for job assignment");
