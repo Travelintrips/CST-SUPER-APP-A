@@ -202,7 +202,8 @@ export default function PosKasirAdminPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              🧋 Thai Tea CST — Admin Kasir
+              <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-8 h-8 rounded-lg object-cover" />
+              Thai Tea CST — Admin Kasir
             </h1>
             <p className="text-sm text-muted-foreground mt-1">Manajemen kasir, menu, stok, dan laporan penjualan</p>
           </div>

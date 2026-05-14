@@ -66,8 +66,8 @@ export default function KasirLoginPage() {
       <div className="w-full max-w-md">
         {/* Logo & Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500 shadow-lg mb-4">
-            <span className="text-3xl">🧋</span>
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl shadow-lg mb-4 overflow-hidden bg-orange-500">
+            <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Thai Tea CST</h1>
           <p className="text-gray-500 text-sm mt-1">Portal Kasir</p>

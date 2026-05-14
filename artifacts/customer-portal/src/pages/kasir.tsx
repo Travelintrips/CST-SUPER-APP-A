@@ -188,7 +188,7 @@ export default function KasirPage() {
       <div className="min-h-screen bg-gray-900 bg-opacity-80 flex items-center justify-center p-4 print:bg-white print:p-0">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm print:shadow-none print:rounded-none">
           <div className="p-6 text-center border-b">
-            <div className="text-3xl mb-2">🧋</div>
+            <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-14 h-14 rounded-xl object-cover mx-auto mb-2" />
             <h2 className="font-bold text-lg">Thai Tea CST</h2>
             <p className="text-xs text-gray-500">Struk Pembayaran</p>
             <p className="text-xs text-gray-400 mt-1">{receipt.orderNumber}</p>
@@ -245,7 +245,7 @@ export default function KasirPage() {
       {/* Header */}
       <header className="bg-amber-500 text-white px-4 py-3 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🧋</span>
+          <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-9 h-9 rounded-lg object-cover" />
           <div>
             <h1 className="font-bold text-sm leading-tight">Thai Tea CST</h1>
             <p className="text-xs opacity-80">{profile?.name}</p>
