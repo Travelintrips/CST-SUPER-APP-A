@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { randomUUID } from "crypto";
+
 import { db, mediaAssetsTable } from "@workspace/db";
 import { eq, desc, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
@@ -18,15 +18,20 @@ router.use(async (req, res, next) => {
 
 // GET /api/media/folders — daftar folder beserta jumlah gambar
 router.get("/folders", async (_req, res) => {
-  const rows = await db
-    .select({
-      folder: mediaAssetsTable.folder,
-      count: sql<number>`cast(count(*) as int)`,
-    })
-    .from(mediaAssetsTable)
-    .groupBy(mediaAssetsTable.folder)
-    .orderBy(mediaAssetsTable.folder);
-  res.json({ folders: rows });
+  try {
+    const rows = await db
+      .select({
+        folder: mediaAssetsTable.folder,
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(mediaAssetsTable)
+      .groupBy(mediaAssetsTable.folder)
+      .orderBy(mediaAssetsTable.folder);
+    res.json({ folders: rows });
+  } catch (err: any) {
+    console.error("[media/folders] Error:", err?.message ?? err);
+    res.status(500).json({ error: err?.message ?? "Gagal mengambil daftar folder" });
+  }
 });
 
 // GET /api/media — daftar semua gambar (opsional filter ?folder=xxx)
@@ -50,35 +55,42 @@ router.get("/", async (req, res) => {
 
 // POST /api/media/upload — upload dan kompres gambar, simpan sebagai public asset
 router.post("/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "Tidak ada file yang diunggah" });
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Tidak ada file yang diunggah" });
+    }
+
+    const { mimetype, originalname } = req.file;
+    const folder = (req.body.folder as string)?.trim() || "Umum";
+    let buffer = req.file.buffer;
+    let finalContentType = mimetype;
+
+    if (isCompressibleImage(mimetype)) {
+      const compressed = await compressImageBuffer(buffer, mimetype, "photo");
+      buffer = compressed.buffer;
+      finalContentType = compressed.contentType;
+    }
+
+    // Upload ke private storage (tidak memerlukan PUBLIC_OBJECT_SEARCH_PATHS)
+    const objectPath = await objectStorageService.uploadPrivateEntity(buffer, finalContentType);
+    // objectPath = "/objects/uploads/{uuid}" — serve via /api/storage/objects/...
+    const url = `/api/storage${objectPath}`; // e.g. /api/storage/objects/uploads/{uuid}
+
+    const [inserted] = await db.insert(mediaAssetsTable).values({
+      originalName: originalname,
+      contentType: finalContentType,
+      sizeBytes: buffer.byteLength,
+      url,
+      objectPath,
+      uploadedBy: (req as any).user?.email ?? null,
+      folder,
+    }).returning();
+
+    res.json({ ok: true, item: inserted });
+  } catch (err: any) {
+    console.error("[media/upload] Error:", err?.message ?? err);
+    res.status(500).json({ error: err?.message ?? "Upload gagal" });
   }
-
-  const { mimetype, originalname } = req.file;
-  const folder = (req.body.folder as string)?.trim() || "Umum";
-  let buffer = req.file.buffer;
-  let finalContentType = mimetype;
-
-  if (isCompressibleImage(mimetype)) {
-    const compressed = await compressImageBuffer(buffer, mimetype, "photo");
-    buffer = compressed.buffer;
-    finalContentType = compressed.contentType;
-  }
-
-  const objectId = randomUUID();
-  const url = await objectStorageService.uploadPublicAsset(buffer, objectId, finalContentType);
-
-  const [inserted] = await db.insert(mediaAssetsTable).values({
-    originalName: originalname,
-    contentType: finalContentType,
-    sizeBytes: buffer.byteLength,
-    url,
-    objectPath: `/portal-assets/${objectId}`,
-    uploadedBy: (req as any).user?.email ?? null,
-    folder,
-  }).returning();
-
-  res.json({ ok: true, item: inserted });
 });
 
 // PATCH /api/media/folders/rename — rename folder (update semua gambar di folder lama)

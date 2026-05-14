@@ -293,6 +293,7 @@ export default function MediaManagerPage() {
     setUploading(true);
     let successCount = 0;
     const targetFolder = activeFolder === ALL_FOLDER ? "Umum" : activeFolder;
+    const errors: string[] = [];
     for (const file of arr) {
       try {
         const formData = new FormData();
@@ -303,15 +304,30 @@ export default function MediaManagerPage() {
           credentials: "include",
           body: formData,
         });
-        if (res.ok) successCount++;
-      } catch {
-        // lanjut ke file berikutnya
+        if (res.ok) {
+          successCount++;
+        } else {
+          let msg = `HTTP ${res.status}`;
+          try { const j = await res.json(); msg = j.error ?? j.message ?? msg; } catch {}
+          errors.push(`${file.name}: ${msg}`);
+        }
+      } catch (err) {
+        errors.push(`${file.name}: ${err instanceof Error ? err.message : "Network error"}`);
       }
     }
     setUploading(false);
     qc.invalidateQueries({ queryKey: ["media-assets"] });
     qc.invalidateQueries({ queryKey: ["media-folders"] });
-    toast({ title: `${successCount} gambar diunggah ke folder "${targetFolder}"` });
+    if (successCount > 0) {
+      toast({ title: `${successCount} gambar diunggah ke folder "${targetFolder}"` });
+    }
+    if (errors.length > 0) {
+      toast({
+        title: `${errors.length} gambar gagal diunggah`,
+        description: errors.slice(0, 3).join("\n"),
+        variant: "destructive",
+      });
+    }
   }
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
@@ -602,7 +618,7 @@ export default function MediaManagerPage() {
                     >
                       <div className="relative aspect-square bg-muted/40">
                         <img
-                          src={`/api${asset.url}`}
+                          src={asset.url}
                           alt={asset.originalName}
                           className={`w-full h-full object-cover ${!selectMode ? "cursor-zoom-in" : ""}`}
                           loading="lazy"
@@ -643,7 +659,7 @@ export default function MediaManagerPage() {
                               variant="secondary"
                               className="h-7 w-7"
                               title="Buka di tab baru"
-                              onClick={() => window.open(`/api${asset.url}`, "_blank")}
+                              onClick={() => window.open(asset.url, "_blank")}
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                             </Button>
@@ -935,7 +951,7 @@ export default function MediaManagerPage() {
                 variant="ghost"
                 className="h-8 w-8 text-white hover:bg-white/10"
                 title="Buka di tab baru"
-                onClick={() => window.open(`/api${lightboxAsset.url}`, "_blank")}
+                onClick={() => window.open(lightboxAsset.url, "_blank")}
               >
                 <ExternalLink className="w-4 h-4" />
               </Button>
@@ -961,7 +977,7 @@ export default function MediaManagerPage() {
 
             <img
               key={lightboxAsset.id}
-              src={`/api${lightboxAsset.url}`}
+              src={lightboxAsset.url}
               alt={lightboxAsset.originalName}
               className="max-h-full max-w-full object-contain rounded-lg select-none"
               onClick={(e) => e.stopPropagation()}
