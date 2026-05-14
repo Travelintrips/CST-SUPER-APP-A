@@ -1195,4 +1195,56 @@ router.get("/holding/breakdown", async (req, res) => {
   return res.json(breakdown);
 });
 
+/** GET /accounting/holding/entries?holdingId=&from=&to=&companyId= — transaksi gabungan per holding */
+router.get("/holding/entries", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const companyIdFilter = req.query["companyId"] ? Number(req.query["companyId"]) : null;
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${holdingId}
+    ORDER BY c.company_code
+  `);
+  if (members.rows.length === 0) return res.json([]);
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const effectiveIds = companyIdFilter ? [companyIdFilter] : companyIds;
+  const companyIdsArr = sql`ARRAY[${sql.join(effectiveIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter = dateRange.from && dateRange.to
+    ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+    : dateRange.from
+    ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+    : dateRange.to
+    ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+    : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      ae.id,
+      ae.entry_date,
+      ae.description,
+      ae.status,
+      ae.company_id,
+      c.company_name,
+      c.company_code,
+      COALESCE(SUM(CASE WHEN ael.debit IS NOT NULL AND ael.debit > 0 THEN ael.debit ELSE 0 END), 0) AS total_debit,
+      COALESCE(SUM(CASE WHEN ael.credit IS NOT NULL AND ael.credit > 0 THEN ael.credit ELSE 0 END), 0) AS total_credit
+    FROM accounting_entries ae
+    LEFT JOIN accounting_entry_lines ael ON ael.entry_id = ae.id
+    JOIN companies c ON c.id = ae.company_id
+    WHERE ae.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+    GROUP BY ae.id, ae.entry_date, ae.description, ae.status, ae.company_id, c.company_name, c.company_code
+    ORDER BY ae.entry_date DESC, ae.id DESC
+    LIMIT 200
+  `);
+
+  return res.json(result.rows);
+});
+
 export default router;
