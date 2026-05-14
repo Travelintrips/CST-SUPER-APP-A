@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,8 +20,8 @@ import {
 import {
   ImageIcon, Upload, Copy, Trash2, Search, Loader2, CheckCheck,
   ExternalLink, FolderOpen, FolderPlus, FolderIcon, MoreVertical,
-  ArrowRightLeft, ChevronRight, Images, Pencil, FolderX,
-  CheckSquare2, Square, MousePointerClick, X as XIcon,
+  ArrowRightLeft, ChevronRight, ChevronLeft, Images, Pencil, FolderX,
+  CheckSquare2, Square, MousePointerClick, X as XIcon, ZoomIn, Info,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +106,9 @@ export default function MediaManagerPage() {
 
   // Dialog hapus folder
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<FolderStat | null>(null);
+
+  // Lightbox
+  const [lightboxId, setLightboxId] = useState<number | null>(null);
 
   // Bulk select
   const [selectMode, setSelectMode] = useState(false);
@@ -243,6 +246,29 @@ export default function MediaManagerPage() {
     setMoveTarget(asset);
     setMoveFolder(asset.folder);
   }
+
+  // ── Lightbox helpers ──
+  const lightboxIndex = lightboxId !== null ? filtered.findIndex((a) => a.id === lightboxId) : -1;
+  const lightboxAsset = lightboxIndex >= 0 ? filtered[lightboxIndex] : null;
+
+  function lightboxPrev() {
+    if (lightboxIndex > 0) setLightboxId(filtered[lightboxIndex - 1].id);
+  }
+  function lightboxNext() {
+    if (lightboxIndex >= 0 && lightboxIndex < filtered.length - 1)
+      setLightboxId(filtered[lightboxIndex + 1].id);
+  }
+
+  useEffect(() => {
+    if (lightboxId === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setLightboxId(null);
+      if (e.key === "ArrowLeft") lightboxPrev();
+      if (e.key === "ArrowRight") lightboxNext();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxId, lightboxIndex, filtered.length]);
 
   const folders = foldersData?.folders ?? [];
   const allFolderNames = folders.map((f) => f.folder);
@@ -577,8 +603,11 @@ export default function MediaManagerPage() {
                         <img
                           src={`/api${asset.url}`}
                           alt={asset.originalName}
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full object-cover ${!selectMode ? "cursor-zoom-in" : ""}`}
                           loading="lazy"
+                          onClick={(e) => {
+                            if (!selectMode) { e.stopPropagation(); setLightboxId(asset.id); }
+                          }}
                           onError={(e) => {
                             (e.target as HTMLImageElement).src =
                               "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='1.5'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
@@ -864,6 +893,115 @@ export default function MediaManagerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Lightbox ── */}
+      {lightboxAsset && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex flex-col"
+          onClick={() => setLightboxId(null)}
+        >
+          {/* Top bar */}
+          <div
+            className="flex items-center justify-between px-4 py-3 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <ZoomIn className="w-4 h-4 text-white/60 shrink-0" />
+              <span className="text-white font-medium text-sm truncate">
+                {lightboxAsset.originalName}
+              </span>
+              <Badge variant="secondary" className="text-xs shrink-0">
+                {lightboxAsset.folder}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 ml-4">
+              <span className="text-white/50 text-xs">
+                {lightboxIndex + 1} / {filtered.length}
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-white hover:bg-white/10"
+                title="Salin URL"
+                onClick={() => copyUrl(lightboxAsset)}
+              >
+                {copiedId === lightboxAsset.id
+                  ? <CheckCheck className="w-4 h-4 text-emerald-400" />
+                  : <Copy className="w-4 h-4" />}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-white hover:bg-white/10"
+                title="Buka di tab baru"
+                onClick={() => window.open(`/api${lightboxAsset.url}`, "_blank")}
+              >
+                <ExternalLink className="w-4 h-4" />
+              </Button>
+              <button
+                className="h-8 w-8 flex items-center justify-center rounded-md text-white hover:bg-white/10 transition-colors"
+                onClick={() => setLightboxId(null)}
+                title="Tutup (Esc)"
+              >
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Gambar utama + tombol navigasi */}
+          <div className="flex-1 flex items-center justify-center relative min-h-0 px-16">
+            {/* Prev */}
+            <button
+              className={`absolute left-3 z-10 h-12 w-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors ${lightboxIndex === 0 ? "opacity-30 pointer-events-none" : ""}`}
+              onClick={(e) => { e.stopPropagation(); lightboxPrev(); }}
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+
+            <img
+              key={lightboxAsset.id}
+              src={`/api${lightboxAsset.url}`}
+              alt={lightboxAsset.originalName}
+              className="max-h-full max-w-full object-contain rounded-lg select-none"
+              onClick={(e) => e.stopPropagation()}
+              onError={(e) => {
+                (e.target as HTMLImageElement).src =
+                  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='1.5'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
+              }}
+            />
+
+            {/* Next */}
+            <button
+              className={`absolute right-3 z-10 h-12 w-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors ${lightboxIndex >= filtered.length - 1 ? "opacity-30 pointer-events-none" : ""}`}
+              onClick={(e) => { e.stopPropagation(); lightboxNext(); }}
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Bottom info bar */}
+          <div
+            className="shrink-0 px-6 py-3 flex items-center gap-6 text-white/60 text-xs border-t border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5" />
+              {formatBytes(lightboxAsset.sizeBytes)}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <FolderIcon className={`w-3.5 h-3.5 ${folderColor(lightboxAsset.folder)}`} />
+              {lightboxAsset.folder}
+            </span>
+            <span>{fmtDate(lightboxAsset.createdAt)}</span>
+            {lightboxAsset.uploadedBy && (
+              <span>Oleh: {lightboxAsset.uploadedBy}</span>
+            )}
+            <span className="ml-auto text-white/30 text-[10px]">
+              ← → navigasi &nbsp;·&nbsp; Esc tutup
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Konfirmasi Hapus Folder ── */}
       <AlertDialog open={!!deleteFolderTarget} onOpenChange={(open) => !open && setDeleteFolderTarget(null)}>
