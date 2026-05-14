@@ -61,16 +61,31 @@ export const accountingPaymentStatusEnum = pgEnum("accounting_payment_status", [
   "voided",
 ]);
 
-export const chartOfAccountsTable = pgTable("chart_of_accounts", {
+export const companiesTable = pgTable("companies", {
   id: serial("id").primaryKey(),
-  code: text("code").notNull().unique(),
   name: text("name").notNull(),
-  type: accountTypeEnum("type").notNull(),
-  parentId: integer("parent_id"),
-  companyId: integer("company_id"),
+  code: text("code").notNull().unique(),
+  isHolding: boolean("is_holding").notNull().default(false),
+  parentCompanyId: integer("parent_company_id"),
+  address: text("address"),
+  npwp: text("npwp"),
+  logoUrl: text("logo_url"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const chartOfAccountsTable = pgTable("chart_of_accounts", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  type: accountTypeEnum("type").notNull(),
+  parentId: integer("parent_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  companyCodeUniq: uniqueIndex("coa_company_code_uniq").on(t.companyId, t.code),
+}));
 
 export const accountingJournalsTable = pgTable("accounting_journals", {
   id: serial("id").primaryKey(),
@@ -88,10 +103,13 @@ export const accountingJournalsTable = pgTable("accounting_journals", {
   ),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  companyCodeUniq: uniqueIndex("journals_company_code_uniq").on(t.companyId, t.code),
+}));
 
 export const accountingTaxesTable = pgTable("accounting_taxes", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().references(() => companiesTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   rate: numeric("rate", { precision: 6, scale: 3 }).notNull(),
   kind: taxKindEnum("kind").notNull(),
@@ -238,6 +256,10 @@ export const accountingPaymentsTable = pgTable("accounting_payments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const insertCompanySchema = createInsertSchema(companiesTable).omit({
+  id: true,
+  createdAt: true,
+});
 export const insertAccountSchema = createInsertSchema(chartOfAccountsTable).omit({
   id: true,
   createdAt: true,
@@ -262,6 +284,7 @@ export const insertEntryLineSchema = createInsertSchema(accountingEntryLinesTabl
   entryId: true,
 });
 
+export type Company = typeof companiesTable.$inferSelect;
 export type Account = typeof chartOfAccountsTable.$inferSelect;
 export type AccountingJournal = typeof accountingJournalsTable.$inferSelect;
 export type AccountingTax = typeof accountingTaxesTable.$inferSelect;
@@ -269,6 +292,7 @@ export type AccountingEntry = typeof accountingEntriesTable.$inferSelect;
 export type AccountingEntryLine = typeof accountingEntryLinesTable.$inferSelect;
 export type AccountingSettings = typeof accountingSettingsTable.$inferSelect;
 export type AccountingPayment = typeof accountingPaymentsTable.$inferSelect;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type InsertJournal = z.infer<typeof insertJournalSchema>;
 export type InsertTax = z.infer<typeof insertTaxSchema>;

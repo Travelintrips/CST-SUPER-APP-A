@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import {
   db,
   chartOfAccountsTable,
@@ -10,11 +10,23 @@ import {
   accountingPaymentsTable,
   salesDocumentsTable,
   purchaseDocumentsTable,
+  companiesTable,
 } from "@workspace/db";
 import { eq, ne, desc, and, or, isNull, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
+
+/** Parse companyId from query param or body; defaults to 1 (first/default company) */
+function resolveCompanyId(req: Request): number {
+  const raw = req.query["companyId"] ?? req.body?.companyId;
+  const parsed = raw !== undefined ? Number(raw) : NaN;
+  return Number.isNaN(parsed) ? 1 : parsed;
+}
+
+function serializeCompany(c: typeof companiesTable.$inferSelect) {
+  return { ...c, createdAt: c.createdAt.toISOString() };
+}
 
 const router = Router();
 
@@ -71,6 +83,43 @@ function parseDateRange(req: { query: Record<string, unknown> }):
   return { from, to, error: null };
 }
 
+// ============ Companies ============
+router.get("/companies", async (_req, res) => {
+  const rows = await db.select().from(companiesTable).orderBy(companiesTable.name);
+  return res.json(rows.map(serializeCompany));
+});
+
+router.post("/companies", async (req, res) => {
+  const { name, code, isHolding, parentCompanyId, address, npwp, logoUrl, isActive } = req.body ?? {};
+  if (!name || !code) return res.status(400).json({ message: "name and code required" });
+  try {
+    const [created] = await db.insert(companiesTable).values({ name, code, isHolding: isHolding ?? false, parentCompanyId: parentCompanyId ?? null, address, npwp, logoUrl, isActive: isActive ?? true }).returning();
+    return res.status(201).json(serializeCompany(created!));
+  } catch {
+    return res.status(409).json({ message: "Company code already exists" });
+  }
+});
+
+router.patch("/companies/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  const patch: Record<string, unknown> = {};
+  for (const k of ["name", "code", "isHolding", "parentCompanyId", "address", "npwp", "logoUrl", "isActive"]) {
+    if (req.body?.[k] !== undefined) patch[k] = req.body[k];
+  }
+  await db.update(companiesTable).set(patch).where(eq(companiesTable.id, id));
+  const [updated] = await db.select().from(companiesTable).where(eq(companiesTable.id, id));
+  if (!updated) return res.status(404).json({ message: "Not found" });
+  return res.json(serializeCompany(updated));
+});
+
+router.delete("/companies/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+  await db.delete(companiesTable).where(eq(companiesTable.id, id));
+  return res.json({ message: "Deleted", id });
+});
+
 // ============ Chart of Accounts ============
 router.get("/accounts", async (req, res) => {
   const companyId = getCompanyId(req);
@@ -84,17 +133,18 @@ router.get("/accounts", async (req, res) => {
 
 router.post("/accounts", async (req, res) => {
   const { code, name, type, parentId, isActive } = req.body ?? {};
+  const companyId = resolveCompanyId(req);
   if (!code || !name || !type) return res.status(400).json({ message: "code, name, type required" });
   const validTypes = ["asset", "liability", "equity", "revenue", "expense"];
   if (!validTypes.includes(type)) return res.status(400).json({ message: "Invalid type" });
   try {
     const [created] = await db
       .insert(chartOfAccountsTable)
-      .values({ code, name, type, parentId: parentId ?? null, isActive: isActive ?? true })
+      .values({ companyId, code, name, type, parentId: parentId ?? null, isActive: isActive ?? true })
       .returning();
     return res.status(201).json(serializeAccount(created!));
   } catch (err: unknown) {
-    return res.status(409).json({ message: "Account code already exists", error: String((err as Error)?.message ?? err) });
+    return res.status(409).json({ message: "Account code already exists for this company", error: String((err as Error)?.message ?? err) });
   }
 });
 
@@ -161,7 +211,7 @@ router.post("/journals", async (req, res) => {
       .returning();
     return res.status(201).json(serializeJournal(created!));
   } catch (err) {
-    return res.status(409).json({ message: "Journal code already exists", error: String((err as Error)?.message ?? err) });
+    return res.status(409).json({ message: "Journal code already exists for this company", error: String((err as Error)?.message ?? err) });
   }
 });
 
@@ -179,20 +229,24 @@ router.patch("/journals/:id", async (req, res) => {
 });
 
 // ============ Taxes ============
-router.get("/taxes", async (_req, res) => {
-  const rows = await db.select().from(accountingTaxesTable).orderBy(accountingTaxesTable.id);
+router.get("/taxes", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const rows = await db.select().from(accountingTaxesTable)
+    .where(eq(accountingTaxesTable.companyId, companyId))
+    .orderBy(accountingTaxesTable.id);
   return res.json(rows.map(serializeTax));
 });
 
 router.post("/taxes", async (req, res) => {
   const { name, rate, kind, accountId, isActive } = req.body ?? {};
+  const companyId = resolveCompanyId(req);
   if (!name || rate === undefined || !kind || !accountId)
     return res.status(400).json({ message: "name, rate, kind, accountId required" });
   if (!["sale", "purchase", "withholding"].includes(kind))
     return res.status(400).json({ message: "kind must be 'sale', 'purchase', or 'withholding'" });
   const [created] = await db
     .insert(accountingTaxesTable)
-    .values({ name, rate: String(rate), kind, accountId: Number(accountId), isActive: isActive ?? true })
+    .values({ companyId, name, rate: String(rate), kind, accountId: Number(accountId), isActive: isActive ?? true })
     .returning();
   return res.status(201).json(serializeTax(created!));
 });

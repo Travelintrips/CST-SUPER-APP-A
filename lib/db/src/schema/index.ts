@@ -12,6 +12,8 @@ export * from "./salesDocuments";
 export * from "./purchaseDocuments";
 export * from "./payments";
 export * from "./accounting";
+export { companiesTable } from "./accounting";
+
 export * from "./correspondences";
 export * from "./freightShipments";
 export * from "./freightAttachments";
