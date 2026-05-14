@@ -9,6 +9,7 @@ import { eq, and, desc, ne } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendWhatsApp } from "../lib/fonnte";
+import { getPreferredDomain } from "../lib/domain";
 import {
   registerDriverConnection, unregisterDriverConnection, pushToDriver,
   registerAdminConnection, unregisterAdminConnection, broadcastToAdmins,
@@ -746,8 +747,8 @@ adminRouter.post("/jobs", async (req, res) => {
       job.cargoDescription ? `Muatan: ${job.cargoDescription}` : null,
       job.specialInstruction ? `Catatan: ${job.specialInstruction}` : null,
       ``,
-      `Ketuk link berikut untuk membuka aplikasi CST Driver:`,
-      `cst-driver://jobs`,
+      `Buka aplikasi CST Driver:`,
+      `https://${getPreferredDomain()}/api/driver/open-app`,
     ].filter(Boolean).join("\n");
     sendWhatsApp(driver.phone, msg).catch((err: unknown) => {
       req.log.error({ err, driverId: driver.id, phone: driver.phone }, "sendWhatsApp failed for job assignment");
@@ -841,6 +842,32 @@ adminRouter.delete("/:id", async (req, res) => {
   const [driver] = await db.update(driversTable).set({ isActive: false }).where(eq(driversTable.id, id)).returning();
   if (!driver) { res.status(404).json({ message: "Driver not found" }); return; }
   res.json({ ok: true });
+});
+
+// GET /api/driver/open-app — redirect WA link ke deep link CST Driver app
+router.get("/open-app", (_req: Request, res: Response) => {
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Buka CST Driver</title>
+  <style>
+    body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0F3460;color:#fff;text-align:center;padding:24px;box-sizing:border-box}
+    h1{font-size:1.4rem;margin-bottom:8px}
+    p{color:#cdd;margin-bottom:24px;font-size:.95rem}
+    a.btn{display:inline-block;background:#FF6B00;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:1rem;font-weight:600}
+  </style>
+</head>
+<body>
+  <h1>🚛 CST Driver</h1>
+  <p>Ketuk tombol di bawah untuk membuka aplikasi</p>
+  <a class="btn" href="cst-driver://jobs">Buka Aplikasi</a>
+  <script>setTimeout(()=>{window.location.href='cst-driver://jobs'},500);</script>
+</body>
+</html>`;
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
 });
 
 export { router as driverRouter, adminRouter as driversAdminRouter };
