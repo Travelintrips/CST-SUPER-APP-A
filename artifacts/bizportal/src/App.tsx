@@ -5,8 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SupabaseAuthProvider, useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
-import { CompanyProvider } from "@/contexts/CompanyContext";
-import { useGetCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { CompanyProvider, useCompany } from "@/contexts/CompanyContext";
+import { useGetCurrentUser, getGetCurrentUserQueryKey, setCompanyGetter } from "@workspace/api-client-react";
 import { AppRoutes } from "@/routes";
 import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -72,6 +72,16 @@ import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
+
+function CompanyApiSync() {
+  const { activeCompanyId } = useCompany();
+  React.useEffect(() => {
+    setCompanyGetter(() => activeCompanyId);
+    queryClient.invalidateQueries();
+    return () => { setCompanyGetter(null); };
+  }, [activeCompanyId]);
+  return null;
+}
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -327,6 +337,7 @@ export default function App() {
       <SupabaseAuthProvider>
         <LanguageProvider>
           <CompanyProvider>
+          <CompanyApiSync />
           <OrderNotificationsProvider>
             <TooltipProvider>
               <Router />

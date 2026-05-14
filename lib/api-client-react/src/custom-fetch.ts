@@ -17,6 +17,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _companyGetter: (() => number | null) | null = null;
 
 // ---------------------------------------------------------------------------
 // Response-time store — keyed by the resolved URL string
@@ -33,6 +34,25 @@ export function getLastResponseTime(pathFragment: string): string | null {
     if (url.includes(pathFragment)) return time;
   }
   return null;
+}
+
+/**
+ * Register a getter that returns the active company ID.  Before every fetch
+ * the getter is invoked; when it returns a positive integer, a `?company=N`
+ * query parameter is appended to relative URLs (if not already present).
+ *
+ * Pass `null` to clear the getter.
+ */
+export function setCompanyGetter(getter: (() => number | null) | null): void {
+  _companyGetter = getter;
+}
+
+function injectCompanyParam(input: RequestInfo | URL, companyId: number): RequestInfo | URL {
+  if (typeof input !== "string") return input;
+  if (!input.startsWith("/")) return input;
+  if (/[?&]company=/.test(input)) return input;
+  const sep = input.includes("?") ? "&" : "?";
+  return `${input}${sep}company=${companyId}`;
 }
 
 /**
@@ -343,6 +363,12 @@ export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
 ): Promise<T> {
+  if (_companyGetter) {
+    const companyId = _companyGetter();
+    if (companyId != null && companyId > 0) {
+      input = injectCompanyParam(input, companyId);
+    }
+  }
   input = applyBaseUrl(input);
   const { responseType = "auto", headers: headersInit, ...init } = options;
 
