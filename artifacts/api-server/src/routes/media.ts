@@ -81,6 +81,19 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   res.json({ ok: true, item: inserted });
 });
 
+// PATCH /api/media/folders/rename — rename folder (update semua gambar di folder lama)
+router.patch("/folders/rename", async (req, res) => {
+  const oldName = (req.body.oldName as string)?.trim();
+  const newName = (req.body.newName as string)?.trim();
+  if (!oldName || !newName) return res.status(400).json({ error: "oldName dan newName wajib diisi" });
+  if (oldName === newName) return res.json({ ok: true, affected: 0 });
+  const result = await db
+    .update(mediaAssetsTable)
+    .set({ folder: newName })
+    .where(eq(mediaAssetsTable.folder, oldName));
+  res.json({ ok: true, affected: (result as any).rowCount ?? 0 });
+});
+
 // PATCH /api/media/:id/folder — pindahkan gambar ke folder lain
 router.patch("/:id/folder", async (req, res) => {
   const id = Number(req.params.id);

@@ -20,7 +20,7 @@ import {
 import {
   ImageIcon, Upload, Copy, Trash2, Search, Loader2, CheckCheck,
   ExternalLink, FolderOpen, FolderPlus, FolderIcon, MoreVertical,
-  ArrowRightLeft, ChevronRight, Images,
+  ArrowRightLeft, ChevronRight, Images, Pencil,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +99,10 @@ export default function MediaManagerPage() {
   const [moveTarget, setMoveTarget] = useState<MediaAsset | null>(null);
   const [moveFolder, setMoveFolder] = useState("");
 
+  // Dialog rename folder
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
+  const [renameNewName, setRenameNewName] = useState("");
+
   const { data: foldersData, isLoading: foldersLoading } = useQuery<{ folders: FolderStat[] }>({
     queryKey: ["media-folders"],
     queryFn: () => apiFetch("/api/media/folders"),
@@ -140,6 +144,28 @@ export default function MediaManagerPage() {
     },
     onError: () => toast({ title: "Gagal memindahkan gambar", variant: "destructive" }),
   });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
+      apiFetch("/api/media/folders/rename", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldName, newName }),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["media-assets"] });
+      qc.invalidateQueries({ queryKey: ["media-folders"] });
+      if (activeFolder === vars.oldName) setActiveFolder(vars.newName);
+      setRenameTarget(null);
+      toast({ title: `Folder berhasil diubah menjadi "${vars.newName}"` });
+    },
+    onError: () => toast({ title: "Gagal mengubah nama folder", variant: "destructive" }),
+  });
+
+  function openRenameDialog(folderName: string) {
+    setRenameTarget(folderName);
+    setRenameNewName(folderName);
+  }
 
   const folders = foldersData?.folders ?? [];
   const allFolderNames = folders.map((f) => f.folder);
@@ -252,19 +278,32 @@ export default function MediaManagerPage() {
               </div>
             ) : (
               folders.map((f) => (
-                <button
+                <div
                   key={f.folder}
-                  onClick={() => setActiveFolder(f.folder)}
-                  className={`flex items-center gap-2.5 px-4 py-2.5 text-sm w-full text-left transition-colors ${
+                  className={`group flex items-center gap-2.5 px-3 py-2.5 text-sm w-full transition-colors ${
                     activeFolder === f.folder
                       ? "bg-primary/10 text-primary font-semibold"
                       : "hover:bg-muted/50 text-foreground"
                   }`}
                 >
-                  <FolderIcon className={`w-4 h-4 shrink-0 ${folderColor(f.folder)}`} />
-                  <span className="flex-1 truncate">{f.folder}</span>
-                  <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">{f.count}</Badge>
-                </button>
+                  <button
+                    onClick={() => setActiveFolder(f.folder)}
+                    className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                  >
+                    <FolderIcon className={`w-4 h-4 shrink-0 ${folderColor(f.folder)}`} />
+                    <span className="flex-1 truncate">{f.folder}</span>
+                  </button>
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 group-hover:hidden">
+                    {f.count}
+                  </Badge>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openRenameDialog(f.folder); }}
+                    title="Ubah nama folder"
+                    className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -565,6 +604,50 @@ export default function MediaManagerPage() {
             >
               {moveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Pindahkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Rename Folder ── */}
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" />
+              Ubah Nama Folder
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Semua gambar di folder <strong>"{renameTarget}"</strong> akan dipindahkan ke nama baru.
+            </p>
+            <Input
+              placeholder="Nama folder baru..."
+              value={renameNewName}
+              onChange={(e) => setRenameNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && renameNewName.trim() && renameNewName.trim() !== renameTarget) {
+                  renameMutation.mutate({ oldName: renameTarget!, newName: renameNewName.trim() });
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>Batal</Button>
+            <Button
+              disabled={
+                !renameNewName.trim() ||
+                renameNewName.trim() === renameTarget ||
+                renameMutation.isPending
+              }
+              onClick={() =>
+                renameMutation.mutate({ oldName: renameTarget!, newName: renameNewName.trim() })
+              }
+            >
+              {renameMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Simpan
             </Button>
           </DialogFooter>
         </DialogContent>
