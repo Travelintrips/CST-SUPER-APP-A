@@ -103,13 +103,15 @@ router.get("/products", async (_req, res) => {
 });
 
 // GET /api/pos-kasir/products/all  (admin — semua termasuk non-aktif)
-router.get("/products/all", requireClerkUser, async (_req, res) => {
+router.get("/products/all", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const rows = await db.select().from(posProductsTable).orderBy(posProductsTable.sortOrder, posProductsTable.name);
   return res.json(rows);
 });
 
 // POST /api/pos-kasir/products
-router.post("/products", requireClerkUser, async (req, res) => {
+router.post("/products", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const { name, description, price, category, imageUrl, isActive, sortOrder } = req.body ?? {};
   if (!name || price == null) return res.status(400).json({ message: "name dan price wajib" });
   const [created] = await db.insert(posProductsTable).values({
@@ -122,7 +124,8 @@ router.post("/products", requireClerkUser, async (req, res) => {
 });
 
 // PATCH /api/pos-kasir/products/:id
-router.patch("/products/:id", requireClerkUser, async (req, res) => {
+router.patch("/products/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const patch: Record<string, unknown> = {};
@@ -135,7 +138,8 @@ router.patch("/products/:id", requireClerkUser, async (req, res) => {
 });
 
 // DELETE /api/pos-kasir/products/:id
-router.delete("/products/:id", requireClerkUser, async (req, res) => {
+router.delete("/products/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   await db.delete(posProductsTable).where(eq(posProductsTable.id, id));
   return res.json({ message: "Deleted" });
@@ -289,7 +293,8 @@ router.post("/stock/adjust", async (req, res) => {
 // ── Admin (BizPortal) endpoints ──────────────────────────────────────────────
 
 // GET /api/pos-kasir/admin/cashiers  (daftar semua kasir)
-router.get("/admin/cashiers", requireClerkUser, async (_req, res) => {
+router.get("/admin/cashiers", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const rows = await db.select({
     id: posCashiersTable.id,
     name: posCashiersTable.name,
@@ -302,7 +307,8 @@ router.get("/admin/cashiers", requireClerkUser, async (_req, res) => {
 });
 
 // PATCH /api/pos-kasir/admin/cashiers/:id  (setujui/tolak)
-router.patch("/admin/cashiers/:id", requireClerkUser, async (req, res) => {
+router.patch("/admin/cashiers/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   const { status } = req.body ?? {};
   if (!["approved", "rejected", "pending"].includes(status)) {
@@ -316,7 +322,8 @@ router.patch("/admin/cashiers/:id", requireClerkUser, async (req, res) => {
 });
 
 // GET /api/pos-kasir/admin/report  (laporan penjualan)
-router.get("/admin/report", requireClerkUser, async (req, res) => {
+router.get("/admin/report", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const { from, to, cashierId } = req.query;
   const start = from ? new Date(String(from)) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
   const end = to ? new Date(String(to)) : (() => { const d = new Date(); d.setHours(23,59,59,999); return d; })();
@@ -348,7 +355,8 @@ router.get("/admin/report", requireClerkUser, async (req, res) => {
 });
 
 // GET /api/pos-kasir/admin/report/daily  (laporan harian ringkasan)
-router.get("/admin/report/daily", requireClerkUser, async (_req, res) => {
+router.get("/admin/report/daily", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const result = await db.execute(sql`
     SELECT
       DATE(paid_at) as date,
@@ -364,13 +372,15 @@ router.get("/admin/report/daily", requireClerkUser, async (_req, res) => {
 });
 
 // GET /api/pos-kasir/admin/stock
-router.get("/admin/stock", requireClerkUser, async (_req, res) => {
+router.get("/admin/stock", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const rows = await db.select().from(posStockItemsTable).orderBy(posStockItemsTable.name);
   return res.json(rows);
 });
 
 // POST /api/pos-kasir/admin/stock
-router.post("/admin/stock", requireClerkUser, async (req, res) => {
+router.post("/admin/stock", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const { name, unit, currentStock, minStock, note } = req.body ?? {};
   if (!name) return res.status(400).json({ message: "name wajib" });
   const [created] = await db.insert(posStockItemsTable).values({
@@ -383,7 +393,8 @@ router.post("/admin/stock", requireClerkUser, async (req, res) => {
 });
 
 // PATCH /api/pos-kasir/admin/stock/:id
-router.patch("/admin/stock/:id", requireClerkUser, async (req, res) => {
+router.patch("/admin/stock/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const k of ["name", "unit", "currentStock", "minStock", "note"]) {
@@ -394,7 +405,8 @@ router.patch("/admin/stock/:id", requireClerkUser, async (req, res) => {
 });
 
 // DELETE /api/pos-kasir/admin/stock/:id
-router.delete("/admin/stock/:id", requireClerkUser, async (req, res) => {
+router.delete("/admin/stock/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   await db.delete(posStockItemsTable).where(eq(posStockItemsTable.id, id));
   return res.json({ message: "Deleted" });
