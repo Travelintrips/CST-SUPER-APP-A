@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import { fetchAndStoreProfile } from "@/lib/auth";
 
 const adminFetch = async (url: string, opts: RequestInit = {}) => {
   const session = supabase ? (await supabase.auth.getSession()).data.session : null;
@@ -368,8 +369,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!supabase) { setLocation("/login"); return; }
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) { setLocation("/login"); return; }
+      const profile = await fetchAndStoreProfile();
+      if (!profile || profile.role !== "admin") {
+        setLocation("/dashboard");
+        return;
+      }
       setAuthed(true);
       setChecking(false);
     });
