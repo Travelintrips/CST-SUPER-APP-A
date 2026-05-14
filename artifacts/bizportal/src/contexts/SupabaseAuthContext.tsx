@@ -65,8 +65,11 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   }, [fetchUser]);
 
   const signInWithGoogle = useCallback(() => {
+    // Use the current page path as returnTo so admin lands back on the intended page after login.
+    // Falls back to the base path if the current path is just the base.
+    const currentPath = window.location.pathname + window.location.search;
     const base = getBase();
-    const returnTo = encodeURIComponent(base);
+    const returnTo = encodeURIComponent(currentPath !== "/" ? currentPath : base);
     const origin = getOrigin();
     const loginUrl = `${origin}/api/login/google?returnTo=${returnTo}`;
 

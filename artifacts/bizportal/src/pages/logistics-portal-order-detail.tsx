@@ -443,12 +443,31 @@ export default function LogisticsPortalOrderDetailPage() {
               {order.customerName} · {order.companyName} · {order.email} · {order.phone}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {order.status === "New Order" || order.status === "Under Review" ? (
               <Button size="sm" className="gap-2" onClick={() => setRfqDialog(true)}>
                 <Send className="h-4 w-4" /> Kirim RFQ ke Vendor
               </Button>
             ) : null}
+            {order.status === "Confirmed" && (
+              <Button
+                size="sm"
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    kind: "order",
+                    fromPortal: order.orderNumber,
+                    customer: order.customerName,
+                    origin: order.origin,
+                    destination: order.destination,
+                    ...(order.finalSellingPrice != null ? { price: String(order.finalSellingPrice) } : {}),
+                  });
+                  navigate(`/sales/quotations/new?${params.toString()}`);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Buat Sales Order
+              </Button>
+            )}
           </div>
         </div>
 
