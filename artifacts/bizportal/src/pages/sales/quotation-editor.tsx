@@ -221,6 +221,7 @@ interface LineDraft {
 
 export default function SalesDocumentEditorPage() {
   const [, paramsNew] = useRoute("/sales/quotations/new");
+  const [, paramsOrderNew] = useRoute("/sales/orders/new");
   const [, paramsQuote] = useRoute("/sales/quotations/:id");
   const [, paramsOrder] = useRoute("/sales/orders/:id");
   const [, navigate] = useLocation();
@@ -228,7 +229,8 @@ export default function SalesDocumentEditorPage() {
   const { toast } = useToast();
   const { t } = useLanguage();
 
-  const isNew = !!paramsNew;
+  const isNew = !!paramsNew || !!paramsOrderNew;
+  const isOrderRoute = !!paramsOrderNew || !!paramsOrder;
   const idStr = paramsQuote?.id ?? paramsOrder?.id;
   const id = idStr ? Number(idStr) : null;
 
@@ -589,7 +591,7 @@ export default function SalesDocumentEditorPage() {
       return;
     }
     const body = {
-      kind: "quote" as const,
+      kind: (isOrderRoute ? "order" : "quote") as "quote" | "order",
       customerId,
       customerName,
       taxRateId: taxRateId ?? null,
