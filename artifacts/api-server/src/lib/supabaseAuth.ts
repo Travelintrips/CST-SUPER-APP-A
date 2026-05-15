@@ -92,6 +92,16 @@ export async function requirePortalAdmin(req: Request, res: Response, next: Next
     return;
   }
 
+  const emailLower = supabaseUser.email.toLowerCase();
+
+  // Enforce server-side allowlist when configured.
+  // A pre-existing forged "admin" row cannot bypass this check.
+  const adminListConfigured = PORTAL_ADMIN_EMAILS.length > 0;
+  if (adminListConfigured && !PORTAL_ADMIN_EMAILS.includes(emailLower)) {
+    res.status(403).json({ message: "Akses admin diperlukan" });
+    return;
+  }
+
   const [customer] = await db
     .select()
     .from(portalCustomersTable)
