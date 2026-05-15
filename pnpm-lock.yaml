@@ -97,6 +97,9 @@ importers:
       '@types/pg':
         specifier: ^8.18.0
         version: 8.18.0
+      express-rate-limit:
+        specifier: ^8.5.2
+        version: 8.5.2(express@5.2.1)
       pg:
         specifier: ^8.20.0
         version: 8.20.0

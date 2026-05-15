@@ -52,6 +52,7 @@ ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
 VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
+CASHIER_TOKEN_SECRET = "83ad6b906f047bc1629b58eca15126a1d8b1d1c05a3903f7e54fd02a4673c6aa"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -66,6 +67,10 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
 
 [[ports]]
 localPort = 8081

@@ -438,7 +438,9 @@ logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Reque
 
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
 logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, res: Response) => {
-  const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
+  const { orderId, token, action, vendorPrice: submittedVendorPrice } = req.body as {
+    orderId: number; token: string; action: "accept" | "reject"; vendorPrice?: number;
+  };
   if (!orderId || !token || !action) return res.status(400).json({ message: "orderId, token, dan action wajib diisi" });
   if (action !== "accept" && action !== "reject") return res.status(400).json({ message: "action harus 'accept' atau 'reject'" });
 
@@ -456,12 +458,25 @@ logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, 
   const newQuoteStatus = action === "accept" ? "vendor_confirmed" : "vendor_rejected";
   const newOrderStatus = action === "accept" ? "Vendor Confirmed" : "Vendor Rejected";
 
+  // If vendor submitted an updated price (accept only), validate and use it
+  const updatedPrice =
+    action === "accept" &&
+    typeof submittedVendorPrice === "number" &&
+    submittedVendorPrice > 0
+      ? submittedVendorPrice
+      : null;
+
   await db.update(logisticOrderQuotesTable)
-    .set({ quoteStatus: newQuoteStatus, replyTimestamp: new Date(), replySource: "vendor_confirm" } as any)
+    .set({
+      quoteStatus: newQuoteStatus,
+      replyTimestamp: new Date(),
+      replySource: "vendor_confirm",
+      ...(updatedPrice != null ? { vendorPrice: String(updatedPrice) } : {}),
+    } as any)
     .where(eq(logisticOrderQuotesTable.id, quote.id));
 
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-  const basePrice = Number(quote.vendorPrice);
+  const basePrice = updatedPrice ?? Number(quote.vendorPrice);
   const markupPct = Number(quote.markupPercentage) || 20;
   const finalPrice = basePrice * (1 + markupPct / 100);
 
