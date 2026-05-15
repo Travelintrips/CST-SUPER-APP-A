@@ -175,7 +175,8 @@ router.post("/auth/register", requirePortalAuth, async (req, res) => {
   if (name) patch.name = String(name);
   if (phone !== undefined) patch.phone = phone ? String(phone) : null;
   if (company !== undefined) patch.company = company ? String(company) : null;
-  if (requestedRole && requestedRole !== "admin") patch.role = String(requestedRole);
+  const ALLOWED_ROLES = ["customer", "vendor"];
+  if (requestedRole && ALLOWED_ROLES.includes(String(requestedRole))) patch.role = String(requestedRole);
 
   if (Object.keys(patch).length > 0) {
     await db.update(portalCustomersTable).set(patch).where(eq(portalCustomersTable.id, customerId));

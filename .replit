@@ -52,7 +52,11 @@ ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
 VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
+<<<<<<< HEAD
 CASHIER_TOKEN_SECRET = "c0e2b3651b856e1bac79a3cf2bd0e574d93abd0260720e831de35e025babec7b"
+=======
+CASHIER_TOKEN_SECRET = "db7c3e51594d5bc252cbc6af3a7f635d2982c1396f6f334e39eabf9e79e67951"
+>>>>>>> 225a1e1 (Improve security by restricting user role assignments)
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -67,6 +71,10 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
 
 [[ports]]
 localPort = 8081
