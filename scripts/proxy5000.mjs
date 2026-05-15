@@ -1,24 +1,30 @@
 import http from "http";
 import { execSync } from "child_process";
 
-// Kill anything on port 5000 first
 try { execSync("fuser -k 5000/tcp", { stdio: "ignore" }); } catch {}
 
-// Route rules: requests matching pathPrefix go to the given upstream port.
-// Rules are checked in order; first match wins.
-const ROUTES = [
-  { prefix: "/bizportal/",  port: 18442 },
-  { prefix: "/bizportal",   port: 18442 },
-  { prefix: "/",            port: 8080  },
+const API_PREFIXES = [
+  "/api/",
+  "/login",
+  "/logout",
+  "/callback",
+  "/auth",
+  "/mobile-auth",
+  "/pos-images",
 ];
 
 function resolveUpstream(url) {
-  for (const { prefix, port } of ROUTES) {
-    if (url === prefix.trimEnd() || url.startsWith(prefix)) {
-      return port;
-    }
+  const path = url.split("?")[0];
+
+  if (path === "/bizportal" || path.startsWith("/bizportal/")) {
+    return 18442;
   }
-  return 8080;
+
+  if (API_PREFIXES.some((p) => path === p.trimEnd() || path.startsWith(p))) {
+    return 8080;
+  }
+
+  return 3000;
 }
 
 const server = http.createServer((req, res) => {
@@ -42,5 +48,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(5000, "0.0.0.0", () => {
-  console.log("Proxy running: port 5000 → /bizportal/* → :18442, /* → :8080");
+  console.log("Proxy running: port 5000 → /bizportal/* → :18442, /api/* → :8080, /* → :3000");
 });
