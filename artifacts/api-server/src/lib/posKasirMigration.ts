@@ -25,6 +25,18 @@ export async function runPosKasirMigration(): Promise<void> {
     END $$;
   `);
 
+  // Branches table (must exist before cashiers)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_branches (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      address TEXT,
+      phone TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pos_cashiers (
       id SERIAL PRIMARY KEY,
@@ -36,6 +48,12 @@ export async function runPosKasirMigration(): Promise<void> {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Add branch_id to pos_cashiers if not exists
+  await db.execute(sql`
+    ALTER TABLE pos_cashiers
+      ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES pos_branches(id)
   `);
 
   await db.execute(sql`
@@ -68,6 +86,12 @@ export async function runPosKasirMigration(): Promise<void> {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       paid_at TIMESTAMP
     )
+  `);
+
+  // Add branch_id to pos_orders if not exists
+  await db.execute(sql`
+    ALTER TABLE pos_orders
+      ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES pos_branches(id)
   `);
 
   await db.execute(sql`
@@ -105,6 +129,15 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
+  // Seed default branch "Pusat" if no branches exist
+  const branchCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM pos_branches`);
+  const bCnt = Number((branchCount.rows[0] as { cnt: string }).cnt);
+  if (bCnt === 0) {
+    await db.execute(sql`
+      INSERT INTO pos_branches (name, is_active) VALUES ('Pusat', TRUE)
+    `);
+  }
+
   // Seed produk default Thai Tea CST jika tabel masih kosong
   const existing = await db.execute(sql`SELECT COUNT(*) as cnt FROM pos_products`);
   const cnt = Number((existing.rows[0] as { cnt: string }).cnt);
@@ -124,5 +157,5 @@ export async function runPosKasirMigration(): Promise<void> {
     `);
   }
 
-  logger.info("POS Kasir migration: selesai");
+  logger.info("POS Kasir migration: selesai (+ cabang)");
 }

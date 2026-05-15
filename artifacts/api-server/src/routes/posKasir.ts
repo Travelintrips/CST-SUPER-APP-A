@@ -4,6 +4,7 @@ import { db } from "@workspace/db";
 import {
   posCashiersTable, posProductsTable, posOrdersTable,
   posOrderItemsTable, posStockItemsTable, posStockAdjustmentsTable,
+  posBranchesTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
@@ -30,7 +31,7 @@ function makeCashierToken(id: number, email: string): string {
   return `${payload}.${sig}`;
 }
 
-function parseCashierToken(token: string): { id: number; email: string } | null {
+function parseCashierToken(token: string): { id: number; email: string; exp?: number } | null {
   const dot = token.lastIndexOf(".");
   if (dot === -1) return null;
   const payloadPart = token.slice(0, dot);
@@ -46,14 +47,13 @@ function parseCashierToken(token: string): { id: number; email: string } | null 
   try {
     const parsed = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf-8")) as { id: number; email: string; exp?: number };
     if (parsed.exp !== undefined && Date.now() > parsed.exp) return null;
-    return { id: parsed.id, email: parsed.email };
+    return { id: parsed.id, email: parsed.email, exp: parsed.exp };
   } catch {
     return null;
   }
 }
 
-
-async function requireCashierAuth(req: Request, res: Response): Promise<{ id: number; name: string; email: string } | null> {
+async function requireCashierAuth(req: Request, res: Response): Promise<{ id: number; name: string; email: string; branchId?: number | null } | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     res.status(401).json({ message: "Unauthorized" });
@@ -66,21 +66,17 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     return null;
   }
 
-  // Enforce token expiry to limit replay window for stolen tokens
-  if (Math.floor(Date.now() / 1000) > payload.exp) {
+  if (payload.exp !== undefined && Math.floor(Date.now() / 1000) > payload.exp) {
     res.status(401).json({ message: "Token sudah kedaluwarsa, silakan login ulang" });
     return null;
   }
 
-  // Lookup by ID and cross-verify email from the token matches the database record.
-  // This prevents token forgery even if an attacker guesses the ID: the email
-  // in the signed payload must exactly match what is stored in the database.
   const [cashier] = await db.select().from(posCashiersTable).where(eq(posCashiersTable.id, payload.id));
   if (!cashier || cashier.status !== "approved" || cashier.email !== payload.email) {
     res.status(403).json({ message: "Akun kasir belum disetujui atau tidak ditemukan" });
     return null;
   }
-  return { id: cashier.id, name: cashier.name, email: cashier.email };
+  return { id: cashier.id, name: cashier.name, email: cashier.email, branchId: cashier.branchId };
 }
 
 function orderNumber(): string {
@@ -92,11 +88,21 @@ function orderNumber(): string {
   return `TT/${y}${m}${d}/${rand}`;
 }
 
+// ── Branches (public read) ────────────────────────────────────────────────────
+
+// GET /api/pos-kasir/branches  — public
+router.get("/branches", async (_req, res) => {
+  const rows = await db.select().from(posBranchesTable)
+    .where(eq(posBranchesTable.isActive, true))
+    .orderBy(posBranchesTable.name);
+  return res.json(rows);
+});
+
 // ── Kasir Auth ────────────────────────────────────────────────────────────────
 
 // POST /api/pos-kasir/register
 router.post("/register", async (req, res) => {
-  const { name, email, password, phone } = req.body ?? {};
+  const { name, email, password, phone, branchId } = req.body ?? {};
   if (!name || !email || !password) {
     return res.status(400).json({ message: "Nama, email, dan password wajib diisi" });
   }
@@ -110,6 +116,7 @@ router.post("/register", async (req, res) => {
     passwordHash,
     phone: phone ? String(phone).trim() : null,
     status: "pending",
+    branchId: branchId ? Number(branchId) : null,
   }).returning();
   return res.status(201).json({ message: "Pendaftaran berhasil, menunggu persetujuan admin", id: created!.id });
 });
@@ -125,15 +132,37 @@ router.post("/login", async (req, res) => {
   if (!valid) return res.status(401).json({ message: "Email atau password salah" });
   if (cashier.status === "pending") return res.status(403).json({ message: "Akun sedang menunggu persetujuan admin" });
   if (cashier.status === "rejected") return res.status(403).json({ message: "Akun ditolak, hubungi admin" });
+
+  // Load branch info
+  let branchName: string | null = null;
+  if (cashier.branchId) {
+    const [branch] = await db.select().from(posBranchesTable).where(eq(posBranchesTable.id, cashier.branchId));
+    branchName = branch?.name ?? null;
+  }
+
   const token = makeCashierToken(cashier.id, cashier.email);
-  return res.json({ token, cashier: { id: cashier.id, name: cashier.name, email: cashier.email } });
+  return res.json({
+    token,
+    cashier: {
+      id: cashier.id,
+      name: cashier.name,
+      email: cashier.email,
+      branchId: cashier.branchId,
+      branchName,
+    },
+  });
 });
 
 // GET /api/pos-kasir/me
 router.get("/me", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
-  return res.json(cashier);
+  let branchName: string | null = null;
+  if (cashier.branchId) {
+    const [branch] = await db.select().from(posBranchesTable).where(eq(posBranchesTable.id, cashier.branchId));
+    branchName = branch?.name ?? null;
+  }
+  return res.json({ ...cashier, branchName });
 });
 
 // ── Products (public read, admin write) ─────────────────────────────────────
@@ -146,7 +175,7 @@ router.get("/products", async (_req, res) => {
   return res.json(rows);
 });
 
-// GET /api/pos-kasir/products/all  (admin — semua termasuk non-aktif)
+// GET /api/pos-kasir/products/all  (admin)
 router.get("/products/all", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const rows = await db.select().from(posProductsTable).orderBy(posProductsTable.sortOrder, posProductsTable.name);
@@ -191,11 +220,11 @@ router.delete("/products/:id", async (req, res) => {
 
 // ── Orders ───────────────────────────────────────────────────────────────────
 
-// POST /api/pos-kasir/orders  (buat order baru)
+// POST /api/pos-kasir/orders
 router.post("/orders", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
-  const { items, discount, note } = req.body ?? {};
+  const { items, discount, note, branchId } = req.body ?? {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "Items tidak boleh kosong" });
   }
@@ -218,10 +247,12 @@ router.post("/orders", async (req, res) => {
 
   const discountAmt = Number(discount) || 0;
   const total = subtotal - discountAmt;
+  const effectiveBranchId = branchId ? Number(branchId) : (cashier.branchId ?? null);
 
   const [order] = await db.insert(posOrdersTable).values({
     orderNumber: orderNumber(),
     cashierId: cashier.id,
+    branchId: effectiveBranchId,
     status: "open",
     subtotal: String(subtotal),
     discount: String(discountAmt),
@@ -277,7 +308,7 @@ router.patch("/orders/:id/cancel", async (req, res) => {
   return res.json({ message: "Order dibatalkan" });
 });
 
-// GET /api/pos-kasir/orders/today  (untuk kasir yang sedang login)
+// GET /api/pos-kasir/orders/today
 router.get("/orders/today", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
@@ -335,9 +366,56 @@ router.post("/stock/adjust", async (req, res) => {
   return res.json(updated);
 });
 
-// ── Admin (BizPortal) endpoints ──────────────────────────────────────────────
+// ── Admin — Branches ──────────────────────────────────────────────────────────
 
-// GET /api/pos-kasir/admin/cashiers  (daftar semua kasir)
+// GET /api/pos-kasir/admin/branches
+router.get("/admin/branches", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rows = await db.select().from(posBranchesTable).orderBy(posBranchesTable.name);
+  return res.json(rows);
+});
+
+// POST /api/pos-kasir/admin/branches
+router.post("/admin/branches", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const { name, address, phone, isActive } = req.body ?? {};
+  if (!name?.trim()) return res.status(400).json({ message: "Nama cabang wajib diisi" });
+  const [created] = await db.insert(posBranchesTable).values({
+    name: String(name).trim(),
+    address: address ?? null,
+    phone: phone ?? null,
+    isActive: isActive !== false,
+  }).returning();
+  return res.status(201).json(created);
+});
+
+// PATCH /api/pos-kasir/admin/branches/:id
+router.patch("/admin/branches/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const patch: Record<string, unknown> = {};
+  for (const k of ["name", "address", "phone", "isActive"]) {
+    if (req.body?.[k] !== undefined) patch[k] = req.body[k];
+  }
+  const [updated] = await db.update(posBranchesTable).set(patch).where(eq(posBranchesTable.id, id)).returning();
+  return res.json(updated);
+});
+
+// DELETE /api/pos-kasir/admin/branches/:id
+router.delete("/admin/branches/:id", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params.id);
+  // Cek apakah ada kasir terkait
+  const [linked] = await db.select({ id: posCashiersTable.id }).from(posCashiersTable).where(eq(posCashiersTable.branchId, id));
+  if (linked) return res.status(409).json({ message: "Cabang masih digunakan oleh kasir, tidak bisa dihapus" });
+  await db.delete(posBranchesTable).where(eq(posBranchesTable.id, id));
+  return res.json({ message: "Cabang dihapus" });
+});
+
+// ── Admin — Cashiers ──────────────────────────────────────────────────────────
+
+// GET /api/pos-kasir/admin/cashiers
 router.get("/admin/cashiers", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const rows = await db.select({
@@ -346,46 +424,62 @@ router.get("/admin/cashiers", async (req, res) => {
     email: posCashiersTable.email,
     phone: posCashiersTable.phone,
     status: posCashiersTable.status,
+    branchId: posCashiersTable.branchId,
+    branchName: posBranchesTable.name,
     createdAt: posCashiersTable.createdAt,
-  }).from(posCashiersTable).orderBy(desc(posCashiersTable.createdAt));
+  }).from(posCashiersTable)
+    .leftJoin(posBranchesTable, eq(posCashiersTable.branchId, posBranchesTable.id))
+    .orderBy(desc(posCashiersTable.createdAt));
   return res.json(rows);
 });
 
-// PATCH /api/pos-kasir/admin/cashiers/:id  (setujui/tolak)
+// PATCH /api/pos-kasir/admin/cashiers/:id
 router.patch("/admin/cashiers/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
-  const { status } = req.body ?? {};
-  if (!["approved", "rejected", "pending"].includes(status)) {
-    return res.status(400).json({ message: "Status tidak valid" });
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (req.body?.status !== undefined) {
+    if (!["approved", "rejected", "pending"].includes(req.body.status)) {
+      return res.status(400).json({ message: "Status tidak valid" });
+    }
+    patch.status = req.body.status;
+  }
+  if (req.body?.branchId !== undefined) {
+    patch.branchId = req.body.branchId === null ? null : Number(req.body.branchId);
   }
   const [updated] = await db.update(posCashiersTable)
-    .set({ status, updatedAt: new Date() })
+    .set(patch)
     .where(eq(posCashiersTable.id, id))
     .returning();
   return res.json(updated);
 });
 
-// GET /api/pos-kasir/admin/report  (laporan penjualan)
+// ── Admin — Report ────────────────────────────────────────────────────────────
+
+// GET /api/pos-kasir/admin/report
 router.get("/admin/report", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const { from, to, cashierId } = req.query;
+  const { from, to, cashierId, branchId } = req.query;
   const start = from ? new Date(String(from)) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
   const end = to ? new Date(String(to)) : (() => { const d = new Date(); d.setHours(23,59,59,999); return d; })();
 
   const conds = [eq(posOrdersTable.status, "paid"), gte(posOrdersTable.paidAt, start), lte(posOrdersTable.paidAt, end)];
   if (cashierId) conds.push(eq(posOrdersTable.cashierId, Number(cashierId)));
+  if (branchId) conds.push(eq(posOrdersTable.branchId, Number(branchId)));
 
   const orders = await db.select({
     id: posOrdersTable.id,
     orderNumber: posOrdersTable.orderNumber,
     cashierId: posOrdersTable.cashierId,
     cashierName: posCashiersTable.name,
+    branchId: posOrdersTable.branchId,
+    branchName: posBranchesTable.name,
     total: posOrdersTable.total,
     paymentMethod: posOrdersTable.paymentMethod,
     paidAt: posOrdersTable.paidAt,
   }).from(posOrdersTable)
     .leftJoin(posCashiersTable, eq(posOrdersTable.cashierId, posCashiersTable.id))
+    .leftJoin(posBranchesTable, eq(posOrdersTable.branchId, posBranchesTable.id))
     .where(and(...conds))
     .orderBy(desc(posOrdersTable.paidAt));
 
@@ -399,22 +493,28 @@ router.get("/admin/report", async (req, res) => {
   return res.json({ orders, totalRevenue, byMethod, count: orders.length });
 });
 
-// GET /api/pos-kasir/admin/report/daily  (laporan harian ringkasan)
+// GET /api/pos-kasir/admin/report/daily
 router.get("/admin/report/daily", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
+  const { branchId } = req.query;
+  const whereCond = branchId
+    ? sql`WHERE status = 'paid' AND paid_at IS NOT NULL AND branch_id = ${Number(branchId)}`
+    : sql`WHERE status = 'paid' AND paid_at IS NOT NULL`;
   const result = await db.execute(sql`
     SELECT
       DATE(paid_at) as date,
       COUNT(*) as order_count,
       SUM(total) as revenue
     FROM pos_orders
-    WHERE status = 'paid' AND paid_at IS NOT NULL
+    ${whereCond}
     GROUP BY DATE(paid_at)
     ORDER BY date DESC
     LIMIT 30
   `);
   return res.json(result.rows);
 });
+
+// ── Admin — Stock ─────────────────────────────────────────────────────────────
 
 // GET /api/pos-kasir/admin/stock
 router.get("/admin/stock", async (req, res) => {

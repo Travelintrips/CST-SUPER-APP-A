@@ -4,6 +4,15 @@ export const kasirStatusEnum = pgEnum("kasir_status", ["pending", "approved", "r
 export const posOrderStatusEnum = pgEnum("pos_order_status", ["open", "paid", "cancelled"]);
 export const posPaymentMethodEnum = pgEnum("pos_payment_method", ["cash", "qris", "debit", "credit", "transfer"]);
 
+export const posBranchesTable = pgTable("pos_branches", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  address: text("address"),
+  phone: text("phone"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const posCashiersTable = pgTable("pos_cashiers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -11,6 +20,7 @@ export const posCashiersTable = pgTable("pos_cashiers", {
   passwordHash: text("password_hash").notNull(),
   phone: text("phone"),
   status: kasirStatusEnum("status").notNull().default("pending"),
+  branchId: integer("branch_id").references(() => posBranchesTable.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -31,6 +41,7 @@ export const posOrdersTable = pgTable("pos_orders", {
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull().unique(),
   cashierId: integer("cashier_id").notNull().references(() => posCashiersTable.id),
+  branchId: integer("branch_id").references(() => posBranchesTable.id),
   status: posOrderStatusEnum("status").notNull().default("open"),
   paymentMethod: posPaymentMethodEnum("payment_method"),
   subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
