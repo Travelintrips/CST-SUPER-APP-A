@@ -239,9 +239,12 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     END $$
   `);
 
-  // ── Re-create unique index on chart_of_accounts.code ────────────────────
+  // ── Migrate single-column index → composite (company_id, code) ───────────
   await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS chart_of_accounts_code_key ON chart_of_accounts(code)
+    DROP INDEX IF EXISTS chart_of_accounts_code_key
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS coa_company_code_uniq ON chart_of_accounts(company_id, code)
   `);
 
   // ── Pass 1: Upsert global parent group accounts ───────────────────────────
@@ -302,8 +305,8 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
           companyId,
         })
         .onConflictDoUpdate({
-          target: chartOfAccountsTable.code,
-          set: { name: sql`excluded.name`, parentId: parentId, companyId },
+          target: [chartOfAccountsTable.companyId, chartOfAccountsTable.code],
+          set: { name: sql`excluded.name`, parentId: parentId },
         });
     }
   }
@@ -378,8 +381,8 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
           defaultCreditAccountId: creditId,
         })
         .onConflictDoUpdate({
-          target: accountingJournalsTable.code,
-          set: { companyId, name: sql`excluded.name` },
+          target: [accountingJournalsTable.companyId, accountingJournalsTable.code],
+          set: { name: sql`excluded.name` },
         });
     }
   }
