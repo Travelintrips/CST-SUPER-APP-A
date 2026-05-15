@@ -13,7 +13,6 @@ import { useLocation } from "wouter";
 import { resolveImageUrl } from "@/lib/utils";
 import { getServiceFallbackImage } from "@/lib/categoryImages";
 import { useState } from "react";
-import { useCart } from "@/lib/cart";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { translateServiceName, translateCategory } from "@/i18n/serviceData";
 
@@ -62,7 +61,6 @@ function ServiceImage({ service, className = "" }: { service: Service; className
 export default function Services() {
   const [searchQuery, setSearchQuery] = useState("");
   const [truckingOpen, setTruckingOpen] = useState(false);
-  const { addItem, items } = useCart();
   const { t, locale } = useLanguage();
   const [, setLocation] = useLocation();
 
@@ -94,10 +92,6 @@ export default function Services() {
   });
 
   const showGroupedCard = filteredGrouped.length > 0 || searchQuery === "";
-
-  function isInCart(id: number) {
-    return items.some((i) => i.productId === id);
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -378,18 +372,10 @@ export default function Services() {
                   </div>
                   <Button
                     className="w-full gap-2"
-                    variant={isInCart(service.id) ? "outline" : "default"}
-                    onClick={() =>
-                      addItem({
-                        productId: service.id,
-                        name: stripJasa(service.name),
-                        unitPrice: service.price,
-                        itemType: "jasa",
-                      })
-                    }
+                    onClick={() => setLocation(`/jasa/${service.id}`)}
                   >
                     <ShoppingCart className="h-4 w-4" />
-                    {isInCart(service.id) ? t("services.inCart") : t("services.addToCart")}
+                    {t("services.addToCart")}
                   </Button>
                 </CardContent>
               </Card>
@@ -461,19 +447,10 @@ export default function Services() {
                     <Button
                       size="sm"
                       className="gap-1.5 shrink-0"
-                      variant={isInCart(service.id) ? "outline" : "default"}
-                      onClick={() => {
-                        addItem({
-                          productId: service.id,
-                          name: stripJasa(service.name),
-                          unitPrice: service.price,
-                          itemType: "jasa",
-                        });
-                        setTruckingOpen(false);
-                      }}
+                      onClick={() => { setTruckingOpen(false); setLocation(`/jasa/${service.id}`); }}
                     >
                       <ShoppingCart className="h-3.5 w-3.5" />
-                      {isInCart(service.id) ? t("services.inCart") : t("services.addToCart")}
+                      {t("services.addToCart")}
                     </Button>
                   </div>
                 </div>

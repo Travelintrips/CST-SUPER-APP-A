@@ -5,8 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { CartProvider } from "@/lib/cart";
-import { CartDrawer } from "@/components/CartDrawer";
 import { EditModeProvider } from "@/contexts/EditModeContext";
 import { AdminToolbar } from "@/components/AdminToolbar";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
@@ -154,7 +152,6 @@ function AppShell() {
       <Navbar />
       <main className="flex-1">{routes}</main>
       <Footer />
-      <CartDrawer />
       <AdminToolbar />
       <WhatsAppButton />
       <BackToTopButton />
@@ -169,14 +166,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <LanguageProvider>
-          <CartProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <EditModeProvider>
                 <OAuthRedirectHandler />
                 <AppShell />
               </EditModeProvider>
             </WouterRouter>
-          </CartProvider>
           <Toaster />
         </LanguageProvider>
       </TooltipProvider>

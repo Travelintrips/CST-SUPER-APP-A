@@ -11,7 +11,6 @@ import {
   Play, Package, Star, Clock, Check, Layers, ExternalLink, Truck, ArrowRight,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useCart } from "@/lib/cart";
 import { useLanguage } from "@/i18n/LanguageContext";
 
 type MediaItem = { type: "image" | "video"; url: string };
@@ -348,7 +347,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const [qty, setQty] = useState(1);
   const [shippingTab, setShippingTab] = useState<"vendor" | "service">("service");
   const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
-  const { addItemSilent } = useCart();
+
   const [, setLocation] = useLocation();
   const { t } = useLanguage();
   const usdIdrRate = useUsdIdrRate();
@@ -371,21 +370,13 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
   const shownOpts = shippingTab === "vendor" ? vendorOpts : serviceOpts;
   const chosen = allShipping.find((s) => s.id === selectedShipping);
 
-  const cartPayload = {
-    productId: product.id,
-    name: product.name,
-    unitPrice: product.price,
-    itemType: "barang" as const,
-  };
-
   function handleBuyNow() {
     if (!chosen) return;
     if (chosen.kind === "service" && chosen.serviceId != null) {
-      // Jasa flow: add product silently → navigate to /jasa/:id with sticky banner
-      addItemSilent(cartPayload);
+      // Jasa flow: save product info → navigate to /jasa/:id with sticky banner
       sessionStorage.setItem(
         "pendingJasaReview",
-        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name, unit: selectedUnit, qty })
+        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name, unit: selectedUnit, qty, productPrice: product.price })
       );
       onClose();
       setLocation(`/jasa/${chosen.serviceId}`);

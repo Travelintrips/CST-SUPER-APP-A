@@ -22,7 +22,6 @@ import {
 } from "@/lib/services-data";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { useCart } from "@/lib/logistic-cart";
-import { useCart as useProductCart } from "@/lib/cart";
 import { formatCurrency } from "@/lib/utils";
 import { isAuthenticated } from "@/lib/auth";
 import { AirportCombobox } from "@/components/AirportCombobox";
@@ -248,7 +247,6 @@ export default function JasaDetail() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { addItem } = useCart();
-  const { openCheckout } = useProductCart();
   const [state, setState] = useState<CalcState>({});
   const [airRows, setAirRows] = useState<AirRow[]>([newAirRow()]);
   const [added, setAdded] = useState(false);
@@ -321,9 +319,23 @@ export default function JasaDetail() {
   }, [params.id]);
 
   function confirmJasaAndCheckout() {
-    sessionStorage.removeItem("pendingJasaReview");
-    setPendingOrder(null);
-    openCheckout();
+    try {
+      const raw = sessionStorage.getItem("pendingJasaReview");
+      const parsed = raw ? JSON.parse(raw) as { serviceId?: number; productId?: number; productName?: string; unit?: string; qty?: number; productPrice?: number } : {};
+      sessionStorage.removeItem("pendingJasaReview");
+      setPendingOrder(null);
+      const p = new URLSearchParams();
+      if (parsed.productName) p.set("commodity", parsed.productName);
+      if (parsed.qty) p.set("qty", String(parsed.qty));
+      if (parsed.unit) p.set("unit", parsed.unit);
+      if (parsed.productPrice) p.set("productPrice", String(parsed.productPrice));
+      p.set("step", "2");
+      setLocation(`/book?${p.toString()}`);
+    } catch {
+      sessionStorage.removeItem("pendingJasaReview");
+      setPendingOrder(null);
+      setLocation("/book?step=2");
+    }
   }
 
   const { data: servicesRaw, isLoading: servicesLoading } = useListPortalServices({

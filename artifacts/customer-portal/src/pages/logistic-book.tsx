@@ -621,8 +621,12 @@ export default function BookPage() {
         setStep(1);
       }
     } else if (commodity) {
-      // From product page without specific service → skip Tipe Pengiriman, go to Pilih Layanan
-      setStep(1);
+      // From product page without specific service
+      if (params.get("step") === "2") {
+        setStep(2);
+      } else {
+        setStep(1);
+      }
     } else if (cartItems.length > 0) {
       // Restore draft: jump to Ringkasan and restore shipmentType if saved
       try {
