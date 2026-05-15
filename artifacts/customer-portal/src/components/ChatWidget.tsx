@@ -1262,17 +1262,21 @@ export function ChatWidget() {
           `[Pengguna mengirim ${label}: ${data.filename}]\n\nAnalisis AI:\n${data.text}` +
           (text ? `\n\nPesan dari pengguna: ${text}` : "");
         await _executeStream(aiCtx);
-      } catch {
+      } catch (uploadErr: unknown) {
         setUploadingFile(false);
         streamBufferRef.current = "";
         setStreamingContent(null);
         playSound("error");
+        const uploadErrMsg =
+          uploadErr instanceof Error && uploadErr.message
+            ? uploadErr.message
+            : "Maaf, gagal memproses file. Periksa koneksi dan coba lagi.";
         setMessages((prev) => [
           ...prev,
           {
             id: (Date.now() + 5).toString(),
             role: "assistant",
-            content: "Maaf, gagal memproses file. Periksa koneksi dan coba lagi.",
+            content: uploadErrMsg,
             createdAt: new Date().toISOString(),
           },
         ]);

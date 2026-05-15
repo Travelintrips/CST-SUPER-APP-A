@@ -14,6 +14,11 @@ import { recordResponseTime } from "./lib/responseTimeLog";
 
 const app: Express = express();
 
+// Trust a single upstream reverse proxy (Replit's edge / nginx).
+// This makes req.ip reflect the real client IP from X-Forwarded-For instead
+// of the proxy's internal address, which is required for IP-based rate limiting.
+app.set("trust proxy", 1);
+
 app.use((req, res, next) => {
   const startNs = process.hrtime.bigint();
   const originalEnd = res.end.bind(res) as typeof res.end;

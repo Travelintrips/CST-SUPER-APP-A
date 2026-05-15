@@ -1431,11 +1431,30 @@ aiAgentRouter.post(
       return;
     }
 
-    // Per-IP and per-session upload rate limits — checked after session validation
-    // so the DB lookup only happens once per request.
-    const clientIp = (req.headers["x-forwarded-for"] as string | undefined)
-      ?.split(",")[0]
-      ?.trim() ?? req.socket.remoteAddress ?? "unknown";
+    // Require the session to have at least one real user message.
+    // This proves the caller already used the chat widget (spending AI chat quota)
+    // and is not simply minting fresh tokens in bulk to drive upload abuse.
+    const [msgCheck] = await db
+      .select({ id: aiChatMessagesTable.id })
+      .from(aiChatMessagesTable)
+      .where(
+        and(
+          eq(aiChatMessagesTable.sessionId, session.id),
+          eq(aiChatMessagesTable.role, "user"),
+        ),
+      )
+      .limit(1);
+    if (!msgCheck) {
+      res.status(403).json({
+        message: "Kirim pesan ke AI terlebih dahulu sebelum mengunggah file.",
+      });
+      return;
+    }
+
+    // Per-IP and per-session upload rate limits — checked after session validation.
+    // req.ip is reliably set by Express because app.set("trust proxy", 1) is
+    // configured in app.ts, preventing X-Forwarded-For header spoofing.
+    const clientIp = req.ip ?? req.socket.remoteAddress ?? "unknown";
     const rateLimitError = checkUploadRateLimit(clientIp, rawToken);
     if (rateLimitError) {
       res.status(429).json({ message: rateLimitError });
