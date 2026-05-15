@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@workspace/db";
 import {
   posCashiersTable, posProductsTable, posOrdersTable,
@@ -12,6 +13,17 @@ const router = Router();
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 
+const CASHIER_TOKEN_SECRET = process.env.CASHIER_TOKEN_SECRET;
+if (!CASHIER_TOKEN_SECRET) {
+  throw new Error("CASHIER_TOKEN_SECRET environment variable is required");
+}
+
+function makeCashierToken(id: number, email: string): string {
+  const payload = Buffer.from(JSON.stringify({ id, email })).toString("base64url");
+  const sig = createHmac("sha256", CASHIER_TOKEN_SECRET!).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
 async function requireCashierAuth(req: Request, res: Response): Promise<{ id: number; name: string; email: string } | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
@@ -19,24 +31,46 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     return null;
   }
   const token = auth.slice(7);
-  let payload: { id: number; email: string } | null = null;
+  const dotIdx = token.lastIndexOf(".");
+  if (dotIdx === -1) {
+    res.status(401).json({ message: "Token tidak valid" });
+    return null;
+  }
+  const payload64 = token.slice(0, dotIdx);
+  const receivedSig = token.slice(dotIdx + 1);
+
+  // Verify HMAC signature with constant-time comparison to prevent timing attacks
+  const expectedSig = createHmac("sha256", CASHIER_TOKEN_SECRET!).update(payload64).digest("base64url");
+  let sigValid = false;
   try {
-    const decoded = Buffer.from(token, "base64").toString("utf-8");
-    payload = JSON.parse(decoded) as { id: number; email: string };
+    const expBuf = Buffer.from(expectedSig);
+    const recBuf = Buffer.from(receivedSig);
+    sigValid = expBuf.length === recBuf.length && timingSafeEqual(expBuf, recBuf);
+  } catch {
+    sigValid = false;
+  }
+  if (!sigValid) {
+    res.status(401).json({ message: "Token tidak valid" });
+    return null;
+  }
+
+  let payload: { id: number; email: string };
+  try {
+    payload = JSON.parse(Buffer.from(payload64, "base64url").toString("utf-8")) as { id: number; email: string };
   } catch {
     res.status(401).json({ message: "Token tidak valid" });
     return null;
   }
+
+  // Lookup by ID and cross-verify email from the token matches the database record.
+  // This prevents token forgery even if an attacker guesses the ID: the email
+  // in the signed payload must exactly match what is stored in the database.
   const [cashier] = await db.select().from(posCashiersTable).where(eq(posCashiersTable.id, payload.id));
-  if (!cashier || cashier.status !== "approved") {
+  if (!cashier || cashier.status !== "approved" || cashier.email !== payload.email) {
     res.status(403).json({ message: "Akun kasir belum disetujui atau tidak ditemukan" });
     return null;
   }
   return { id: cashier.id, name: cashier.name, email: cashier.email };
-}
-
-function makeCashierToken(id: number, email: string): string {
-  return Buffer.from(JSON.stringify({ id, email })).toString("base64");
 }
 
 function orderNumber(): string {
@@ -254,6 +288,7 @@ router.get("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [order] = await db.select().from(posOrdersTable).where(eq(posOrdersTable.id, id));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+  if (order.cashierId !== cashier.id) return res.status(403).json({ message: "Bukan order Anda" });
   const items = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
   return res.json({ ...order, items });
 });
