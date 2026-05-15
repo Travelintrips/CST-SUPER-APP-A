@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable } from "@workspace/db";
@@ -7,6 +7,28 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
+
+// ── Public Vendor Endpoint Rate Limiter ──────────────────────────────────────
+// 10 requests per minute per IP for all public vendor-facing endpoints.
+const VENDOR_RATE_WINDOW_MS = 60_000;
+const VENDOR_RATE_LIMIT = 10;
+const vendorRateMap = new Map<string, { count: number; resetAt: number }>();
+
+function vendorRateLimit(req: Request, res: Response, next: NextFunction): void {
+  const ip = (req.ip ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+  const now = Date.now();
+  const entry = vendorRateMap.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    vendorRateMap.set(ip, { count: 1, resetAt: now + VENDOR_RATE_WINDOW_MS });
+    return next();
+  }
+  entry.count += 1;
+  if (entry.count > VENDOR_RATE_LIMIT) {
+    res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 menit." });
+    return;
+  }
+  return next();
+}
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -383,6 +405,7 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
 logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request, res: Response) => {
+logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.query.orderId ?? ""), 10);
   const token = String(req.query.token ?? "").trim();
   if (isNaN(orderId) || !token) return res.status(400).json({ message: "orderId dan token wajib diisi" });
@@ -415,6 +438,7 @@ logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request,
 
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
 logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res: Response) => {
+logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, res: Response) => {
   const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
   if (!orderId || !token || !action) return res.status(400).json({ message: "orderId, token, dan action wajib diisi" });
   if (action !== "accept" && action !== "reject") return res.status(400).json({ message: "action harus 'accept' atau 'reject'" });
@@ -613,6 +637,17 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
 
   const [vendor] = await db.select().from(suppliersTable)
     .where(eq(suppliersTable.id, Number(vendorId)));
+
+  // Duplicate quote guard — 409 if this vendor already submitted for this RFQ
+  const [existingQuote] = await db.select({ id: logisticOrderQuotesTable.id })
+    .from(logisticOrderQuotesTable)
+    .where(and(
+      eq(logisticOrderQuotesTable.rfqId, rfq.id),
+      eq(logisticOrderQuotesTable.vendorId, Number(vendorId)),
+    ));
+  if (existingQuote) {
+    return res.status(409).json({ message: "Penawaran untuk RFQ ini sudah pernah dikirimkan" });
+  }
 
   const vp = Number(vendorPrice);
 
