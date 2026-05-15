@@ -611,8 +611,32 @@ router.post("/admin/upload", requirePortalAdmin, _multerUpload.single("file"), a
   }
 });
 
+// Per-IP rate limit for portal presigned URL generation: 10 per IP per hour.
+// Portal customers are self-registered (public sign-up), so this prevents a
+// single customer IP from flooding the bucket with unlimited uploads.
+interface _RateEntry { count: number; resetAt: number }
+const _PORTAL_UPLOAD_URL_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const _PORTAL_UPLOAD_URL_LIMIT = 10;
+const _portalUploadUrlIpMap = new Map<string, _RateEntry>();
+
+function _checkPortalUploadUrlLimit(ip: string): boolean {
+  const now = Date.now();
+  let entry = _portalUploadUrlIpMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + _PORTAL_UPLOAD_URL_WINDOW_MS };
+  }
+  if (entry.count >= _PORTAL_UPLOAD_URL_LIMIT) return false;
+  entry.count += 1;
+  _portalUploadUrlIpMap.set(ip, entry);
+  return true;
+}
+
 // POST /api/portal/order-upload-url  — get presigned URL for order document uploads (customer-attachments)
 router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
+  if (!_checkPortalUploadUrlLimit(ip)) {
+    return res.status(429).json({ message: "Terlalu banyak permintaan upload. Coba lagi dalam 1 jam." });
+  }
   const { contentType } = req.body ?? {};
   if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
   const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
