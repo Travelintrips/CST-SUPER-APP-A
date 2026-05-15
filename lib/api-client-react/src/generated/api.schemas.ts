@@ -1120,6 +1120,7 @@ export type AccountingEntryStatus =
 export const AccountingEntryStatus = {
   draft: "draft",
   posted: "posted",
+  cancelled: "cancelled",
 } as const;
 
 export type AccountingEntrySource =
@@ -1228,6 +1229,7 @@ export interface AccountingPayment {
   sourceDocId?: number | null;
   createdById?: string | null;
   createdAt: string;
+  paymentNumber?: string | null;
 }
 
 export type AccountingPaymentDetail = AccountingPayment & {
@@ -2239,6 +2241,7 @@ export interface LogisticOrder {
   quotationSentAt?: string | null;
   linkedSalesDocId?: number | null;
   linkedSalesDocNumber?: string | null;
+  optionsToken?: string | null;
   createdAt: string;
 }
 
@@ -2895,6 +2898,7 @@ export type ListExpensesParams = {
   search?: string;
   from?: string;
   to?: string;
+  company?: number;
 };
 
 export type GetExpenseSummaryParams = {
