@@ -68,7 +68,6 @@ Commands:
 
 ## User preferences
 
-- STOP explaining. Just give me the code.
 - Gunakan Bahasa Indonesia dalam semua komunikasi dengan pengguna.
 - Ask for confirmation before major architectural or schema changes.
 - Do **not** make changes to files outside the `artifacts`, `lib`, and `packages` directories.
