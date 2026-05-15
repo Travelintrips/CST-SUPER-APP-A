@@ -40,13 +40,23 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+const server = app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
   logger.info({ port }, "Server listening");
+
+  // Graceful shutdown on SIGTERM / SIGINT — release port immediately so the
+  // next process can bind without waiting for OS TIME_WAIT.
+  const shutdown = () => {
+    server.close(() => process.exit(0));
+    // Force-exit after 5 s if connections are still draining.
+    setTimeout(() => process.exit(0), 5_000).unref();
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
 
   // Buat tabel companies + company_id columns (idempotent)
   runCompaniesMigration().catch((err) => {
