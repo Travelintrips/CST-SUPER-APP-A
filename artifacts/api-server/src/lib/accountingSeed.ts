@@ -313,7 +313,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
 
   logger.info("Accounting seed: COA hierarchy done.");
 
-  allAccounts = await db.select().from(chartOfAccountsTable).where(eq(chartOfAccountsTable.companyId, cid));
+  allAccounts = await db.select().from(chartOfAccountsTable);
   byCode = new Map(allAccounts.map((a) => [a.code, a]));
 
   const needFor = (baseCode: string, companyId: number) => {
