@@ -48,7 +48,43 @@ app.use(
   }),
 );
 
-app.use(cors({ credentials: true, origin: true }));
+// ── Strict CORS origin allowlist ─────────────────────────────────────────────
+// `origin: true` (the previous value) reflects any caller origin, which –
+// combined with `credentials: true` and `SameSite=None` session cookies –
+// allows arbitrary third-party sites to make authenticated requests on behalf
+// of a logged-in user and read the response (cross-origin data exfiltration).
+// Only explicitly listed origins may use credentialed cross-origin requests.
+const CORS_ALLOWED_ORIGINS: Set<string> = new Set(
+  [
+    // Production custom domains
+    "https://bizportal.cstlogistic.co.id",
+    "https://cstlogistic.co.id",
+    "https://www.cstlogistic.co.id",
+    // Explicitly configured app base URL (deployed Replit or custom domain)
+    process.env["APP_URL"] ? process.env["APP_URL"].replace(/\/$/, "") : null,
+    // Replit dev domain — only in the non-deployed development environment
+    process.env["REPLIT_DEV_DOMAIN"] && !process.env["REPLIT_DEPLOYMENT"]
+      ? `https://${process.env["REPLIT_DEV_DOMAIN"]}`
+      : null,
+  ].filter((o): o is string => typeof o === "string" && o.length > 0),
+);
+
+app.use(
+  cors({
+    credentials: true,
+    origin: (incomingOrigin, callback) => {
+      // No Origin header → same-origin or non-browser request; allow without
+      // echoing a wildcard so credentials still flow correctly.
+      if (!incomingOrigin) return callback(null, false);
+      if (CORS_ALLOWED_ORIGINS.has(incomingOrigin)) {
+        return callback(null, incomingOrigin);
+      }
+      // Reject unlisted origins — do not echo them back.
+      logger.warn({ origin: incomingOrigin }, "CORS: rejected unlisted origin");
+      return callback(null, false);
+    },
+  }),
+);
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(cookieParser());
