@@ -660,21 +660,21 @@ router.post("/admin/stock", async (req, res) => {
 router.patch("/admin/stock/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
-  const body = req.body ?? {};
-  const setParts: string[] = ["updated_at = NOW()"];
-  const vals: unknown[] = [];
-  let idx = 1;
-  const fieldMap: Record<string, string> = { name: "name", unit: "unit", currentStock: "current_stock", minStock: "min_stock", note: "note", branchId: "branch_id" };
-  for (const [jsKey, dbCol] of Object.entries(fieldMap)) {
-    if (body[jsKey] !== undefined) {
-      const v = jsKey === "branchId" ? (body[jsKey] === null || body[jsKey] === "" ? null : Number(body[jsKey])) : body[jsKey];
-      setParts.push(`${dbCol} = $${idx++}`);
-      vals.push(v);
-    }
+  const { name, unit, currentStock, minStock, note, branchId } = req.body ?? {};
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (name !== undefined) patch.name = String(name);
+  if (unit !== undefined) patch.unit = unit;
+  if (currentStock !== undefined) patch.currentStock = String(currentStock);
+  if (minStock !== undefined) patch.minStock = String(minStock);
+  if (note !== undefined) patch.note = note;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await db.update(posStockItemsTable).set(patch as any).where(eq(posStockItemsTable.id, id));
+  if (branchId !== undefined) {
+    const bid = (branchId === null || branchId === "") ? null : Number(branchId);
+    await db.execute(sql`UPDATE pos_stock_items SET branch_id = ${bid} WHERE id = ${id}`);
   }
-  vals.push(id);
-  const result = await db.execute(sql.raw(`UPDATE pos_stock_items SET ${setParts.join(", ")} WHERE id = $${idx} RETURNING *`, vals));
-  return res.json(camelizeStockRow(result.rows[0] as Record<string, unknown>));
+  const [updated] = (await db.execute(sql`SELECT * FROM pos_stock_items WHERE id = ${id}`)).rows;
+  return res.json(camelizeStockRow(updated as Record<string, unknown>));
 });
 
 // DELETE /api/pos-kasir/admin/stock/:id
