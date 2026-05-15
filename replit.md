@@ -75,6 +75,7 @@ Commands:
 - Provide detailed explanations for accounting logic and system integrations.
 - Do **not** make changes to files outside the `artifacts`, `lib`, and `packages` directories.
 - **Gunakan Bahasa Indonesia** dalam semua komunikasi dengan pengguna.
+- **STOP explaining. Just give me the code.** Langsung implementasi tanpa penjelasan panjang.
 
 ## Gotchas
 
