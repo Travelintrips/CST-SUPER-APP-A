@@ -1,4 +1,4 @@
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import type { Request, Response, NextFunction } from "express";
 
 /**
@@ -25,14 +25,7 @@ const limiter = rateLimit({
   max: MAX_PER_WINDOW,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  keyGenerator: (req: Request) => {
-    const forwarded = req.headers["x-forwarded-for"];
-    const ip =
-      (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) ??
-      req.ip ??
-      "unknown";
-    return ip.trim();
-  },
+  keyGenerator: (req: Request) => ipKeyGenerator(req),
   message: {
     message: "Too many requests. Please wait before retrying.",
   },
@@ -53,14 +46,7 @@ const failureLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   skipSuccessfulRequests: true,
-  keyGenerator: (req: Request) => {
-    const forwarded = req.headers["x-forwarded-for"];
-    const ip =
-      (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) ??
-      req.ip ??
-      "unknown";
-    return `fail:${ip.trim()}`;
-  },
+  keyGenerator: (req: Request) => `fail:${ipKeyGenerator(req)}`,
   message: {
     message: "Too many failed requests. Please wait 5 minutes before retrying.",
   },
