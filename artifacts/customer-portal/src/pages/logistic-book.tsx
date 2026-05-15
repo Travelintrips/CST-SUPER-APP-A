@@ -366,7 +366,7 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
               </Label>
               <Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} />
             </div>
-          <div><Label className="text-xs">Distance (km)</Label><Input type="number" placeholder="0" value={state.distance||""} onChange={e => set("distance", e.target.value)} /></div>
+          </div>
           <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-0.5">
             <p className="font-semibold">Harga Akan Dikonfirmasi oleh Vendor</p>
             <p>Harga trucking akan diberikan setelah vendor menerima dan mengkonfirmasi pesanan Anda.</p>
