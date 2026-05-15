@@ -24,6 +24,16 @@ if (!rawPort) {
   );
 }
 
+// Security: PORTAL_ADMIN_EMAILS must be set in production.
+// Without it, requirePortalAdmin falls back to DB role-only check,
+// allowing pre-existing forged admin rows to pass.
+if (process.env["NODE_ENV"] === "production" && !process.env["PORTAL_ADMIN_EMAILS"]?.trim()) {
+  throw new Error(
+    "PORTAL_ADMIN_EMAILS environment variable is required in production. " +
+    "Set it to a comma-separated list of allowed portal admin emails."
+  );
+}
+
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
