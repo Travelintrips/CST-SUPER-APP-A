@@ -362,7 +362,7 @@ export function Navbar() {
           <div className="hidden lg:flex items-center gap-2 shrink-0">
             {/* Cart */}
             <button
-              onClick={() => setLocation("/book")}
+              onClick={() => window.dispatchEvent(new Event("open-cart-drawer"))}
               className="relative flex items-center justify-center w-9 h-9 rounded-[14px] text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all duration-200"
               aria-label={t("nav.cart")}
             >
@@ -421,7 +421,7 @@ export function Navbar() {
           {/* ── Mobile Header Right ──────────────────────────── */}
           <div className="lg:hidden flex items-center gap-1">
             <button
-              onClick={() => setLocation("/book")}
+              onClick={() => window.dispatchEvent(new Event("open-cart-drawer"))}
               className="relative flex items-center justify-center w-9 h-9 rounded-[14px] text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all"
               aria-label={t("nav.cart")}
             >

@@ -9,6 +9,7 @@ import { EditModeProvider } from "@/contexts/EditModeContext";
 import { AdminToolbar } from "@/components/AdminToolbar";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { BackToTopButton } from "@/components/BackToTopButton";
+import { CartDrawer } from "@/components/CartDrawer";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { ChatWidget } from "@/components/ChatWidget";
@@ -157,6 +158,7 @@ function AppShell() {
       <BackToTopButton />
       <ChatWidget />
       <ScrollToTop />
+      <CartDrawer />
     </div>
   );
 }
