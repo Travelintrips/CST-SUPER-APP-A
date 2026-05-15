@@ -26,8 +26,8 @@ Dalam scope produksi, trust boundary terpenting ada pada API `artifacts/api-serv
 ## Scan Anchors
 
 - **Production entry points**: `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/index.ts`, `artifacts/api-server/src/routes/auth.ts`.
-- **Highest-risk code areas**: `artifacts/api-server/src/middlewares/authMiddleware.ts`, `artifacts/api-server/src/lib/requireAdmin.ts`, `artifacts/api-server/src/lib/supabaseAuth.ts`, route-route di `artifacts/api-server/src/routes/` yang memakai `requireClerkUser`, `requireAdmin`, atau auth kustom.
-- **Public surfaces**: customer portal root, public tracking/order routes, public AI chat/upload routes, public POS kasir login/register.
+- **Highest-risk code areas**: `artifacts/api-server/src/middlewares/authMiddleware.ts`, `artifacts/api-server/src/lib/requireAdmin.ts`, `artifacts/api-server/src/lib/supabaseAuth.ts`, `artifacts/api-server/src/routes/webhooks.ts`, `artifacts/api-server/src/routes/vendorResponse.ts`, dan route-route di `artifacts/api-server/src/routes/` yang memakai `requireClerkUser`, `requireAdmin`, atau auth kustom.
+- **Public surfaces**: customer portal root, public tracking/order routes, public vendor-response/vendor-confirm routes, public AI chat/upload routes, public POS kasir login/register, dan webhook `POST /api/webhook/fonnte`.
 - **Authenticated/admin surfaces**: BizPortal session routes, customer portal bearer routes, portal admin CMS, ERP data routes, storage/media management, POS admin routes.
 - **Usually ignore unless reachability changes**: `mockup-sandbox/`, build output, dan code eksperimen non-mounted.
 
@@ -35,7 +35,7 @@ Dalam scope produksi, trust boundary terpenting ada pada API `artifacts/api-serv
 
 ### Spoofing
 
-BizPortal memakai beberapa mekanisme identitas sekaligus: cookie session internal, bearer Supabase untuk portal/mobile, token kasir POS, dan secret header tertentu. Sistem harus memastikan satu trust domain tidak bisa dipakai untuk menyamar sebagai domain lain. Token/bypass header statis tidak boleh menjadi pengganti identitas pengguna pada route admin atau staff.
+BizPortal memakai beberapa mekanisme identitas sekaligus: cookie session internal, bearer Supabase untuk portal/mobile, token kasir POS, webhook dari pihak ketiga, dan beberapa alur berbasis secret bersama. Sistem harus memastikan satu trust domain tidak bisa dipakai untuk menyamar sebagai domain lain. Token/bypass header statis tidak boleh menjadi pengganti identitas pengguna pada route admin atau staff, dan webhook inbound harus memverifikasi bahwa request benar-benar berasal dari provider yang sah sebelum mempercayai `sender`, `message`, atau URL media.
 
 ### Tampering
 
@@ -43,7 +43,7 @@ Banyak route mengubah data bisnis penting: status order, stok, produk, konten po
 
 ### Information Disclosure
 
-ERP ini menyimpan PII, data revenue, email masuk, chat AI, dan dokumen operasional. API harus membatasi respons berdasarkan kepemilikan/role, tidak memantulkan data internal ke caller publik, dan tidak membiarkan origin tak tepercaya membaca respons yang dikirim dengan kredensial korban.
+ERP ini menyimpan PII, data revenue, email masuk, chat AI, dokumen operasional, dan data pelacakan pengiriman. API harus membatasi respons berdasarkan kepemilikan/role, tidak memantulkan data internal ke caller publik, dan tidak membiarkan order number atau identifier publik lain berfungsi sebagai satu-satunya syarat untuk membaca detail order, vendor response, atau status driver.
 
 ### Denial of Service
 
