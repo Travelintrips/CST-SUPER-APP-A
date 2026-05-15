@@ -50,7 +50,14 @@ function getOrigin(req: Request): string {
 }
 
 function getGoogleOrigin(req: Request): string {
-  // Explicit override always wins (set this in production secrets)
+  // In Replit dev (NOT deployed), always prefer the stable dev domain.
+  // REPLIT_DEPLOYMENT=1 is injected by Replit in deployed environments only.
+  // This check must come FIRST so global secrets (APP_URL, etc.) don't
+  // accidentally force dev logins to redirect to the production domain.
+  if (process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
+  // Explicit override for production (set GOOGLE_REDIRECT_BASE_URL in secrets)
   const override = process.env.GOOGLE_REDIRECT_BASE_URL || process.env.GOOGLE_CALLBACK_ORIGIN;
   if (override) {
     return override.replace(/\/$/, "");
@@ -58,11 +65,6 @@ function getGoogleOrigin(req: Request): string {
   // Use APP_URL if set (e.g. https://cstlogistic.co.id)
   if (process.env.APP_URL) {
     return process.env.APP_URL.replace(/\/$/, "");
-  }
-  // In Replit dev (NOT deployed), use the stable dev domain
-  // REPLIT_DEPLOYMENT=1 is set in deployed environments, so skip dev domain there
-  if (process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
   return getOrigin(req);
 }
