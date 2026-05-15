@@ -92,6 +92,7 @@ export const accountingJournalsTable = pgTable("accounting_journals", {
 
 export const accountingTaxesTable = pgTable("accounting_taxes", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id"),
   name: text("name").notNull(),
   rate: numeric("rate", { precision: 6, scale: 3 }).notNull(),
   kind: taxKindEnum("kind").notNull(),

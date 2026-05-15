@@ -83,6 +83,7 @@ router.get("/accounts", async (req, res) => {
 });
 
 router.post("/accounts", async (req, res) => {
+  const companyId = req.body?.companyId ? Number(req.body.companyId) : getCompanyId(req);
   const { code, name, type, parentId, isActive } = req.body ?? {};
   if (!code || !name || !type) return res.status(400).json({ message: "code, name, type required" });
   const validTypes = ["asset", "liability", "equity", "revenue", "expense"];
@@ -90,7 +91,7 @@ router.post("/accounts", async (req, res) => {
   try {
     const [created] = await db
       .insert(chartOfAccountsTable)
-      .values({ code, name, type, parentId: parentId ?? null, isActive: isActive ?? true })
+      .values({ code, name, type, parentId: parentId ?? null, isActive: isActive ?? true, companyId })
       .returning();
     return res.status(201).json(serializeAccount(created!));
   } catch (err: unknown) {
@@ -179,12 +180,18 @@ router.patch("/journals/:id", async (req, res) => {
 });
 
 // ============ Taxes ============
-router.get("/taxes", async (_req, res) => {
-  const rows = await db.select().from(accountingTaxesTable).orderBy(accountingTaxesTable.id);
+router.get("/taxes", async (req, res) => {
+  const companyId = getCompanyId(req);
+  const rows = await db
+    .select()
+    .from(accountingTaxesTable)
+    .where(or(isNull(accountingTaxesTable.companyId), eq(accountingTaxesTable.companyId, companyId)))
+    .orderBy(accountingTaxesTable.id);
   return res.json(rows.map(serializeTax));
 });
 
 router.post("/taxes", async (req, res) => {
+  const companyId = getCompanyId(req);
   const { name, rate, kind, accountId, isActive } = req.body ?? {};
   if (!name || rate === undefined || !kind || !accountId)
     return res.status(400).json({ message: "name, rate, kind, accountId required" });
@@ -192,7 +199,7 @@ router.post("/taxes", async (req, res) => {
     return res.status(400).json({ message: "kind must be 'sale', 'purchase', or 'withholding'" });
   const [created] = await db
     .insert(accountingTaxesTable)
-    .values({ name, rate: String(rate), kind, accountId: Number(accountId), isActive: isActive ?? true })
+    .values({ name, rate: String(rate), kind, accountId: Number(accountId), isActive: isActive ?? true, companyId })
     .returning();
   return res.status(201).json(serializeTax(created!));
 });

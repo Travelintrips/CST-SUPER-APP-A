@@ -150,7 +150,7 @@ export default function AccountsPage() {
       toast({ title: t.common.error, variant: "destructive" }); return;
     }
     try {
-      const payload = { ...form, parentId: form.parentId ?? undefined };
+      const payload = { ...form, parentId: form.parentId ?? undefined, companyId };
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: payload });
         toast({ title: t.common.success });
