@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin, ImageIcon, Loader2, X } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin, ImageIcon, Loader2, X, Settings } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -133,6 +133,44 @@ export default function PosKasirAdminPage() {
   const [editingStock, setEditingStock] = useState<StockItem | null>(null);
   const [stockForm, setStockForm] = useState({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" });
 
+  // Settings / Logo
+  const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoFileRef = useRef<HTMLInputElement>(null);
+
+  const loadSettings = useCallback(async () => {
+    const res = await fetch("/api/pos-kasir/settings");
+    if (res.ok) {
+      const s = await res.json() as Record<string, string>;
+      if (s.logoUrl) setLogoUrl(s.logoUrl);
+    }
+  }, []);
+
+  const uploadLogo = async (file: File) => {
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("type", "image");
+      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) { toast({ title: "Gagal upload logo", variant: "destructive" }); return; }
+      const data = await res.json() as { objectPath?: string; url?: string };
+      const url = data.objectPath ?? data.url ?? "";
+      const resolvedUrl = url.startsWith("/objects/") ? `/api/storage${url}` : url;
+      const saveRes = await fetch("/api/pos-kasir/admin/settings", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logoUrl: resolvedUrl }),
+      });
+      if (saveRes.ok) {
+        setLogoUrl(resolvedUrl);
+        toast({ title: "Logo berhasil diperbarui" });
+      } else {
+        toast({ title: "Gagal menyimpan logo", variant: "destructive" });
+      }
+    } finally { setLogoUploading(false); }
+  };
+
   const loadBranches = useCallback(async () => {
     const res = await fetch("/api/pos-kasir/admin/branches", { credentials: "include" });
     if (res.ok) setBranches(await res.json() as Branch[]);
@@ -170,12 +208,13 @@ export default function PosKasirAdminPage() {
   }, []);
 
   useEffect(() => {
+    loadSettings();
     loadBranches();
     loadCashiers();
     loadReport();
     loadProducts();
     loadStocks();
-  }, [loadBranches, loadCashiers, loadReport, loadProducts, loadStocks]);
+  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadStocks]);
 
   const approveCashier = async (id: number, status: "approved" | "rejected") => {
     const res = await fetch(`/api/pos-kasir/admin/cashiers/${id}`, {
@@ -303,7 +342,7 @@ export default function PosKasirAdminPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-8 h-8 rounded-full object-cover bg-orange-500" />
+              <img src={logoUrl} alt="Thai Tea CST" className="w-8 h-8 rounded-full object-cover bg-orange-500" />
               Thai Tea CST — Admin Kasir
             </h1>
             <p className="text-sm text-muted-foreground mt-1">Manajemen cabang, kasir, menu, stok, dan laporan penjualan</p>
@@ -316,7 +355,7 @@ export default function PosKasirAdminPage() {
         </div>
 
         <Tabs defaultValue="branches">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="branches" className="flex items-center gap-1.5">
               <MapPin className="h-4 w-4" /> Cabang
             </TabsTrigger>
@@ -331,6 +370,9 @@ export default function PosKasirAdminPage() {
             </TabsTrigger>
             <TabsTrigger value="stock" className="flex items-center gap-1.5">
               <Package className="h-4 w-4" /> Stok
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-1.5">
+              <Settings className="h-4 w-4" /> Pengaturan
             </TabsTrigger>
           </TabsList>
 
@@ -727,6 +769,46 @@ export default function PosKasirAdminPage() {
                     })}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── Settings Tab ── */}
+          <TabsContent value="settings">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Pengaturan Tampilan Kasir</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-start gap-6">
+                  <div className="flex flex-col items-center gap-3">
+                    <p className="text-sm font-medium text-gray-700">Logo Saat Ini</p>
+                    <div className="w-28 h-28 rounded-2xl overflow-hidden border-2 border-gray-200 bg-orange-50 flex items-center justify-center">
+                      <img src={logoUrl} alt="Logo Thai Tea CST" className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).src = "/thai-tea-cst-logo.jpeg"; }} />
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-3 pt-6">
+                    <p className="text-sm text-muted-foreground">
+                      Upload gambar baru untuk mengganti logo Thai Tea CST. Logo ini akan tampil di halaman kasir, struk, dan header admin.
+                    </p>
+                    <p className="text-xs text-muted-foreground">Format: JPG, PNG, WEBP. Ukuran disarankan: 200×200 px.</p>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        ref={logoFileRef} type="file" accept="image/*" className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = ""; }}
+                      />
+                      <Button
+                        onClick={() => logoFileRef.current?.click()}
+                        disabled={logoUploading}
+                        className="flex items-center gap-2"
+                      >
+                        {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                        {logoUploading ? "Mengupload..." : "Ganti Logo"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

@@ -4,7 +4,7 @@ import { db } from "@workspace/db";
 import {
   posCashiersTable, posProductsTable, posOrdersTable,
   posOrderItemsTable, posStockItemsTable, posStockAdjustmentsTable,
-  posBranchesTable,
+  posBranchesTable, posSettingsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
@@ -556,6 +556,31 @@ router.delete("/admin/stock/:id", async (req, res) => {
   const id = Number(req.params.id);
   await db.delete(posStockItemsTable).where(eq(posStockItemsTable.id, id));
   return res.json({ message: "Deleted" });
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+// GET /api/pos-kasir/settings  — public (so kasir page can load logo without auth)
+router.get("/settings", async (_req, res) => {
+  const rows = await db.select().from(posSettingsTable);
+  const settings: Record<string, string> = {};
+  for (const r of rows) settings[r.key] = r.value;
+  return res.json(settings);
+});
+
+// PATCH /api/pos-kasir/admin/settings  — admin only
+router.patch("/admin/settings", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const updates = req.body as Record<string, string>;
+  for (const [key, value] of Object.entries(updates)) {
+    await db.insert(posSettingsTable)
+      .values({ key, value, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: posSettingsTable.key, set: { value, updatedAt: new Date() } });
+  }
+  const rows = await db.select().from(posSettingsTable);
+  const settings: Record<string, string> = {};
+  for (const r of rows) settings[r.key] = r.value;
+  return res.json(settings);
 });
 
 export default router;

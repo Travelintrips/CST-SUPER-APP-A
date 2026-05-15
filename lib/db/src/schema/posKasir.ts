@@ -82,3 +82,9 @@ export const posStockAdjustmentsTable = pgTable("pos_stock_adjustments", {
   reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const posSettingsTable = pgTable("pos_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
