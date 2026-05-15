@@ -3,6 +3,27 @@ import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 /**
+ * Authenticated internal BizPortal user with one of the specified roles.
+ *
+ * Same session-only restriction as requireAdmin().
+ */
+export async function requireRole(req: Request, res: Response, roles: string[]): Promise<boolean> {
+  if (!req.isAuthenticated() || !req.isInternalSession) {
+    res.status(401).json({ message: "Unauthorized" });
+    return false;
+  }
+
+  const userId = (req.user as { id: string }).id;
+  const rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const u = rows[0];
+  if (!u || !roles.includes(u.role ?? "")) {
+    res.status(403).json({ message: "Forbidden: insufficient role" });
+    return false;
+  }
+  return true;
+}
+
+/**
  * Any authenticated **internal** BizPortal staff user.
  *
  * "Internal" means the request was authenticated via a BizPortal session

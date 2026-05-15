@@ -3,12 +3,12 @@ import { db, transactionsTable } from "@workspace/db";
 import { sql, eq } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { postPosTransaction } from "../lib/accounting.js";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireRole } from "../lib/requireAdmin.js";
 
 const router = Router();
 
 router.use(async (req, res, next) => {
-  if (!(await requireClerkUser(req, res))) return;
+  if (!(await requireRole(req, res, ["admin", "pos"]))) return;
   next();
 });
 const objectStorageService = new ObjectStorageService();
