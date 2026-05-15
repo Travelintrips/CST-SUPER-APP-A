@@ -128,6 +128,12 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
+  // Tambah branch_id ke pos_stock_items (stok per-cabang)
+  await db.execute(sql`
+    ALTER TABLE pos_stock_items
+      ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES pos_branches(id) ON DELETE SET NULL
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pos_stock_adjustments (
       id SERIAL PRIMARY KEY,

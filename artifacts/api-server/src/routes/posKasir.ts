@@ -101,6 +101,20 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
   return { id: cashier.id, name: cashier.name, email: cashier.email, branchId: cashier.branchId };
 }
 
+// Helper: ubah snake_case row dari raw SQL jadi camelCase untuk response
+function camelizeStockRow(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name,
+    unit: row.unit,
+    currentStock: row.current_stock,
+    minStock: row.min_stock,
+    note: row.note,
+    branchId: row.branch_id,
+    updatedAt: row.updated_at,
+  };
+}
+
 function orderNumber(): string {
   const now = new Date();
   const y = now.getFullYear();
@@ -339,9 +353,10 @@ router.patch("/orders/:id/pay", async (req, res) => {
 
   const items = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
 
-  // ── Auto-deduct stok bahan berdasarkan mapping produk → stock_item ────────
-  // Untuk setiap item order, ambil produk lengkap (dengan stock_item_id).
-  // Jika produk punya stock_item_id, kurangi stok sebesar qty × stock_usage_per_unit.
+  // ── Auto-deduct stok bahan berbasis cabang kasir ──────────────────────────
+  // Strategi: ambil stockItemId dari produk → cari nama bahan → cari stok dengan
+  // nama yang sama di cabang kasir → kurangi stok cabang tersebut.
+  // Fallback: jika tidak ada stok di cabang kasir, gunakan stockItemId langsung.
   const productIds = items.map((i) => i.productId);
   if (productIds.length > 0) {
     const products = await db.select().from(posProductsTable).where(inArray(posProductsTable.id, productIds));
@@ -355,12 +370,27 @@ router.patch("/orders/:id/pay", async (req, res) => {
       if (!stockItemId) continue;
 
       const totalUsage = item.qty * usagePerUnit;
-      await db.update(posStockItemsTable)
-        .set({ currentStock: sql`current_stock - ${totalUsage}`, updatedAt: new Date() })
-        .where(eq(posStockItemsTable.id, stockItemId));
 
+      // Cari stok dengan nama sama di cabang kasir (per-branch isolation)
+      let targetStockId = stockItemId;
+      if (cashier.branchId) {
+        const [refStock] = (await db.execute(sql`SELECT name FROM pos_stock_items WHERE id = ${stockItemId}`)).rows as Array<{ name: string }>;
+        if (refStock?.name) {
+          const [branchStock] = (await db.execute(sql`
+            SELECT id FROM pos_stock_items
+            WHERE LOWER(name) = LOWER(${refStock.name}) AND branch_id = ${cashier.branchId}
+            LIMIT 1
+          `)).rows as Array<{ id: number }>;
+          if (branchStock) targetStockId = branchStock.id;
+        }
+      }
+
+      await db.execute(sql`
+        UPDATE pos_stock_items SET current_stock = current_stock - ${totalUsage}, updated_at = NOW()
+        WHERE id = ${targetStockId}
+      `);
       await db.insert(posStockAdjustmentsTable).values({
-        stockItemId,
+        stockItemId: targetStockId,
         cashierId: cashier.id,
         delta: String(-totalUsage),
         reason: `auto:order:${order.orderNumber}:${item.productName}×${item.qty}`,
@@ -415,33 +445,39 @@ router.get("/orders/:id", async (req, res) => {
 // ── Stock ─────────────────────────────────────────────────────────────────────
 
 // GET /api/pos-kasir/stock
+// Kasir hanya melihat stok cabangnya sendiri (filter branch_id via raw SQL)
 router.get("/stock", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
-  const rows = await db.select().from(posStockItemsTable).orderBy(posStockItemsTable.name);
-  return res.json(rows);
+  const result = cashier.branchId
+    ? await db.execute(sql`SELECT * FROM pos_stock_items WHERE branch_id = ${cashier.branchId} ORDER BY name`)
+    : await db.execute(sql`SELECT * FROM pos_stock_items ORDER BY name`);
+  return res.json(result.rows.map(camelizeStockRow));
 });
 
 // POST /api/pos-kasir/stock/adjust
+// Kasir hanya bisa adjust stok cabangnya sendiri
 router.post("/stock/adjust", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
   const { stockItemId, delta, reason } = req.body ?? {};
   if (!stockItemId || delta == null) return res.status(400).json({ message: "stockItemId dan delta wajib" });
 
-  await db.update(posStockItemsTable)
-    .set({ currentStock: sql`current_stock + ${Number(delta)}`, updatedAt: new Date() })
-    .where(eq(posStockItemsTable.id, Number(stockItemId)));
+  const [row] = (await db.execute(sql`SELECT * FROM pos_stock_items WHERE id = ${Number(stockItemId)}`)).rows;
+  if (!row) return res.status(404).json({ message: "Item stok tidak ditemukan" });
+  const itemRow = row as Record<string, unknown>;
+  if (cashier.branchId && itemRow.branch_id != null && Number(itemRow.branch_id) !== cashier.branchId) {
+    return res.status(403).json({ message: "Tidak dapat mengubah stok cabang lain" });
+  }
 
+  await db.execute(sql`UPDATE pos_stock_items SET current_stock = current_stock + ${Number(delta)}, updated_at = NOW() WHERE id = ${Number(stockItemId)}`);
   await db.insert(posStockAdjustmentsTable).values({
-    stockItemId: Number(stockItemId),
-    cashierId: cashier.id,
-    delta: String(delta),
-    reason: reason ?? null,
+    stockItemId: Number(stockItemId), cashierId: cashier.id,
+    delta: String(delta), reason: reason ?? null,
   });
 
-  const [updated] = await db.select().from(posStockItemsTable).where(eq(posStockItemsTable.id, Number(stockItemId)));
-  return res.json(updated);
+  const [updated] = (await db.execute(sql`SELECT * FROM pos_stock_items WHERE id = ${Number(stockItemId)}`)).rows;
+  return res.json(camelizeStockRow(updated as Record<string, unknown>));
 });
 
 // ── Admin — Branches ──────────────────────────────────────────────────────────
@@ -594,37 +630,51 @@ router.get("/admin/report/daily", async (req, res) => {
 
 // ── Admin — Stock ─────────────────────────────────────────────────────────────
 
-// GET /api/pos-kasir/admin/stock
+// GET /api/pos-kasir/admin/stock?branchId=X
 router.get("/admin/stock", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rows = await db.select().from(posStockItemsTable).orderBy(posStockItemsTable.name);
-  return res.json(rows);
+  const { branchId } = req.query;
+  const result = branchId
+    ? await db.execute(sql`SELECT s.*, b.name as branch_name FROM pos_stock_items s LEFT JOIN pos_branches b ON s.branch_id = b.id WHERE s.branch_id = ${Number(branchId)} ORDER BY s.name`)
+    : await db.execute(sql`SELECT s.*, b.name as branch_name FROM pos_stock_items s LEFT JOIN pos_branches b ON s.branch_id = b.id ORDER BY b.name NULLS LAST, s.name`);
+  return res.json(result.rows.map((r) => {
+    const row = r as Record<string, unknown>;
+    return { ...camelizeStockRow(row), branchName: row.branch_name };
+  }));
 });
 
 // POST /api/pos-kasir/admin/stock
 router.post("/admin/stock", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const { name, unit, currentStock, minStock, note } = req.body ?? {};
+  const { name, unit, currentStock, minStock, note, branchId } = req.body ?? {};
   if (!name) return res.status(400).json({ message: "name wajib" });
-  const [created] = await db.insert(posStockItemsTable).values({
-    name: String(name), unit: unit ?? "pcs",
-    currentStock: String(currentStock ?? 0),
-    minStock: String(minStock ?? 0),
-    note: note ?? null,
-  }).returning();
-  return res.status(201).json(created);
+  const result = await db.execute(sql`
+    INSERT INTO pos_stock_items (name, unit, current_stock, min_stock, note, branch_id)
+    VALUES (${String(name)}, ${unit ?? "pcs"}, ${String(currentStock ?? 0)}, ${String(minStock ?? 0)}, ${note ?? null}, ${branchId ? Number(branchId) : null})
+    RETURNING *
+  `);
+  return res.status(201).json(camelizeStockRow(result.rows[0] as Record<string, unknown>));
 });
 
 // PATCH /api/pos-kasir/admin/stock/:id
 router.patch("/admin/stock/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const k of ["name", "unit", "currentStock", "minStock", "note"]) {
-    if (req.body?.[k] !== undefined) patch[k] = req.body[k];
+  const body = req.body ?? {};
+  const setParts: string[] = ["updated_at = NOW()"];
+  const vals: unknown[] = [];
+  let idx = 1;
+  const fieldMap: Record<string, string> = { name: "name", unit: "unit", currentStock: "current_stock", minStock: "min_stock", note: "note", branchId: "branch_id" };
+  for (const [jsKey, dbCol] of Object.entries(fieldMap)) {
+    if (body[jsKey] !== undefined) {
+      const v = jsKey === "branchId" ? (body[jsKey] === null || body[jsKey] === "" ? null : Number(body[jsKey])) : body[jsKey];
+      setParts.push(`${dbCol} = $${idx++}`);
+      vals.push(v);
+    }
   }
-  const [updated] = await db.update(posStockItemsTable).set(patch).where(eq(posStockItemsTable.id, id)).returning();
-  return res.json(updated);
+  vals.push(id);
+  const result = await db.execute(sql.raw(`UPDATE pos_stock_items SET ${setParts.join(", ")} WHERE id = $${idx} RETURNING *`, vals));
+  return res.json(camelizeStockRow(result.rows[0] as Record<string, unknown>));
 });
 
 // DELETE /api/pos-kasir/admin/stock/:id
