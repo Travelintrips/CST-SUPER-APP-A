@@ -9,24 +9,23 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
 
-// Per-IP rate limit for presigned URL generation: 20 per IP per hour.
-// Prevents non-staff authenticated users (Supabase bearer) from obtaining
-// large numbers of signed upload URLs even if they somehow bypass the
-// requireClerkUser check in a future refactor.
+// Per-user rate limit for presigned URL generation: 50 per user per hour.
+// Keyed by authenticated user ID (Clerk session) so it cannot be bypassed by
+// rotating IPs or forging x-forwarded-for headers.
 interface RateEntry { count: number; resetAt: number }
-const UPLOAD_URL_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const UPLOAD_URL_IP_LIMIT = 20;
-const uploadUrlIpRateMap = new Map<string, RateEntry>();
+const UPLOAD_URL_USER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_URL_USER_LIMIT = 50;
+const uploadUrlUserRateMap = new Map<string, RateEntry>();
 
-function checkUploadUrlIpLimit(ip: string): boolean {
+function checkUploadUrlUserLimit(userId: string): boolean {
   const now = Date.now();
-  let entry = uploadUrlIpRateMap.get(ip);
+  let entry = uploadUrlUserRateMap.get(userId);
   if (!entry || now > entry.resetAt) {
-    entry = { count: 0, resetAt: now + UPLOAD_URL_IP_WINDOW_MS };
+    entry = { count: 0, resetAt: now + UPLOAD_URL_USER_WINDOW_MS };
   }
-  if (entry.count >= UPLOAD_URL_IP_LIMIT) return false;
+  if (entry.count >= UPLOAD_URL_USER_LIMIT) return false;
   entry.count += 1;
-  uploadUrlIpRateMap.set(ip, entry);
+  uploadUrlUserRateMap.set(userId, entry);
   return true;
 }
 
@@ -96,8 +95,9 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
   // obtaining signed upload URLs into private storage.
   if (!await requireClerkUser(req, res)) return;
 
-  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
-  if (!checkUploadUrlIpLimit(ip)) {
+  // Rate-limit by authenticated user ID: cannot be spoofed via headers.
+  const userId = (req.user as { id: string }).id;
+  if (!checkUploadUrlUserLimit(userId)) {
     res.status(429).json({ error: "Terlalu banyak permintaan upload. Coba lagi dalam 1 jam." });
     return;
   }

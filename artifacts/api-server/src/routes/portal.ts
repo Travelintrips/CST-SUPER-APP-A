@@ -611,45 +611,70 @@ router.post("/admin/upload", requirePortalAdmin, _multerUpload.single("file"), a
   }
 });
 
-// Per-IP rate limit for portal presigned URL generation: 10 per IP per hour.
-// Portal customers are self-registered (public sign-up), so this prevents a
-// single customer IP from flooding the bucket with unlimited uploads.
+// Per-customer rate limit for portal order uploads: 20 per customer per hour.
+// Portal customers are self-registered (public sign-up); keying by customer ID
+// (not IP) prevents bypass via proxy / shared NAT.
 interface _RateEntry { count: number; resetAt: number }
-const _PORTAL_UPLOAD_URL_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const _PORTAL_UPLOAD_URL_LIMIT = 10;
-const _portalUploadUrlIpMap = new Map<string, _RateEntry>();
+const _PORTAL_UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const _PORTAL_UPLOAD_LIMIT = 20;
+const _portalUploadCustomerMap = new Map<number, _RateEntry>();
 
-function _checkPortalUploadUrlLimit(ip: string): boolean {
+function _checkPortalUploadLimit(customerId: number): boolean {
   const now = Date.now();
-  let entry = _portalUploadUrlIpMap.get(ip);
+  let entry = _portalUploadCustomerMap.get(customerId);
   if (!entry || now > entry.resetAt) {
-    entry = { count: 0, resetAt: now + _PORTAL_UPLOAD_URL_WINDOW_MS };
+    entry = { count: 0, resetAt: now + _PORTAL_UPLOAD_WINDOW_MS };
   }
-  if (entry.count >= _PORTAL_UPLOAD_URL_LIMIT) return false;
+  if (entry.count >= _PORTAL_UPLOAD_LIMIT) return false;
   entry.count += 1;
-  _portalUploadUrlIpMap.set(ip, entry);
+  _portalUploadCustomerMap.set(customerId, entry);
   return true;
 }
 
-// POST /api/portal/order-upload-url  — get presigned URL for order document uploads (customer-attachments)
-router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
-  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
-  if (!_checkPortalUploadUrlLimit(ip)) {
-    return res.status(429).json({ message: "Terlalu banyak permintaan upload. Coba lagi dalam 1 jam." });
+const _portalUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB hard cap enforced by multer/server
+});
+
+const _PORTAL_ALLOWED_MIME = new Set([
+  "application/pdf",
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+// POST /api/portal/order-upload
+// Server-side proxy upload: file goes through the API server so multer enforces
+// the 20 MB size limit before any byte reaches object storage.  This replaces
+// the old presigned-URL flow (/order-upload-url) which issued unconstrained GCS
+// PUT URLs that bypassed all server-side size limits.
+router.post("/order-upload", requirePortalAuth, _portalUpload.single("file"), async (req, res) => {
+  const portalReq = req as unknown as PortalAuthReq;
+  const customerId = portalReq.portalCustomer.id;
+
+  if (!_checkPortalUploadLimit(customerId)) {
+    return res.status(429).json({ message: "Terlalu banyak upload. Coba lagi dalam 1 jam." });
   }
-  const { contentType } = req.body ?? {};
-  if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
-  const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-  if (!allowed.includes(contentType) && !contentType.startsWith("image/"))
+
+  if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
+
+  const mime = req.file.mimetype;
+  if (!_PORTAL_ALLOWED_MIME.has(mime) && !mime.startsWith("image/")) {
     return res.status(415).json({ message: "Tipe file tidak diizinkan" });
-  try {
-    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
-    const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
-    return res.json({ uploadURL, objectPath });
-  } catch (_err) {
-    return res.status(500).json({ message: "Gagal membuat URL upload" });
   }
+
+  try {
+    const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
+    return res.json({ objectPath });
+  } catch (_err) {
+    return res.status(500).json({ message: "Gagal mengunggah file" });
+  }
+});
+
+// POST /api/portal/order-upload-url  — DEPRECATED, kept for backward compat.
+// Returns 410 Gone so old clients fail visibly rather than silently.
+router.post("/order-upload-url", requirePortalAuth, (_req, res) => {
+  return res.status(410).json({ message: "Endpoint ini sudah tidak aktif. Gunakan /api/portal/order-upload (multipart/form-data)." });
 });
 
 // Shared helper: find or create CRM customer by email
