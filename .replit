@@ -28,6 +28,7 @@ FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com,skylogistic00@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
+CASHIER_TOKEN_SECRET = "0b274c39aa736c0a48def94548cc9ed5260e58eed2b9cf37c0c57ad7dcee3558"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
