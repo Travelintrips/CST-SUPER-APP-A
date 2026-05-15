@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin, ImageIcon, Loader2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -63,6 +63,14 @@ interface Product {
   category: string;
   isActive: boolean;
   sortOrder: number;
+  imageUrl?: string | null;
+}
+
+function resolveStoredUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  if (url.startsWith("/api/")) return url;
+  return url;
 }
 
 interface StockItem {
@@ -115,7 +123,9 @@ export default function PosKasirAdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productDialog, setProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0 });
+  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "" });
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageFileRef = useRef<HTMLInputElement>(null);
 
   // Stock
   const [stocks, setStocks] = useState<StockItem[]>([]);
@@ -222,6 +232,20 @@ export default function PosKasirAdminPage() {
   };
 
   // ── Product CRUD ─────────────────────────────────────────────────────────────
+
+  const uploadProductImage = async (file: File) => {
+    setImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("type", "image");
+      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) { toast({ title: "Gagal upload gambar", variant: "destructive" }); return; }
+      const data = await res.json() as { objectPath?: string; url?: string };
+      const url = data.objectPath ?? data.url ?? "";
+      setProductForm((f) => ({ ...f, imageUrl: url }));
+    } finally { setImageUploading(false); }
+  };
 
   const saveProduct = async () => {
     const url = editingProduct ? `/api/pos-kasir/products/${editingProduct.id}` : "/api/pos-kasir/products";
@@ -572,7 +596,7 @@ export default function PosKasirAdminPage() {
                 <CardTitle className="text-base">Menu Thai Tea CST</CardTitle>
                 <Button size="sm" onClick={() => {
                   setEditingProduct(null);
-                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0 });
+                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "" });
                   setProductDialog(true);
                 }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Menu
@@ -582,6 +606,7 @@ export default function PosKasirAdminPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">Gambar</TableHead>
                       <TableHead>Nama</TableHead>
                       <TableHead>Kategori</TableHead>
                       <TableHead>Harga</TableHead>
@@ -592,6 +617,15 @@ export default function PosKasirAdminPage() {
                   <TableBody>
                     {products.map((p) => (
                       <TableRow key={p.id}>
+                        <TableCell>
+                          {resolveStoredUrl(p.imageUrl) ? (
+                            <img src={resolveStoredUrl(p.imageUrl)!} alt={p.name} className="w-10 h-10 object-cover rounded-md border" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-md border bg-muted flex items-center justify-center">
+                              <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium text-sm">{p.name}</p>
@@ -611,7 +645,7 @@ export default function PosKasirAdminPage() {
                           <div className="flex justify-end gap-1">
                             <Button size="sm" variant="ghost" onClick={() => {
                               setEditingProduct(p);
-                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder });
+                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "" });
                               setProductDialog(true);
                             }}>
                               <Pencil className="h-3.5 w-3.5" />
@@ -768,6 +802,61 @@ export default function PosKasirAdminPage() {
                 </Select>
               </div>
             </div>
+            <div>
+              <Label className="text-xs">Gambar Produk</Label>
+              <input
+                ref={imageFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadProductImage(f);
+                  e.target.value = "";
+                }}
+              />
+              {resolveStoredUrl(productForm.imageUrl) ? (
+                <div className="relative w-24 h-24 mt-1">
+                  <img
+                    src={resolveStoredUrl(productForm.imageUrl)!}
+                    alt="preview"
+                    className="w-24 h-24 object-cover rounded-lg border"
+                  />
+                  <button
+                    type="button"
+                    className="absolute -top-1.5 -right-1.5 bg-white rounded-full shadow border p-0.5 hover:bg-red-50"
+                    onClick={() => setProductForm((f) => ({ ...f, imageUrl: "" }))}
+                  >
+                    <X className="h-3.5 w-3.5 text-red-500" />
+                  </button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-1 w-full"
+                  disabled={imageUploading}
+                  onClick={() => imageFileRef.current?.click()}
+                >
+                  {imageUploading
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Mengunggah…</>
+                    : <><ImageIcon className="h-3.5 w-3.5 mr-1.5" /> Pilih Gambar</>}
+                </Button>
+              )}
+              {resolveStoredUrl(productForm.imageUrl) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 text-xs"
+                  disabled={imageUploading}
+                  onClick={() => imageFileRef.current?.click()}
+                >
+                  {imageUploading ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Mengunggah…</> : "Ganti Gambar"}
+                </Button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Urutan</Label>
@@ -786,7 +875,7 @@ export default function PosKasirAdminPage() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setProductDialog(false)}>Batal</Button>
-              <Button onClick={saveProduct}>Simpan</Button>
+              <Button onClick={saveProduct} disabled={imageUploading}>Simpan</Button>
             </div>
           </div>
         </DialogContent>
