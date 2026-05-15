@@ -1363,11 +1363,31 @@ aiAgentRouter.put("/settings", async (req: Request, res: Response) => {
 });
 
 // ── POST /api/ai-agent/upload ─────────────────────────────────────────────────
-// Public: accepts image or PDF, runs OCR/vision, returns extracted text for chat context
+// Requires a valid AI chat sessionToken (issued by /api/ai-agent/stream).
+// Without this gate any unauthenticated caller could drain paid OpenAI quota by
+// submitting large files in a loop. The sessionToken is the same public credential
+// already used for chat history polling — it is not a secret, but it proves the
+// caller has previously interacted with the chat widget and obtained a real session.
 aiAgentRouter.post(
   "/upload",
   uploadMemory.single("file"),
   async (req: Request, res: Response): Promise<void> => {
+    // Validate session token before touching the file or calling OpenAI.
+    const rawToken =
+      typeof req.body?.sessionToken === "string" ? req.body.sessionToken.trim() : "";
+    if (!rawToken) {
+      res.status(401).json({ message: "sessionToken diperlukan untuk mengunggah file." });
+      return;
+    }
+    const [session] = await db
+      .select({ id: aiChatSessionsTable.id })
+      .from(aiChatSessionsTable)
+      .where(eq(aiChatSessionsTable.sessionToken, rawToken));
+    if (!session) {
+      res.status(401).json({ message: "Session tidak valid atau sudah kadaluarsa." });
+      return;
+    }
+
     const file = req.file;
     if (!file) {
       res.status(400).json({ message: "Tidak ada file yang diupload." });

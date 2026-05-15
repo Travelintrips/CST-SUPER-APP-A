@@ -1238,6 +1238,7 @@ export function ChatWidget() {
       try {
         const fd = new FormData();
         fd.append("file", file);
+        if (sessionToken) fd.append("sessionToken", sessionToken);
         const upRes = await fetch("/api/ai-agent/upload", { method: "POST", body: fd });
         if (!upRes.ok) throw new Error(`HTTP ${upRes.status}`);
         const data = (await upRes.json()) as {
