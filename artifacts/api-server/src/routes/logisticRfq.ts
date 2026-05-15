@@ -383,26 +383,33 @@ function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName
   );
 }
 
-const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: string) => ({
-  id: q.id,
-  rfqId: q.rfqId,
-  orderId: q.orderId,
-  vendorId: q.vendorId,
-  vendorName,
-  vendorPrice: Number(q.vendorPrice),
-  estimatedPickup: q.estimatedPickup ?? null,
-  estimatedDelivery: q.estimatedDelivery ?? null,
-  estimatedDays: q.estimatedDays ?? null,
-  vendorNotes: q.vendorNotes ?? null,
-  markupType: q.markupType,
-  markupPercentage: Number(q.markupPercentage),
-  fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
-  sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
-  quoteStatus: q.quoteStatus,
-  replySource: q.replySource,
-  replyTimestamp: q.replyTimestamp?.toISOString() ?? null,
-  createdAt: q.createdAt.toISOString(),
-});
+const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: string) => {
+  const vp = Number(q.vendorPrice);
+  const mt = q.markupType;
+  const mp = Number(q.markupPercentage ?? 0);
+  const fp = q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null;
+  const sp = q.sellingPrice != null ? Number(q.sellingPrice) : calcSellingPrice(vp, mt, mp, fp);
+  return {
+    id: q.id,
+    rfqId: q.rfqId,
+    orderId: q.orderId,
+    vendorId: q.vendorId,
+    vendorName,
+    vendorPrice: vp,
+    estimatedPickup: q.estimatedPickup ?? null,
+    estimatedDelivery: q.estimatedDelivery ?? null,
+    estimatedDays: q.estimatedDays ?? null,
+    vendorNotes: q.vendorNotes ?? null,
+    markupType: mt,
+    markupPercentage: mp,
+    fixedSellingPrice: fp,
+    sellingPrice: sp,
+    quoteStatus: q.quoteStatus,
+    replySource: q.replySource,
+    replyTimestamp: q.replyTimestamp?.toISOString() ?? null,
+    createdAt: q.createdAt.toISOString(),
+  };
+};
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
 logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
@@ -1110,7 +1117,9 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
       markupType: q.markupType,
       markupPercentage: Number(q.markupPercentage),
       fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
-      sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
+      sellingPrice: q.sellingPrice != null
+        ? Number(q.sellingPrice)
+        : calcSellingPrice(Number(q.vendorPrice), q.markupType, Number(q.markupPercentage ?? 0), q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null),
       quoteStatus: q.quoteStatus,
       replySource: q.replySource,
     })),
