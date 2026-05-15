@@ -277,12 +277,10 @@ export default function PosKasirAdminPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("type", "image");
-      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
+      const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
       if (!res.ok) { toast({ title: "Gagal upload gambar", variant: "destructive" }); return; }
-      const data = await res.json() as { objectPath?: string; url?: string };
-      const url = data.objectPath ?? data.url ?? "";
-      setProductForm((f) => ({ ...f, imageUrl: url }));
+      const data = await res.json() as { url?: string };
+      setProductForm((f) => ({ ...f, imageUrl: data.url ?? "" }));
     } finally { setImageUploading(false); }
   };
 
