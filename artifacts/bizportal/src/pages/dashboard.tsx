@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2 } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
@@ -264,14 +264,24 @@ export default function DashboardPage() {
               unitPrice: o.grandTotal,
             },
           ],
-        },
+          logisticOrderId: o.id,
+        } as Parameters<typeof createSalesDoc.mutate>[0]["data"],
       },
       {
         onSuccess: (doc) => {
           toast({ title: t.common.success, description: doc.docNumber });
           setSoDialog(null);
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
         },
-        onError: () => toast({ title: t.common.error, variant: "destructive" }),
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { message?: string; existingDocNumber?: string } } })?.response?.data;
+          if (msg?.existingDocNumber) {
+            toast({ title: "SO sudah ada", description: `Sales Order ${msg.existingDocNumber} sudah pernah dibuat untuk order ini.`, variant: "destructive" });
+            setSoDialog(null);
+          } else {
+            toast({ title: t.common.error, variant: "destructive" });
+          }
+        },
       },
     );
   }
@@ -933,10 +943,21 @@ export default function DashboardPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSoDialog(null)}>{t.common.cancel}</Button>
-            <Button onClick={handleCreateSalesOrder} disabled={createSalesDoc.isPending} className="gap-2">
-              <FilePlus className="h-4 w-4" />
-              {createSalesDoc.isPending ? t.common.saving : t.dashboard.createSalesOrder}
-            </Button>
+            {soDialog?.linkedSalesDocId ? (
+              <Button
+                variant="secondary"
+                className="gap-2"
+                onClick={() => { setSoDialog(null); window.location.href = "/sales/orders"; }}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Lihat SO: {soDialog.linkedSalesDocNumber}
+              </Button>
+            ) : (
+              <Button onClick={handleCreateSalesOrder} disabled={createSalesDoc.isPending} className="gap-2">
+                <FilePlus className="h-4 w-4" />
+                {createSalesDoc.isPending ? t.common.saving : t.dashboard.createSalesOrder}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

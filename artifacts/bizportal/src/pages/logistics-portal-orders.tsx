@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 
@@ -204,15 +204,25 @@ export default function LogisticsPortalOrdersPage() {
               unitPrice: o.grandTotal,
             },
           ],
-        },
+          logisticOrderId: o.id,
+        } as Parameters<typeof createSalesDoc.mutate>[0]["data"],
       },
       {
         onSuccess: (doc) => {
           toast({ title: t.common.success, description: doc.docNumber });
           setSoDialog(null);
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
           navigate("/sales/orders");
         },
-        onError: () => toast({ title: t.common.error, variant: "destructive" }),
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { message?: string; existingDocNumber?: string } } })?.response?.data;
+          if (msg?.existingDocNumber) {
+            toast({ title: "SO sudah ada", description: `Sales Order ${msg.existingDocNumber} sudah pernah dibuat untuk order ini.`, variant: "destructive" });
+            setSoDialog(null);
+          } else {
+            toast({ title: t.common.error, variant: "destructive" });
+          }
+        },
       },
     );
   }
@@ -697,14 +707,25 @@ export default function LogisticsPortalOrdersPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSoDialog(null)}>Batal</Button>
-            <Button
-              onClick={handleCreateSalesOrder}
-              disabled={createSalesDoc.isPending}
-              className="gap-2"
-            >
-              <FilePlus className="h-4 w-4" />
-              {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
-            </Button>
+            {soDialog?.linkedSalesDocId ? (
+              <Button
+                variant="secondary"
+                className="gap-2"
+                onClick={() => { setSoDialog(null); navigate("/sales/orders"); }}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Lihat SO: {soDialog.linkedSalesDocNumber}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleCreateSalesOrder}
+                disabled={createSalesDoc.isPending}
+                className="gap-2"
+              >
+                <FilePlus className="h-4 w-4" />
+                {createSalesDoc.isPending ? "Membuat..." : "Buat Sales Order"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

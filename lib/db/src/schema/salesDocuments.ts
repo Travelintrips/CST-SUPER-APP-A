@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
 import { productsTable } from "./products";
+import { logisticOrdersTable } from "./logisticOrders";
 
 export const salesDocKindEnum = pgEnum("sales_doc_kind", ["quote", "order"]);
 export const salesDocStatusEnum = pgEnum("sales_doc_status", [
@@ -63,6 +64,7 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   aiGenerated: boolean("ai_generated").notNull().default(false),
   aiSourceCorrespondenceId: integer("ai_source_correspondence_id"),
   aiSourceWaPhone: text("ai_source_wa_phone"),
+  logisticOrderId: integer("logistic_order_id").references(() => logisticOrdersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

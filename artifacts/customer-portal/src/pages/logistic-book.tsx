@@ -232,7 +232,12 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
   const subtotal = calcSubtotal(item.calculatorType, state);
 
   function handleAdd() {
-    if (subtotal <= 0) {
+    if (item.calculatorType === "trucking") {
+      if (!state.pickupCity || !state.destCity || !state.vehicleType) {
+        toast({ title: "Isi kota asal, kota tujuan, dan tipe kendaraan", variant: "destructive" });
+        return;
+      }
+    } else if (subtotal <= 0) {
       toast({ title: "Isi data kalkulator terlebih dahulu", variant: "destructive" });
       return;
     }
@@ -361,8 +366,11 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
               </Label>
               <Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} />
             </div>
+          <div><Label className="text-xs">Distance (km)</Label><Input type="number" placeholder="0" value={state.distance||""} onChange={e => set("distance", e.target.value)} /></div>
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-0.5">
+            <p className="font-semibold">Harga Akan Dikonfirmasi oleh Vendor</p>
+            <p>Harga trucking akan diberikan setelah vendor menerima dan mengkonfirmasi pesanan Anda.</p>
           </div>
-          <div><Label className="text-xs">Loading Fee (IDR)</Label><Input type="number" placeholder="0" value={state.loadingFee||""} onChange={e => set("loadingFee", e.target.value)} /></div>
         </>}
 
         {ct === "storage" && <>
@@ -407,13 +415,25 @@ function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin,
         </>}
 
         <Separator />
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Subtotal</span>
-          <span className="text-lg font-bold text-accent">{formatCurrency(subtotal)}</span>
-        </div>
-        <Button className="w-full" onClick={handleAdd} disabled={subtotal <= 0}>
-          <Plus className="w-4 h-4 mr-2" /> Add to Order
-        </Button>
+        {item.calculatorType === "trucking" ? (
+          <Button
+            className="w-full"
+            onClick={handleAdd}
+            disabled={!state.pickupCity || !state.destCity || !state.vehicleType}
+          >
+            <Plus className="w-4 h-4 mr-2" /> Add to Order
+          </Button>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">Subtotal</span>
+              <span className="text-lg font-bold text-accent">{formatCurrency(subtotal)}</span>
+            </div>
+            <Button className="w-full" onClick={handleAdd} disabled={subtotal <= 0}>
+              <Plus className="w-4 h-4 mr-2" /> Add to Order
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -908,7 +928,10 @@ export default function BookPage() {
                       </dl>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                      {item.calculatorType === "trucking"
+                        ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">Harga menyusul</span>
+                        : <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                      }
                       <button
                         onClick={() => removeItem(item.cartId)}
                         className="text-destructive hover:text-destructive/80"
@@ -927,23 +950,37 @@ export default function BookPage() {
                 <div key={item.cartId} className="flex justify-between text-sm gap-2">
                   <span className="text-foreground font-medium min-w-0 truncate">{item.serviceName}</span>
                   <span className="font-medium shrink-0">
-                    {item.subtotal > 0 ? formatCurrency(item.subtotal) : <span className="text-amber-600 text-xs">Harga nego</span>}
+                    {item.calculatorType === "trucking"
+                      ? <span className="text-blue-600 text-xs font-semibold">Harga menyusul</span>
+                      : item.subtotal > 0 ? formatCurrency(item.subtotal) : <span className="text-amber-600 text-xs">Harga nego</span>}
                   </span>
                 </div>
               ))}
-              <Separator />
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
-                <span className="font-medium">{formatCurrency(tax)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between">
-                <span className="font-bold text-foreground">Total Estimasi</span>
-                <span className="font-bold text-accent text-lg">{formatCurrency(grandTotal)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground italic">
-                Ini adalah estimasi harga. Penawaran final akan dikonfirmasi oleh tim kami.
-              </p>
+              {grandTotal > 0 ? (
+                <>
+                  <Separator />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
+                    <span className="font-medium">{formatCurrency(tax)}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="font-bold text-foreground">Total Estimasi</span>
+                    <span className="font-bold text-accent text-lg">{formatCurrency(grandTotal)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">
+                    Ini adalah estimasi harga. Penawaran final akan dikonfirmasi oleh tim kami.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Separator />
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-0.5">
+                    <p className="font-semibold">Harga Akan Diberikan oleh Vendor</p>
+                    <p>Setelah pesanan diterima, vendor akan membalas dengan penawaran harga untuk Anda.</p>
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}

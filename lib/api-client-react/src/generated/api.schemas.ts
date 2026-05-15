@@ -2229,6 +2229,8 @@ export interface LogisticOrder {
   approvedVendorName?: string | null;
   finalSellingPrice?: number | null;
   quotationSentAt?: string | null;
+  linkedSalesDocId?: number | null;
+  linkedSalesDocNumber?: string | null;
   createdAt: string;
 }
 
