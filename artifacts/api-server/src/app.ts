@@ -9,6 +9,7 @@ import router from "./routes";
 import authRouter from "./routes/auth";
 import companiesRouter from "./routes/companies";
 import { authMiddleware } from "./middlewares/authMiddleware";
+import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
 
@@ -93,6 +94,12 @@ app.use(
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(cookieParser());
+
+// Rate-limit bearer-token requests before any auth processing.
+// Applies only to requests carrying "Authorization: Bearer ..." headers
+// (portal/mobile Supabase tokens). Internal BizPortal session-cookie
+// requests carry no Authorization header and are not affected.
+app.use(bearerRateLimiter);
 
 // Replit Auth middleware — populates req.user and req.isAuthenticated()
 app.use(authMiddleware);
