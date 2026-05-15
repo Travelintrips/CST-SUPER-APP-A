@@ -10,7 +10,8 @@ import {
   driverJobLogsTable,
   driverPhotosTable,
 } from "@workspace/db";
-import { eq, ilike, and, gte, lte, or, sql, desc } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
+import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
@@ -452,7 +453,24 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
           .from(logisticOrdersTable)
           .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
 
-  return res.json(rows.map((row) => toOrder(row)));
+  // Attach linked sales doc info for each order
+  const orderIds = rows.map((r) => r.id);
+  const linkedDocMap = new Map<number, { id: number; docNumber: string }>();
+  if (orderIds.length > 0) {
+    const linkedDocs = await db
+      .select({ logisticOrderId: salesDocumentsTable.logisticOrderId, id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+      .from(salesDocumentsTable)
+      .where(and(isNotNull(salesDocumentsTable.logisticOrderId), inArray(salesDocumentsTable.logisticOrderId, orderIds)));
+    for (const d of linkedDocs) {
+      if (d.logisticOrderId != null) linkedDocMap.set(d.logisticOrderId, { id: d.id, docNumber: d.docNumber });
+    }
+  }
+
+  return res.json(rows.map((row) => ({
+    ...toOrder(row),
+    linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
+    linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
+  })));
 });
 
 // GET /api/logistic/orders/summary — dashboard stats (admin)
@@ -580,10 +598,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
 
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-  const items = await db
-    .select()
-    .from(logisticOrderItemsTable)
-    .where(eq(logisticOrderItemsTable.orderId, id));
+  const [items, linkedDocRows] = await Promise.all([
+    db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id)),
+    db.select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.logisticOrderId, id))
+      .limit(1),
+  ]);
 
   let approvedVendorName: string | null = null;
   if (order.approvedVendorId) {
@@ -591,7 +612,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
     approvedVendorName = v?.name ?? null;
   }
 
-  return res.json({ ...toOrder(order, approvedVendorName), items: items.map(toItem) });
+  const linkedDoc = linkedDocRows[0] ?? null;
+  return res.json({
+    ...toOrder(order, approvedVendorName),
+    items: items.map(toItem),
+    linkedSalesDocId: linkedDoc?.id ?? null,
+    linkedSalesDocNumber: linkedDoc?.docNumber ?? null,
+  });
 });
 
 // PUT /api/logistic/orders/:id/status — update status (admin)

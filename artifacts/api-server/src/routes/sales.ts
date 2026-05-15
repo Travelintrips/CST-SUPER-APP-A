@@ -233,11 +233,30 @@ router.get("/documents/:id", async (req, res) => {
 
 router.post("/documents", async (req, res) => {
   const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId,
-    origin, destination, transportMode, etd, eta } = req.body ?? {};
+    origin, destination, transportMode, etd, eta, logisticOrderId } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())
     return res.status(400).json({ message: "customerName required" });
   if (!Array.isArray(lines) || lines.length === 0)
     return res.status(400).json({ message: "At least one line required" });
+
+  // Idempotency: prevent duplicate SO for same logistic order
+  if (logisticOrderId != null) {
+    const logOrderId = Number(logisticOrderId);
+    if (!Number.isNaN(logOrderId)) {
+      const [existing] = await db
+        .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+        .from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.logisticOrderId, logOrderId))
+        .limit(1);
+      if (existing) {
+        return res.status(409).json({
+          message: "Sales Order sudah pernah dibuat untuk logistic order ini",
+          existingId: existing.id,
+          existingDocNumber: existing.docNumber,
+        });
+      }
+    }
+  }
 
   const docKind: SalesDocKind = kind === "order" ? "order" : "quote";
   const total = (lines as LineInput[]).reduce(
@@ -271,6 +290,7 @@ router.post("/documents", async (req, res) => {
           transportMode: transportMode ?? null,
           etd: etd ?? null,
           eta: eta ?? null,
+          logisticOrderId: (logisticOrderId != null && !Number.isNaN(Number(logisticOrderId))) ? Number(logisticOrderId) : null,
         })
         .returning();
       doc = inserted;
