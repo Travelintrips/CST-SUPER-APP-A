@@ -13,6 +13,14 @@ declare global {
       isAuthenticated(): this is AuthedRequest;
 
       user?: User | undefined;
+
+      /**
+       * True only when the user was authenticated via an internal BizPortal
+       * session cookie (Google OAuth / Replit OIDC).  Bearer-token requests
+       * from the customer portal or mobile app will have this set to false,
+       * which prevents them from being treated as internal staff.
+       */
+      isInternalSession?: boolean;
     }
 
     export interface AuthedRequest {
@@ -30,6 +38,8 @@ export async function authMiddleware(
     return this.user != null;
   } as Request["isAuthenticated"];
 
+  req.isInternalSession = false;
+
   // ── 1. Session cookie (Google OAuth / Replit OIDC) ──────────────────────────
   const sid = getSessionId(req);
   if (sid && !req.headers.authorization?.startsWith("Bearer ")) {
@@ -42,12 +52,16 @@ export async function authMiddleware(
         lastName: session.user.lastName ?? null,
         profileImageUrl: session.user.profileImageUrl ?? null,
       };
+      req.isInternalSession = true;
       next();
       return;
     }
   }
 
-  // ── 2. Supabase Bearer token (legacy / mobile) ───────────────────────────────
+  // ── 2. Supabase Bearer token (portal / mobile only) ──────────────────────────
+  // NOTE: bearer-token users are NOT considered internal staff.  They can only
+  // access routes that explicitly use requirePortalAuth / requirePortalAdmin.
+  // requireClerkUser() rejects requests where isInternalSession is false.
   const auth = req.headers.authorization;
   if (auth?.startsWith("Bearer ")) {
     const token = auth.slice(7);
@@ -101,6 +115,7 @@ export async function authMiddleware(
           profileImageUrl: dbUser.profileImageUrl ?? null,
           role: dbUser.role ?? null,
         };
+        // isInternalSession remains false — bearer token users are portal/mobile
       }
     }
     return next();

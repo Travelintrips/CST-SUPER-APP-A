@@ -2,50 +2,34 @@ import type { Request, Response } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const HARDCODED_SUPERADMINS = [
-  "admcst001@gmail.com",
-  "divatranssoetta@gmail.com",
-];
-
-const ADMIN_EMAILS = [
-  ...HARDCODED_SUPERADMINS,
-  ...(process.env["ADMIN_EMAILS"] ?? "").split(","),
-]
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
-
-const ADMIN_EMAIL_DOMAINS = (process.env["ADMIN_EMAIL_DOMAINS"] ?? "")
-  .split(",")
-  .map((d) => d.trim().toLowerCase())
-  .filter(Boolean);
-
-function emailIsAdmin(email: string): boolean {
-  const lower = email.toLowerCase();
-  if (ADMIN_EMAILS.includes(lower)) return true;
-  const domain = lower.split("@")[1] ?? "";
-  return !!domain && ADMIN_EMAIL_DOMAINS.includes(domain);
-}
-
-const PORTAL_ADMIN_KEY = process.env["PORTAL_ADMIN_KEY"] ?? "";
-
-/** Any authenticated user — used for BizPortal staff operations */
+/**
+ * Any authenticated **internal** BizPortal staff user.
+ *
+ * "Internal" means the request was authenticated via a BizPortal session
+ * cookie (Google OAuth / Replit OIDC).  Customer-portal and mobile bearer
+ * tokens set req.isInternalSession = false and are explicitly rejected here,
+ * even though authMiddleware may have resolved req.user for them.
+ *
+ * NOTE: x-admin-key / PORTAL_ADMIN_KEY is intentionally NOT accepted here.
+ * That secret is scoped to the customer-portal bootstrap workflow only and
+ * must not be used as a universal bypass for internal staff routes.
+ */
 export async function requireClerkUser(req: Request, res: Response): Promise<boolean> {
-  if (PORTAL_ADMIN_KEY && req.headers["x-admin-key"] === PORTAL_ADMIN_KEY) {
-    return true;
-  }
-  if (!req.isAuthenticated()) {
+  if (!req.isAuthenticated() || !req.isInternalSession) {
     res.status(401).json({ message: "Unauthorized" });
     return false;
   }
   return true;
 }
 
+/**
+ * Authenticated internal BizPortal user with role = "admin".
+ *
+ * Same session-only restriction as requireClerkUser().
+ * x-admin-key is NOT accepted — see note above.
+ */
 export async function requireAdmin(req: Request, res: Response): Promise<boolean> {
-  if (PORTAL_ADMIN_KEY && req.headers["x-admin-key"] === PORTAL_ADMIN_KEY) {
-    return true;
-  }
-
-  if (!req.isAuthenticated()) {
+  if (!req.isAuthenticated() || !req.isInternalSession) {
     res.status(401).json({ message: "Unauthorized" });
     return false;
   }
