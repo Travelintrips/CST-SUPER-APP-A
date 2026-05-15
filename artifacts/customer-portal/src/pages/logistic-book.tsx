@@ -183,13 +183,45 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
   }
 }
 
-function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (data: Omit<CartItem, "cartId">) => void; onBack: () => void }) {
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination }: {
+  item: ServiceItem;
+  onAdd: (data: Omit<CartItem, "cartId">) => void;
+  onBack: () => void;
+  transportMode?: string;
+  truckType?: string;
+  origin?: string;
+  destination?: string;
+}) {
   const [state, setState] = useState<CalcState>({});
+  const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
   }
+
+  // Auto-calculate trucking rate from estimate-price when distance changes
+  useEffect(() => {
+    if (item.calculatorType !== "trucking") return;
+    const dist = parseFloat(state.distance ?? "");
+    if (!dist || dist <= 0) return;
+    const mode = transportMode || "TRUCKING";
+    const params = new URLSearchParams({ transport_mode: mode, distance_km: String(dist) });
+    if (truckType || state.vehicleType) params.set("truck_type", (truckType || state.vehicleType)!);
+    if (origin) params.set("origin", origin);
+    if (destination) params.set("dest", destination);
+    setAutoRateFetching(true);
+    fetch(`/api/logistic/orders/estimate-price?${params.toString()}`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((d: { estimated_price: number | null }) => {
+        if (d.estimated_price != null && d.estimated_price > 0) {
+          setState((prev) => ({ ...prev, truckingRate: String(Math.round(d.estimated_price!)) }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAutoRateFetching(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.distance, state.vehicleType, item.calculatorType]);
 
   const subtotal = calcSubtotal(item.calculatorType, state);
 
@@ -315,7 +347,14 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-xs">Distance (km)</Label><Input type="number" placeholder="0" value={state.distance||""} onChange={e => set("distance", e.target.value)} /></div>
-            <div><Label className="text-xs">Trucking Rate (IDR)</Label><Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Trucking Rate (IDR)
+                {autoRateFetching && <span className="text-[10px] text-muted-foreground animate-pulse">menghitung…</span>}
+                {!autoRateFetching && state.truckingRate && state.distance && <span className="text-[10px] text-emerald-600">● auto</span>}
+              </Label>
+              <Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} />
+            </div>
           </div>
           <div><Label className="text-xs">Loading Fee (IDR)</Label><Input type="number" placeholder="0" value={state.loadingFee||""} onChange={e => set("loadingFee", e.target.value)} /></div>
         </>}
@@ -770,6 +809,10 @@ export default function BookPage() {
             item={selectedItem}
             onAdd={(data) => { handleAddToCart(data); setStep(2); }}
             onBack={() => setSelectedItem(null)}
+            transportMode={customerForm.transportMode}
+            truckType={customerForm.truckType}
+            origin={customerForm.origin}
+            destination={customerForm.destination}
           />
         )}
       </div>
