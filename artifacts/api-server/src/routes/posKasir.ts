@@ -12,7 +12,10 @@ import bcrypt from "bcryptjs";
 
 const router = Router();
 
-// ── Token secret ──────────────────────────────────────────────────────────────
+// ── Token secret ─────────────────────────────────────────────────────────────
+// Security: tokens are HMAC-SHA256 signed (not plain base64). The secret is
+// required at startup — server refuses to start without it. This prevents the
+// previous vulnerability where any base64-encoded JSON was accepted as valid.
 
 const _rawSecret = process.env.CASHIER_TOKEN_SECRET;
 if (!_rawSecret || _rawSecret.length < 32) {
@@ -323,6 +326,8 @@ router.get("/orders/today", async (req, res) => {
 });
 
 // GET /api/pos-kasir/orders/:id
+// Security: ownership check (IDOR fix) — rejects orders not belonging to the
+// authenticated cashier, preventing cross-cashier data access by ID guessing.
 router.get("/orders/:id", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
