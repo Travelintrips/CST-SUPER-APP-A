@@ -117,7 +117,7 @@ export default function PosKasirAdminPage() {
   });
   const [reportTo, setReportTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportLoading, setReportLoading] = useState(false);
-  const [reportBranchId, setReportBranchId] = useState<string>("");
+  const [reportBranchId, setReportBranchId] = useState<string>("all");
 
   // Products
   const [products, setProducts] = useState<Product[]>([]);
@@ -149,7 +149,7 @@ export default function PosKasirAdminPage() {
   const loadReport = useCallback(async () => {
     setReportLoading(true);
     try {
-      const branchParam = reportBranchId ? `&branchId=${reportBranchId}` : "";
+      const branchParam = (reportBranchId && reportBranchId !== "all") ? `&branchId=${reportBranchId}` : "";
       const [rRes, dRes] = await Promise.all([
         fetch(`/api/pos-kasir/admin/report?from=${reportFrom}&to=${reportTo}${branchParam}`, { credentials: "include" }),
         fetch(`/api/pos-kasir/admin/report/daily${branchParam ? `?${branchParam.slice(1)}` : ""}`, { credentials: "include" }),
@@ -496,7 +496,7 @@ export default function PosKasirAdminPage() {
                         <SelectValue placeholder="Semua" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Semua Cabang</SelectItem>
+                        <SelectItem value="all">Semua Cabang</SelectItem>
                         {branches.map((b) => (
                           <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
                         ))}
