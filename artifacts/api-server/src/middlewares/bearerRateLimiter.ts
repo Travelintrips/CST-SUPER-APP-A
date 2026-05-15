@@ -25,7 +25,11 @@ const limiter = rateLimit({
   max: MAX_PER_WINDOW,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  keyGenerator: (req: Request) => ipKeyGenerator(req),
+  keyGenerator: (req: Request) => {
+    const forwarded = req.headers["x-forwarded-for"];
+    const raw = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) ?? req.ip ?? "unknown";
+    return ipKeyGenerator(raw.trim());
+  },
   message: {
     message: "Too many requests. Please wait before retrying.",
   },
@@ -46,7 +50,11 @@ const failureLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   skipSuccessfulRequests: true,
-  keyGenerator: (req: Request) => `fail:${ipKeyGenerator(req)}`,
+  keyGenerator: (req: Request) => {
+    const forwarded = req.headers["x-forwarded-for"];
+    const raw = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) ?? req.ip ?? "unknown";
+    return `fail:${ipKeyGenerator(raw.trim())}`;
+  },
   message: {
     message: "Too many failed requests. Please wait 5 minutes before retrying.",
   },

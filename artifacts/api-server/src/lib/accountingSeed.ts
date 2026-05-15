@@ -190,8 +190,8 @@ export async function ensureDefaultCompany(): Promise<number> {
   const [existing] = await db.select().from(companiesTable).where(eq(companiesTable.code, "CST")).limit(1);
   if (existing) return existing.id;
   const [created] = await db.insert(companiesTable).values({
-    name: "PT CST Logistics",
-    code: "CST",
+    companyName: "PT CST Logistics",
+    companyCode: "CST",
     isHolding: true,
   }).returning();
   return created!.id;
@@ -254,7 +254,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       .insert(chartOfAccountsTable)
       .values(parentRoots.map((p) => ({ code: p.code, name: p.name, type: p.type, companyId: null })))
       .onConflictDoUpdate({
-        target: [chartOfAccountsTable.companyId, chartOfAccountsTable.code],
+        target: chartOfAccountsTable.code,
         set: { name: sql`excluded.name` },
       });
   }
@@ -270,7 +270,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       .insert(chartOfAccountsTable)
       .values({ code: p.code, name: p.name, type: p.type, parentId: parentId ?? undefined, companyId: null })
       .onConflictDoUpdate({
-        target: [chartOfAccountsTable.companyId, chartOfAccountsTable.code],
+        target: chartOfAccountsTable.code,
         set: { name: sql`excluded.name`, parentId: parentId },
       });
   }

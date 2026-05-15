@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { logger } from "../lib/logger";
 import { db, aiAgentSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 
 const require_ = createRequire(import.meta.url);
 type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;

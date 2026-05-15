@@ -53,10 +53,10 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/media/upload — upload dan kompres gambar, simpan ke Supabase Storage
-router.post("/upload", upload.single("file"), async (req, res) => {
+router.post("/upload", upload.single("file"), async (req, res): Promise<void> => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "Tidak ada file yang diunggah" });
+      res.status(400).json({ error: "Tidak ada file yang diunggah" }); return;
     }
 
     const { mimetype, originalname } = req.file;
@@ -70,7 +70,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       finalContentType = compressed.contentType;
     }
 
-    // Upload ke Supabase Storage (bucket "media", public)
     const { publicUrl, storagePath } = await uploadToSupabase(buffer, finalContentType, "uploads");
 
     const [inserted] = await db.insert(mediaAssetsTable).values({
@@ -92,11 +91,11 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 // PATCH /api/media/folders/rename — rename folder (update semua gambar di folder lama)
-router.patch("/folders/rename", async (req, res) => {
+router.patch("/folders/rename", async (req, res): Promise<void> => {
   const oldName = (req.body.oldName as string)?.trim();
   const newName = (req.body.newName as string)?.trim();
-  if (!oldName || !newName) return res.status(400).json({ error: "oldName dan newName wajib diisi" });
-  if (oldName === newName) return res.json({ ok: true, affected: 0 });
+  if (!oldName || !newName) { res.status(400).json({ error: "oldName dan newName wajib diisi" }); return; }
+  if (oldName === newName) { res.json({ ok: true, affected: 0 }); return; }
   const result = await db
     .update(mediaAssetsTable)
     .set({ folder: newName })
@@ -105,10 +104,10 @@ router.patch("/folders/rename", async (req, res) => {
 });
 
 // DELETE /api/media/folders/:name — hapus folder, pindahkan isinya ke "Umum"
-router.delete("/folders/:name", async (req, res) => {
+router.delete("/folders/:name", async (req, res): Promise<void> => {
   const name = decodeURIComponent(req.params.name).trim();
   if (!name || name === "Umum") {
-    return res.status(400).json({ error: "Folder ini tidak dapat dihapus" });
+    res.status(400).json({ error: "Folder ini tidak dapat dihapus" }); return;
   }
   const result = await db
     .update(mediaAssetsTable)
@@ -118,10 +117,10 @@ router.delete("/folders/:name", async (req, res) => {
 });
 
 // POST /api/media/bulk-move — pindahkan banyak gambar ke satu folder
-router.post("/bulk-move", async (req, res) => {
+router.post("/bulk-move", async (req, res): Promise<void> => {
   const ids = (req.body.ids as number[]) ?? [];
   const folder = (req.body.folder as string)?.trim();
-  if (!ids.length || !folder) return res.status(400).json({ error: "ids dan folder wajib diisi" });
+  if (!ids.length || !folder) { res.status(400).json({ error: "ids dan folder wajib diisi" }); return; }
   const result = await db
     .update(mediaAssetsTable)
     .set({ folder })
@@ -130,19 +129,19 @@ router.post("/bulk-move", async (req, res) => {
 });
 
 // POST /api/media/bulk-delete — hapus banyak gambar sekaligus
-router.post("/bulk-delete", async (req, res) => {
+router.post("/bulk-delete", async (req, res): Promise<void> => {
   const ids = (req.body.ids as number[]) ?? [];
-  if (!ids.length) return res.status(400).json({ error: "ids wajib diisi" });
+  if (!ids.length) { res.status(400).json({ error: "ids wajib diisi" }); return; }
   const result = await db.delete(mediaAssetsTable).where(inArray(mediaAssetsTable.id, ids));
   res.json({ ok: true, affected: (result as any).rowCount ?? 0 });
 });
 
 // PATCH /api/media/:id/folder — pindahkan gambar ke folder lain
-router.patch("/:id/folder", async (req, res) => {
+router.patch("/:id/folder", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: "ID tidak valid" });
+  if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
   const folder = (req.body.folder as string)?.trim();
-  if (!folder) return res.status(400).json({ error: "Nama folder wajib diisi" });
+  if (!folder) { res.status(400).json({ error: "Nama folder wajib diisi" }); return; }
   const [updated] = await db
     .update(mediaAssetsTable)
     .set({ folder })
@@ -152,20 +151,20 @@ router.patch("/:id/folder", async (req, res) => {
 });
 
 // POST /api/media/:id/copy-public — salin ke public storage, kembalikan URL absolut
-router.post("/:id/copy-public", async (req, res) => {
+router.post("/:id/copy-public", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: "ID tidak valid" });
+  if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
 
   try {
     const [asset] = await db.select().from(mediaAssetsTable).where(eq(mediaAssetsTable.id, id));
-    if (!asset) return res.status(404).json({ error: "Asset tidak ditemukan" });
+    if (!asset) { res.status(404).json({ error: "Asset tidak ditemukan" }); return; }
 
     // File Supabase sudah public — return URL langsung
     if (isSupabaseUrl(asset.url)) {
       if (!asset.publicUrl) {
         await db.update(mediaAssetsTable).set({ publicUrl: asset.url }).where(eq(mediaAssetsTable.id, id));
       }
-      return res.json({ ok: true, publicUrl: asset.url, cached: true });
+      res.json({ ok: true, publicUrl: asset.url, cached: true }); return;
     }
 
     // Sudah punya publicUrl yang tersimpan — kembalikan langsung
@@ -174,7 +173,7 @@ router.post("/:id/copy-public", async (req, res) => {
       const absoluteUrl = asset.publicUrl.startsWith("http")
         ? asset.publicUrl
         : `${baseUrl}${asset.publicUrl}`;
-      return res.json({ ok: true, publicUrl: absoluteUrl, cached: true });
+      res.json({ ok: true, publicUrl: absoluteUrl, cached: true }); return;
     }
 
     // File lama dari private GCS — download lalu re-upload ke Supabase public
@@ -184,14 +183,12 @@ router.post("/:id/copy-public", async (req, res) => {
       const storagePath = asset.objectPath.replace("supabase:media/", "");
       fileBuffer = await downloadFromSupabase(storagePath);
     } else {
-      // GCS path — coba download via serving URL
       const serveUrl = asset.url.startsWith("http") ? asset.url : `${baseUrl}${asset.url}`;
       const resp = await fetch(serveUrl, { headers: { cookie: req.headers.cookie ?? "" } });
       if (!resp.ok) throw new Error(`Gagal download file asal (${resp.status})`);
       fileBuffer = Buffer.from(await resp.arrayBuffer());
     }
 
-    // Upload ke Supabase public bucket
     const { publicUrl } = await uploadToSupabase(fileBuffer, asset.contentType, "shared");
 
     await db.update(mediaAssetsTable).set({ publicUrl }).where(eq(mediaAssetsTable.id, id));
@@ -203,9 +200,9 @@ router.post("/:id/copy-public", async (req, res) => {
 });
 
 // DELETE /api/media/:id — hapus metadata dari DB
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: "ID tidak valid" });
+  if (!id) { res.status(400).json({ error: "ID tidak valid" }); return; }
   await db.delete(mediaAssetsTable).where(eq(mediaAssetsTable.id, id));
   res.json({ ok: true });
 });

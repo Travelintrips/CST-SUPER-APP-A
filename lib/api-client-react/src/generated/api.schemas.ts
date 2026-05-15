@@ -579,6 +579,10 @@ export interface SalesDocument {
   aiGenerated?: boolean;
   aiSourceWaPhone?: string | null;
   aiSourceCorrespondenceId?: number | null;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
+  dueDate?: string | null;
+  cancelledAt?: string | null;
 }
 
 export type SalesDocumentDetail = SalesDocument & {
