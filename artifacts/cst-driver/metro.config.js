@@ -32,19 +32,24 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch only shared source directories, NOT the entire workspace root.
-// Watching workspaceRoot would include node_modules/.pnpm/ and its transient
-// *_tmp_NNNN directories created/destroyed during pnpm installs; the
-// FallbackWatcher (used when Watchman is unavailable) crashes with ENOENT
-// if a watched directory disappears mid-crawl.
-config.watchFolders = [
-  path.resolve(workspaceRoot, "lib"),
-];
+// Include the full workspace root so Metro can map workspace-relative bundle
+// URLs (e.g. "artifacts/cst-driver/entry.bundle") to the correct file.
+// Required for the production static build (scripts/build.js).
+config.watchFolders = [workspaceRoot];
 
 // Resolve node_modules from both the package and the monorepo root (pnpm hoisting)
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(workspaceRoot, "node_modules"),
 ];
+
+// Block the Metro CRAWLER (and FallbackWatcher) from descending into pnpm
+// temporary directories created and deleted during `pnpm install`.
+// FallbackWatcher (used when Watchman is unavailable) calls fs.watch() on
+// every directory it crawls; if a dir vanishes mid-crawl it throws ENOENT
+// and crashes Metro.  Patterns covered:
+//   *_tmp_NNNN/**  — any pnpm package temp dir (e.g. path-scurry_tmp_10056)
+//   .local/**      — agent skill temp dirs
+config.resolver.blockList = /_tmp_\d+[/\\].*|[/\\]\.local[/\\].*/;
 
 module.exports = config;
