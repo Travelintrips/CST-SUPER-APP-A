@@ -35,6 +35,7 @@ import {
   ScanLine,
   MessageCircle,
   Layers,
+  ImageIcon,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -195,6 +196,7 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
     { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
+    { type: "flat", titleKey: "Thai Tea CST", href: "/pos-kasir", icon: ShoppingBag, roles: ["admin"] },
     {
       type: "group",
       titleKey: "expense",
@@ -210,6 +212,7 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", titleKey: "correspondences", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "emailInbox", href: "/email-inbox", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "users", href: "/users", icon: Users, roles: ["admin"] },
+    { type: "flat", titleKey: "Image Manager", href: "/media", icon: ImageIcon, roles: ["admin"] },
     { type: "flat", titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin"] },
     { type: "flat", titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen, roles: ["admin"] },
     { type: "flat", titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine, roles: ["admin"] },

@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Alert, Platform,
+  Alert, Platform, Linking,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/context/AuthContext';
 import { useJobs } from '@/context/JobsContext';
 import { Icon, FeatherName } from '@/components/Icon';
+import { notifyNewJob, requestNotificationPermission } from '@/services/notifications';
 
 interface MenuItemProps {
   icon: FeatherName;
@@ -60,6 +61,29 @@ export default function ProfileScreen() {
         },
       },
     ]);
+  }
+
+  async function handleOpenNotifSettings() {
+    if (Platform.OS === 'android') {
+      await Linking.openSettings();
+    }
+  }
+
+  async function handleTestNotif() {
+    const granted = await requestNotificationPermission();
+    if (!granted) {
+      Alert.alert(
+        'Izin Notifikasi Ditolak',
+        'Buka Setelan Notifikasi dan aktifkan izin notifikasi untuk aplikasi CST Driver.',
+        [
+          { text: 'Buka Setelan', onPress: handleOpenNotifSettings },
+          { text: 'Batal', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+    notifyNewJob('JOB-TEST-001', 'Pelanggan Demo', 'Jl. Sudirman No. 1, Jakarta');
+    Alert.alert('Test Dikirim', 'Notifikasi bunyi & getar sudah dikirim. Cek bar notifikasi HP kamu.');
   }
 
   return (
@@ -119,6 +143,21 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Kendaraan</Text>
         <MenuItem icon="truck" label="Jenis Kendaraan" value={driver?.vehicleType} />
         <MenuItem icon="hash" label="Plat Nomor" value={driver?.truckPlate} />
+      </View>
+
+      {/* Setelan Notifikasi */}
+      <View style={[styles.section, { backgroundColor: colors.card }]}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Setelan Notifikasi</Text>
+        <MenuItem
+          icon="bell"
+          label="Test Bunyi & Getar"
+          onPress={handleTestNotif}
+        />
+        <MenuItem
+          icon="settings"
+          label="Setelan Notifikasi HP"
+          onPress={handleOpenNotifSettings}
+        />
       </View>
 
       {/* Logout */}

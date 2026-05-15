@@ -28,6 +28,8 @@ import { portalProductOrdersRouter } from "./portalProductOrders";
 import geocodeRouter from "./geocode";
 import { whatsappRouter } from "./whatsapp";
 import { vendorResponseRouter } from "./vendorResponse";
+import mediaRouter from "./media";
+import posKasirRouter from "./posKasir";
 
 const router: IRouter = Router();
 
@@ -61,4 +63,6 @@ router.use("/portal-product", portalProductOrdersRouter);
 router.use(geocodeRouter);
 router.use("/whatsapp", whatsappRouter);
 router.use("/vendor-response", vendorResponseRouter);
+router.use("/media", mediaRouter);
+router.use("/pos-kasir", posKasirRouter);
 export default router;

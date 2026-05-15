@@ -14,6 +14,7 @@ import { enableRealtimeTables } from "./lib/enableRealtimeTables";
 import { runKnowledgeBaseMigration } from "./lib/knowledgeBaseMigration";
 import { runCompaniesMigration } from "./lib/companiesMigration";
 import { runHoldingMigration } from "./lib/holdingMigration";
+import { runPosKasirMigration } from "./lib/posKasirMigration";
 
 const rawPort = process.env["PORT"];
 
@@ -86,6 +87,11 @@ app.listen(port, (err) => {
     .catch((seedErr) => {
       logger.error({ err: seedErr }, "Logistics/demo seed failed");
     });
+
+  // Buat tabel POS Kasir Thai Tea (idempotent)
+  runPosKasirMigration().catch((err) => {
+    logger.error({ err }, "POS Kasir migration error");
+  });
 
   // Start IMAP email poller (polls every 3 minutes when IMAP credentials are configured)
   startImapPoller(3 * 60 * 1000);

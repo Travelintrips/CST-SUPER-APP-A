@@ -894,8 +894,56 @@ export const AccountType = {
   expense: "expense",
 } as const;
 
+export interface Company {
+  id: number;
+  name: string;
+  code: string;
+  isHolding: boolean;
+  parentCompanyId?: number | null;
+  address?: string | null;
+  npwp?: string | null;
+  logoUrl?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateCompanyBody {
+  name: string;
+  code: string;
+  isHolding?: boolean;
+  parentCompanyId?: number | null;
+  address?: string | null;
+  npwp?: string | null;
+  logoUrl?: string | null;
+  isActive?: boolean;
+}
+
+export interface UpdateCompanyBody {
+  name?: string;
+  code?: string;
+  isHolding?: boolean;
+  parentCompanyId?: number | null;
+  address?: string | null;
+  npwp?: string | null;
+  logoUrl?: string | null;
+  isActive?: boolean;
+}
+
+export interface ListAccountsParams {
+  companyId?: number;
+}
+
+export interface ListJournalsParams {
+  companyId?: number;
+}
+
+export interface ListTaxesParams {
+  companyId?: number;
+}
+
 export interface Account {
   id: number;
+  companyId: number;
   code: string;
   name: string;
   type: AccountType;
@@ -955,6 +1003,7 @@ export const AccountingJournalType = {
 
 export interface AccountingJournal {
   id: number;
+  companyId: number;
   code: string;
   name: string;
   type: AccountingJournalType;

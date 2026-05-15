@@ -10,6 +10,7 @@ import {
   driverPhotosTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql, desc } from "drizzle-orm";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -58,7 +59,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
     nomorPenerima: row.nomorPenerima ?? null,
     jamOrder: row.jamOrder ?? null,
     source: row.source ?? "manual",
-    aiSessionToken: row.aiSessionToken ?? null,
+
     subtotal: parseFloat(row.subtotal),
     tax: parseFloat(row.tax),
     grandTotal: parseFloat(row.grandTotal),
@@ -87,6 +88,31 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     createdAt: row.createdAt.toISOString(),
   };
 }
+
+const TRUCKING_RATES_KEY = "logistic_trucking_rates";
+
+const DEFAULT_TRUCKING_RATES: Record<string, { ratePerKm: number; loadingFee: number }> = {
+  CDE:      { ratePerKm: 5000,  loadingFee: 500000 },
+  CDD:      { ratePerKm: 7000,  loadingFee: 700000 },
+  Fuso:     { ratePerKm: 10000, loadingFee: 1000000 },
+  Wingbox:  { ratePerKm: 12000, loadingFee: 1200000 },
+  Trailer:  { ratePerKm: 15000, loadingFee: 1500000 },
+};
+
+async function getTruckingRates() {
+  const [row] = await db
+    .select()
+    .from(portalContentTable)
+    .where(eq(portalContentTable.key, TRUCKING_RATES_KEY));
+  if (!row) return DEFAULT_TRUCKING_RATES;
+  try {
+    return JSON.parse(row.value) as typeof DEFAULT_TRUCKING_RATES;
+  } catch {
+    return DEFAULT_TRUCKING_RATES;
+  }
+}
+
+// ─── PUBLIC ROUTES (no auth required) ────────────────────────────────────────
 
 // POST /api/logistic/orders — create order (public)
 logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
@@ -225,58 +251,6 @@ sendLogisticOrderNotification({
   });
 });
 
-// GET /api/logistic/orders — list orders (admin)
-logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
-  const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
-  const q = parsed.success ? parsed.data : {};
-
-  const conditions = [];
-  if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
-  if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
-  if (q.search) {
-    conditions.push(
-      or(
-        ilike(logisticOrdersTable.customerName, `%${q.search}%`),
-        ilike(logisticOrdersTable.companyName, `%${q.search}%`),
-        ilike(logisticOrdersTable.orderNumber, `%${q.search}%`)
-      )!
-    );
-  }
-  if (q.dateFrom) conditions.push(gte(logisticOrdersTable.createdAt, new Date(q.dateFrom)));
-  if (q.dateTo) conditions.push(lte(logisticOrdersTable.createdAt, new Date(q.dateTo)));
-
-  const rows =
-    conditions.length > 0
-      ? await db
-          .select()
-          .from(logisticOrdersTable)
-          .where(and(...conditions))
-          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
-      : await db
-          .select()
-          .from(logisticOrdersTable)
-          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
-
-  return res.json(rows.map((row) => toOrder(row)));
-});
-
-// GET /api/logistic/orders/summary — dashboard stats (admin)
-logisticOrdersRouter.get("/summary", async (_req: Request, res: Response) => {
-  const rows = await db.select().from(logisticOrdersTable);
-  const count = (status: string) => rows.filter((r) => r.status === status).length;
-  return res.json({
-    totalOrders: rows.length,
-    newOrders: count("New Order"),
-    underReviewOrders: count("Under Review"),
-    quotationSentOrders: count("Quotation Sent"),
-    confirmedOrders: count("Confirmed"),
-    inProgressOrders: count("In Progress"),
-    completedOrders: count("Completed"),
-    cancelledOrders: count("Cancelled"),
-    totalEstimatedRevenue: rows.reduce((acc, r) => acc + parseFloat(r.grandTotal), 0),
-  });
-});
-
 // GET /api/logistic/orders/by-number/:orderNumber — lookup by order number (public)
 logisticOrdersRouter.get(
   "/by-number/:orderNumber",
@@ -380,43 +354,81 @@ logisticOrdersRouter.get(
   }
 );
 
-// --- Trucking Rates (must be registered BEFORE /:id) ---
-
-const TRUCKING_RATES_KEY = "logistic_trucking_rates";
-
-const DEFAULT_TRUCKING_RATES: Record<string, { ratePerKm: number; loadingFee: number }> = {
-  CDE:      { ratePerKm: 5000,  loadingFee: 500000 },
-  CDD:      { ratePerKm: 7000,  loadingFee: 700000 },
-  Fuso:     { ratePerKm: 10000, loadingFee: 1000000 },
-  Wingbox:  { ratePerKm: 12000, loadingFee: 1200000 },
-  Trailer:  { ratePerKm: 15000, loadingFee: 1500000 },
-};
-
-async function getTruckingRates() {
-  const [row] = await db
-    .select()
-    .from(portalContentTable)
-    .where(eq(portalContentTable.key, TRUCKING_RATES_KEY));
-  if (!row) return DEFAULT_TRUCKING_RATES;
-  try {
-    return JSON.parse(row.value) as typeof DEFAULT_TRUCKING_RATES;
-  } catch {
-    return DEFAULT_TRUCKING_RATES;
-  }
-}
-
 // GET /api/logistic/orders/trucking-rates — public
 logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response) => {
   const rates = await getTruckingRates();
   return res.json(rates);
 });
 
+// GET /api/logistic/orders/vendors — public (customer portal uses this for delivery options)
+logisticOrdersRouter.get("/vendors", async (_req: Request, res: Response) => {
+  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
+  return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
+});
+
+// ─── AUTH WALL: all routes below require a valid session ─────────────────────
+
+logisticOrdersRouter.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
+
+// ─── STAFF-ONLY ROUTES ────────────────────────────────────────────────────────
+
+// GET /api/logistic/orders — list orders (admin)
+logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
+  const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
+  const q = parsed.success ? parsed.data : {};
+
+  const conditions = [];
+  if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
+  if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
+  if (q.search) {
+    conditions.push(
+      or(
+        ilike(logisticOrdersTable.customerName, `%${q.search}%`),
+        ilike(logisticOrdersTable.companyName, `%${q.search}%`),
+        ilike(logisticOrdersTable.orderNumber, `%${q.search}%`)
+      )!
+    );
+  }
+  if (q.dateFrom) conditions.push(gte(logisticOrdersTable.createdAt, new Date(q.dateFrom)));
+  if (q.dateTo) conditions.push(lte(logisticOrdersTable.createdAt, new Date(q.dateTo)));
+
+  const rows =
+    conditions.length > 0
+      ? await db
+          .select()
+          .from(logisticOrdersTable)
+          .where(and(...conditions))
+          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`)
+      : await db
+          .select()
+          .from(logisticOrdersTable)
+          .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
+
+  return res.json(rows.map((row) => toOrder(row)));
+});
+
+// GET /api/logistic/orders/summary — dashboard stats (admin)
+logisticOrdersRouter.get("/summary", async (_req: Request, res: Response) => {
+  const rows = await db.select().from(logisticOrdersTable);
+  const count = (status: string) => rows.filter((r) => r.status === status).length;
+  return res.json({
+    totalOrders: rows.length,
+    newOrders: count("New Order"),
+    underReviewOrders: count("Under Review"),
+    quotationSentOrders: count("Quotation Sent"),
+    confirmedOrders: count("Confirmed"),
+    inProgressOrders: count("In Progress"),
+    completedOrders: count("Completed"),
+    cancelledOrders: count("Cancelled"),
+    totalEstimatedRevenue: rows.reduce((acc, r) => acc + parseFloat(r.grandTotal), 0),
+  });
+});
+
 // PUT /api/logistic/orders/trucking-rates — admin only
 logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) => {
-  const adminPassword = req.headers["x-admin-password"];
-  if (adminPassword !== "admin123") {
-    return res.status(403).json({ message: "Akses ditolak" });
-  }
   const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;
   if (!rates || typeof rates !== "object") {
     return res.status(400).json({ message: "Format tarif tidak valid" });
@@ -440,12 +452,6 @@ logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) 
 });
 
 // ─── Delivery Vendors CRUD (for BizPortal) ───────────────────────────────────
-
-// GET /api/logistic/orders/vendors
-logisticOrdersRouter.get("/vendors", async (_req: Request, res: Response) => {
-  const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
-  return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
-});
 
 // POST /api/logistic/orders/vendors
 logisticOrdersRouter.post("/vendors", async (req: Request, res: Response) => {
@@ -612,4 +618,3 @@ logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
   if (!deleted) return res.status(404).json({ message: "Order tidak ditemukan" });
   return res.json({ message: "Deleted", id });
 });
-

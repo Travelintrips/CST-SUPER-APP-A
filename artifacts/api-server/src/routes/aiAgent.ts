@@ -121,12 +121,10 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_order_status",
-      description: "Cek status order logistik pelanggan. Otomatis mencari berdasarkan sesi chat ini. Jika pelanggan menyebut nomor WhatsApp lain, gunakan parameter phone.",
+      description: "Cek status order logistik pelanggan. Mencari berdasarkan sesi chat ini saja.",
       parameters: {
         type: "object",
-        properties: {
-          phone: { type: "string", description: "Nomor WhatsApp pelanggan (opsional, untuk mencari order dari nomor lain)" },
-        },
+        properties: {},
         required: [],
       },
     },
@@ -276,14 +274,9 @@ async function handleToolCall(
 
   if (toolName === "get_order_status") {
     try {
-      const { phone } = args as { phone?: string };
-
-      // Build OR condition: match by current session token, or by phone if provided
-      const conditions = [eq(logisticOrdersTable.aiSessionToken, sessionToken)];
-      if (phone && phone.trim()) {
-        conditions.push(eq(logisticOrdersTable.phone, phone.trim()));
-      }
-
+      // Only look up orders belonging to the current chat session.
+      // Accepting an arbitrary phone number here would allow any anonymous user
+      // to enumerate another customer's order history by phone number.
       const orders = await db
         .select({
           id: logisticOrdersTable.id,
@@ -297,13 +290,13 @@ async function handleToolCall(
           createdAt: logisticOrdersTable.createdAt,
         })
         .from(logisticOrdersTable)
-        .where(or(...conditions))
+        .where(eq(logisticOrdersTable.aiSessionToken, sessionToken))
         .orderBy(asc(logisticOrdersTable.createdAt));
 
       if (orders.length === 0) {
         return JSON.stringify({
           found: false,
-          message: "Tidak ada order yang ditemukan untuk sesi ini. Jika Anda memiliki nomor WhatsApp yang terdaftar, silakan sebutkan.",
+          message: "Tidak ada order yang ditemukan untuk sesi chat ini. Pastikan order dibuat melalui sesi yang sama.",
         });
       }
 
@@ -987,23 +980,24 @@ aiAgentRouter.get("/session/:token", async (req: Request, res: Response) => {
   const sinceDate = sinceParam ? new Date(sinceParam) : null;
   const validSince = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null;
 
+  // This endpoint is public (token is the sole credential).
+  // Only return admin-authored messages so that user messages (which may
+  // contain OCR'd document text) and assistant messages are not exposed to
+  // anyone who happens to possess the token.  The ChatWidget only polls this
+  // endpoint to display incoming admin replies — it never needs user/assistant
+  // history from here.
+  const adminOnly = eq(aiChatMessagesTable.role, "admin");
   const messages = await db
     .select()
     .from(aiChatMessagesTable)
     .where(
       validSince
-        ? and(eq(aiChatMessagesTable.sessionId, session.id), gt(aiChatMessagesTable.createdAt, validSince))
-        : eq(aiChatMessagesTable.sessionId, session.id)
+        ? and(eq(aiChatMessagesTable.sessionId, session.id), gt(aiChatMessagesTable.createdAt, validSince), adminOnly)
+        : and(eq(aiChatMessagesTable.sessionId, session.id), adminOnly)
     )
     .orderBy(asc(aiChatMessagesTable.createdAt));
 
   return res.json({
-    session: {
-      id: session.id,
-      sessionToken: session.sessionToken,
-      logisticOrderId: session.logisticOrderId,
-      createdAt: session.createdAt.toISOString(),
-    },
     messages: messages.map((m) => ({
       id: m.id,
       role: m.role,

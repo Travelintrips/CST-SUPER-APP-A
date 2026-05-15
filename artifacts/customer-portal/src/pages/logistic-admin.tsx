@@ -23,18 +23,20 @@ import {
   Plus, Pencil, Trash2, Wrench, ToggleLeft, ToggleRight,
 } from "lucide-react";
 
-const ADMIN_KEY = "logistic_admin_auth";
-const ADMIN_PASSWORD = "admin123";
+import { supabase } from "@/lib/supabase";
+import { fetchAndStoreProfile } from "@/lib/auth";
 
-const adminFetch = (url: string, opts: RequestInit = {}) =>
-  fetch(url.replace("/api/portal/admin/services", "/api/portal/logistic-admin/services"), {
+const adminFetch = async (url: string, opts: RequestInit = {}) => {
+  const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+  return fetch(url.replace("/api/portal/admin/services", "/api/portal/logistic-admin/services"), {
     ...opts,
     headers: {
       "Content-Type": "application/json",
-      "x-admin-password": ADMIN_PASSWORD,
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
       ...(opts.headers ?? {}),
     },
   });
+};
 
 const SUBCATEGORIES = [
   "Udara", "Laut", "Darat", "Pabean", "Handling",
@@ -353,9 +355,8 @@ function JasaManager() {
 
 export default function AdminPage() {
   const [, setLocation] = useLocation();
-  const [authed, setAuthed] = useState(() => localStorage.getItem(ADMIN_KEY) === "1");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
+  const [authed, setAuthed] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [activeTab, setActiveTab] = useState<"orders" | "jasa">("orders");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -365,6 +366,20 @@ export default function AdminPage() {
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [search, setSearch] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+
+  useEffect(() => {
+    if (!supabase) { setLocation("/login"); return; }
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) { setLocation("/login"); return; }
+      const profile = await fetchAndStoreProfile();
+      if (!profile || profile.role !== "admin") {
+        setLocation("/dashboard");
+        return;
+      }
+      setAuthed(true);
+      setChecking(false);
+    });
+  }, [setLocation]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -385,20 +400,9 @@ export default function AdminPage() {
     query: { enabled: authed, queryKey: getGetLogisticOrderSummaryQueryKey() },
   });
 
-  function handleLogin() {
-    if (password === ADMIN_PASSWORD) {
-      localStorage.setItem(ADMIN_KEY, "1");
-      setAuthed(true);
-      setLoginError("");
-    } else {
-      setLoginError("Password salah. Coba lagi.");
-    }
-  }
-
-  function handleLogout() {
-    localStorage.removeItem(ADMIN_KEY);
-    setAuthed(false);
-    setPassword("");
+  async function handleLogout() {
+    if (supabase) await supabase.auth.signOut();
+    setLocation("/");
   }
 
   function handleInlineStatusChange(orderId: number, status: string) {
@@ -415,35 +419,10 @@ export default function AdminPage() {
     );
   }
 
-  if (!authed) {
+  if (checking) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="w-full max-w-sm space-y-6">
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4">
-              <Ship className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <h1 className="text-xl font-bold text-foreground">Admin Dashboard</h1>
-            <p className="text-sm text-muted-foreground mt-1">Logistic Ordering System</p>
-          </div>
-          <div className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Password</label>
-              <Input
-                type="password"
-                placeholder="Masukkan password admin"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              />
-              {loginError && <p className="text-xs text-destructive mt-1">{loginError}</p>}
-            </div>
-            <Button className="w-full" onClick={handleLogin}>Masuk</Button>
-          </div>
-          <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => setLocation("/")}>
-            Kembali ke Beranda
-          </Button>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center text-muted-foreground text-sm">Memeriksa sesi...</div>
       </div>
     );
   }

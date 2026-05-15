@@ -31,6 +31,7 @@ import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UsersPage from "@/pages/users";
+import MediaManagerPage from "@/pages/media-manager";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
 import SalesDocumentsListPage from "@/pages/sales/documents-list";
@@ -73,6 +74,7 @@ import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
+import PosKasirAdminPage from "@/pages/pos-kasir-admin";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -269,6 +271,10 @@ function Router() {
         <Route path="/sales/documents/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/documents/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/documents/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
+        <Route path="/sales/quotations/new" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations/:id/edit" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
+        <Route path="/sales/quotations/:id" component={() => <ProtectedRoute component={SalesDocumentEditorPage} />} />
         <Route path="/sales/orders" component={() => <ProtectedRoute component={() => <SalesDocumentsListPage kind="order" />} />} />
         <Route path="/sales/orders/new" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
         <Route path="/sales/orders/:id" component={() => <ProtectedRoute component={() => <SalesDocumentEditorPage kind="order" />} />} />
@@ -324,9 +330,12 @@ function Router() {
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
+        <Route path="/media" component={() => <ProtectedRoute component={MediaManagerPage} />} />
         {/* Holding */}
         <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
+        {/* POS Kasir Thai Tea */}
+        <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
         <Route component={NotFound} />
       </Switch>
       <AppRoutes rootGuard={AuthRouteGuard} />

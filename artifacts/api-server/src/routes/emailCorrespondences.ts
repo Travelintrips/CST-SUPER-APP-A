@@ -6,8 +6,14 @@ import {
   emailLinksTable,
 } from "@workspace/db";
 import { eq, desc, ilike, or, and, inArray, gte, lte } from "drizzle-orm";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 
 const router = Router();
+
+router.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
 
 function serializeCorrespondence(c: typeof emailCorrespondencesTable.$inferSelect) {
   return {

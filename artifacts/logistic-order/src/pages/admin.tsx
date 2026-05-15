@@ -32,6 +32,7 @@ const DEFAULT_RATES: TruckingRates = {
 };
 
 const ADMIN_KEY = "logistic_admin_auth";
+const ADMIN_TOKEN_KEY = "logistic_admin_token";
 const CARD_STYLE_KEY = "logistic_admin_card_styles";
 
 type CardStyle = { logoUrl?: string; bgCustom?: string };
@@ -63,6 +64,7 @@ const ADMIN_GRADIENT_PRESETS = [
 export default function AdminPage() {
   const [, setLocation] = useLocation();
   const [authed, setAuthed] = useState(() => localStorage.getItem(ADMIN_KEY) === "1");
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) ?? "");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const { toast } = useToast();
@@ -132,9 +134,14 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/logistic/orders/trucking-rates", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-admin-password": "admin123" },
+        headers: { "Content-Type": "application/json", "x-admin-password": authToken },
         body: JSON.stringify(ratesEditing),
       });
+      if (res.status === 403) {
+        toast({ title: "Sesi habis. Silakan login ulang.", variant: "destructive" });
+        handleLogout();
+        return;
+      }
       if (!res.ok) throw new Error("Gagal menyimpan");
       setRates(ratesEditing);
       toast({ title: "Tarif trucking berhasil disimpan" });
@@ -145,19 +152,46 @@ export default function AdminPage() {
     }
   }
 
-  function handleLogin() {
-    if (password === "admin123") {
-      localStorage.setItem(ADMIN_KEY, "1");
-      setAuthed(true);
-      setLoginError("");
-    } else {
-      setLoginError("Password salah. Coba lagi.");
+  async function handleLogin() {
+    if (!password.trim()) {
+      setLoginError("Masukkan password.");
+      return;
+    }
+    setLoginError("");
+    try {
+      // Fetch the current rates first (public GET) so the verification PUT is a no-op
+      // and does not overwrite any existing custom rates.
+      const ratesRes = await fetch("/api/logistic/orders/trucking-rates");
+      const currentRates = ratesRes.ok ? await ratesRes.json() : ratesEditing;
+
+      const verifyRes = await fetch("/api/logistic/orders/trucking-rates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify(currentRates),
+      });
+
+      if (verifyRes.ok) {
+        localStorage.setItem(ADMIN_KEY, "1");
+        localStorage.setItem(ADMIN_TOKEN_KEY, password);
+        setAuthToken(password);
+        setRates(currentRates);
+        setRatesEditing(currentRates);
+        setAuthed(true);
+      } else if (verifyRes.status === 503) {
+        setLoginError("Admin password belum dikonfigurasi di server.");
+      } else {
+        setLoginError("Password salah. Coba lagi.");
+      }
+    } catch {
+      setLoginError("Gagal menghubungi server.");
     }
   }
 
   function handleLogout() {
     localStorage.removeItem(ADMIN_KEY);
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
     setAuthed(false);
+    setAuthToken("");
     setPassword("");
   }
 

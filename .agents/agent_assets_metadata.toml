@@ -192,6 +192,66 @@ uri = "file://artifacts/customer-portal/public/images/services/trucking-containe
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "NdjNz5G94svkRn-vPc2ZE"
+uri = "file://artifacts/customer-portal/public/menu/thai-tea-original.png"
+type = "image"
+title = "thai tea original drink"
+
+[[generated]]
+id = "1miuQJVCG8zgRZAqN4h94"
+uri = "file://artifacts/customer-portal/public/menu/thai-tea-cheese.png"
+type = "image"
+title = "thai tea cheese drink"
+
+[[generated]]
+id = "U44vyMjGwNKuzmAiy2Gv8"
+uri = "file://artifacts/customer-portal/public/menu/thai-tea-brown-sugar.png"
+type = "image"
+title = "thai tea brown sugar drink"
+
+[[generated]]
+id = "cIQTLXPsI9TN7dqvhddsy"
+uri = "file://artifacts/customer-portal/public/menu/thai-tea-taro.png"
+type = "image"
+title = "thai tea taro purple drink"
+
+[[generated]]
+id = "CgGjcjJdDTYMXQ_9_9Vb-"
+uri = "file://artifacts/customer-portal/public/menu/thai-tea-matcha.png"
+type = "image"
+title = "thai tea matcha green drink"
+
+[[generated]]
+id = "mFnVyTB7vPTbvu24U-gOb"
+uri = "file://artifacts/customer-portal/public/menu/thai-tea-pandan.png"
+type = "image"
+title = "thai tea pandan drink"
+
+[[generated]]
+id = "Zia4Nvy6YJ1hxl5N8BT77"
+uri = "file://artifacts/customer-portal/public/menu/milk-tea-original.png"
+type = "image"
+title = "classic milk tea drink"
+
+[[generated]]
+id = "e-Bl2QBplvXVca47ZwsJf"
+uri = "file://artifacts/customer-portal/public/menu/boba-thai-tea.png"
+type = "image"
+title = "boba thai tea pearls drink"
+
+[[generated]]
+id = "NunchSNqsA1QEKYkDbldQ"
+uri = "file://artifacts/customer-portal/public/menu/thai-tea-large.png"
+type = "image"
+title = "thai tea large cup"
+
+[[generated]]
+id = "6BOWGoRxTJbCx4Dz4A-FE"
+uri = "file://artifacts/customer-portal/public/menu/roti-bakar.png"
+type = "image"
+title = "grilled toast bread snack"
+
 [[outputs]]
 id = "jbw844mUijSYeJ7x1ujqa"
 uri = "file://attached_assets/logo_composited.png"

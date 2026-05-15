@@ -12,6 +12,8 @@ export * from "./salesDocuments";
 export * from "./purchaseDocuments";
 export * from "./payments";
 export * from "./accounting";
+export type { Company, InsertCompany } from "./companies";
+
 export * from "./correspondences";
 export * from "./freightShipments";
 export * from "./freightAttachments";
@@ -32,3 +34,5 @@ export * from "./quotationReplyLogs";
 export * from "./holding";
 export * from "./waIncomingMessages";
 export * from "./quoteRequests";
+export * from "./mediaAssets";
+export * from "./posKasir";

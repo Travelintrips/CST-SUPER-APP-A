@@ -84,7 +84,7 @@ export async function authMiddleware(
             firstName,
             lastName,
             profileImageUrl,
-            role: isAdmin ? "admin" : "admin",
+            role: isAdmin ? "admin" : "ecommerce",
           })
           .onConflictDoNothing()
           .returning();

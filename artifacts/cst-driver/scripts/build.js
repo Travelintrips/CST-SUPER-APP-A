@@ -234,8 +234,15 @@ async function downloadFile(url, outputPath) {
 }
 
 async function downloadBundle(platform, timestamp) {
-  const entryPath = path.resolve(projectRoot, "node_modules", "expo-router", "entry");
-  const bundlePath = path.relative(workspaceRoot, entryPath);
+  // Use a real (non-symlink) entry.js file at the project root.
+  // Metro resolves bundle URLs from the workspace root as originModulePath,
+  // so the URL path must point to a real file there. Using the symlink
+  // node_modules/expo-router/entry or the real .pnpm path fails in deployment
+  // because Metro's file registry doesn't include symlink targets or unregistered
+  // .pnpm paths. artifacts/cst-driver/entry.js is a real file that requires
+  // expo-router/entry; Metro handles that inner symlink during bundling (not
+  // during HTTP URL resolution), which always works.
+  const bundlePath = path.relative(workspaceRoot, path.join(projectRoot, "entry"));
   const url = new URL(`http://localhost:8081/${bundlePath}.bundle`);
   url.searchParams.set("platform", platform);
   url.searchParams.set("dev", "false");

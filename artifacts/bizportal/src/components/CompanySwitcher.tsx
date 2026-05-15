@@ -41,7 +41,7 @@ export function CompanySwitcher() {
             className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800 focus:bg-slate-800"
           >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-indigo-600/20 text-indigo-400 text-xs font-bold border border-indigo-500/30">
-              {company.companyCode.slice(0, 3)}
+              {(company.companyCode ?? company.companyName ?? "?").slice(0, 3).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-200 truncate">{company.companyName}</p>
