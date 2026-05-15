@@ -161,7 +161,9 @@ function buildVendorWaMessage(order: LogisticOrderData, vendorName: string): str
 
 function getVendorResponseUrl(orderNumber: string): string {
   const domain = getPreferredDomain() || "cstlogistic.co.id";
-  return `https://${domain}/vendor-response/${orderNumber}`;
+  const { signVendorResponseToken } = require("./vendorResponseToken") as typeof import("./vendorResponseToken");
+  const token = signVendorResponseToken(orderNumber);
+  return `https://${domain}/vendor-response/${orderNumber}?t=${token}`;
 }
 
 function buildTruckingVendorWaMessage(

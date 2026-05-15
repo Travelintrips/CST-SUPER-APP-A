@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft, Search, Ship, Truck, CheckCircle2, Clock,
-  MapPin, Package, RefreshCw, AlertCircle, Camera, FileText,
-  Navigation, Circle, ArrowRight, Loader2,
+  MapPin, Package, RefreshCw, AlertCircle, FileText,
+  Circle, ArrowRight, Loader2,
 } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -20,23 +20,20 @@ type DriverJobStatus =
   | "PICKED_UP" | "IN_TRANSIT" | "ARRIVED_AT_DESTINATION" | "DELIVERED"
   | "COMPLETED" | "CANCELLED";
 
-interface DriverLog { id: number; status: DriverJobStatus; note: string | null; timestamp: string; }
-interface DriverPhoto { id: number; url: string; photoType: string; takenAt: string; }
+interface DriverLog { id: number; status: DriverJobStatus; timestamp: string; }
 interface DriverJob {
   id: number; jobNumber: string; status: DriverJobStatus;
-  vehicleType: string | null; truckPlate: string | null;
-  pickupAddress: string | null; deliveryAddress: string | null;
+  vehicleType: string | null;
   pickupDateTime: string | null; deliveryDateTime: string | null;
   cargoDescription: string | null; weight: string | null;
-  podReceiverName: string | null; assignedAt: string; completedAt: string | null;
-  logs: DriverLog[]; photos: DriverPhoto[];
+  distance: string | null; assignedAt: string; completedAt: string | null;
+  logs: DriverLog[];
 }
 interface TrackingData {
-  id: number; orderNumber: string; companyName: string; customerName: string;
+  id: number; orderNumber: string;
   shipmentType: string; origin: string; destination: string;
-  status: string; subtotal: number; tax: number; grandTotal: number;
-  createdAt: string; approvedAt: string | null;
-  items: { id: number; category: string; serviceName: string; subtotal: number }[];
+  status: string; createdAt: string;
+  items: { id: number; category: string; serviceName: string }[];
   driverJob: DriverJob | null;
 }
 
@@ -178,7 +175,6 @@ function DriverStepper({ job }: { job: DriverJob }) {
               {log && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {formatDateTime(log.timestamp)}
-                  {log.note && <span className="ml-1 italic">— {log.note}</span>}
                 </p>
               )}
             </div>
@@ -310,18 +306,8 @@ export default function TrackPage() {
 
               <Separator className="mt-5 mb-4" />
               <div className="grid grid-cols-2 gap-y-2 text-sm">
-                <span className="text-muted-foreground">Perusahaan</span>
-                <span className="font-medium text-foreground text-right">{tracking.companyName}</span>
-                <span className="text-muted-foreground">PIC</span>
-                <span className="font-medium text-foreground text-right">{tracking.customerName}</span>
                 <span className="text-muted-foreground">Tgl Order</span>
                 <span className="font-medium text-foreground text-right">{formatDate(tracking.createdAt)}</span>
-                {tracking.approvedAt && (
-                  <>
-                    <span className="text-muted-foreground">Tgl Disetujui</span>
-                    <span className="font-medium text-foreground text-right">{formatDate(tracking.approvedAt)}</span>
-                  </>
-                )}
               </div>
             </div>
 
@@ -346,28 +332,16 @@ export default function TrackPage() {
                       <span className="font-medium text-right">{tracking.driverJob.vehicleType}</span>
                     </>
                   )}
-                  {tracking.driverJob.truckPlate && (
+                  {tracking.driverJob.pickupDateTime && (
                     <>
-                      <span className="text-muted-foreground">Plat Nomor</span>
-                      <span className="font-medium font-mono text-right">{tracking.driverJob.truckPlate}</span>
+                      <span className="text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />Est. Pickup</span>
+                      <span className="font-medium text-right text-xs leading-snug">{formatDateTime(tracking.driverJob.pickupDateTime)}</span>
                     </>
                   )}
-                  {tracking.driverJob.pickupAddress && (
+                  {tracking.driverJob.deliveryDateTime && (
                     <>
-                      <span className="text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />Pickup</span>
-                      <span className="font-medium text-right text-xs leading-snug">{tracking.driverJob.pickupAddress}</span>
-                    </>
-                  )}
-                  {tracking.driverJob.deliveryAddress && (
-                    <>
-                      <span className="text-muted-foreground flex items-center gap-1"><Navigation className="w-3 h-3" />Tujuan</span>
-                      <span className="font-medium text-right text-xs leading-snug">{tracking.driverJob.deliveryAddress}</span>
-                    </>
-                  )}
-                  {tracking.driverJob.podReceiverName && (
-                    <>
-                      <span className="text-muted-foreground">Penerima</span>
-                      <span className="font-medium text-right">{tracking.driverJob.podReceiverName}</span>
+                      <span className="text-muted-foreground">Est. Tiba</span>
+                      <span className="font-medium text-right text-xs leading-snug">{formatDateTime(tracking.driverJob.deliveryDateTime)}</span>
                     </>
                   )}
                 </div>
@@ -375,23 +349,6 @@ export default function TrackPage() {
                 {/* Driver status timeline */}
                 <DriverStepper job={tracking.driverJob} />
 
-                {/* Proof of delivery photos */}
-                {tracking.driverJob.photos.length > 0 && (
-                  <div className="mt-4">
-                    <Separator className="mb-3" />
-                    <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                      <Camera className="w-3 h-3" /> Foto Pengiriman
-                    </p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {tracking.driverJob.photos.map((photo) => (
-                        <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer"
-                          className="aspect-square rounded-lg overflow-hidden border border-border hover:opacity-90 transition-opacity">
-                          <img src={photo.url} alt={photo.photoType} className="w-full h-full object-cover" />
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               tracking.status !== "Completed" && (
@@ -403,38 +360,24 @@ export default function TrackPage() {
             )}
 
             {/* Services */}
-            <div className="bg-card border border-border rounded-xl p-5">
-              <h3 className="font-semibold text-foreground text-sm mb-3 flex items-center gap-2">
-                <Package className="w-4 h-4 text-primary" />
-                Layanan ({tracking.items.length})
-              </h3>
-              <div className="space-y-2">
-                {tracking.items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between py-2 border-b border-border last:border-0 gap-3">
-                    <div>
-                      <Badge variant="outline" className="text-xs mr-1">{item.category}</Badge>
-                      <span className="text-sm text-foreground">{item.serviceName}</span>
+            {tracking.items.length > 0 && (
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h3 className="font-semibold text-foreground text-sm mb-3 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-primary" />
+                  Layanan ({tracking.items.length})
+                </h3>
+                <div className="space-y-2">
+                  {tracking.items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between py-2 border-b border-border last:border-0 gap-3">
+                      <div>
+                        <Badge variant="outline" className="text-xs mr-1">{item.category}</Badge>
+                        <span className="text-sm text-foreground">{item.serviceName}</span>
+                      </div>
                     </div>
-                    <span className="text-sm font-bold text-primary flex-shrink-0">{formatCurrency(item.subtotal)}</span>
-                  </div>
-                ))}
-              </div>
-              <Separator className="mt-3 mb-3" />
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(tracking.subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">PPN</span>
-                  <span>{formatCurrency(tracking.tax)}</span>
-                </div>
-                <div className="flex justify-between font-bold pt-1 border-t border-border">
-                  <span>Total</span>
-                  <span className="text-primary">{formatCurrency(tracking.grandTotal)}</span>
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="bg-muted/40 rounded-lg p-4 text-xs text-muted-foreground">
               <p className="font-medium text-foreground mb-1">Informasi</p>

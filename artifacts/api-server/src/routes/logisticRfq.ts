@@ -6,6 +6,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -938,8 +939,9 @@ logisticRfqRouter.get("/logistic-vendors", async (_req: Request, res: Response) 
   return res.json(logistic.map((v) => ({ id: v.id, name: v.name, serviceType: v.serviceType ?? "", hasPhone: !!v.phone })));
 });
 
-// POST /api/logistic/orders/:id/manual-rfq — manually create RFQ and send WA to selected vendors
+// POST /api/logistic/orders/:id/manual-rfq — manually create RFQ and send WA to selected vendors (staff only)
 logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -1009,8 +1011,9 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
   return res.json({ ok: true, rfqNumber, vendorCount: eligible.length });
 });
 
-// GET /api/logistic/orders/approve-form/:orderNumber — public approve form data
+// GET /api/logistic/orders/approve-form/:orderNumber — approve form data (staff only)
 logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderNumber = req.params["orderNumber"] as string;
   if (!orderNumber) return res.status(400).json({ message: "orderNumber wajib diisi" });
 
@@ -1058,8 +1061,9 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
   });
 });
 
-// POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer
+// POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer (staff only)
 logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 

@@ -80,7 +80,10 @@ export default function ApprovePage() {
   const loadData = useCallback(() => {
     if (!orderNumber) return;
     fetch(apiUrl(`/api/logistic/orders/approve-form/${orderNumber}`))
-      .then((r) => r.ok ? r.json() : r.json().then((e: { message: string }) => Promise.reject(e.message)))
+      .then((r) => {
+        if (r.status === 401) return Promise.reject("__unauthorized__");
+        return r.ok ? r.json() : r.json().then((e: { message: string }) => Promise.reject(e.message));
+      })
       .then((d: OrderData) => {
         setData(d);
         setRfqShipmentType(d.shipmentType || "");
@@ -115,6 +118,7 @@ export default function ApprovePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vendorIds: selectedVendorIds, shipmentType: rfqShipmentType || undefined }),
       });
+      if (r.status === 401) throw new Error("Sesi login diperlukan. Buka BizPortal untuk melanjutkan.");
       const res = await r.json() as { ok?: boolean; vendorCount?: number; message?: string };
       if (!r.ok) throw new Error(res.message ?? "Gagal kirim RFQ");
       setRfqSent(true);
@@ -158,6 +162,7 @@ export default function ApprovePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quoteId: selectedQuoteId, sellingPrice: sp }),
       });
+      if (r.status === 401) throw new Error("Sesi login diperlukan. Buka BizPortal untuk melanjutkan.");
       if (!r.ok) {
         const e = await r.json() as { message?: string };
         throw new Error(e.message ?? "Gagal approve");
@@ -178,6 +183,28 @@ export default function ApprovePage() {
         <div className="flex flex-col items-center gap-3 text-gray-500">
           <Loader2 className="w-8 h-8 animate-spin" />
           <p className="text-sm">Memuat data order...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error === "__unauthorized__" || (!loading && !data && error === null)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-2xl shadow p-6 max-w-sm w-full text-center space-y-4">
+          <div className="w-14 h-14 rounded-full bg-yellow-100 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-8 h-8 text-yellow-600" />
+          </div>
+          <h2 className="font-semibold text-gray-800">Halaman Staff</h2>
+          <p className="text-sm text-gray-500">
+            Halaman approve hanya dapat diakses oleh staf internal yang sudah login ke BizPortal.
+          </p>
+          <a
+            href="/bizportal/logistics/portal-orders"
+            className="block w-full py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors"
+          >
+            Buka BizPortal
+          </a>
         </div>
       </div>
     );
