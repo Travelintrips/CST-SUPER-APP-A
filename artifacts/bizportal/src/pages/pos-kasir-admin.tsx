@@ -7,10 +7,19 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2 } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+interface Branch {
+  id: number;
+  name: string;
+  address?: string;
+  phone?: string;
+  isActive: boolean;
+  createdAt: string;
+}
 
 interface Cashier {
   id: number;
@@ -18,6 +27,8 @@ interface Cashier {
   email: string;
   phone?: string;
   status: "pending" | "approved" | "rejected";
+  branchId?: number | null;
+  branchName?: string | null;
   createdAt: string;
 }
 
@@ -25,6 +36,7 @@ interface ReportOrder {
   id: number;
   orderNumber: string;
   cashierName?: string;
+  branchName?: string | null;
   total: string;
   paymentMethod?: string;
   paidAt: string;
@@ -79,6 +91,12 @@ const PAYMENT_LABELS: Record<string, string> = {
 export default function PosKasirAdminPage() {
   const { toast } = useToast();
 
+  // Branches
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchDialog, setBranchDialog] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [branchForm, setBranchForm] = useState({ name: "", address: "", phone: "", isActive: true });
+
   // Cashiers
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [cashiersLoading, setCashiersLoading] = useState(false);
@@ -91,6 +109,7 @@ export default function PosKasirAdminPage() {
   });
   const [reportTo, setReportTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportBranchId, setReportBranchId] = useState<string>("");
 
   // Products
   const [products, setProducts] = useState<Product[]>([]);
@@ -104,6 +123,11 @@ export default function PosKasirAdminPage() {
   const [editingStock, setEditingStock] = useState<StockItem | null>(null);
   const [stockForm, setStockForm] = useState({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" });
 
+  const loadBranches = useCallback(async () => {
+    const res = await fetch("/api/pos-kasir/admin/branches", { credentials: "include" });
+    if (res.ok) setBranches(await res.json() as Branch[]);
+  }, []);
+
   const loadCashiers = useCallback(async () => {
     setCashiersLoading(true);
     try {
@@ -115,14 +139,15 @@ export default function PosKasirAdminPage() {
   const loadReport = useCallback(async () => {
     setReportLoading(true);
     try {
+      const branchParam = reportBranchId ? `&branchId=${reportBranchId}` : "";
       const [rRes, dRes] = await Promise.all([
-        fetch(`/api/pos-kasir/admin/report?from=${reportFrom}&to=${reportTo}`, { credentials: "include" }),
-        fetch("/api/pos-kasir/admin/report/daily", { credentials: "include" }),
+        fetch(`/api/pos-kasir/admin/report?from=${reportFrom}&to=${reportTo}${branchParam}`, { credentials: "include" }),
+        fetch(`/api/pos-kasir/admin/report/daily${branchParam ? `?${branchParam.slice(1)}` : ""}`, { credentials: "include" }),
       ]);
       if (rRes.ok) setReport(await rRes.json() as ReportData);
       if (dRes.ok) setDaily(await dRes.json() as DailyRow[]);
     } finally { setReportLoading(false); }
-  }, [reportFrom, reportTo]);
+  }, [reportFrom, reportTo, reportBranchId]);
 
   const loadProducts = useCallback(async () => {
     const res = await fetch("/api/pos-kasir/products/all", { credentials: "include" });
@@ -134,7 +159,13 @@ export default function PosKasirAdminPage() {
     if (res.ok) setStocks(await res.json() as StockItem[]);
   }, []);
 
-  useEffect(() => { loadCashiers(); loadReport(); loadProducts(); loadStocks(); }, [loadCashiers, loadReport, loadProducts, loadStocks]);
+  useEffect(() => {
+    loadBranches();
+    loadCashiers();
+    loadReport();
+    loadProducts();
+    loadStocks();
+  }, [loadBranches, loadCashiers, loadReport, loadProducts, loadStocks]);
 
   const approveCashier = async (id: number, status: "approved" | "rejected") => {
     const res = await fetch(`/api/pos-kasir/admin/cashiers/${id}`, {
@@ -147,6 +178,50 @@ export default function PosKasirAdminPage() {
       loadCashiers();
     }
   };
+
+  const assignBranch = async (cashierId: number, branchId: string) => {
+    await fetch(`/api/pos-kasir/admin/cashiers/${cashierId}`, {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branchId: branchId === "none" ? null : Number(branchId) }),
+    });
+    loadCashiers();
+  };
+
+  // ── Branch CRUD ──────────────────────────────────────────────────────────────
+
+  const saveBranch = async () => {
+    const url = editingBranch ? `/api/pos-kasir/admin/branches/${editingBranch.id}` : "/api/pos-kasir/admin/branches";
+    const method = editingBranch ? "PATCH" : "POST";
+    const res = await fetch(url, {
+      method, credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(branchForm),
+    });
+    if (res.ok) {
+      toast({ title: editingBranch ? "Cabang diperbarui" : "Cabang ditambahkan" });
+      setBranchDialog(false);
+      setEditingBranch(null);
+      loadBranches();
+    } else {
+      const d = await res.json() as { message?: string };
+      toast({ title: d.message ?? "Gagal menyimpan cabang", variant: "destructive" });
+    }
+  };
+
+  const deleteBranch = async (id: number) => {
+    if (!confirm("Hapus cabang ini? Tidak bisa dihapus jika masih ada kasir yang terdaftar.")) return;
+    const res = await fetch(`/api/pos-kasir/admin/branches/${id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) {
+      toast({ title: "Cabang dihapus" });
+      loadBranches();
+    } else {
+      const d = await res.json() as { message?: string };
+      toast({ title: d.message ?? "Gagal menghapus cabang", variant: "destructive" });
+    }
+  };
+
+  // ── Product CRUD ─────────────────────────────────────────────────────────────
 
   const saveProduct = async () => {
     const url = editingProduct ? `/api/pos-kasir/products/${editingProduct.id}` : "/api/pos-kasir/products";
@@ -171,6 +246,8 @@ export default function PosKasirAdminPage() {
     await fetch(`/api/pos-kasir/products/${id}`, { method: "DELETE", credentials: "include" });
     loadProducts();
   };
+
+  // ── Stock CRUD ───────────────────────────────────────────────────────────────
 
   const saveStock = async () => {
     const url = editingStock ? `/api/pos-kasir/admin/stock/${editingStock.id}` : "/api/pos-kasir/admin/stock";
@@ -205,7 +282,7 @@ export default function PosKasirAdminPage() {
               <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-8 h-8 rounded-full object-cover bg-orange-500" />
               Thai Tea CST — Admin Kasir
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">Manajemen kasir, menu, stok, dan laporan penjualan</p>
+            <p className="text-sm text-muted-foreground mt-1">Manajemen cabang, kasir, menu, stok, dan laporan penjualan</p>
           </div>
           {pendingCount > 0 && (
             <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-sm px-3 py-1.5">
@@ -214,8 +291,11 @@ export default function PosKasirAdminPage() {
           )}
         </div>
 
-        <Tabs defaultValue="cashiers">
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs defaultValue="branches">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="branches" className="flex items-center gap-1.5">
+              <MapPin className="h-4 w-4" /> Cabang
+            </TabsTrigger>
             <TabsTrigger value="cashiers" className="flex items-center gap-1.5">
               <Users className="h-4 w-4" /> Kasir {pendingCount > 0 && <span className="bg-yellow-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{pendingCount}</span>}
             </TabsTrigger>
@@ -229,6 +309,74 @@ export default function PosKasirAdminPage() {
               <Package className="h-4 w-4" /> Stok
             </TabsTrigger>
           </TabsList>
+
+          {/* ── Branches Tab ── */}
+          <TabsContent value="branches">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <CardTitle className="text-base">Daftar Cabang</CardTitle>
+                <Button size="sm" onClick={() => {
+                  setEditingBranch(null);
+                  setBranchForm({ name: "", address: "", phone: "", isActive: true });
+                  setBranchDialog(true);
+                }}>
+                  <Plus className="h-4 w-4 mr-1" /> Tambah Cabang
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nama Cabang</TableHead>
+                      <TableHead>Alamat</TableHead>
+                      <TableHead>Telepon</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Kasir</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {branches.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">Belum ada cabang</TableCell>
+                      </TableRow>
+                    ) : branches.map((b) => {
+                      const kasirCount = cashiers.filter((c) => c.branchId === b.id).length;
+                      return (
+                        <TableRow key={b.id}>
+                          <TableCell className="font-medium">{b.name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{b.address || "-"}</TableCell>
+                          <TableCell className="text-sm">{b.phone || "-"}</TableCell>
+                          <TableCell>
+                            {b.isActive
+                              ? <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Aktif</Badge>
+                              : <Badge variant="secondary" className="text-xs">Non-aktif</Badge>}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">{kasirCount} kasir</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => {
+                                setEditingBranch(b);
+                                setBranchForm({ name: b.name, address: b.address ?? "", phone: b.phone ?? "", isActive: b.isActive });
+                                setBranchDialog(true);
+                              }}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-red-600" onClick={() => deleteBranch(b.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* ── Cashiers Tab ── */}
           <TabsContent value="cashiers">
@@ -246,6 +394,7 @@ export default function PosKasirAdminPage() {
                       <TableHead>Nama</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>No. HP</TableHead>
+                      <TableHead>Cabang</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Daftar</TableHead>
                       <TableHead className="text-right">Aksi</TableHead>
@@ -254,13 +403,29 @@ export default function PosKasirAdminPage() {
                   <TableBody>
                     {cashiers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">Belum ada kasir terdaftar</TableCell>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Belum ada kasir terdaftar</TableCell>
                       </TableRow>
                     ) : cashiers.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className="font-medium">{c.name}</TableCell>
                         <TableCell>{c.email}</TableCell>
                         <TableCell>{c.phone ?? "-"}</TableCell>
+                        <TableCell>
+                          <Select
+                            value={c.branchId ? String(c.branchId) : "none"}
+                            onValueChange={(v) => assignBranch(c.id, v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-36">
+                              <SelectValue placeholder="— Pilih —" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">— Tidak ada —</SelectItem>
+                              {branches.map((b) => (
+                                <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell>{STATUS_BADGE[c.status]}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {new Date(c.createdAt).toLocaleDateString("id-ID")}
@@ -300,6 +465,20 @@ export default function PosKasirAdminPage() {
                     <label className="text-sm font-medium">Sampai</label>
                     <Input type="date" value={reportTo} onChange={(e) => setReportTo(e.target.value)} className="w-36 h-8 text-sm" />
                   </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium">Cabang</label>
+                    <Select value={reportBranchId} onValueChange={setReportBranchId}>
+                      <SelectTrigger className="w-36 h-8 text-sm">
+                        <SelectValue placeholder="Semua" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Semua Cabang</SelectItem>
+                        {branches.map((b) => (
+                          <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button size="sm" onClick={loadReport} disabled={reportLoading}>
                     <RefreshCw className={`h-4 w-4 mr-1 ${reportLoading ? "animate-spin" : ""}`} /> Tampilkan
                   </Button>
@@ -331,6 +510,7 @@ export default function PosKasirAdminPage() {
                         <TableRow>
                           <TableHead>No. Order</TableHead>
                           <TableHead>Kasir</TableHead>
+                          <TableHead>Cabang</TableHead>
                           <TableHead>Metode</TableHead>
                           <TableHead>Waktu</TableHead>
                           <TableHead className="text-right">Total</TableHead>
@@ -341,6 +521,7 @@ export default function PosKasirAdminPage() {
                           <TableRow key={o.id}>
                             <TableCell className="font-mono text-xs">{o.orderNumber}</TableCell>
                             <TableCell>{o.cashierName ?? "-"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{o.branchName ?? "-"}</TableCell>
                             <TableCell>{PAYMENT_LABELS[o.paymentMethod ?? ""] ?? o.paymentMethod ?? "-"}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">
                               {new Date(o.paidAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}
@@ -355,7 +536,6 @@ export default function PosKasirAdminPage() {
               )}
             </Card>
 
-            {/* Daily summary */}
             {daily.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
@@ -390,7 +570,11 @@ export default function PosKasirAdminPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <CardTitle className="text-base">Menu Thai Tea CST</CardTitle>
-                <Button size="sm" onClick={() => { setEditingProduct(null); setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0 }); setProductDialog(true); }}>
+                <Button size="sm" onClick={() => {
+                  setEditingProduct(null);
+                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0 });
+                  setProductDialog(true);
+                }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Menu
                 </Button>
               </CardHeader>
@@ -450,7 +634,11 @@ export default function PosKasirAdminPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <CardTitle className="text-base">Manajemen Stok Bahan</CardTitle>
-                <Button size="sm" onClick={() => { setEditingStock(null); setStockForm({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" }); setStockDialog(true); }}>
+                <Button size="sm" onClick={() => {
+                  setEditingStock(null);
+                  setStockForm({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" });
+                  setStockDialog(true);
+                }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Bahan
                 </Button>
               </CardHeader>
@@ -510,6 +698,42 @@ export default function PosKasirAdminPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Branch Dialog */}
+      <Dialog open={branchDialog} onOpenChange={setBranchDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingBranch ? "Edit Cabang" : "Tambah Cabang Baru"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div>
+              <Label className="text-xs">Nama Cabang <span className="text-red-500">*</span></Label>
+              <Input value={branchForm.name} onChange={(e) => setBranchForm((f) => ({ ...f, name: e.target.value }))} placeholder="Pusat / Cabang A" />
+            </div>
+            <div>
+              <Label className="text-xs">Alamat <span className="text-gray-400 font-normal">(opsional)</span></Label>
+              <Input value={branchForm.address} onChange={(e) => setBranchForm((f) => ({ ...f, address: e.target.value }))} placeholder="Jl. Contoh No. 1" />
+            </div>
+            <div>
+              <Label className="text-xs">Telepon <span className="text-gray-400 font-normal">(opsional)</span></Label>
+              <Input value={branchForm.phone} onChange={(e) => setBranchForm((f) => ({ ...f, phone: e.target.value }))} placeholder="08xxxxxxxxxx" />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox" checked={branchForm.isActive}
+                onChange={(e) => setBranchForm((f) => ({ ...f, isActive: e.target.checked }))}
+                className="w-4 h-4"
+                id="branch-active"
+              />
+              <label htmlFor="branch-active" className="text-sm cursor-pointer">Cabang aktif</label>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setBranchDialog(false)}>Batal</Button>
+              <Button onClick={saveBranch} disabled={!branchForm.name.trim()}>Simpan</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Product Dialog */}
       <Dialog open={productDialog} onOpenChange={setProductDialog}>
