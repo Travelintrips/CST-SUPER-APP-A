@@ -726,6 +726,10 @@ export interface PurchaseDocument {
   amountPaid: number;
   createdAt: string;
   updatedAt: string;
+  billNumber?: string | null;
+  billDate?: string | null;
+  dueDate?: string | null;
+  cancelledAt?: string | null;
 }
 
 export type PurchaseDocumentDetail = PurchaseDocument & {
