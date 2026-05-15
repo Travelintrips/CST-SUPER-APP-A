@@ -13,7 +13,8 @@ const router = Router();
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 
-const CASHIER_TOKEN_SECRET = process.env.CASHIER_TOKEN_SECRET;
+const CASHIER_TOKEN_SECRET = process.env.CASHIER_TOKEN_SECRET
+  ?? (process.env.NODE_ENV !== "production" ? "dev-cashier-secret-changeme" : null);
 if (!CASHIER_TOKEN_SECRET) {
   throw new Error("CASHIER_TOKEN_SECRET environment variable is required");
 }

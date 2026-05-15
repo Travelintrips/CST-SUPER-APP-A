@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import {
   logisticOrdersTable,
@@ -165,6 +166,7 @@ logisticOrdersRouter.post("/", async (req: Request, res: Response) => {
       tax: String(body.tax),
       grandTotal: String(body.grandTotal),
       status: "New Order",
+      publicRfqToken: randomBytes(16).toString("hex"),
     })
     .returning();
 
@@ -360,8 +362,12 @@ logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response)
   return res.json(rates);
 });
 
-// GET /api/logistic/orders/vendors — public (customer portal uses this for delivery options)
-logisticOrdersRouter.get("/vendors", async (_req: Request, res: Response) => {
+// GET /api/logistic/orders/vendors — admin only
+logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
   return res.json(rows.map((v) => ({ ...v, fee: Number(v.fee ?? 0), email: v.contactEmail })));
 });
