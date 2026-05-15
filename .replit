@@ -9,6 +9,60 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && PORT=8080 pnpm run build && PORT=8080 pnpm run start"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=5000 BASE_PATH=/bizportal/ pnpm --filter @workspace/bizportal run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=5173 BASE_PATH=/ pnpm --filter @workspace/customer-portal run dev"
+waitForPort = 5173
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -28,11 +82,6 @@ FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com,skylogistic00@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-<<<<<<< HEAD
-CASHIER_TOKEN_SECRET = "0b274c39aa736c0a48def94548cc9ed5260e58eed2b9cf37c0c57ad7dcee3558"
-=======
-CASHIER_TOKEN_SECRET = "d9d7db71e987803a05516d6608b242750e61e32fe05bce54479b032e1d6f8640"
->>>>>>> dbb93ba70a958be2ae14c64b07089adea8fa5c16
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -55,6 +104,10 @@ externalPort = 8008
 [[ports]]
 localPort = 8080
 externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 9000
 
 [[ports]]
 localPort = 8082
