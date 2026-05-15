@@ -1136,6 +1136,7 @@ export const AccountingEntrySource = {
   ecommerce_order: "ecommerce_order",
   stock_received: "stock_received",
   manual_payment: "manual_payment",
+  reversal: "reversal",
 } as const;
 
 export interface AccountingEntry {
