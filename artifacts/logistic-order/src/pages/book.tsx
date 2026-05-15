@@ -730,33 +730,50 @@ export default function BookPage() {
           </div>
         ) : (
           <>
-            <div className="space-y-3">
-              {cartItems.map((item) => (
-                <div key={item.cartId} className="bg-card border border-border rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
-                      <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {Object.entries(item.inputData)
-                          .filter(([, v]) => v)
-                          .slice(0, 3)
-                          .map(([k, v]) => `${k}: ${v}`)
-                          .join(" · ")}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
-                      <button
-                        onClick={() => removeItem(item.cartId)}
-                        className="text-destructive hover:text-destructive/80"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+            <div className="rounded-xl border-2 border-primary/20 bg-primary/5 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-primary/10 border-b border-primary/20">
+                <Package className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold text-primary uppercase tracking-wide">1 Pesanan</span>
+                <span className="text-xs text-primary/70">— semua layanan di bawah dikirim dalam satu paket</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {cartItems.map((item, idx) => (
+                  <div key={item.cartId}>
+                    {idx > 0 && (
+                      <div className="flex items-center gap-2 py-1">
+                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center flex-shrink-0 ml-2">
+                          <span className="text-[10px] font-bold text-muted-foreground">+</span>
+                        </div>
+                        <div className="flex-1 border-t border-dashed border-border" />
+                      </div>
+                    )}
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
+                          <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {Object.entries(item.inputData)
+                              .filter(([, v]) => v)
+                              .slice(0, 3)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                          <button
+                            onClick={() => removeItem(item.cartId)}
+                            className="text-destructive hover:text-destructive/80"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             <div className="bg-muted/40 rounded-lg border border-border p-4 space-y-2">
