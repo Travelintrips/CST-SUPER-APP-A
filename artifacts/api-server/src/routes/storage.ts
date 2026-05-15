@@ -127,6 +127,59 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 });
 
 /**
+ * POST /storage/uploads/validate-size
+ *
+ * Post-upload size guard for presigned-URL uploads.
+ *
+ * After a staff user obtains a presigned PUT URL from /request-url and
+ * uploads the file directly to GCS, they call this endpoint with the
+ * returned objectPath.  The server reads the GCS object metadata, and if
+ * the file exceeds the hard cap it immediately deletes the object and
+ * returns HTTP 413.  This closes the gap where the presigned URL itself
+ * cannot carry a signed Content-Length constraint (the Replit sidecar
+ * signing API does not support header conditions).
+ *
+ * The cap here (100 MB) is deliberately more generous than the multipart
+ * limit (20 MB) because internal staff often need to upload large documents
+ * such as drawings or scanned bill-of-lading bundles.
+ */
+const PRESIGNED_MAX_BYTES = 100 * 1024 * 1024; // 100 MB
+
+router.post("/storage/uploads/validate-size", async (req: Request, res: Response) => {
+  if (!await requireClerkUser(req, res)) return;
+
+  const { objectPath } = req.body ?? {};
+  if (!objectPath || typeof objectPath !== "string") {
+    res.status(400).json({ error: "objectPath wajib diisi" });
+    return;
+  }
+
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const [metadata] = await objectFile.getMetadata();
+    const sizeBytes = Number(metadata.size ?? 0);
+
+    if (sizeBytes > PRESIGNED_MAX_BYTES) {
+      // Delete immediately — do not leave oversized objects in storage.
+      try { await objectFile.delete(); } catch { /* best-effort */ }
+      res.status(413).json({
+        error: `File terlalu besar (${(sizeBytes / 1024 / 1024).toFixed(1)} MB). Batas maksimal 100 MB.`,
+      });
+      return;
+    }
+
+    res.json({ objectPath, sizeBytes });
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: "Object tidak ditemukan" });
+      return;
+    }
+    req.log.error({ err: error }, "Error validating upload size");
+    res.status(500).json({ error: "Gagal memvalidasi ukuran file" });
+  }
+});
+
+/**
  * GET /storage/public-objects/*
  *
  * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
