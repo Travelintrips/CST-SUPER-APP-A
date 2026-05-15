@@ -2,8 +2,14 @@ import { Router } from "express";
 import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable, apiResponseTimesTable, salesDocumentsTable } from "@workspace/db";
 import { sql, and, ne, eq, gte, lt } from "drizzle-orm";
 import { getRecentResponseTimesFromDb } from "../lib/responseTimeLog";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 
 const router = Router();
+
+router.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
 
 // GET /api/dashboard/summary
 router.get("/summary", async (req, res) => {

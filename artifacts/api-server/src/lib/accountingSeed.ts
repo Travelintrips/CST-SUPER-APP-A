@@ -207,6 +207,43 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       ADD COLUMN IF NOT EXISTS company_id integer
   `);
 
+  // ── Dedup chart_of_accounts: keep min(id) per code, reroute FK refs ──────
+  await db.execute(sql`
+    DO $$
+    DECLARE
+      loser RECORD;
+    BEGIN
+      FOR loser IN
+        SELECT coa.id AS loser_id, winners.keep_id
+        FROM chart_of_accounts coa
+        JOIN (
+          SELECT code, MIN(id) AS keep_id FROM chart_of_accounts GROUP BY code HAVING COUNT(*) > 1
+        ) winners ON coa.code = winners.code AND coa.id <> winners.keep_id
+      LOOP
+        UPDATE accounting_entry_lines SET account_id = loser.keep_id WHERE account_id = loser.loser_id;
+        UPDATE accounting_journals SET default_debit_account_id = loser.keep_id WHERE default_debit_account_id = loser.loser_id;
+        UPDATE accounting_journals SET default_credit_account_id = loser.keep_id WHERE default_credit_account_id = loser.loser_id;
+        UPDATE accounting_settings SET ar_account_id = loser.keep_id WHERE ar_account_id = loser.loser_id;
+        UPDATE accounting_settings SET ap_account_id = loser.keep_id WHERE ap_account_id = loser.loser_id;
+        UPDATE accounting_settings SET sales_income_account_id = loser.keep_id WHERE sales_income_account_id = loser.loser_id;
+        UPDATE accounting_settings SET purchase_expense_account_id = loser.keep_id WHERE purchase_expense_account_id = loser.loser_id;
+        UPDATE accounting_settings SET default_bank_account_id = loser.keep_id WHERE default_bank_account_id = loser.loser_id;
+        UPDATE accounting_settings SET default_cash_account_id = loser.keep_id WHERE default_cash_account_id = loser.loser_id;
+        UPDATE accounting_settings SET ppn_output_account_id = loser.keep_id WHERE ppn_output_account_id = loser.loser_id;
+        UPDATE accounting_settings SET ppn_input_account_id = loser.keep_id WHERE ppn_input_account_id = loser.loser_id;
+        UPDATE accounting_settings SET inventory_account_id = loser.keep_id WHERE inventory_account_id = loser.loser_id;
+        UPDATE accounting_settings SET cogs_account_id = loser.keep_id WHERE cogs_account_id = loser.loser_id;
+        UPDATE accounting_taxes SET account_id = loser.keep_id WHERE account_id = loser.loser_id;
+        DELETE FROM chart_of_accounts WHERE id = loser.loser_id;
+      END LOOP;
+    END $$
+  `);
+
+  // ── Re-create unique index on chart_of_accounts.code ────────────────────
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS chart_of_accounts_code_key ON chart_of_accounts(code)
+  `);
+
   // ── Pass 1: Upsert global parent group accounts ───────────────────────────
   const parentRoots = COA_PARENTS.filter((p) => !p.parentCode);
   if (parentRoots.length) {
@@ -362,24 +399,66 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
   const cashJ  = getJournal("CSH", 1);
   const expJ   = getJournal("EXP", 1);
 
-  // ── Taxes: ensure PPN sale + purchase exist ───────────────────────────────
-  const c1ppnOut = needFor("2-1020", 1);
-  const c1ppnIn  = needFor("1-1050", 1);
+  // ── Taxes: add company_id column + migrate to per-company ────────────────
+  await db.execute(sql`
+    ALTER TABLE accounting_taxes ADD COLUMN IF NOT EXISTS company_id integer
+  `);
 
-  const existingTaxes = await db.select().from(accountingTaxesTable);
-  const hasSaleTax     = existingTaxes.some((t) => t.kind === "sale");
-  const hasPurchaseTax = existingTaxes.some((t) => t.kind === "purchase");
-  if (!hasSaleTax) {
-    await db.insert(accountingTaxesTable).values({
-      name: "PPN Keluaran 11%", rate: "11.000", kind: "sale", accountId: c1ppnOut.id,
-    });
+  // Dedup taxes: keep min(id) per (kind, company_id)
+  await db.execute(sql`
+    DELETE FROM accounting_taxes
+    WHERE id NOT IN (
+      SELECT MIN(id) FROM accounting_taxes GROUP BY kind, COALESCE(company_id, 0)
+    )
+  `);
+
+  // Assign existing taxes with null company_id to company 1
+  await db.execute(sql`
+    UPDATE accounting_taxes SET company_id = 1 WHERE company_id IS NULL
+  `);
+
+  // Seed PPN sale + purchase per company
+  for (const companyId of ALL_COMPANY_IDS) {
+    const ppnOut = needFor("2-1020", companyId);
+    const ppnIn  = needFor("1-1050", companyId);
+    const existingForCompany = await db
+      .select()
+      .from(accountingTaxesTable)
+      .where(eq(accountingTaxesTable.companyId, companyId));
+    const hasSale     = existingForCompany.some((t) => t.kind === "sale");
+    const hasPurchase = existingForCompany.some((t) => t.kind === "purchase");
+    if (!hasSale) {
+      await db.insert(accountingTaxesTable).values({
+        name: "PPN Keluaran 11%", rate: "11.000", kind: "sale",
+        accountId: ppnOut.id, companyId,
+      });
+    } else {
+      // Update account to correct company account
+      const [existing] = existingForCompany.filter((t) => t.kind === "sale");
+      if (existing && existing.accountId !== ppnOut.id) {
+        await db.execute(sql`
+          UPDATE accounting_taxes SET account_id = ${ppnOut.id}
+          WHERE id = ${existing.id}
+        `);
+      }
+    }
+    if (!hasPurchase) {
+      await db.insert(accountingTaxesTable).values({
+        name: "PPN Masukan 11%", rate: "11.000", kind: "purchase",
+        accountId: ppnIn.id, companyId,
+      });
+    } else {
+      const [existing] = existingForCompany.filter((t) => t.kind === "purchase");
+      if (existing && existing.accountId !== ppnIn.id) {
+        await db.execute(sql`
+          UPDATE accounting_taxes SET account_id = ${ppnIn.id}
+          WHERE id = ${existing.id}
+        `);
+      }
+    }
   }
-  if (!hasPurchaseTax) {
-    await db.insert(accountingTaxesTable).values({
-      name: "PPN Masukan 11%", rate: "11.000", kind: "purchase", accountId: c1ppnIn.id,
-    });
-  }
-  const allTaxes    = await db.select().from(accountingTaxesTable);
+
+  const allTaxes    = await db.select().from(accountingTaxesTable).where(eq(accountingTaxesTable.companyId, 1));
   const saleTax     = allTaxes.find((t) => t.kind === "sale")!;
   const purchaseTax = allTaxes.find((t) => t.kind === "purchase")!;
 

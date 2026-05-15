@@ -253,6 +253,49 @@ function generateSessionToken(): string {
   return randomBytes(20).toString("hex");
 }
 
+// ── Upload rate-limit stores (in-memory, reset on server restart) ─────────────
+// These are a cost-throttle layer on top of session validation: even though
+// session tokens are freely obtainable via the public chat endpoint, limits
+// per IP and per session make bulk wallet-drain attacks economically impractical.
+const UPLOAD_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_IP_LIMIT = 20; // max uploads per IP per hour
+const UPLOAD_SESSION_LIMIT = 10; // max uploads per session lifetime
+
+interface RateEntry { count: number; resetAt: number }
+const uploadIpRateMap = new Map<string, RateEntry>();
+const uploadSessionCountMap = new Map<string, number>();
+
+/**
+ * Enforces per-IP and per-session upload rate limits.
+ * Returns null when the request is allowed, or an error message string when
+ * it should be rejected with HTTP 429.
+ * Side-effect: increments both counters when the request is allowed.
+ */
+function checkUploadRateLimit(ip: string, sessionToken: string): string | null {
+  const now = Date.now();
+
+  // Per-IP window check
+  let ipEntry = uploadIpRateMap.get(ip);
+  if (!ipEntry || now > ipEntry.resetAt) {
+    ipEntry = { count: 0, resetAt: now + UPLOAD_IP_WINDOW_MS };
+  }
+  if (ipEntry.count >= UPLOAD_IP_LIMIT) {
+    return "Terlalu banyak upload dari jaringan ini. Coba lagi dalam 1 jam.";
+  }
+
+  // Per-session lifetime check
+  const sessionCount = uploadSessionCountMap.get(sessionToken) ?? 0;
+  if (sessionCount >= UPLOAD_SESSION_LIMIT) {
+    return "Batas upload untuk sesi percakapan ini telah tercapai. Mulai sesi baru untuk melanjutkan.";
+  }
+
+  // All checks passed — commit the increments
+  ipEntry.count += 1;
+  uploadIpRateMap.set(ip, ipEntry);
+  uploadSessionCountMap.set(sessionToken, sessionCount + 1);
+  return null;
+}
+
 async function handleToolCall(
   toolName: string,
   args: Record<string, unknown>,
@@ -1363,11 +1406,61 @@ aiAgentRouter.put("/settings", async (req: Request, res: Response) => {
 });
 
 // ── POST /api/ai-agent/upload ─────────────────────────────────────────────────
-// Public: accepts image or PDF, runs OCR/vision, returns extracted text for chat context
+// Requires a valid AI chat sessionToken (issued by /api/ai-agent/stream).
+// Without this gate any unauthenticated caller could drain paid OpenAI quota by
+// submitting large files in a loop. The sessionToken is the same public credential
+// already used for chat history polling — it is not a secret, but it proves the
+// caller has previously interacted with the chat widget and obtained a real session.
 aiAgentRouter.post(
   "/upload",
   uploadMemory.single("file"),
   async (req: Request, res: Response): Promise<void> => {
+    // Validate session token before touching the file or calling OpenAI.
+    const rawToken =
+      typeof req.body?.sessionToken === "string" ? req.body.sessionToken.trim() : "";
+    if (!rawToken) {
+      res.status(401).json({ message: "sessionToken diperlukan untuk mengunggah file." });
+      return;
+    }
+    const [session] = await db
+      .select({ id: aiChatSessionsTable.id })
+      .from(aiChatSessionsTable)
+      .where(eq(aiChatSessionsTable.sessionToken, rawToken));
+    if (!session) {
+      res.status(401).json({ message: "Session tidak valid atau sudah kadaluarsa." });
+      return;
+    }
+
+    // Require the session to have at least one real user message.
+    // This proves the caller already used the chat widget (spending AI chat quota)
+    // and is not simply minting fresh tokens in bulk to drive upload abuse.
+    const [msgCheck] = await db
+      .select({ id: aiChatMessagesTable.id })
+      .from(aiChatMessagesTable)
+      .where(
+        and(
+          eq(aiChatMessagesTable.sessionId, session.id),
+          eq(aiChatMessagesTable.role, "user"),
+        ),
+      )
+      .limit(1);
+    if (!msgCheck) {
+      res.status(403).json({
+        message: "Kirim pesan ke AI terlebih dahulu sebelum mengunggah file.",
+      });
+      return;
+    }
+
+    // Per-IP and per-session upload rate limits — checked after session validation.
+    // req.ip is reliably set by Express because app.set("trust proxy", 1) is
+    // configured in app.ts, preventing X-Forwarded-For header spoofing.
+    const clientIp = req.ip ?? req.socket.remoteAddress ?? "unknown";
+    const rateLimitError = checkUploadRateLimit(clientIp, rawToken);
+    if (rateLimitError) {
+      res.status(429).json({ message: rateLimitError });
+      return;
+    }
+
     const file = req.file;
     if (!file) {
       res.status(400).json({ message: "Tidak ada file yang diupload." });

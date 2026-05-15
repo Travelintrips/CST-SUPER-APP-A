@@ -24,7 +24,12 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import { fetchAndStoreProfile } from "@/lib/auth";
 
+// Security: all admin API calls attach the Supabase Bearer token obtained from the
+// current session. No shared secret or hardcoded password is embedded in this bundle.
+// The API verifies the token server-side and checks that the caller's email is on the
+// PORTAL_ADMIN_EMAILS allowlist before authorising any logistic-admin action.
 const adminFetch = async (url: string, opts: RequestInit = {}) => {
   const session = supabase ? (await supabase.auth.getSession()).data.session : null;
   return fetch(url.replace("/api/portal/admin/services", "/api/portal/logistic-admin/services"), {
@@ -368,8 +373,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!supabase) { setLocation("/login"); return; }
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) { setLocation("/login"); return; }
+      const profile = await fetchAndStoreProfile();
+      if (!profile || profile.role !== "admin") {
+        setLocation("/dashboard");
+        return;
+      }
       setAuthed(true);
       setChecking(false);
     });

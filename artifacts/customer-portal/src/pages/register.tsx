@@ -103,7 +103,6 @@ export default function Register() {
           name: data.name,
           phone: data.phone ?? null,
           company: data.company ?? null,
-          role,
         },
       },
     });

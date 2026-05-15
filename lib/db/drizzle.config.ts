@@ -21,4 +21,5 @@ export default defineConfig({
   dbCredentials: {
     url: resolveUrl(),
   },
+  tablesFilter: ["!oauth_states"],
 });

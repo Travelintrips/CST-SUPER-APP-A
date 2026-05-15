@@ -14,6 +14,7 @@ import {
 import { sql as drizzleSql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { companiesTable } from "./companies";
 
 export const accountTypeEnum = pgEnum("account_type", [
   "asset",
@@ -61,19 +62,6 @@ export const accountingPaymentStatusEnum = pgEnum("accounting_payment_status", [
   "voided",
 ]);
 
-export const companiesTable = pgTable("companies", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  code: text("code").notNull().unique(),
-  isHolding: boolean("is_holding").notNull().default(false),
-  parentCompanyId: integer("parent_company_id"),
-  address: text("address"),
-  npwp: text("npwp"),
-  logoUrl: text("logo_url"),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 export const chartOfAccountsTable = pgTable("chart_of_accounts", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id"),
@@ -90,7 +78,7 @@ export const chartOfAccountsTable = pgTable("chart_of_accounts", {
 export const accountingJournalsTable = pgTable("accounting_journals", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id"),
-  code: text("code").notNull().unique(),
+  code: text("code").notNull(),
   name: text("name").notNull(),
   type: journalTypeEnum("type").notNull(),
   defaultDebitAccountId: integer("default_debit_account_id").references(

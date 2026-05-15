@@ -1,8 +1,14 @@
 import { Router } from "express";
 import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable } from "@workspace/db";
 import { eq, desc, inArray, sum, and } from "drizzle-orm";
+import { requireClerkUser } from "../lib/requireAdmin.js";
 
 const router = Router();
+
+router.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
 
 function nextNumber(prefix: string) {
   const now = new Date();

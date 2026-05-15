@@ -12,7 +12,7 @@ export * from "./salesDocuments";
 export * from "./purchaseDocuments";
 export * from "./payments";
 export * from "./accounting";
-export { companiesTable } from "./accounting";
+export type { Company, InsertCompany } from "./companies";
 
 export * from "./correspondences";
 export * from "./freightShipments";
