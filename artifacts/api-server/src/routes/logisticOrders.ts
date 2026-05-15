@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql, desc } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -434,20 +435,10 @@ logisticOrdersRouter.get("/summary", async (_req: Request, res: Response) => {
 });
 
 // PUT /api/logistic/orders/trucking-rates — admin only
-// Protected by LOGISTIC_ADMIN_PASSWORD env var (no hardcoded default — fail-closed
-// if the variable is absent). The logistic-order admin UI sends this value in the
-// x-admin-password header after the operator enters it in the login form.
-logisticOrdersRouter.put("/trucking-rates", async (req: Request, res: Response) => {
-  const configuredPassword = process.env.LOGISTIC_ADMIN_PASSWORD;
-  if (!configuredPassword) {
-    // Env var not configured on this server — refuse all writes rather than
-    // falling back to an insecure default.
-    return res.status(503).json({ message: "Admin password belum dikonfigurasi" });
-  }
-  const provided = req.headers["x-admin-password"];
-  if (!provided || provided !== configuredPassword) {
-    return res.status(403).json({ message: "Password salah atau tidak diizinkan" });
-  }
+// Protected by requirePortalAdmin: caller must present a valid Supabase Bearer token
+// belonging to an email on the server-side PORTAL_ADMIN_EMAILS allowlist.
+// The shared x-admin-password mechanism has been removed entirely.
+logisticOrdersRouter.put("/trucking-rates", requirePortalAdmin, async (req: Request, res: Response) => {
   const rates = req.body as Record<string, { ratePerKm: number; loadingFee: number }>;
   if (!rates || typeof rates !== "object") {
     return res.status(400).json({ message: "Format tarif tidak valid" });
