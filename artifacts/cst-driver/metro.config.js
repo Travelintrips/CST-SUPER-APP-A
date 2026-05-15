@@ -32,19 +32,34 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch only shared source directories, NOT the entire workspace root.
-// Watching workspaceRoot would include node_modules/.pnpm/ and its transient
-// *_tmp_NNNN directories created/destroyed during pnpm installs; the
-// FallbackWatcher (used when Watchman is unavailable) crashes with ENOENT
-// if a watched directory disappears mid-crawl.
-config.watchFolders = [
-  path.resolve(workspaceRoot, "lib"),
-];
+// Watch the entire workspace root so Metro's TreeFS includes pnpm's
+// content-addressable store (.pnpm/PACKAGE@hash/node_modules/) in its
+// file registry. Without this, Metro can follow the symlinks in
+// artifacts/cst-driver/node_modules/ but its doesFileExist() check
+// returns false for the files inside symlink targets, causing
+// "Unable to resolve module expo-router/entry" in production builds.
+//
+// FallbackWatcher exclusions: to prevent ENOENT crashes when transient
+// directories (pnpm install temp dirs, agent skill temp dirs) appear and
+// disappear mid-crawl, we block those patterns via resolver.blockList.
+config.watchFolders = [workspaceRoot];
 
 // Resolve node_modules from both the package and the monorepo root (pnpm hoisting)
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(workspaceRoot, "node_modules"),
+];
+
+// Block transient directories that can vanish mid-crawl (pnpm install temp dirs,
+// agent skill temp dirs). FallbackWatcher calls fs.watch() on every directory it
+// finds; if one disappears it throws ENOENT and crashes Metro.
+config.resolver.blockList = [
+  // pnpm creates/removes *_tmp_NNNN dirs inside node_modules/.pnpm during installs
+  /node_modules[/\\]\.pnpm[/\\][^/\\]+_tmp_\d+[/\\]/,
+  // agent skill temp dirs and local pnpm install staging dirs
+  /[/\\]\.local[/\\]/,
+  // Expo notifications native build artifacts
+  /expo-notifications_tmp_[^/\\]+[/\\]/,
 ];
 
 module.exports = config;
