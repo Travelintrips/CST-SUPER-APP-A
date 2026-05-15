@@ -253,6 +253,49 @@ function generateSessionToken(): string {
   return randomBytes(20).toString("hex");
 }
 
+// ── Upload rate-limit stores (in-memory, reset on server restart) ─────────────
+// These are a cost-throttle layer on top of session validation: even though
+// session tokens are freely obtainable via the public chat endpoint, limits
+// per IP and per session make bulk wallet-drain attacks economically impractical.
+const UPLOAD_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_IP_LIMIT = 20; // max uploads per IP per hour
+const UPLOAD_SESSION_LIMIT = 10; // max uploads per session lifetime
+
+interface RateEntry { count: number; resetAt: number }
+const uploadIpRateMap = new Map<string, RateEntry>();
+const uploadSessionCountMap = new Map<string, number>();
+
+/**
+ * Enforces per-IP and per-session upload rate limits.
+ * Returns null when the request is allowed, or an error message string when
+ * it should be rejected with HTTP 429.
+ * Side-effect: increments both counters when the request is allowed.
+ */
+function checkUploadRateLimit(ip: string, sessionToken: string): string | null {
+  const now = Date.now();
+
+  // Per-IP window check
+  let ipEntry = uploadIpRateMap.get(ip);
+  if (!ipEntry || now > ipEntry.resetAt) {
+    ipEntry = { count: 0, resetAt: now + UPLOAD_IP_WINDOW_MS };
+  }
+  if (ipEntry.count >= UPLOAD_IP_LIMIT) {
+    return "Terlalu banyak upload dari jaringan ini. Coba lagi dalam 1 jam.";
+  }
+
+  // Per-session lifetime check
+  const sessionCount = uploadSessionCountMap.get(sessionToken) ?? 0;
+  if (sessionCount >= UPLOAD_SESSION_LIMIT) {
+    return "Batas upload untuk sesi percakapan ini telah tercapai. Mulai sesi baru untuk melanjutkan.";
+  }
+
+  // All checks passed — commit the increments
+  ipEntry.count += 1;
+  uploadIpRateMap.set(ip, ipEntry);
+  uploadSessionCountMap.set(sessionToken, sessionCount + 1);
+  return null;
+}
+
 async function handleToolCall(
   toolName: string,
   args: Record<string, unknown>,
@@ -1385,6 +1428,17 @@ aiAgentRouter.post(
       .where(eq(aiChatSessionsTable.sessionToken, rawToken));
     if (!session) {
       res.status(401).json({ message: "Session tidak valid atau sudah kadaluarsa." });
+      return;
+    }
+
+    // Per-IP and per-session upload rate limits — checked after session validation
+    // so the DB lookup only happens once per request.
+    const clientIp = (req.headers["x-forwarded-for"] as string | undefined)
+      ?.split(",")[0]
+      ?.trim() ?? req.socket.remoteAddress ?? "unknown";
+    const rateLimitError = checkUploadRateLimit(clientIp, rawToken);
+    if (rateLimitError) {
+      res.status(429).json({ message: rateLimitError });
       return;
     }
 

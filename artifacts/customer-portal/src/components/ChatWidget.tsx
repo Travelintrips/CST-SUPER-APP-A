@@ -1240,7 +1240,17 @@ export function ChatWidget() {
         fd.append("file", file);
         if (sessionToken) fd.append("sessionToken", sessionToken);
         const upRes = await fetch("/api/ai-agent/upload", { method: "POST", body: fd });
-        if (!upRes.ok) throw new Error(`HTTP ${upRes.status}`);
+        if (!upRes.ok) {
+          let serverMsg = "";
+          try { serverMsg = ((await upRes.json()) as { message?: string }).message ?? ""; } catch { /* ignore */ }
+          if (upRes.status === 401) {
+            throw new Error(serverMsg || "Kirim pesan ke AI terlebih dahulu sebelum mengunggah file.");
+          }
+          if (upRes.status === 429) {
+            throw new Error(serverMsg || "Batas upload tercapai. Coba lagi nanti.");
+          }
+          throw new Error(serverMsg || `HTTP ${upRes.status}`);
+        }
         const data = (await upRes.json()) as {
           text: string;
           type: string;
