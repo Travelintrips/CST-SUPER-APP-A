@@ -113,11 +113,16 @@ function orderNumber(): string {
 // ── POS Image Upload ──────────────────────────────────────────────────────────
 
 // POST /api/pos-kasir/admin/upload-image  (admin only, no Object Storage needed)
-router.post("/admin/upload-image", posImageUpload.single("file"), async (req: Request, res: Response) => {
-  if (!(await requireClerkUser(req, res))) return;
-  if (!req.file) return res.status(400).json({ message: "Tidak ada file yang diupload" });
-  const url = `/pos-images/${req.file.filename}`;
-  return res.json({ url, objectPath: url });
+router.post("/admin/upload-image", (req: Request, res: Response, next: import("express").NextFunction) => {
+  posImageUpload.single("file")(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: err.message ?? "Gagal memproses file" });
+    }
+    if (!(await requireClerkUser(req, res))) return;
+    if (!req.file) return res.status(400).json({ message: "Tidak ada file yang diupload" });
+    const url = `/pos-images/${req.file.filename}`;
+    return res.json({ url, objectPath: url });
+  });
 });
 
 // ── Branches (public read) ────────────────────────────────────────────────────

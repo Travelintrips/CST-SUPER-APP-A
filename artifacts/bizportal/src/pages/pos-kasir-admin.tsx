@@ -153,7 +153,12 @@ export default function PosKasirAdminPage() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) { toast({ title: "Gagal upload logo", variant: "destructive" }); return; }
+      if (!res.ok) {
+        let msg = `Error ${res.status}`;
+        try { const e = await res.json() as { message?: string }; msg = e.message ?? msg; } catch { /* ignore */ }
+        toast({ title: "Gagal upload logo", description: msg, variant: "destructive" });
+        return;
+      }
       const data = await res.json() as { url?: string };
       const uploadedUrl = data.url ?? "";
       const saveRes = await fetch("/api/pos-kasir/admin/settings", {
@@ -277,7 +282,12 @@ export default function PosKasirAdminPage() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) { toast({ title: "Gagal upload gambar", variant: "destructive" }); return; }
+      if (!res.ok) {
+        let msg = `Error ${res.status}`;
+        try { const e = await res.json() as { message?: string }; msg = e.message ?? msg; } catch { /* ignore */ }
+        toast({ title: "Gagal upload gambar", description: msg, variant: "destructive" });
+        return;
+      }
       const data = await res.json() as { url?: string };
       setProductForm((f) => ({ ...f, imageUrl: data.url ?? "" }));
     } finally { setImageUploading(false); }
