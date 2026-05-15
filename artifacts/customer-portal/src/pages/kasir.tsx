@@ -66,6 +66,13 @@ function getMenuImage(name: string): string {
   return MENU_IMAGES[name] ?? "/menu/thai-tea-original.png";
 }
 
+function resolveProductImage(url?: string | null, name?: string): string {
+  if (!url) return getMenuImage(name ?? "");
+  if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  if (url.startsWith("/api/")) return url;
+  return url;
+}
+
 function fmt(n: number | string) {
   return "Rp " + Number(n).toLocaleString("id-ID");
 }
@@ -358,7 +365,7 @@ export default function KasirPage() {
                       )}
                       <div className="w-full aspect-square overflow-hidden bg-orange-50">
                         <img
-                          src={p.imageUrl ?? getMenuImage(p.name)}
+                          src={resolveProductImage(p.imageUrl, p.name)}
                           alt={p.name}
                           className="w-full h-full object-cover"
                           onError={(e) => { (e.target as HTMLImageElement).src = "/menu/thai-tea-original.png"; }}
@@ -585,7 +592,7 @@ function CartPanel({
           <>
             {cart.map((c) => (
               <div key={c.product.id} className="flex items-center gap-3 bg-orange-50 rounded-2xl p-2.5">
-                <img src={c.product.imageUrl ?? getMenuImage(c.product.name)} alt={c.product.name}
+                <img src={resolveProductImage(c.product.imageUrl, c.product.name)} alt={c.product.name}
                   className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
                   onError={(e) => { (e.target as HTMLImageElement).src = "/menu/thai-tea-original.png"; }} />
                 <div className="flex-1 min-w-0">
