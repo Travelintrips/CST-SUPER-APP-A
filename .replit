@@ -29,7 +29,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run dev & PORT=3000 pnpm --filter @workspace/customer-portal run dev & node scripts/proxy5000.mjs"
+args = "pnpm --filter @workspace/api-server run dev & PORT=3000 pnpm --filter @workspace/customer-portal run dev & PORT=18442 pnpm --filter @workspace/bizportal run dev & node scripts/proxy5000.mjs"
 waitForPort = 5000
 
 [agent]
@@ -69,10 +69,6 @@ externalPort = 9000
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
 
 [[ports]]
 localPort = 8082
