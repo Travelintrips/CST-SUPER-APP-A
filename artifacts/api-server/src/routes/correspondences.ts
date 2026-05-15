@@ -4,11 +4,16 @@ import OpenAI from "openai";
 import { db, correspondencesTable, correspondenceAttachmentsTable, customersTable, suppliersTable } from "@workspace/db";
 import { eq, desc, ilike, or, and, count, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { requireAdmin } from "../lib/requireAdmin.js";
+import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
 import { safeSyncImapEmails } from "../lib/imapPoller.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
+
+router.use(async (req, res, next) => {
+  if (!(await requireClerkUser(req, res))) return;
+  next();
+});
 
 let openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {

@@ -28,13 +28,17 @@ function emailIsAdmin(email: string): boolean {
 
 const PORTAL_ADMIN_KEY = process.env["PORTAL_ADMIN_KEY"] ?? "";
 
-/** Any authenticated user — used for BizPortal staff operations */
+/** Internal staff only — rejects unauthenticated requests and external ecommerce users */
 export async function requireClerkUser(req: Request, res: Response): Promise<boolean> {
   if (PORTAL_ADMIN_KEY && req.headers["x-admin-key"] === PORTAL_ADMIN_KEY) {
     return true;
   }
   if (!req.isAuthenticated()) {
     res.status(401).json({ message: "Unauthorized" });
+    return false;
+  }
+  if ((req.user as { role?: string | null }).role === "ecommerce") {
+    res.status(403).json({ message: "Forbidden: staff access only" });
     return false;
   }
   return true;

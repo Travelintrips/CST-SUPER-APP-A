@@ -7,7 +7,7 @@ import {
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission } from "../lib/objectAcl.js";
-import { requireAdmin } from "../lib/requireAdmin.js";
+import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -152,23 +152,29 @@ router.get("/storage/public-objects/{*filePath}", async (req: Request, res: Resp
  *       business-critical documents regardless of who originally uploaded them.
  */
 router.get("/storage/objects/{*path}", async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+  // Layer 1: authentication gate — unauthenticated callers always receive 401.
+  if (!(await requireClerkUser(req, res))) return;
 
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+
+    // Reject path traversal attempts before they reach the storage layer.
+    if (wildcardPath.split("/").some((segment) => segment === ".." || segment === ".")) {
+      res.status(400).json({ error: "Invalid object path" });
+      return;
+    }
+
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
-    // Try ACL-based owner / rule check first.
+    // Layer 2: ownership / ACL check — confirm the authenticated user is
+    // permitted to read this specific object.
     // canAccessObjectEntity() returns false both when ACL metadata is absent
     // (legacy / presigned-URL objects) and when metadata exists but does not
     // cover the requesting user.  In either case fall back to admin override so
-    // that authorized staff are never locked out.
-    const userId = req.user.id;
+    // that authorized staff are never locked out of business-critical documents.
+    const userId = req.user?.id;
     const aclAllowed = await objectStorageService.canAccessObjectEntity({
       userId,
       objectFile,
