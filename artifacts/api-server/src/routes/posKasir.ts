@@ -222,14 +222,20 @@ router.get("/products/all", async (req, res) => {
 // POST /api/pos-kasir/products
 router.post("/products", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const { name, description, price, category, imageUrl, isActive, sortOrder } = req.body ?? {};
+  const { name, description, price, category, imageUrl, isActive, sortOrder, stockItemId, stockUsagePerUnit } = req.body ?? {};
   if (!name || price == null) return res.status(400).json({ message: "name dan price wajib" });
+  const extraFields = {
+    stockItemId: stockItemId ? Number(stockItemId) : null,
+    stockUsagePerUnit: stockUsagePerUnit != null ? String(stockUsagePerUnit) : "1",
+  };
   const [created] = await db.insert(posProductsTable).values({
     name: String(name), description: description ?? null,
     price: String(price), category: category ?? "minuman",
     imageUrl: imageUrl ?? null, isActive: isActive ?? true,
     sortOrder: sortOrder ?? 0,
-  }).returning();
+    ...extraFields,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any).returning();
   return res.status(201).json(created);
 });
 
@@ -239,8 +245,11 @@ router.patch("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const patch: Record<string, unknown> = {};
-  for (const k of ["name", "description", "price", "category", "imageUrl", "isActive", "sortOrder"]) {
-    if (req.body?.[k] !== undefined) patch[k] = req.body[k];
+  for (const k of ["name", "description", "price", "category", "imageUrl", "isActive", "sortOrder", "stockItemId", "stockUsagePerUnit"]) {
+    if (req.body?.[k] !== undefined) {
+      if (k === "stockItemId") patch[k] = req.body[k] === null || req.body[k] === "" ? null : Number(req.body[k]);
+      else patch[k] = req.body[k];
+    }
   }
   await db.update(posProductsTable).set(patch).where(eq(posProductsTable.id, id));
   const [updated] = await db.select().from(posProductsTable).where(eq(posProductsTable.id, id));
@@ -329,6 +338,36 @@ router.patch("/orders/:id/pay", async (req, res) => {
   }).where(eq(posOrdersTable.id, id)).returning();
 
   const items = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
+
+  // ── Auto-deduct stok bahan berdasarkan mapping produk → stock_item ────────
+  // Untuk setiap item order, ambil produk lengkap (dengan stock_item_id).
+  // Jika produk punya stock_item_id, kurangi stok sebesar qty × stock_usage_per_unit.
+  const productIds = items.map((i) => i.productId);
+  if (productIds.length > 0) {
+    const products = await db.select().from(posProductsTable).where(inArray(posProductsTable.id, productIds));
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    for (const item of items) {
+      const product = productMap.get(item.productId);
+      if (!product) continue;
+      const stockItemId = (product as { stockItemId?: number | null }).stockItemId;
+      const usagePerUnit = Number((product as { stockUsagePerUnit?: string | number }).stockUsagePerUnit ?? 1);
+      if (!stockItemId) continue;
+
+      const totalUsage = item.qty * usagePerUnit;
+      await db.update(posStockItemsTable)
+        .set({ currentStock: sql`current_stock - ${totalUsage}`, updatedAt: new Date() })
+        .where(eq(posStockItemsTable.id, stockItemId));
+
+      await db.insert(posStockAdjustmentsTable).values({
+        stockItemId,
+        cashierId: cashier.id,
+        delta: String(-totalUsage),
+        reason: `auto:order:${order.orderNumber}:${item.productName}×${item.qty}`,
+      });
+    }
+  }
+
   return res.json({ ...updated, items });
 });
 

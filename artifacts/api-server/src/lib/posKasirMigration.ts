@@ -70,6 +70,16 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
+  // Kolom baru: relasi produk → stok bahan (opsional, untuk auto-deduct stok saat bayar)
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_item_id INTEGER REFERENCES pos_stock_items(id) ON DELETE SET NULL
+  `);
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_usage_per_unit NUMERIC(12,3) NOT NULL DEFAULT 1
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pos_orders (
       id SERIAL PRIMARY KEY,
