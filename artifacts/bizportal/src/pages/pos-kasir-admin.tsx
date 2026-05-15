@@ -83,6 +83,8 @@ interface StockItem {
   currentStock: string;
   minStock: string;
   note?: string;
+  branchId?: number | null;
+  branchName?: string | null;
 }
 
 function fmt(n: number | string) {
@@ -121,6 +123,7 @@ export default function PosKasirAdminPage() {
   const [reportTo, setReportTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportLoading, setReportLoading] = useState(false);
   const [reportBranchId, setReportBranchId] = useState<string>("all");
+  const [reportCashierId, setReportCashierId] = useState<string>("all");
 
   // Products
   const [products, setProducts] = useState<Product[]>([]);
@@ -134,7 +137,8 @@ export default function PosKasirAdminPage() {
   const [stocks, setStocks] = useState<StockItem[]>([]);
   const [stockDialog, setStockDialog] = useState(false);
   const [editingStock, setEditingStock] = useState<StockItem | null>(null);
-  const [stockForm, setStockForm] = useState({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" });
+  const [stockForm, setStockForm] = useState({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "", branchId: "" });
+  const [stockBranchFilter, setStockBranchFilter] = useState<string>("all");
 
   // Settings / Logo
   const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
@@ -193,25 +197,31 @@ export default function PosKasirAdminPage() {
   const loadReport = useCallback(async () => {
     setReportLoading(true);
     try {
-      const branchParam = (reportBranchId && reportBranchId !== "all") ? `&branchId=${reportBranchId}` : "";
+      const params = new URLSearchParams({ from: reportFrom, to: reportTo });
+      if (reportBranchId && reportBranchId !== "all") params.set("branchId", reportBranchId);
+      if (reportCashierId && reportCashierId !== "all") params.set("cashierId", reportCashierId);
+      const dailyParams = new URLSearchParams();
+      if (reportBranchId && reportBranchId !== "all") dailyParams.set("branchId", reportBranchId);
       const [rRes, dRes] = await Promise.all([
-        fetch(`/api/pos-kasir/admin/report?from=${reportFrom}&to=${reportTo}${branchParam}`, { credentials: "include" }),
-        fetch(`/api/pos-kasir/admin/report/daily${branchParam ? `?${branchParam.slice(1)}` : ""}`, { credentials: "include" }),
+        fetch(`/api/pos-kasir/admin/report?${params}`, { credentials: "include" }),
+        fetch(`/api/pos-kasir/admin/report/daily${dailyParams.size ? `?${dailyParams}` : ""}`, { credentials: "include" }),
       ]);
       if (rRes.ok) setReport(await rRes.json() as ReportData);
       if (dRes.ok) setDaily(await dRes.json() as DailyRow[]);
     } finally { setReportLoading(false); }
-  }, [reportFrom, reportTo, reportBranchId]);
+  }, [reportFrom, reportTo, reportBranchId, reportCashierId]);
 
   const loadProducts = useCallback(async () => {
     const res = await fetch("/api/pos-kasir/products/all", { credentials: "include" });
     if (res.ok) setProducts(await res.json() as Product[]);
   }, []);
 
-  const loadStocks = useCallback(async () => {
-    const res = await fetch("/api/pos-kasir/admin/stock", { credentials: "include" });
+  const loadStocks = useCallback(async (branchIdFilter?: string) => {
+    const filter = branchIdFilter ?? stockBranchFilter;
+    const params = (filter && filter !== "all") ? `?branchId=${filter}` : "";
+    const res = await fetch(`/api/pos-kasir/admin/stock${params}`, { credentials: "include" });
     if (res.ok) setStocks(await res.json() as StockItem[]);
-  }, []);
+  }, [stockBranchFilter]);
 
   // Realtime: refresh stok dan kasir setiap 15 detik
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -344,10 +354,14 @@ export default function PosKasirAdminPage() {
   const saveStock = async () => {
     const url = editingStock ? `/api/pos-kasir/admin/stock/${editingStock.id}` : "/api/pos-kasir/admin/stock";
     const method = editingStock ? "PATCH" : "POST";
+    const body = {
+      ...stockForm,
+      branchId: stockForm.branchId ? Number(stockForm.branchId) : null,
+    };
     const res = await fetch(url, {
       method, credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(stockForm),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       toast({ title: editingStock ? "Stok diperbarui" : "Stok ditambahkan" });
@@ -574,6 +588,20 @@ export default function PosKasirAdminPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium">Kasir</label>
+                    <Select value={reportCashierId} onValueChange={setReportCashierId}>
+                      <SelectTrigger className="w-36 h-8 text-sm">
+                        <SelectValue placeholder="Semua" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Kasir</SelectItem>
+                        {cashiers.filter((c) => c.status === "approved").map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>{c.name} {c.branchName ? `(${c.branchName})` : ""}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button size="sm" onClick={loadReport} disabled={reportLoading}>
                     <RefreshCw className={`h-4 w-4 mr-1 ${reportLoading ? "animate-spin" : ""}`} /> Tampilkan
                   </Button>
@@ -745,10 +773,20 @@ export default function PosKasirAdminPage() {
                       Diperbarui: {lastUpdated.toLocaleTimeString("id-ID")} · Auto-refresh tiap 15 detik
                     </p>
                   )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="text-xs font-medium">Filter Cabang:</label>
+                    <Select value={stockBranchFilter} onValueChange={(v) => { setStockBranchFilter(v); loadStocks(v); }}>
+                      <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Semua" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Cabang</SelectItem>
+                        {branches.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <Button size="sm" onClick={() => {
                   setEditingStock(null);
-                  setStockForm({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" });
+                  setStockForm({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "", branchId: stockBranchFilter !== "all" ? stockBranchFilter : "" });
                   setStockDialog(true);
                 }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Bahan
@@ -759,6 +797,7 @@ export default function PosKasirAdminPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nama Bahan</TableHead>
+                      <TableHead>Cabang</TableHead>
                       <TableHead>Satuan</TableHead>
                       <TableHead>Stok</TableHead>
                       <TableHead>Min. Stok</TableHead>
@@ -769,13 +808,16 @@ export default function PosKasirAdminPage() {
                   <TableBody>
                     {stocks.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">Belum ada data stok</TableCell>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Belum ada data stok{stockBranchFilter !== "all" ? " untuk cabang ini" : ""}</TableCell>
                       </TableRow>
                     ) : stocks.map((s) => {
                       const low = Number(s.currentStock) <= Number(s.minStock);
                       return (
                         <TableRow key={s.id}>
                           <TableCell className="font-medium">{s.name}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {s.branchName ? <Badge variant="outline" className="text-xs">{s.branchName}</Badge> : <span className="text-gray-300">—</span>}
+                          </TableCell>
                           <TableCell>{s.unit}</TableCell>
                           <TableCell className={`font-bold ${low ? "text-red-600" : "text-green-600"}`}>
                             {Number(s.currentStock).toLocaleString("id-ID")}
@@ -790,7 +832,7 @@ export default function PosKasirAdminPage() {
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="ghost" onClick={() => {
                                 setEditingStock(s);
-                                setStockForm({ name: s.name, unit: s.unit, currentStock: s.currentStock, minStock: s.minStock, note: s.note ?? "" });
+                                setStockForm({ name: s.name, unit: s.unit, currentStock: s.currentStock, minStock: s.minStock, note: s.note ?? "", branchId: s.branchId ? String(s.branchId) : "" });
                                 setStockDialog(true);
                               }}>
                                 <Pencil className="h-3.5 w-3.5" />
@@ -1041,6 +1083,17 @@ export default function PosKasirAdminPage() {
           </DialogHeader>
           <div className="space-y-3 pt-2">
             <div>
+              <Label className="text-xs">Cabang <span className="text-red-500">*</span></Label>
+              <Select value={stockForm.branchId || "none"} onValueChange={(v) => setStockForm((f) => ({ ...f, branchId: v === "none" ? "" : v }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="— Pilih Cabang —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Pilih Cabang —</SelectItem>
+                  {branches.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-0.5">Stok ini hanya berlaku untuk cabang yang dipilih</p>
+            </div>
+            <div>
               <Label className="text-xs">Nama Bahan</Label>
               <Input value={stockForm.name} onChange={(e) => setStockForm((f) => ({ ...f, name: e.target.value }))} placeholder="Thai Tea Sachet" />
             </div>
@@ -1064,7 +1117,7 @@ export default function PosKasirAdminPage() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setStockDialog(false)}>Batal</Button>
-              <Button onClick={saveStock}>Simpan</Button>
+              <Button onClick={saveStock} disabled={!stockForm.branchId}>Simpan</Button>
             </div>
           </div>
         </DialogContent>

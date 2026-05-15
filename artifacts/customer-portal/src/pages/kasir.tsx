@@ -77,11 +77,19 @@ function fmt(n: number | string) {
   return "Rp " + Number(n).toLocaleString("id-ID");
 }
 
+interface BranchInfo {
+  id: number;
+  name: string;
+  address?: string | null;
+  phone?: string | null;
+}
+
 export default function KasirPage() {
   const [, setLocation] = useLocation();
   const [profile, setProfile] = useState<KasirProfile | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("pos");
   const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
+  const [branchInfo, setBranchInfo] = useState<BranchInfo | null>(null);
 
   // POS state
   const [products, setProducts] = useState<Product[]>([]);
@@ -106,12 +114,23 @@ export default function KasirPage() {
 
   useEffect(() => {
     if (!isKasirLoggedIn()) { setLocation("/kasir/login"); return; }
-    setProfile(getKasirProfile());
+    const p = getKasirProfile();
+    setProfile(p);
     loadProducts();
     fetch("/api/pos-kasir/settings")
       .then((r) => r.ok ? r.json() : null)
       .then((s: Record<string, string> | null) => { if (s?.logoUrl) setLogoUrl(s.logoUrl); })
       .catch(() => {});
+    // Load branch info (nama + alamat) untuk header & struk
+    if (p?.branchId) {
+      fetch("/api/pos-kasir/branches")
+        .then((r) => r.ok ? r.json() : [])
+        .then((branches: BranchInfo[]) => {
+          const found = branches.find((b) => b.id === p.branchId);
+          if (found) setBranchInfo(found);
+        })
+        .catch(() => {});
+    }
   }, [setLocation]);
 
   const loadProducts = async () => {
@@ -212,6 +231,50 @@ export default function KasirPage() {
   const handleLogout = () => { removeKasirToken(); setLocation("/kasir/login"); };
   const printReceipt = () => window.print();
 
+  // ── RawBT Print (Android intent via deep-link) ────────────────────────────
+  const printRawBT = () => {
+    if (!receipt) return;
+    const storeName = "THAI TEA CST";
+    const branchLine = branchInfo?.name ? `Cabang: ${branchInfo.name}` : "";
+    const addrLine = branchInfo?.address ? branchInfo.address : "";
+    const divider = "-".repeat(32);
+    const dateStr = new Date(receipt.paidAt ?? receipt.createdAt).toLocaleString("id-ID", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    }).replace(",", "");
+
+    const lines: string[] = [
+      storeName,
+      ...(branchLine ? [branchLine] : []),
+      ...(addrLine ? [addrLine] : []),
+      divider,
+      `Invoice: ${receipt.orderNumber}`,
+      `Kasir  : ${profile?.name ?? ""}`,
+      `Tanggal: ${dateStr}`,
+      divider,
+      ...(receipt.items ?? []).flatMap((item) => {
+        const harga = Number(item.price).toLocaleString("id-ID");
+        const sub = Number(item.subtotal).toLocaleString("id-ID");
+        const qtyLine = `${item.qty} x ${harga}`;
+        const nameLine = item.productName.length > 20 ? item.productName.substring(0, 20) : item.productName;
+        const pad = 32 - qtyLine.length - sub.length;
+        return [nameLine, `${qtyLine}${" ".repeat(Math.max(1, pad))}${sub}`];
+      }),
+      divider,
+      `${"TOTAL".padEnd(18)}${Number(receipt.total).toLocaleString("id-ID").padStart(14)}`,
+      `${"BAYAR".padEnd(18)}${Number(receipt.amountPaid ?? receipt.total).toLocaleString("id-ID").padStart(14)}`,
+      ...(Number(receipt.change ?? 0) > 0 ? [`${"KEMBALI".padEnd(18)}${Number(receipt.change).toLocaleString("id-ID").padStart(14)}`] : []),
+      divider,
+      "Terima kasih sudah berbelanja!",
+      "",
+    ];
+
+    const text = lines.join("\n");
+    const b64 = btoa(unescape(encodeURIComponent(text)));
+    const intentUrl = `intent://rawbt?data=${b64}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end`;
+    window.location.href = intentUrl;
+  };
+
   // ── Receipt modal ─────────────────────────────────────────────────────────
   if (receipt) {
     return (
@@ -221,12 +284,19 @@ export default function KasirPage() {
           <div className="p-6 text-center" style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
             <img src={logoUrl} alt="Thai Tea CST" className="w-16 h-16 rounded-2xl object-cover mx-auto mb-3 shadow-lg border-2 border-white/30" />
             <h2 className="font-black text-xl text-white">Thai Tea CST</h2>
-            <p className="text-orange-100 text-xs mt-0.5">Struk Pembayaran</p>
+            {branchInfo?.name && <p className="text-orange-100 text-xs font-semibold mt-0.5">Cabang: {branchInfo.name}</p>}
+            {branchInfo?.address && <p className="text-orange-100/80 text-xs mt-0.5">{branchInfo.address}</p>}
           </div>
           {/* Order info */}
-          <div className="px-5 py-3 bg-orange-50 border-b border-orange-100 flex justify-between text-xs text-orange-700">
-            <span className="font-mono font-bold">{receipt.orderNumber}</span>
-            <span>{new Date(receipt.paidAt ?? receipt.createdAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+          <div className="px-5 py-3 bg-orange-50 border-b border-orange-100 space-y-0.5">
+            <div className="flex justify-between text-xs text-orange-700">
+              <span className="font-mono font-bold">{receipt.orderNumber}</span>
+              <span>{new Date(receipt.paidAt ?? receipt.createdAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+            <div className="flex justify-between text-xs text-orange-600/70">
+              <span>Kasir: <strong>{profile?.name}</strong></span>
+              <span>{PAYMENT_LABELS[receipt.paymentMethod as PaymentMethod] ?? receipt.paymentMethod}</span>
+            </div>
           </div>
 
           <div className="p-5 space-y-2.5">
@@ -249,7 +319,7 @@ export default function KasirPage() {
                 <span className="text-orange-600">{fmt(receipt.total)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-500">
-                <span>{PAYMENT_LABELS[receipt.paymentMethod as PaymentMethod] ?? receipt.paymentMethod}</span>
+                <span>Bayar</span>
                 <span>{fmt(receipt.amountPaid ?? receipt.total)}</span>
               </div>
               {Number(receipt.change ?? 0) > 0 && (
@@ -264,15 +334,22 @@ export default function KasirPage() {
           <div className="px-5 pb-2 text-center text-xs text-gray-300 print:block hidden">
             Terima kasih sudah berbelanja! 🧡
           </div>
-          <div className="p-4 flex gap-2 print:hidden">
-            <button onClick={printReceipt}
-              className="flex-1 py-3 rounded-2xl font-bold text-white text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
-              style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
-              🖨️ Cetak
-            </button>
-            <button onClick={() => setReceipt(null)}
-              className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all active:scale-95">
-              Tutup
+          <div className="p-4 space-y-2 print:hidden">
+            <div className="flex gap-2">
+              <button onClick={printReceipt}
+                className="flex-1 py-3 rounded-2xl font-bold text-white text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
+                🖨️ Cetak
+              </button>
+              <button onClick={() => setReceipt(null)}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all active:scale-95">
+                Tutup
+              </button>
+            </div>
+            {/* RawBT — hanya muncul di perangkat Android */}
+            <button onClick={printRawBT}
+              className="w-full py-2.5 rounded-2xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border-2 border-orange-300 text-orange-600 hover:bg-orange-50">
+              📲 Cetak via RawBT (Bluetooth)
             </button>
           </div>
         </div>
@@ -288,7 +365,7 @@ export default function KasirPage() {
           <div className="flex items-center gap-3">
             <img src={logoUrl} alt="Thai Tea CST" className="w-10 h-10 rounded-xl object-cover border-2 border-white/30" />
             <div>
-              <h1 className="font-black text-white text-base leading-tight">Thai Tea CST</h1>
+              <h1 className="font-black text-white text-base leading-tight">Thai Tea CST{branchInfo?.name ? ` — ${branchInfo.name}` : ""}</h1>
               <p className="text-orange-100 text-xs">{profile?.name}</p>
             </div>
           </div>
