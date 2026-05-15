@@ -246,17 +246,23 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS coa_company_code_uniq ON chart_of_accounts(company_id, code)
   `);
+  // Partial index untuk global accounts (company_id IS NULL) — diperlukan agar
+  // ON CONFLICT (code) WHERE company_id IS NULL dapat digunakan saat upsert
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS coa_global_code_uniq ON chart_of_accounts(code) WHERE company_id IS NULL
+  `);
 
-  // ── Pass 1: Upsert global parent group accounts ───────────────────────────
+  // ── Pass 1: Upsert global parent group accounts (company_id IS NULL) ────────
+  // Menggunakan raw SQL karena partial index (WHERE company_id IS NULL) diperlukan
+  // untuk ON CONFLICT target — Drizzle ORM tidak mendukung WHERE clause di conflict target
   const parentRoots = COA_PARENTS.filter((p) => !p.parentCode);
-  if (parentRoots.length) {
-    await db
-      .insert(chartOfAccountsTable)
-      .values(parentRoots.map((p) => ({ code: p.code, name: p.name, type: p.type, companyId: null })))
-      .onConflictDoUpdate({
-        target: chartOfAccountsTable.code,
-        set: { name: sql`excluded.name` },
-      });
+  for (const p of parentRoots) {
+    await db.execute(sql`
+      INSERT INTO chart_of_accounts (code, name, type, company_id)
+      VALUES (${p.code}, ${p.name}, ${p.type}::account_type, NULL)
+      ON CONFLICT (code) WHERE company_id IS NULL
+      DO UPDATE SET name = excluded.name
+    `);
   }
 
   // ── Pass 2: Upsert sub-parent group accounts (level-2 groups) ────────────
@@ -266,13 +272,12 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
   const parentSubs = COA_PARENTS.filter((p) => p.parentCode);
   for (const p of parentSubs) {
     const parentId = byCode.get(p.parentCode!)?.id ?? null;
-    await db
-      .insert(chartOfAccountsTable)
-      .values({ code: p.code, name: p.name, type: p.type, parentId: parentId ?? undefined, companyId: null })
-      .onConflictDoUpdate({
-        target: chartOfAccountsTable.code,
-        set: { name: sql`excluded.name`, parentId: parentId },
-      });
+    await db.execute(sql`
+      INSERT INTO chart_of_accounts (code, name, type, parent_id, company_id)
+      VALUES (${p.code}, ${p.name}, ${p.type}::account_type, ${parentId}, NULL)
+      ON CONFLICT (code) WHERE company_id IS NULL
+      DO UPDATE SET name = excluded.name, parent_id = ${parentId}
+    `);
   }
 
   // ── Pass 2b: Rename akun yang masih pakai singkatan lama ─────────────────
