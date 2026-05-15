@@ -133,8 +133,8 @@ router.post("/companies", async (req, res) => {
     const [created] = await db
       .insert(companiesTable)
       .values({
-        name,
-        code,
+        companyName: name,
+        companyCode: code,
         isHolding: isHolding ?? false,
         parentCompanyId: parentCompanyId ?? null,
         address,

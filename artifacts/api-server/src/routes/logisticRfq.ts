@@ -383,26 +383,33 @@ function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName
   );
 }
 
-const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: string) => ({
-  id: q.id,
-  rfqId: q.rfqId,
-  orderId: q.orderId,
-  vendorId: q.vendorId,
-  vendorName,
-  vendorPrice: Number(q.vendorPrice),
-  estimatedPickup: q.estimatedPickup ?? null,
-  estimatedDelivery: q.estimatedDelivery ?? null,
-  estimatedDays: q.estimatedDays ?? null,
-  vendorNotes: q.vendorNotes ?? null,
-  markupType: q.markupType,
-  markupPercentage: Number(q.markupPercentage),
-  fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
-  sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
-  quoteStatus: q.quoteStatus,
-  replySource: q.replySource,
-  replyTimestamp: q.replyTimestamp?.toISOString() ?? null,
-  createdAt: q.createdAt.toISOString(),
-});
+const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: string) => {
+  const vp = Number(q.vendorPrice);
+  const mt = q.markupType;
+  const mp = Number(q.markupPercentage ?? 0);
+  const fp = q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null;
+  const sp = q.sellingPrice != null ? Number(q.sellingPrice) : calcSellingPrice(vp, mt, mp, fp);
+  return {
+    id: q.id,
+    rfqId: q.rfqId,
+    orderId: q.orderId,
+    vendorId: q.vendorId,
+    vendorName,
+    vendorPrice: vp,
+    estimatedPickup: q.estimatedPickup ?? null,
+    estimatedDelivery: q.estimatedDelivery ?? null,
+    estimatedDays: q.estimatedDays ?? null,
+    vendorNotes: q.vendorNotes ?? null,
+    markupType: mt,
+    markupPercentage: mp,
+    fixedSellingPrice: fp,
+    sellingPrice: sp,
+    quoteStatus: q.quoteStatus,
+    replySource: q.replySource,
+    replyTimestamp: q.replyTimestamp?.toISOString() ?? null,
+    createdAt: q.createdAt.toISOString(),
+  };
+};
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
 logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
@@ -1110,7 +1117,9 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
       markupType: q.markupType,
       markupPercentage: Number(q.markupPercentage),
       fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
-      sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
+      sellingPrice: q.sellingPrice != null
+        ? Number(q.sellingPrice)
+        : calcSellingPrice(Number(q.vendorPrice), q.markupType, Number(q.markupPercentage ?? 0), q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null),
       quoteStatus: q.quoteStatus,
       replySource: q.replySource,
     })),
@@ -1637,20 +1646,22 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
 
 // GET /estimate-price — public: auto-estimate lowest vendor rate for a given mode/route
 logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => {
-  const { transport_mode, origin, dest, truck_type } = req.query as Record<string, string>;
+  const { transport_mode, origin, dest, truck_type, distance_km } = req.query as Record<string, string>;
   if (!transport_mode) {
     return res.status(400).json({ message: "transport_mode wajib diisi" });
   }
 
   const DISCLAIMER = "Estimasi berdasarkan tarif vendor aktif. Harga final mengikuti penawaran yang dikonfirmasi admin.";
+  const distKm = distance_km ? parseFloat(distance_km) : null;
 
   try {
     const yearCutoff = new Date().getFullYear() - 5;
-    let estimatedPrice: number | null = null;
+    const candidates: number[] = [];
 
     if (transport_mode === "TRUCKING") {
-      const rows = await db
-        .select({ baseRate: vendorRatesTable.baseRate })
+      // 1) vendorRatesTable — per_trip (flat) OR per_km × distance
+      const rateRows = await db
+        .select({ baseRate: vendorRatesTable.baseRate, unit: vendorRatesTable.unit })
         .from(vendorRatesTable)
         .innerJoin(suppliersTable, eq(vendorRatesTable.vendorId, suppliersTable.id))
         .where(
@@ -1661,12 +1672,39 @@ logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => 
             sql`(${suppliersTable.yearVehicle} IS NULL OR ${suppliersTable.yearVehicle} >= ${yearCutoff})`
           )
         );
-      if (rows.length > 0) {
-        estimatedPrice = Math.min(...rows.map((r) => Number(r.baseRate)));
+      for (const r of rateRows) {
+        const base = Number(r.baseRate);
+        if (r.unit === "per_km" && distKm && distKm > 0) {
+          candidates.push(base * distKm);
+        } else if (r.unit !== "per_km") {
+          candidates.push(base);
+        }
+        // per_km without distance → skip (can't compute)
+      }
+
+      // 2) vendor_catalog_items — unit contains 'km', price_base × (1+markup/100) × distance
+      if (distKm && distKm > 0) {
+        const catalogRows = await db
+          .select({ priceBase: vendorCatalogItemsTable.priceBase, markupPct: vendorCatalogItemsTable.markupPct })
+          .from(vendorCatalogItemsTable)
+          .innerJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
+          .where(
+            and(
+              eq(vendorCatalogItemsTable.isActive, true),
+              sql`LOWER(${vendorCatalogItemsTable.unit}) LIKE '%km%'`
+            )
+          );
+        for (const c of catalogRows) {
+          const base = Number(c.priceBase);
+          const markup = Number(c.markupPct) || 0;
+          if (base > 0) {
+            candidates.push(base * (1 + markup / 100) * distKm);
+          }
+        }
       }
     } else if (transport_mode === "AIR_FREIGHT" || transport_mode === "SEA_FREIGHT") {
       const rows = await db
-        .select({ baseRate: vendorRatesTable.baseRate })
+        .select({ baseRate: vendorRatesTable.baseRate, unit: vendorRatesTable.unit })
         .from(vendorRatesTable)
         .where(
           and(
@@ -1674,11 +1712,12 @@ logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => 
             eq(vendorRatesTable.isActive, true)
           )
         );
-      if (rows.length > 0) {
-        estimatedPrice = Math.min(...rows.map((r) => Number(r.baseRate)));
+      for (const r of rows) {
+        candidates.push(Number(r.baseRate));
       }
     }
 
+    const estimatedPrice = candidates.length > 0 ? Math.min(...candidates) : null;
     return res.json({ estimated_price: estimatedPrice, disclaimer: DISCLAIMER });
   } catch (e: unknown) {
     logger.error({ e }, "[estimate-price] Error querying vendor_rates");

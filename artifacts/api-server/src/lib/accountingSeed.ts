@@ -190,8 +190,8 @@ export async function ensureDefaultCompany(): Promise<number> {
   const [existing] = await db.select().from(companiesTable).where(eq(companiesTable.code, "CST")).limit(1);
   if (existing) return existing.id;
   const [created] = await db.insert(companiesTable).values({
-    name: "PT CST Logistics",
-    code: "CST",
+    companyName: "PT CST Logistics",
+    companyCode: "CST",
     isHolding: true,
   }).returning();
   return created!.id;
@@ -239,9 +239,12 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     END $$
   `);
 
-  // ── Re-create unique index on chart_of_accounts.code ────────────────────
+  // ── Migrate single-column index → composite (company_id, code) ───────────
   await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS chart_of_accounts_code_key ON chart_of_accounts(code)
+    DROP INDEX IF EXISTS chart_of_accounts_code_key
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS coa_company_code_uniq ON chart_of_accounts(company_id, code)
   `);
 
   // ── Pass 1: Upsert global parent group accounts ───────────────────────────
@@ -251,7 +254,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       .insert(chartOfAccountsTable)
       .values(parentRoots.map((p) => ({ code: p.code, name: p.name, type: p.type, companyId: null })))
       .onConflictDoUpdate({
-        target: [chartOfAccountsTable.companyId, chartOfAccountsTable.code],
+        target: chartOfAccountsTable.code,
         set: { name: sql`excluded.name` },
       });
   }
@@ -267,7 +270,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       .insert(chartOfAccountsTable)
       .values({ code: p.code, name: p.name, type: p.type, parentId: parentId ?? undefined, companyId: null })
       .onConflictDoUpdate({
-        target: [chartOfAccountsTable.companyId, chartOfAccountsTable.code],
+        target: chartOfAccountsTable.code,
         set: { name: sql`excluded.name`, parentId: parentId },
       });
   }
@@ -302,15 +305,15 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
           companyId,
         })
         .onConflictDoUpdate({
-          target: chartOfAccountsTable.code,
-          set: { name: sql`excluded.name`, parentId: parentId, companyId },
+          target: [chartOfAccountsTable.companyId, chartOfAccountsTable.code],
+          set: { name: sql`excluded.name`, parentId: parentId },
         });
     }
   }
 
   logger.info("Accounting seed: COA hierarchy done.");
 
-  allAccounts = await db.select().from(chartOfAccountsTable).where(eq(chartOfAccountsTable.companyId, cid));
+  allAccounts = await db.select().from(chartOfAccountsTable);
   byCode = new Map(allAccounts.map((a) => [a.code, a]));
 
   const needFor = (baseCode: string, companyId: number) => {
@@ -378,8 +381,8 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
           defaultCreditAccountId: creditId,
         })
         .onConflictDoUpdate({
-          target: accountingJournalsTable.code,
-          set: { companyId, name: sql`excluded.name` },
+          target: [accountingJournalsTable.companyId, accountingJournalsTable.code],
+          set: { name: sql`excluded.name` },
         });
     }
   }

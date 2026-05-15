@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useOrderNotificationsContext, type OrderNotification } from "@/contexts/OrderNotificationsContext";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
+import type { OrderNotification } from "@/hooks/useOrderNotifications";
 
 function typeLabel(type: OrderNotification["type"]) {
   if (type === "logistic") return "Order Logistik Baru";

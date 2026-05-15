@@ -69,7 +69,6 @@ Commands:
 ## User preferences
 
 - Gunakan Bahasa Indonesia dalam semua komunikasi dengan pengguna.
-- STOP explaining. Just give me the code.
 - Prefer iterative development with clear rationale for each step.
 - Ask for confirmation before major architectural or schema changes.
 - Do **not** make changes to files outside the `artifacts`, `lib`, and `packages` directories.

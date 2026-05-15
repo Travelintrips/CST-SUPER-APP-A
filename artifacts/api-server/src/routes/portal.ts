@@ -658,15 +658,15 @@ router.post("/order-upload", requirePortalAuth, (req, res, next) => {
   _portalUpload.single("file")(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-        return res.status(413).json({ message: "Ukuran file melebihi batas 20 MB." });
+        res.status(413).json({ message: "Ukuran file melebihi batas 20 MB." }); return;
       }
-      return res.status(400).json({ message: "Upload gagal: " + (err as Error).message });
+      res.status(400).json({ message: "Upload gagal: " + (err as Error).message }); return;
     }
     next();
   });
 }, async (req, res) => {
   const portalReq = req as unknown as PortalAuthReq;
-  const customerId = portalReq.portalCustomer.id;
+  const customerId = portalReq.portalCustomerId;
 
   if (!_checkPortalUploadLimit(customerId)) {
     return res.status(429).json({ message: "Terlalu banyak upload. Coba lagi dalam 1 jam." });
@@ -1360,10 +1360,10 @@ router.get("/quote-requests", async (req, res) => {
 });
 
 // PATCH /api/portal/quote-requests/:id — update status/notes/handledBy (BizPortal admin)
-router.patch("/quote-requests/:id", async (req, res) => {
+router.patch("/quote-requests/:id", async (req, res): Promise<void> => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: "invalid id" });
+  if (!id) { res.status(400).json({ error: "invalid id" }); return; }
   const { status, notes, handledBy } = req.body ?? {};
   await db
     .update(quoteRequestsTable)

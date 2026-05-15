@@ -78,6 +78,12 @@ function getServiceDetailRows(
       ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
     ];
   }
+  if (calculatorType === "product") {
+    return [
+      ...(inputData.qty ? [{ label: "Qty", value: String(inputData.qty) }] : []),
+      ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
+    ];
+  }
   const skipped = new Set(["unitPrice", "serviceFee", "adminFee", "ratePerKg", "ratePerCbm", "minimumCharge", "freightRate", "handlingFee", "truckingRate", "loadingFee", "customsFee", "documentFee", "pibPebFee", "permitFee", "notes"]);
   return Object.entries(inputData)
     .filter(([k, v]) => v && !skipped.has(k))
@@ -183,13 +189,45 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
   }
 }
 
-function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (data: Omit<CartItem, "cartId">) => void; onBack: () => void }) {
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination }: {
+  item: ServiceItem;
+  onAdd: (data: Omit<CartItem, "cartId">) => void;
+  onBack: () => void;
+  transportMode?: string;
+  truckType?: string;
+  origin?: string;
+  destination?: string;
+}) {
   const [state, setState] = useState<CalcState>({});
+  const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
   }
+
+  // Auto-calculate trucking rate from estimate-price when distance changes
+  useEffect(() => {
+    if (item.calculatorType !== "trucking") return;
+    const dist = parseFloat(state.distance ?? "");
+    if (!dist || dist <= 0) return;
+    const mode = transportMode || "TRUCKING";
+    const params = new URLSearchParams({ transport_mode: mode, distance_km: String(dist) });
+    if (truckType || state.vehicleType) params.set("truck_type", (truckType || state.vehicleType)!);
+    if (origin) params.set("origin", origin);
+    if (destination) params.set("dest", destination);
+    setAutoRateFetching(true);
+    fetch(`/api/logistic/orders/estimate-price?${params.toString()}`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((d: { estimated_price: number | null }) => {
+        if (d.estimated_price != null && d.estimated_price > 0) {
+          setState((prev) => ({ ...prev, truckingRate: String(Math.round(d.estimated_price!)) }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAutoRateFetching(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.distance, state.vehicleType, item.calculatorType]);
 
   const subtotal = calcSubtotal(item.calculatorType, state);
 
@@ -318,7 +356,17 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
               </SelectContent>
             </Select>
           </div>
-          <div><Label className="text-xs">Distance (km)</Label><Input type="number" placeholder="0" value={state.distance||""} onChange={e => set("distance", e.target.value)} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label className="text-xs">Distance (km)</Label><Input type="number" placeholder="0" value={state.distance||""} onChange={e => set("distance", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Trucking Rate (IDR)
+                {autoRateFetching && <span className="text-[10px] text-muted-foreground animate-pulse">menghitung…</span>}
+                {!autoRateFetching && state.truckingRate && state.distance && <span className="text-[10px] text-emerald-600">● auto</span>}
+              </Label>
+              <Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} />
+            </div>
+          </div>
           <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-0.5">
             <p className="font-semibold">Harga Akan Dikonfirmasi oleh Vendor</p>
             <p>Harga trucking akan diberikan setelah vendor menerima dan mengkonfirmasi pesanan Anda.</p>
@@ -545,6 +593,22 @@ export default function BookPage() {
         quantity: String(qty),
         unit: unit ?? prev.unit,
       }));
+      // Auto-add product as cart item when it has a price
+      if (productPrice > 0) {
+        const alreadyInCart = cartItems.some(
+          (c) => c.calculatorType === "product" && c.serviceName === commodity
+        );
+        if (!alreadyInCart) {
+          addItem({
+            category: "Produk",
+            serviceName: commodity,
+            calculatorType: "product",
+            inputData: { qty, price: productPrice, unit: unit ?? "" },
+            calculationResult: { total: (productPrice * qty).toFixed(2) },
+            subtotal: productPrice * qty,
+          });
+        }
+      }
     }
 
     const serviceId = params.get("service");
@@ -787,6 +851,10 @@ export default function BookPage() {
             item={selectedItem}
             onAdd={(data) => { handleAddToCart(data); setStep(2); }}
             onBack={() => setSelectedItem(null)}
+            transportMode={customerForm.transportMode}
+            truckType={customerForm.truckType}
+            origin={customerForm.origin}
+            destination={customerForm.destination}
           />
         )}
       </div>
@@ -815,8 +883,8 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Product summary in cart */}
-        {fromProduct && (
+        {/* Product summary in cart — only show when product has no price (commodity-only context) */}
+        {fromProduct && fromProduct.price <= 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
             <Package className="w-5 h-5 text-amber-600 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -831,11 +899,6 @@ export default function BookPage() {
                 )}
               </div>
             </div>
-            {fromProduct.price > 0 && (
-              <p className="font-bold text-amber-900 shrink-0">
-                {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price * fromProduct.qty)}
-              </p>
-            )}
           </div>
         )}
 
@@ -1183,8 +1246,8 @@ export default function BookPage() {
         </div>
       </div>
 
-      {/* Product banner — shown when coming from products page */}
-      {fromProduct && (
+      {/* Product banner — only show for commodity-only (no price) context */}
+      {fromProduct && fromProduct.price <= 0 && (
         <div className="bg-amber-50 border-b border-amber-200">
           <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
             <Package className="w-5 h-5 text-amber-600 shrink-0" />
@@ -1195,14 +1258,6 @@ export default function BookPage() {
                 <span className="inline-block text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium mt-0.5">{fromProduct.unit}</span>
               )}
             </div>
-            {fromProduct.price > 0 && (
-              <div className="text-right shrink-0">
-                <p className="text-xs text-amber-700">Qty {fromProduct.qty} ×</p>
-                <p className="font-bold text-amber-900 text-sm">
-                  {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price)}
-                </p>
-              </div>
-            )}
           </div>
         </div>
       )}
