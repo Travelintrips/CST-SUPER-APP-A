@@ -70,6 +70,14 @@ externalPort = 80
 
 [[ports]]
 localPort = 8080
+<<<<<<< HEAD
+=======
+localPort = 5001
+externalPort = 8008
+
+[[ports]]
+localPort = 5174
+>>>>>>> 0c45c3819c326a394857cdf947127c336ac63b7f
 externalPort = 8080
 
 [[ports]]

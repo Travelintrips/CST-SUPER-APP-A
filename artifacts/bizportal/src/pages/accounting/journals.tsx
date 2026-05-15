@@ -163,7 +163,7 @@ export default function JournalsPage() {
       toast({ title: t.common.error, variant: "destructive" }); return;
     }
     try {
-      const payload = { ...form, companyId };
+      const payload = { ...form, companyId: activeCompanyId };
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: payload });
         toast({ title: t.common.success });
