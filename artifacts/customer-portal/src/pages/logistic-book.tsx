@@ -593,21 +593,19 @@ export default function BookPage() {
         quantity: String(qty),
         unit: unit ?? prev.unit,
       }));
-      // Auto-add product as cart item when it has a price
-      if (productPrice > 0) {
-        const alreadyInCart = cartItems.some(
-          (c) => c.calculatorType === "product" && c.serviceName === commodity
-        );
-        if (!alreadyInCart) {
-          addItem({
-            category: "Produk",
-            serviceName: commodity,
-            calculatorType: "product",
-            inputData: { qty, price: productPrice, unit: unit ?? "" },
-            calculationResult: { total: (productPrice * qty).toFixed(2) },
-            subtotal: productPrice * qty,
-          });
-        }
+      // Auto-add product as cart item (always, even without a fixed price)
+      const alreadyInCart = cartItems.some(
+        (c) => c.calculatorType === "product" && c.serviceName === commodity
+      );
+      if (!alreadyInCart) {
+        addItem({
+          category: "Produk",
+          serviceName: commodity,
+          calculatorType: "product",
+          inputData: { qty, price: productPrice, unit: unit ?? "" },
+          calculationResult: { total: (productPrice * qty).toFixed(2) },
+          subtotal: productPrice * qty,
+        });
       }
     }
 
@@ -883,24 +881,6 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Product summary in cart — only show when product has no price (commodity-only context) */}
-        {fromProduct && fromProduct.price <= 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
-            <Package className="w-5 h-5 text-amber-600 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">Barang / Komoditi</p>
-              <p className="font-semibold text-amber-900">{fromProduct.name}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                {fromProduct.qty > 1 && (
-                  <p className="text-xs text-amber-700">Qty: {fromProduct.qty}</p>
-                )}
-                {fromProduct.unit && (
-                  <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium">{fromProduct.unit}</span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {cartItems.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -945,7 +925,9 @@ export default function BookPage() {
                         <div className="flex flex-col items-end gap-1">
                           {item.calculatorType === "trucking"
                             ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">Harga menyusul</span>
-                            : <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                            : item.subtotal > 0
+                              ? <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                              : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">Harga nego</span>
                           }
                           <button
                             onClick={() => removeItem(item.cartId)}

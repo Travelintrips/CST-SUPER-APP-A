@@ -101,7 +101,9 @@ export default function OrderSuccessPage() {
                 </div>
                 {item.subtotal > 0
                   ? <span className="text-sm font-bold text-accent flex-shrink-0">{formatCurrency(item.subtotal)}</span>
-                  : <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 flex-shrink-0">Harga menyusul</span>
+                  : item.calculatorType === "trucking"
+                    ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 flex-shrink-0">Harga menyusul</span>
+                    : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 flex-shrink-0">Harga nego</span>
                 }
               </div>
             ))}
