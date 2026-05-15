@@ -78,6 +78,12 @@ function getServiceDetailRows(
       ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
     ];
   }
+  if (calculatorType === "product") {
+    return [
+      ...(inputData.qty ? [{ label: "Qty", value: String(inputData.qty) }] : []),
+      ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
+    ];
+  }
   const skipped = new Set(["unitPrice", "serviceFee", "adminFee", "ratePerKg", "ratePerCbm", "minimumCharge", "freightRate", "handlingFee", "truckingRate", "loadingFee", "customsFee", "documentFee", "pibPebFee", "permitFee", "notes"]);
   return Object.entries(inputData)
     .filter(([k, v]) => v && !skipped.has(k))
@@ -567,6 +573,22 @@ export default function BookPage() {
         quantity: String(qty),
         unit: unit ?? prev.unit,
       }));
+      // Auto-add product as cart item when it has a price
+      if (productPrice > 0) {
+        const alreadyInCart = cartItems.some(
+          (c) => c.calculatorType === "product" && c.serviceName === commodity
+        );
+        if (!alreadyInCart) {
+          addItem({
+            category: "Produk",
+            serviceName: commodity,
+            calculatorType: "product",
+            inputData: { qty, price: productPrice, unit: unit ?? "" },
+            calculationResult: { total: (productPrice * qty).toFixed(2) },
+            subtotal: productPrice * qty,
+          });
+        }
+      }
     }
 
     const serviceId = params.get("service");
@@ -841,8 +863,8 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Product summary in cart */}
-        {fromProduct && (
+        {/* Product summary in cart — only show when product has no price (commodity-only context) */}
+        {fromProduct && fromProduct.price <= 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
             <Package className="w-5 h-5 text-amber-600 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -857,11 +879,6 @@ export default function BookPage() {
                 )}
               </div>
             </div>
-            {fromProduct.price > 0 && (
-              <p className="font-bold text-amber-900 shrink-0">
-                {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price * fromProduct.qty)}
-              </p>
-            )}
           </div>
         )}
 
@@ -1192,8 +1209,8 @@ export default function BookPage() {
         </div>
       </div>
 
-      {/* Product banner — shown when coming from products page */}
-      {fromProduct && (
+      {/* Product banner — only show for commodity-only (no price) context */}
+      {fromProduct && fromProduct.price <= 0 && (
         <div className="bg-amber-50 border-b border-amber-200">
           <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
             <Package className="w-5 h-5 text-amber-600 shrink-0" />
@@ -1204,14 +1221,6 @@ export default function BookPage() {
                 <span className="inline-block text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium mt-0.5">{fromProduct.unit}</span>
               )}
             </div>
-            {fromProduct.price > 0 && (
-              <div className="text-right shrink-0">
-                <p className="text-xs text-amber-700">Qty {fromProduct.qty} ×</p>
-                <p className="font-bold text-amber-900 text-sm">
-                  {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price)}
-                </p>
-              </div>
-            )}
           </div>
         </div>
       )}
