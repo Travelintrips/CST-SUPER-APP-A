@@ -69,6 +69,7 @@ interface Product {
 function resolveStoredUrl(url?: string | null): string | null {
   if (!url) return null;
   if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  if (url.startsWith("/pos-images/")) return url;
   if (url.startsWith("/api/")) return url;
   return url;
 }
