@@ -1,7 +1,5 @@
 import { Router, type Request, type Response } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
-import path from "path";
-import fs from "fs";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
@@ -13,25 +11,19 @@ import {
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import bcrypt from "bcryptjs";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
-// ── POS image upload (disk storage, no Object Storage needed) ─────────────────
-const POS_IMAGES_DIR = path.resolve(process.cwd(), "public/pos-images");
-if (!fs.existsSync(POS_IMAGES_DIR)) fs.mkdirSync(POS_IMAGES_DIR, { recursive: true });
-
+// ── POS image upload (Replit Object Storage) ──────────────────────────────────
 const posImageUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, POS_IMAGES_DIR),
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-      cb(null, `${randomUUID()}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("Hanya file gambar yang diperbolehkan"));
   },
 });
+
+const objectStorageService = new ObjectStorageService();
 
 const router = Router();
 
@@ -126,7 +118,7 @@ function orderNumber(): string {
 
 // ── POS Image Upload ──────────────────────────────────────────────────────────
 
-// POST /api/pos-kasir/admin/upload-image  (admin only, no Object Storage needed)
+// POST /api/pos-kasir/admin/upload-image  (admin only)
 router.post("/admin/upload-image", (req: Request, res: Response, next: import("express").NextFunction) => {
   posImageUpload.single("file")(req, res, async (err) => {
     if (err) {
@@ -134,8 +126,13 @@ router.post("/admin/upload-image", (req: Request, res: Response, next: import("e
     }
     if (!(await requireClerkUser(req, res))) return;
     if (!req.file) return res.status(400).json({ message: "Tidak ada file yang diupload" });
-    const url = `/pos-images/${req.file.filename}`;
-    return res.json({ url, objectPath: url });
+    try {
+      const objectId = randomUUID();
+      const url = await objectStorageService.uploadPublicAsset(req.file.buffer, objectId, req.file.mimetype);
+      return res.json({ url, objectPath: url });
+    } catch (uploadErr) {
+      return res.status(500).json({ message: "Gagal menyimpan gambar ke storage" });
+    }
   });
 });
 
