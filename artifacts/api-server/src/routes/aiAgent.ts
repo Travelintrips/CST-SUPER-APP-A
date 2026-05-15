@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import express, { Router, Request, Response } from "express";
 import OpenAI from "openai";
 import { db } from "@workspace/db";
 import {
@@ -253,17 +253,54 @@ function generateSessionToken(): string {
   return randomBytes(20).toString("hex");
 }
 
-// ── Upload rate-limit stores (in-memory, reset on server restart) ─────────────
+// ── Rate-limit stores (in-memory, reset on server restart) ────────────────────
 // These are a cost-throttle layer on top of session validation: even though
 // session tokens are freely obtainable via the public chat endpoint, limits
 // per IP and per session make bulk wallet-drain attacks economically impractical.
+
+interface RateEntry { count: number; resetAt: number }
+
+// Upload limits
 const UPLOAD_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const UPLOAD_IP_LIMIT = 20; // max uploads per IP per hour
 const UPLOAD_SESSION_LIMIT = 10; // max uploads per session lifetime
-
-interface RateEntry { count: number; resetAt: number }
 const uploadIpRateMap = new Map<string, RateEntry>();
 const uploadSessionCountMap = new Map<string, number>();
+
+// Chat limits — prevents sustained OpenAI quota drain from anonymous callers
+const CHAT_IP_WINDOW_MS = 10 * 60 * 1000; // 10-minute rolling window
+const CHAT_IP_LIMIT = 30; // max 30 chat requests per IP per window
+const chatIpRateMap = new Map<string, RateEntry>();
+
+// Order limits — prevents notification spam (WhatsApp/email) from anonymous callers
+const ORDER_IP_WINDOW_MS = 60 * 60 * 1000; // 1-hour rolling window
+const ORDER_IP_LIMIT = 5; // max 5 orders per IP per hour
+const orderIpRateMap = new Map<string, RateEntry>();
+
+/**
+ * Generic IP-based rate-limit check.
+ * Returns null when allowed (and increments the counter), or an error string to
+ * return as HTTP 429.
+ */
+function checkIpRateLimit(
+  ip: string,
+  map: Map<string, RateEntry>,
+  windowMs: number,
+  limit: number,
+  retryLabel: string,
+): string | null {
+  const now = Date.now();
+  let entry = map.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + windowMs };
+  }
+  if (entry.count >= limit) {
+    return `Terlalu banyak permintaan dari jaringan ini. Coba lagi dalam ${retryLabel}.`;
+  }
+  entry.count += 1;
+  map.set(ip, entry);
+  return null;
+}
 
 /**
  * Enforces per-IP and per-session upload rate limits.
@@ -272,26 +309,18 @@ const uploadSessionCountMap = new Map<string, number>();
  * Side-effect: increments both counters when the request is allowed.
  */
 function checkUploadRateLimit(ip: string, sessionToken: string): string | null {
-  const now = Date.now();
-
-  // Per-IP window check
-  let ipEntry = uploadIpRateMap.get(ip);
-  if (!ipEntry || now > ipEntry.resetAt) {
-    ipEntry = { count: 0, resetAt: now + UPLOAD_IP_WINDOW_MS };
-  }
-  if (ipEntry.count >= UPLOAD_IP_LIMIT) {
-    return "Terlalu banyak upload dari jaringan ini. Coba lagi dalam 1 jam.";
-  }
-
-  // Per-session lifetime check
+  // Per-session lifetime check runs first so that a session that has hit its
+  // personal cap does not consume shared IP quota on every rejected attempt.
   const sessionCount = uploadSessionCountMap.get(sessionToken) ?? 0;
   if (sessionCount >= UPLOAD_SESSION_LIMIT) {
     return "Batas upload untuk sesi percakapan ini telah tercapai. Mulai sesi baru untuk melanjutkan.";
   }
 
-  // All checks passed — commit the increments
-  ipEntry.count += 1;
-  uploadIpRateMap.set(ip, ipEntry);
+  // Per-IP window check
+  const ipError = checkIpRateLimit(ip, uploadIpRateMap, UPLOAD_IP_WINDOW_MS, UPLOAD_IP_LIMIT, "1 jam");
+  if (ipError) return "Terlalu banyak upload dari jaringan ini. Coba lagi dalam 1 jam.";
+
+  // Both checks passed — commit the session increment
   uploadSessionCountMap.set(sessionToken, sessionCount + 1);
   return null;
 }
@@ -777,6 +806,12 @@ async function streamAiChat(
 
 // ── POST /api/ai-agent/quick-order  (direct form submission, no AI round-trip) ─
 aiAgentRouter.post("/quick-order", async (req: Request, res: Response) => {
+  const clientIp = req.ip ?? "unknown";
+  const rateLimitError = checkIpRateLimit(clientIp, orderIpRateMap, ORDER_IP_WINDOW_MS, ORDER_IP_LIMIT, "1 jam");
+  if (rateLimitError) {
+    return res.status(429).json({ error: rateLimitError });
+  }
+
   const {
     sessionToken: incomingToken,
     customerName, phone, email, companyName, shipmentType,
@@ -883,6 +918,12 @@ aiAgentRouter.post("/quick-order", async (req: Request, res: Response) => {
 
 // ── POST /api/ai-agent/quick-product-order  (direct product form submission) ──
 aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) => {
+  const clientIp = req.ip ?? "unknown";
+  const rateLimitError = checkIpRateLimit(clientIp, orderIpRateMap, ORDER_IP_WINDOW_MS, ORDER_IP_LIMIT, "1 jam");
+  if (rateLimitError) {
+    return res.status(429).json({ error: rateLimitError });
+  }
+
   const {
     sessionToken: incomingToken,
     customerName, phone, email,
@@ -951,7 +992,18 @@ aiAgentRouter.post("/quick-product-order", async (req: Request, res: Response) =
 });
 
 // ── POST /api/ai-agent/chat  (SSE streaming) ──────────────────────────────────
+// Note: the global express.json({ limit: "20mb" }) in app.ts already parses the
+// body before this handler runs, so a route-level body-size limit has no effect.
+// Token-cost abuse is instead constrained by the per-IP rate limit below and the
+// hard 4000-character message cap enforced inside the handler.
 aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
+  const clientIp = req.ip ?? "unknown";
+  const rateLimitError = checkIpRateLimit(clientIp, chatIpRateMap, CHAT_IP_WINDOW_MS, CHAT_IP_LIMIT, "10 menit");
+  if (rateLimitError) {
+    res.status(429).json({ message: rateLimitError });
+    return;
+  }
+
   const { sessionToken: incomingToken, message } = req.body as {
     sessionToken?: string;
     message?: string;
@@ -959,6 +1011,12 @@ aiAgentRouter.post("/chat", async (req: Request, res: Response) => {
 
   if (!message || typeof message !== "string" || !message.trim()) {
     res.status(400).json({ message: "Pesan tidak boleh kosong" });
+    return;
+  }
+
+  // Enforce a hard cap on message length to limit token usage per request
+  if (message.length > 4000) {
+    res.status(400).json({ message: "Pesan terlalu panjang (maksimal 4000 karakter)." });
     return;
   }
 
