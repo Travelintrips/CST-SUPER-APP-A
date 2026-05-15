@@ -63,6 +63,8 @@ outputType = "console"
 task = "shell.exec"
 args = "PORT=5173 BASE_PATH=/ pnpm --filter @workspace/customer-portal run dev"
 waitForPort = 5173
+args = "pnpm --filter @workspace/api-server run dev & PORT=3000 pnpm --filter @workspace/customer-portal run dev & PORT=18442 pnpm --filter @workspace/bizportal run dev & node scripts/proxy5000.mjs"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -106,6 +108,12 @@ externalPort = 8008
 [[ports]]
 localPort = 8080
 externalPort = 8080
+localPort = 3000
+externalPort = 9000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 8081

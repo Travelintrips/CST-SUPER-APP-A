@@ -69,6 +69,7 @@ interface Product {
 function resolveStoredUrl(url?: string | null): string | null {
   if (!url) return null;
   if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  if (url.startsWith("/pos-images/")) return url;
   if (url.startsWith("/api/")) return url;
   return url;
 }
@@ -151,19 +152,22 @@ export default function PosKasirAdminPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("type", "image");
-      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) { toast({ title: "Gagal upload logo", variant: "destructive" }); return; }
-      const data = await res.json() as { objectPath?: string; url?: string };
-      const url = data.objectPath ?? data.url ?? "";
-      const resolvedUrl = url.startsWith("/objects/") ? `/api/storage${url}` : url;
+      const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) {
+        let msg = `Error ${res.status}`;
+        try { const e = await res.json() as { message?: string }; msg = e.message ?? msg; } catch { /* ignore */ }
+        toast({ title: "Gagal upload logo", description: msg, variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { url?: string };
+      const uploadedUrl = data.url ?? "";
       const saveRes = await fetch("/api/pos-kasir/admin/settings", {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logoUrl: resolvedUrl }),
+        body: JSON.stringify({ logoUrl: uploadedUrl }),
       });
       if (saveRes.ok) {
-        setLogoUrl(resolvedUrl);
+        setLogoUrl(uploadedUrl);
         toast({ title: "Logo berhasil diperbarui" });
       } else {
         toast({ title: "Gagal menyimpan logo", variant: "destructive" });
@@ -277,12 +281,15 @@ export default function PosKasirAdminPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("type", "image");
-      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) { toast({ title: "Gagal upload gambar", variant: "destructive" }); return; }
-      const data = await res.json() as { objectPath?: string; url?: string };
-      const url = data.objectPath ?? data.url ?? "";
-      setProductForm((f) => ({ ...f, imageUrl: url }));
+      const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) {
+        let msg = `Error ${res.status}`;
+        try { const e = await res.json() as { message?: string }; msg = e.message ?? msg; } catch { /* ignore */ }
+        toast({ title: "Gagal upload gambar", description: msg, variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { url?: string };
+      setProductForm((f) => ({ ...f, imageUrl: data.url ?? "" }));
     } finally { setImageUploading(false); }
   };
 

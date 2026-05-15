@@ -1,5 +1,9 @@
 import { Router, type Request, type Response } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
+import path from "path";
+import fs from "fs";
+import multer from "multer";
+import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import {
   posCashiersTable, posProductsTable, posOrdersTable,
@@ -9,6 +13,25 @@ import {
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import bcrypt from "bcryptjs";
+
+// ── POS image upload (disk storage, no Object Storage needed) ─────────────────
+const POS_IMAGES_DIR = path.resolve(process.cwd(), "public/pos-images");
+if (!fs.existsSync(POS_IMAGES_DIR)) fs.mkdirSync(POS_IMAGES_DIR, { recursive: true });
+
+const posImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, POS_IMAGES_DIR),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Hanya file gambar yang diperbolehkan"));
+  },
+});
 
 const router = Router();
 
@@ -86,6 +109,21 @@ function orderNumber(): string {
   const rand = Math.floor(Math.random() * 9000) + 1000;
   return `TT/${y}${m}${d}/${rand}`;
 }
+
+// ── POS Image Upload ──────────────────────────────────────────────────────────
+
+// POST /api/pos-kasir/admin/upload-image  (admin only, no Object Storage needed)
+router.post("/admin/upload-image", (req: Request, res: Response, next: import("express").NextFunction) => {
+  posImageUpload.single("file")(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: err.message ?? "Gagal memproses file" });
+    }
+    if (!(await requireClerkUser(req, res))) return;
+    if (!req.file) return res.status(400).json({ message: "Tidak ada file yang diupload" });
+    const url = `/pos-images/${req.file.filename}`;
+    return res.json({ url, objectPath: url });
+  });
+});
 
 // ── Branches (public read) ────────────────────────────────────────────────────
 
