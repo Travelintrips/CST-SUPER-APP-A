@@ -14,7 +14,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "artifacts/customer-portal/src"),
+      "@": path.resolve(__dirname, "src"),
       "@assets": path.resolve(__dirname, "attached_assets"),
     },
     dedupe: ["react", "react-dom"],
@@ -24,5 +24,5 @@ export default defineConfig({
     strictPort: false,
     host: "0.0.0.0",
   },
-  publicDir: path.resolve(__dirname, "artifacts/customer-portal/public"),
+  publicDir: "public",
 });
