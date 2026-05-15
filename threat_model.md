@@ -25,17 +25,17 @@ Dalam scope produksi, trust boundary terpenting ada pada API `artifacts/api-serv
 
 ## Scan Anchors
 
-- **Production entry points**: `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/index.ts`, `artifacts/api-server/src/routes/auth.ts`.
-- **Highest-risk code areas**: `artifacts/api-server/src/middlewares/authMiddleware.ts`, `artifacts/api-server/src/lib/requireAdmin.ts`, `artifacts/api-server/src/lib/supabaseAuth.ts`, route-route di `artifacts/api-server/src/routes/` yang memakai `requireClerkUser`, `requireAdmin`, atau auth kustom.
-- **Public surfaces**: customer portal root, public tracking/order routes, public AI chat/upload routes, public POS kasir login/register.
-- **Authenticated/admin surfaces**: BizPortal session routes, customer portal bearer routes, portal admin CMS, ERP data routes, storage/media management, POS admin routes.
+- **Production entry points**: `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/index.ts`, `artifacts/api-server/src/routes/auth.ts`.
+- **Highest-risk code areas**: `artifacts/api-server/src/middlewares/authMiddleware.ts`, `artifacts/api-server/src/lib/requireAdmin.ts`, `artifacts/api-server/src/lib/supabaseAuth.ts`, `artifacts/api-server/src/routes/logisticRfq.ts`, `artifacts/api-server/src/routes/logisticOrders.ts`, `artifacts/api-server/src/routes/vendorResponse.ts`, `artifacts/api-server/src/routes/aiAgent.ts`, dan route-route lain di `artifacts/api-server/src/routes/` yang memakai `requireClerkUser`, `requireAdmin`, atau auth kustom.
+- **Public surfaces**: customer portal root, public tracking/order routes, public RFQ approval routes, public vendor-response routes, public AI chat/upload/order routes, public POS kasir login/register.
+- **Authenticated/admin surfaces**: BizPortal session routes, customer portal bearer routes, portal admin CMS, ERP data routes, storage/media management, POS admin routes, dan OCR/scan-document.
 - **Usually ignore unless reachability changes**: `mockup-sandbox/`, build output, dan code eksperimen non-mounted.
 
 ## Threat Categories
 
 ### Spoofing
 
-BizPortal memakai beberapa mekanisme identitas sekaligus: cookie session internal, bearer Supabase untuk portal/mobile, token kasir POS, dan secret header tertentu. Sistem harus memastikan satu trust domain tidak bisa dipakai untuk menyamar sebagai domain lain. Token/bypass header statis tidak boleh menjadi pengganti identitas pengguna pada route admin atau staff.
+BizPortal memakai beberapa mekanisme identitas sekaligus: cookie session internal, bearer Supabase untuk portal/mobile, token kasir POS, dan secret header tertentu. Sistem harus memastikan satu trust domain tidak bisa dipakai untuk menyamar sebagai domain lain. Token/bypass header statis tidak boleh menjadi pengganti identitas pengguna pada route admin atau staff, dan bearer token portal/mobile tidak boleh otomatis diperlakukan sebagai identitas staf internal hanya karena tokennya valid.
 
 ### Tampering
 
@@ -47,8 +47,8 @@ ERP ini menyimpan PII, data revenue, email masuk, chat AI, dan dokumen operasion
 
 ### Denial of Service
 
-Route publik yang memicu OCR/AI, upload file, atau integrasi eksternal harus memiliki pembatasan auth, ukuran, dan/atau laju permintaan yang memadai. Tanpa itu, attacker dapat menghabiskan kuota berbayar atau menurunkan availability layanan.
+Route publik yang memicu OCR/AI, upload file, atau integrasi eksternal harus memiliki pembatasan auth, ukuran, dan/atau laju permintaan yang memadai. Tanpa itu, attacker dapat menghabiskan kuota berbayar atau menurunkan availability layanan. Signed upload URL juga harus dibatasi ukuran, frekuensi, dan pemiliknya; kalau tidak, attacker dapat memakai storage sebagai sink arbitrer untuk menghabiskan biaya.
 
 ### Elevation of Privilege
 
-Route staff/admin harus menegakkan otorisasi server-side yang ketat. `requireClerkUser` dan helper sejenis tidak boleh membuka surface internal ke bearer token customer/mobile biasa, dan route yang memuat ID/order/token harus memverifikasi kepemilikan sebelum mengembalikan atau memodifikasi data.
+Route staff/admin harus menegakkan otorisasi server-side yang ketat. `requireClerkUser` dan helper sejenis tidak boleh membuka surface internal ke bearer token customer/mobile biasa, secret bootstrap portal tidak boleh menjadi backdoor universal ke route internal, dan route yang memuat ID/order/token harus memverifikasi kepemilikan atau memakai token acak berentropi tinggi sebelum mengembalikan atau memodifikasi data. Workflow RFQ, approval, dan vendor response tidak boleh mengandalkan `orderNumber` sebagai satu-satunya credential.
