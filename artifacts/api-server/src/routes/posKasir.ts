@@ -57,16 +57,21 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     return null;
   }
 
-  let payload: { id: number; email: string; exp?: number };
+  let payload: { id: number; email: string; exp: number };
   try {
-    payload = JSON.parse(Buffer.from(payload64, "base64url").toString("utf-8")) as { id: number; email: string; exp?: number };
+    const parsed = JSON.parse(Buffer.from(payload64, "base64url").toString("utf-8"));
+    if (typeof parsed?.id !== "number" || typeof parsed?.email !== "string" || typeof parsed?.exp !== "number") {
+      res.status(401).json({ message: "Token tidak valid" });
+      return null;
+    }
+    payload = parsed as { id: number; email: string; exp: number };
   } catch {
     res.status(401).json({ message: "Token tidak valid" });
     return null;
   }
 
   // Enforce token expiry to limit replay window for stolen tokens
-  if (payload.exp !== undefined && Math.floor(Date.now() / 1000) > payload.exp) {
+  if (Math.floor(Date.now() / 1000) > payload.exp) {
     res.status(401).json({ message: "Token sudah kedaluwarsa, silakan login ulang" });
     return null;
   }
