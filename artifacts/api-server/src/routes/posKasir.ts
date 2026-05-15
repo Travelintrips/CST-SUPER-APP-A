@@ -34,7 +34,7 @@ function makeCashierToken(id: number, email: string): string {
   return `${payload}.${sig}`;
 }
 
-function parseCashierToken(token: string): { id: number; email: string; exp?: number } | null {
+function parseCashierToken(token: string): { id: number; email: string; exp: number } | null {
   const dot = token.lastIndexOf(".");
   if (dot === -1) return null;
   const payloadPart = token.slice(0, dot);
@@ -48,8 +48,9 @@ function parseCashierToken(token: string): { id: number; email: string; exp?: nu
     return null;
   }
   try {
-    const parsed = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf-8")) as { id: number; email: string; exp?: number };
-    if (parsed.exp !== undefined && Date.now() > parsed.exp) return null;
+    const parsed = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf-8")) as { id: number; email: string; exp: number };
+    if (typeof parsed.exp !== "number") return null;
+    if (Date.now() > parsed.exp) return null;
     return { id: parsed.id, email: parsed.email, exp: parsed.exp };
   } catch {
     return null;
@@ -66,11 +67,6 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
   const payload = parseCashierToken(token);
   if (!payload) {
     res.status(401).json({ message: "Token tidak valid" });
-    return null;
-  }
-
-  if (payload.exp !== undefined && Math.floor(Date.now() / 1000) > payload.exp) {
-    res.status(401).json({ message: "Token sudah kedaluwarsa, silakan login ulang" });
     return null;
   }
 
