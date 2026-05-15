@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && export PORT=${PORT:-8080} && pnpm run build && (fuser -k $PORT/tcp 2>/dev/null || true) && sleep 1 && exec node --enable-source-maps ./dist/index.mjs",
+    "dev": "NODE_ENV=development PORT=${PORT:-8080} node --enable-source-maps ./dist/index.mjs",
     "build": "node ./build.mjs",
     "start": "PORT=${PORT:-8080} node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
