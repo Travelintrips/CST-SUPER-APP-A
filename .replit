@@ -9,60 +9,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "BizPortal"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Customer Portal"
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && PORT=8080 pnpm run build && PORT=8080 pnpm run start"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=5000 BASE_PATH=/bizportal/ pnpm --filter @workspace/bizportal run dev"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=5173 BASE_PATH=/ pnpm --filter @workspace/customer-portal run dev"
-waitForPort = 5173
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -76,13 +22,18 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,skylogistic00@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,skylogistic00@gmail.com"
+ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
-ADMIN_EMAIL = "admcst001@gmail.com,skylogistic00@gmail.com"
+ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
+<<<<<<< HEAD
 CASHIER_TOKEN_SECRET = "965060660fca64c88bca127df2732a8f1ecbecd4db3a2affd883aa3f0be7552e574ecb4a033aec85232d0b98d89e32c5"
+=======
+VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
+VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
+>>>>>>> 7d3970d3c9922b50efa635bc649cf589005553a2
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
