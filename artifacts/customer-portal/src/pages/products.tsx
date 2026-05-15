@@ -8,52 +8,14 @@ import { resolveImageUrl } from "@/lib/utils";
 import { getProductFallbackImage } from "@/lib/categoryImages";
 import {
   ShoppingBag, Search, ChevronLeft, ChevronRight,
-  Play, Package, Star, Clock, Check, Layers, ExternalLink, Truck, ArrowRight,
+  Play, Package, Star, Truck, ShoppingCart, CheckCircle, ArrowRight,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { useCart } from "@/lib/logistic-cart";
+import { OPEN_CART_EVENT } from "@/components/CartDrawer";
 
 type MediaItem = { type: "image" | "video"; url: string };
-
-interface ShippingOption {
-  id: string;
-  name: string;
-  logo: string;
-  eta: string;
-  fee: number;
-  note: string | null;
-  kind: "vendor" | "service";
-  serviceId?: number;
-}
-
-function useShippingOptions() {
-  const [options, setOptions] = useState<ShippingOption[]>([]);
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/portal/delivery-vendors").then((r) => r.json()).catch(() => []),
-      fetch("/api/portal/services").then((r) => r.json()).catch(() => []),
-    ]).then(([vendors, services]) => {
-      const vendorOpts: ShippingOption[] = (Array.isArray(vendors) ? vendors : []).map(
-        (v: { id: number; name: string; logo: string; eta: string; fee: number; note: string | null }) => ({
-          id: `vendor-${v.id}`, name: v.name, logo: v.logo, eta: v.eta,
-          fee: v.fee, note: v.note, kind: "vendor" as const,
-        })
-      );
-      const serviceOpts: ShippingOption[] = (Array.isArray(services) ? services : []).map(
-        (s: { id: number; name: string; price: number }) => ({
-          id: `service-${s.id}`, name: s.name, logo: "🏢",
-          eta: "Sesuai kesepakatan",
-          fee: s.price ?? 0,
-          note: s.price === 0 ? "Harga nego" : null,
-          kind: "service" as const,
-          serviceId: s.id,
-        })
-      );
-      setOptions([...vendorOpts, ...serviceOpts]);
-    });
-  }, []);
-  return options;
-}
 
 interface Product {
   id: number;
@@ -345,14 +307,13 @@ function MediaGallery({ product }: { product: Product }) {
 // ── Product detail modal ───────────────────────────────────────────────────
 function ProductModal({ product, onClose }: { product: Product; onClose: () => void }) {
   const [qty, setQty] = useState(1);
-  const [shippingTab, setShippingTab] = useState<"vendor" | "service">("service");
-  const [selectedShipping, setSelectedShipping] = useState<string | null>(null);
+  const [addedToCart, setAddedToCart] = useState(false);
 
   const [, setLocation] = useLocation();
   const { t } = useLanguage();
   const usdIdrRate = useUsdIdrRate();
+  const { addItem } = useCart();
 
-  // Effective unit options: combine unitOptions + default unit, deduplicate
   const effectiveUnitOptions = Array.from(
     new Set([
       ...((product.unitOptions ?? []).length > 0 ? product.unitOptions : []),
@@ -364,34 +325,36 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
     effectiveUnitOptions[0] ?? product.unit ?? "pcs"
   );
 
-  const allShipping = useShippingOptions();
-  const vendorOpts = allShipping.filter((s) => s.kind === "vendor");
-  const serviceOpts = allShipping.filter((s) => s.kind === "service");
-  const shownOpts = shippingTab === "vendor" ? vendorOpts : serviceOpts;
-  const chosen = allShipping.find((s) => s.id === selectedShipping);
-
-  function handleBuyNow() {
-    if (!chosen) return;
-    if (chosen.kind === "service" && chosen.serviceId != null) {
-      // Jasa flow: save product info → navigate to /jasa/:id with sticky banner
-      sessionStorage.setItem(
-        "pendingJasaReview",
-        JSON.stringify({ serviceId: chosen.serviceId, productId: product.id, productName: product.name, unit: selectedUnit, qty, productPrice: product.price })
-      );
-      onClose();
-      setLocation(`/jasa/${chosen.serviceId}`);
-    } else {
-      // Kurir flow: navigate to /book with commodity + unit pre-filled
-      const params = new URLSearchParams({
-        commodity: product.name,
-        productId: String(product.id),
-        qty: String(qty),
+  function handleAddToCart() {
+    addItem({
+      category: "Produk",
+      serviceName: product.name,
+      calculatorType: "product",
+      inputData: {
+        productId: product.id,
+        qty,
         unit: selectedUnit,
-        ...(product.price > 0 ? { productPrice: String(product.price) } : {}),
-      });
-      onClose();
-      setLocation(`/book?${params.toString()}`);
-    }
+        productPrice: product.price,
+      },
+      calculationResult: {},
+      subtotal: product.price > 0 ? product.price * qty : 0,
+    });
+    setAddedToCart(true);
+  }
+
+  function handleCheckout() {
+    onClose();
+    window.dispatchEvent(new Event(OPEN_CART_EVENT));
+  }
+
+  function handlePickService() {
+    onClose();
+    setLocation("/jasa");
+  }
+
+  function handlePickProduct() {
+    setAddedToCart(false);
+    onClose();
   }
 
   return (
@@ -445,7 +408,7 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             </div>
           )}
 
-          {/* Unit Selector — only shown if product has multiple unit options */}
+          {/* Unit Selector */}
           {hasUnitChoice && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
@@ -486,112 +449,65 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
             </div>
           </div>
 
-          {/* Shipping selector */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-              <Truck className="h-3.5 w-3.5" /> {t("products.shippingLabel")}
-            </p>
-            {/* Tab switcher */}
-            <div className="flex gap-1 mb-2">
-              <button
-                onClick={() => { setShippingTab("service"); setSelectedShipping(null); }}
-                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "service" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
-              >
-                <Layers className="h-3 w-3" /> {t("products.serviceTab")} ({serviceOpts.length})
-              </button>
-              <button
-                onClick={() => { setShippingTab("vendor"); setSelectedShipping(null); }}
-                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${shippingTab === "vendor" ? "bg-primary text-primary-foreground" : "bg-gray-100 text-muted-foreground hover:bg-gray-200"}`}
-              >
-                <Package className="h-3 w-3" /> {t("products.courierTab")} ({vendorOpts.length})
-              </button>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto pr-1">
-              {shownOpts.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">{t("products.noShipping")}</p>
-              )}
-              {shownOpts.map((s) => (
-                <div
-                  key={s.id}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all text-sm ${
-                    selectedShipping === s.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/40 hover:bg-gray-50"
-                  }`}
-                >
-                  <button
-                    className="flex items-center gap-2 flex-1 min-w-0"
-                    onClick={() => setSelectedShipping(s.id === selectedShipping ? null : s.id)}
-                  >
-                    <span className="text-lg shrink-0">{s.logo}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">{s.name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> {s.eta}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0 mx-1">
-                      {s.fee > 0
-                        ? <p className="font-semibold text-foreground text-xs">{formatIDR(s.fee)}</p>
-                        : <p className="text-xs text-amber-600 font-medium">{s.note ?? "Nego"}</p>
-                      }
-                    </div>
-                    {selectedShipping === s.id && <Check className="h-4 w-4 text-primary shrink-0" />}
-                  </button>
-                  {s.kind === "service" && s.serviceId != null && (
-                    <a
-                      href={`${import.meta.env.BASE_URL}jasa/${s.serviceId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
-                      title="Lihat detail layanan"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Total preview */}
-          {chosen && product.price > 0 && (
+          {/* Subtotal preview */}
+          {product.price > 0 && (
             <div className="bg-gray-50 rounded-xl px-4 py-3 border border-border">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">{t("products.subtotal")} ({qty}x)</span>
-                <span>{isUsdProduct(product) ? `USD ${product.price * qty}` : formatIDR(product.price * qty)}</span>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">{t("products.subtotal")} ({qty}×)</span>
+                <span className="font-semibold">
+                  {isUsdProduct(product)
+                    ? `USD ${(product.price * qty).toLocaleString()}`
+                    : formatIDR(product.price * qty)}
+                </span>
               </div>
-              {chosen.kind === "vendor" && (
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">{t("products.freight")} ({chosen.name})</span>
-                  <span>{chosen.fee > 0 ? formatIDR(chosen.fee) : t("products.negotiable")}</span>
-                </div>
-              )}
-              {chosen.kind === "service" && (
-                <p className="text-xs text-muted-foreground">{t("products.serviceNote")}</p>
-              )}
             </div>
           )}
 
-          {/* Action button */}
-          <div className="mt-auto pt-2">
-            <Button
-              className="w-full gap-2"
-              onClick={handleBuyNow}
-              disabled={!chosen}
-            >
-              <Package className="h-4 w-4" />
-              {!chosen
-                ? t("products.selectShipping")
-                : chosen.kind === "service"
-                  ? `${t("products.proceedTo")} ${chosen.name}`
-                  : t("products.proceedOrder")}
-            </Button>
-            {chosen?.kind === "service" && (
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                {t("products.redirectNote")}
-              </p>
+          {/* Action area */}
+          <div className="mt-auto pt-2 space-y-2">
+            {!addedToCart ? (
+              <Button className="w-full gap-2 h-11" onClick={handleAddToCart}>
+                <ShoppingCart className="h-4 w-4" />
+                Masukkan ke Keranjang
+              </Button>
+            ) : (
+              <>
+                {/* Success notice */}
+                <div className="flex items-center gap-2.5 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-700 truncate">Ditambahkan ke keranjang!</p>
+                    <p className="text-xs text-emerald-600">{qty} × {product.name}</p>
+                  </div>
+                </div>
+
+                {/* Primary: Checkout */}
+                <Button className="w-full gap-2 h-11" onClick={handleCheckout}>
+                  <ShoppingCart className="h-4 w-4" />
+                  Lanjutkan ke Checkout
+                  <ArrowRight className="h-4 w-4 ml-auto" />
+                </Button>
+
+                {/* Secondary: Pick more */}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    className="gap-1.5 text-sm h-10"
+                    onClick={handlePickService}
+                  >
+                    <Truck className="h-3.5 w-3.5" />
+                    Pilih Layanan
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-1.5 text-sm h-10"
+                    onClick={handlePickProduct}
+                  >
+                    <Package className="h-3.5 w-3.5" />
+                    Pilih Produk
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </div>
