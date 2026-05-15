@@ -151,19 +151,17 @@ export default function PosKasirAdminPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("type", "image");
-      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
+      const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
       if (!res.ok) { toast({ title: "Gagal upload logo", variant: "destructive" }); return; }
-      const data = await res.json() as { objectPath?: string; url?: string };
-      const url = data.objectPath ?? data.url ?? "";
-      const resolvedUrl = url.startsWith("/objects/") ? `/api/storage${url}` : url;
+      const data = await res.json() as { url?: string };
+      const uploadedUrl = data.url ?? "";
       const saveRes = await fetch("/api/pos-kasir/admin/settings", {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logoUrl: resolvedUrl }),
+        body: JSON.stringify({ logoUrl: uploadedUrl }),
       });
       if (saveRes.ok) {
-        setLogoUrl(resolvedUrl);
+        setLogoUrl(uploadedUrl);
         toast({ title: "Logo berhasil diperbarui" });
       } else {
         toast({ title: "Gagal menyimpan logo", variant: "destructive" });
