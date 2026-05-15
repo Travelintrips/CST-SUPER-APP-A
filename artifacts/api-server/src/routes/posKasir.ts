@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@workspace/db";
 import {
   posCashiersTable, posProductsTable, posOrdersTable,
@@ -10,7 +11,46 @@ import bcrypt from "bcryptjs";
 
 const router = Router();
 
+// ── Token secret ──────────────────────────────────────────────────────────────
+
+const _rawSecret = process.env.CASHIER_TOKEN_SECRET;
+if (!_rawSecret || _rawSecret.length < 32) {
+  throw new Error("[POS] CASHIER_TOKEN_SECRET harus di-set minimal 32 karakter. Server tidak dapat berjalan tanpa secret ini.");
+}
+const TOKEN_SECRET: string = _rawSecret;
+
 // ── Auth helper ──────────────────────────────────────────────────────────────
+
+const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+
+function makeCashierToken(id: number, email: string): string {
+  const exp = Date.now() + TOKEN_TTL_MS;
+  const payload = Buffer.from(JSON.stringify({ id, email, exp })).toString("base64url");
+  const sig = createHmac("sha256", TOKEN_SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function parseCashierToken(token: string): { id: number; email: string } | null {
+  const dot = token.lastIndexOf(".");
+  if (dot === -1) return null;
+  const payloadPart = token.slice(0, dot);
+  const sigPart = token.slice(dot + 1);
+  const expectedSig = createHmac("sha256", TOKEN_SECRET).update(payloadPart).digest("base64url");
+  try {
+    const sigBuf = Buffer.from(sigPart, "base64url");
+    const expBuf = Buffer.from(expectedSig, "base64url");
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null;
+  } catch {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf-8")) as { id: number; email: string; exp?: number };
+    if (parsed.exp !== undefined && Date.now() > parsed.exp) return null;
+    return { id: parsed.id, email: parsed.email };
+  } catch {
+    return null;
+  }
+}
 
 async function requireCashierAuth(req: Request, res: Response): Promise<{ id: number; name: string; email: string } | null> {
   const auth = req.headers.authorization;
@@ -19,11 +59,8 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     return null;
   }
   const token = auth.slice(7);
-  let payload: { id: number; email: string } | null = null;
-  try {
-    const decoded = Buffer.from(token, "base64").toString("utf-8");
-    payload = JSON.parse(decoded) as { id: number; email: string };
-  } catch {
+  const payload = parseCashierToken(token);
+  if (!payload) {
     res.status(401).json({ message: "Token tidak valid" });
     return null;
   }
@@ -33,10 +70,6 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     return null;
   }
   return { id: cashier.id, name: cashier.name, email: cashier.email };
-}
-
-function makeCashierToken(id: number, email: string): string {
-  return Buffer.from(JSON.stringify({ id, email })).toString("base64");
 }
 
 function orderNumber(): string {
@@ -254,6 +287,7 @@ router.get("/orders/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [order] = await db.select().from(posOrdersTable).where(eq(posOrdersTable.id, id));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+  if (order.cashierId !== cashier.id) return res.status(403).json({ message: "Bukan order Anda" });
   const items = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
   return res.json({ ...order, items });
 });
