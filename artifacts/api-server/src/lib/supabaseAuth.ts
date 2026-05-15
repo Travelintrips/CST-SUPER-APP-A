@@ -32,8 +32,10 @@ export async function requirePortalAuth(req: Request, res: Response, next: NextF
   if (!customer) {
     const meta = supabaseUser.user_metadata ?? {};
     const isAdmin = PORTAL_ADMIN_EMAILS.includes(supabaseUser.email.toLowerCase());
-    // Never trust client-supplied role from user_metadata — always default to "customer".
-    // Admin elevation is handled exclusively via the PORTAL_ADMIN_EMAILS allowlist.
+    // Security: role is NEVER copied from Supabase user_metadata (client-controlled).
+    // An attacker can call supabase.auth.signUp({ options: { data: { role: "admin" } } })
+    // to set arbitrary metadata, so we must not consume it for role assignment.
+    // Admin elevation uses the server-side PORTAL_ADMIN_EMAILS env-var allowlist only.
     const role = isAdmin ? "admin" : "customer";
 
     const [created] = await db

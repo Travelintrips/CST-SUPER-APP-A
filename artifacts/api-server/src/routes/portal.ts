@@ -86,7 +86,12 @@ router.get("/products", async (_req, res) => {
   return res.json(await listByType("barang"));
 });
 
-// ── Routes khusus untuk /logistic-admin (auth: portal admin JWT) ──────────
+// ── Routes khusus untuk /logistic-admin (auth: portal admin JWT) ─────────────
+// Security: these routes previously checked x-admin-password against a hardcoded
+// fallback of "admin123" which was also embedded in the customer portal JS bundle.
+// All /logistic-admin/* routes now require requirePortalAdmin — a Supabase Bearer
+// token that belongs to an email on the server-side PORTAL_ADMIN_EMAILS allowlist.
+// No shared secret is shipped to the browser.
 
 // GET /api/portal/logistic-admin/services — semua jasa (incl. inactive)
 router.get("/logistic-admin/services", requirePortalAdmin, async (_req, res) => {
