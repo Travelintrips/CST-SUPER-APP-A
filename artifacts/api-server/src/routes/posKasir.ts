@@ -18,8 +18,11 @@ if (!CASHIER_TOKEN_SECRET) {
   throw new Error("CASHIER_TOKEN_SECRET environment variable is required");
 }
 
+const CASHIER_TOKEN_TTL_SECONDS = 12 * 60 * 60; // 12 hours
+
 function makeCashierToken(id: number, email: string): string {
-  const payload = Buffer.from(JSON.stringify({ id, email })).toString("base64url");
+  const exp = Math.floor(Date.now() / 1000) + CASHIER_TOKEN_TTL_SECONDS;
+  const payload = Buffer.from(JSON.stringify({ id, email, exp })).toString("base64url");
   const sig = createHmac("sha256", CASHIER_TOKEN_SECRET!).update(payload).digest("base64url");
   return `${payload}.${sig}`;
 }
@@ -54,11 +57,17 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     return null;
   }
 
-  let payload: { id: number; email: string };
+  let payload: { id: number; email: string; exp?: number };
   try {
-    payload = JSON.parse(Buffer.from(payload64, "base64url").toString("utf-8")) as { id: number; email: string };
+    payload = JSON.parse(Buffer.from(payload64, "base64url").toString("utf-8")) as { id: number; email: string; exp?: number };
   } catch {
     res.status(401).json({ message: "Token tidak valid" });
+    return null;
+  }
+
+  // Enforce token expiry to limit replay window for stolen tokens
+  if (payload.exp !== undefined && Math.floor(Date.now() / 1000) > payload.exp) {
+    res.status(401).json({ message: "Token sudah kedaluwarsa, silakan login ulang" });
     return null;
   }
 
