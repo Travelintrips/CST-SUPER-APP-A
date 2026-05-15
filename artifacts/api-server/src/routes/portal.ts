@@ -648,7 +648,17 @@ const _PORTAL_ALLOWED_MIME = new Set([
 // the 20 MB size limit before any byte reaches object storage.  This replaces
 // the old presigned-URL flow (/order-upload-url) which issued unconstrained GCS
 // PUT URLs that bypassed all server-side size limits.
-router.post("/order-upload", requirePortalAuth, _portalUpload.single("file"), async (req, res) => {
+router.post("/order-upload", requirePortalAuth, (req, res, next) => {
+  _portalUpload.single("file")(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ message: "Ukuran file melebihi batas 20 MB." });
+      }
+      return res.status(400).json({ message: "Upload gagal: " + (err as Error).message });
+    }
+    next();
+  });
+}, async (req, res) => {
   const portalReq = req as unknown as PortalAuthReq;
   const customerId = portalReq.portalCustomer.id;
 
