@@ -66,6 +66,7 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   // [MULTI-MODE] Customer options flow
   optionsToken: text("options_token").unique(),
   optionsSentAt: timestamp("options_sent_at", { withTimezone: true }),
+  publicRfqToken: text("public_rfq_token").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

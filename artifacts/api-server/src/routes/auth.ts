@@ -71,7 +71,13 @@ function setSessionCookie(res: Response, sid: string) {
   res.cookie(SESSION_COOKIE, sid, {
     httpOnly: true,
     secure: true,
-    sameSite: "none",
+    // "lax" prevents the browser from including the session cookie in
+    // cross-site sub-resource requests (fetch/XHR with credentials, form POST
+    // from a third-party page). Top-level GET navigations (e.g. the Google
+    // OAuth callback redirect) still carry the cookie. The API and BizPortal
+    // share the same eTLD+1 (cstlogistic.co.id / replit.dev in dev), so
+    // same-site requests are unaffected.
+    sameSite: "lax",
     path: "/",
     maxAge: SESSION_TTL,
   });
@@ -81,7 +87,10 @@ function setOidcCookie(res: Response, name: string, value: string) {
   res.cookie(name, value, {
     httpOnly: true,
     secure: true,
-    sameSite: "none",
+    // Same reasoning as setSessionCookie above. The OIDC state/nonce cookies
+    // are consumed by the Google callback (a top-level GET navigation) which
+    // "lax" permits.
+    sameSite: "lax",
     path: "/",
     maxAge: OIDC_COOKIE_TTL,
   });

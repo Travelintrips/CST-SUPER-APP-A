@@ -1,5 +1,6 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
+import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -7,6 +8,28 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+
+// ── Public Vendor Endpoint Rate Limiter ──────────────────────────────────────
+// 10 requests per minute per IP for all public vendor-facing endpoints.
+const VENDOR_RATE_WINDOW_MS = 60_000;
+const VENDOR_RATE_LIMIT = 10;
+const vendorRateMap = new Map<string, { count: number; resetAt: number }>();
+
+function vendorRateLimit(req: Request, res: Response, next: NextFunction): void {
+  const ip = (req.ip ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+  const now = Date.now();
+  const entry = vendorRateMap.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    vendorRateMap.set(ip, { count: 1, resetAt: now + VENDOR_RATE_WINDOW_MS });
+    return next();
+  }
+  entry.count += 1;
+  if (entry.count > VENDOR_RATE_LIMIT) {
+    res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 menit." });
+    return;
+  }
+  return next();
+}
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -142,7 +165,10 @@ export async function autoCreateRfqAndNotifyVendors(
       );
       console.log(`[TRUCKING-FLOW] RFQ sent to vendor ${vendor.name} (id=${vendor.id}) with token ${vendorToken}`);
     } else {
-      const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
+      const [orderTokenRow] = await db.select({ publicRfqToken: logisticOrdersTable.publicRfqToken })
+        .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+      const orderToken = orderTokenRow?.publicRfqToken ?? "";
+      const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken);
       const msg = buildRfqWaMessage(order, rfqNumber, vendor.name, formUrl, vendorBasePrice);
       sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "autoRFQ WA vendor failed")
@@ -268,10 +294,10 @@ function getApproveFormUrl(orderNumber: string): string {
   return `https://${domain}/approve/${orderNumber}`;
 }
 
-function getVendorFormUrl(rfqNumber: string, vendorId: number): string {
+function getVendorFormUrl(rfqNumber: string, vendorId: number, token: string): string {
   const domain = getPreferredDomain();
   if (!domain) return "";
-  return `https://${domain}/vendor-quote?rfq=${encodeURIComponent(rfqNumber)}&v=${vendorId}`;
+  return `https://${domain}/vendor-quote?rfq=${encodeURIComponent(rfqNumber)}&v=${vendorId}&token=${encodeURIComponent(token)}`;
 }
 
 // [TRUCKING-FIX] Confirm link for vendor YES/NO page
@@ -379,7 +405,7 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
 });
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
-logisticRfqRouter.get("/vendor-confirm-page", async (req: Request, res: Response) => {
+logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.query.orderId ?? ""), 10);
   const token = String(req.query.token ?? "").trim();
   if (isNaN(orderId) || !token) return res.status(400).json({ message: "orderId dan token wajib diisi" });
@@ -411,7 +437,7 @@ logisticRfqRouter.get("/vendor-confirm-page", async (req: Request, res: Response
 });
 
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
-logisticRfqRouter.post("/vendor-confirm", async (req: Request, res: Response) => {
+logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, res: Response) => {
   const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
   if (!orderId || !token || !action) return res.status(400).json({ message: "orderId, token, dan action wajib diisi" });
   if (action !== "accept" && action !== "reject") return res.status(400).json({ message: "action harus 'accept' atau 'reject'" });
@@ -480,31 +506,36 @@ logisticRfqRouter.post("/vendor-confirm", async (req: Request, res: Response) =>
   return res.json({ message: action === "accept" ? "Konfirmasi diterima. Terima kasih!" : "Order ditolak." });
 });
 
-// GET /api/logistic/orders/vendor-form?rfq=RFQ-XXXXXX&v=vendorId — public vendor form data
-logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
+// GET /api/logistic/orders/vendor-form?rfq=RFQ-XXXXXX&v=vendorId&token=TOKEN — public vendor form data
+logisticRfqRouter.get("/vendor-form", rfqRateLimit, async (req: Request, res: Response) => {
   const rfqNumber = String(req.query.rfq ?? "").trim();
   const vendorId = parseInt(String(req.query.v ?? ""), 10);
+  const token = String(req.query.token ?? "").trim();
 
-  if (!rfqNumber || isNaN(vendorId)) {
-    return res.status(400).json({ message: "Parameter rfq dan v wajib diisi" });
+  if (!rfqNumber || isNaN(vendorId) || !token) {
+    return res.status(404).json({ error: "Not found" });
   }
 
   const [rfq] = await db.select().from(logisticOrderRfqsTable)
     .where(eq(logisticOrderRfqsTable.rfqNumber, rfqNumber));
-  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+  if (!rfq) return res.status(404).json({ error: "Not found" });
 
   const vendorIds = Array.isArray(rfq.vendorIds) ? rfq.vendorIds as number[] : [];
   if (!vendorIds.includes(vendorId)) {
-    return res.status(403).json({ message: "Vendor tidak diundang dalam RFQ ini" });
+    return res.status(404).json({ error: "Not found" });
   }
 
   const [order] = await db.select().from(logisticOrdersTable)
     .where(eq(logisticOrdersTable.id, rfq.orderId));
-  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+  if (!order) return res.status(404).json({ error: "Not found" });
+
+  if (!order.publicRfqToken || order.publicRfqToken !== token) {
+    return res.status(404).json({ error: "Not found" });
+  }
 
   const [vendor] = await db.select().from(suppliersTable)
     .where(eq(suppliersTable.id, vendorId));
-  if (!vendor) return res.status(404).json({ message: "Vendor tidak ditemukan" });
+  if (!vendor) return res.status(404).json({ error: "Not found" });
 
   const [existingQuote] = await db.select().from(logisticOrderQuotesTable)
     .where(and(
@@ -546,8 +577,6 @@ logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
     requiredDate: order.requiredDate ?? null,
     jamOrder: order.jamOrder ?? null,
     jumlahKoli: order.jumlahKoli ?? null,
-    namaPenerima: order.namaPenerima ?? null,
-    nomorPenerima: order.nomorPenerima ?? null,
     requestedPickup: (order as any).estimatedPickup ?? null,
     requestedDelivery: (order as any).estimatedDelivery ?? null,
     createdAt: order.createdAt.toISOString(),
@@ -567,30 +596,43 @@ logisticRfqRouter.get("/vendor-form", async (req: Request, res: Response) => {
 });
 
 // POST /api/logistic/orders/vendor-quote — public vendor submits quote via form
-logisticRfqRouter.post("/vendor-quote", async (req: Request, res: Response) => {
-  const { rfqNumber, vendorId, vendorPrice, estimatedPickup, estimatedDelivery, estimatedDays, notes } =
+logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: Response) => {
+  const { rfqNumber, vendorId, vendorPrice, estimatedPickup, estimatedDelivery, estimatedDays, notes, token } =
     req.body as {
       rfqNumber: string; vendorId: number; vendorPrice: number;
       estimatedPickup?: string; estimatedDelivery?: string;
-      estimatedDays?: number; notes?: string;
+      estimatedDays?: number; notes?: string; token?: string;
     };
 
-  if (!rfqNumber || !vendorId || vendorPrice == null) {
-    return res.status(400).json({ message: "rfqNumber, vendorId, vendorPrice wajib diisi" });
+  if (!rfqNumber || !vendorId || vendorPrice == null || !token) {
+    return res.status(404).json({ error: "Not found" });
   }
 
   const [rfq] = await db.select().from(logisticOrderRfqsTable)
     .where(eq(logisticOrderRfqsTable.rfqNumber, rfqNumber));
-  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+  if (!rfq) return res.status(404).json({ error: "Not found" });
 
   const vendorIds = Array.isArray(rfq.vendorIds) ? rfq.vendorIds as number[] : [];
   if (!vendorIds.includes(Number(vendorId))) {
-    return res.status(403).json({ message: "Vendor tidak diundang dalam RFQ ini" });
+    return res.status(404).json({ error: "Not found" });
   }
 
   const [order] = await db.select().from(logisticOrdersTable)
     .where(eq(logisticOrdersTable.id, rfq.orderId));
-  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+  if (!order) return res.status(404).json({ error: "Not found" });
+
+  if (!order.publicRfqToken || order.publicRfqToken !== token) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const [existingQuote] = await db.select().from(logisticOrderQuotesTable)
+    .where(and(
+      eq(logisticOrderQuotesTable.rfqId, rfq.id),
+      eq(logisticOrderQuotesTable.vendorId, Number(vendorId))
+    ));
+  if (existingQuote) {
+    return res.status(409).json({ error: "Quote already submitted" });
+  }
 
   const [vendor] = await db.select().from(suppliersTable)
     .where(eq(suppliersTable.id, Number(vendorId)));
@@ -703,6 +745,10 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     createdAt: order.createdAt,
   };
 
+  const [orderTokenRow2] = await db.select({ publicRfqToken: logisticOrdersTable.publicRfqToken })
+    .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  const orderToken2 = orderTokenRow2?.publicRfqToken ?? "";
+
   for (const vendor of vendors) {
     if (vendor.phone) {
       // Look up vendor's catalog price for this vehicle type
@@ -715,7 +761,7 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
         ? Number(matchingCatalog.priceBase)
         : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
 
-      const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
+      const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken2);
       const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl, vendorBasePrice);
       sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA RFQ send failed")
@@ -883,30 +929,36 @@ logisticRfqRouter.put("/quotes/:quoteId", async (req: Request, res: Response) =>
   return res.json(toQuote(updated, vendor?.name ?? `Vendor #${updated.vendorId}`));
 });
 
-// GET /api/logistic/orders/rfq-form?rfq=:rfqNumber&v=:vendorId — public vendor quote form data
-logisticRfqRouter.get("/rfq-form", async (req: Request, res: Response) => {
+// GET /api/logistic/orders/rfq-form?rfq=:rfqNumber&v=:vendorId&token=TOKEN — public vendor quote form data
+logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Response) => {
   const rfqNumber = String(req.query.rfq ?? "").trim();
   const vendorId = parseInt(String(req.query.v ?? ""), 10);
+  const token = String(req.query.token ?? "").trim();
 
-  if (!rfqNumber || isNaN(vendorId)) {
-    return res.status(400).json({ message: "Parameter rfq dan v wajib diisi" });
+  if (!rfqNumber || isNaN(vendorId) || !token) {
+    return res.status(404).json({ error: "Not found" });
   }
 
   const [rfq] = await db.select().from(logisticOrderRfqsTable)
     .where(eq(logisticOrderRfqsTable.rfqNumber, rfqNumber));
-  if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+  if (!rfq) return res.status(404).json({ error: "Not found" });
 
   const vendorIds = Array.isArray(rfq.vendorIds) ? rfq.vendorIds as number[] : [];
   if (!vendorIds.includes(vendorId)) {
-    return res.status(403).json({ message: "Vendor tidak diundang dalam RFQ ini" });
+    return res.status(404).json({ error: "Not found" });
   }
 
   const [order] = await db.select().from(logisticOrdersTable)
     .where(eq(logisticOrdersTable.id, rfq.orderId));
-  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+  if (!order) return res.status(404).json({ error: "Not found" });
+
+  if (!order.publicRfqToken || order.publicRfqToken !== token) {
+    return res.status(404).json({ error: "Not found" });
+  }
 
   const [vendor] = await db.select().from(suppliersTable)
     .where(eq(suppliersTable.id, vendorId));
+  if (!vendor) return res.status(404).json({ error: "Not found" });
 
   const existing = await db.select().from(logisticOrderQuotesTable)
     .where(and(
@@ -996,11 +1048,15 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
     createdAt: order.createdAt,
   };
 
+  const [orderTokenRow3] = await db.select({ publicRfqToken: logisticOrdersTable.publicRfqToken })
+    .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  const orderToken3 = orderTokenRow3?.publicRfqToken ?? "";
+
   for (const vendor of eligible) {
     const catalogItems = await db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
     const vendorBasePrice = catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
-    const formUrl = getVendorFormUrl(rfqNumber, vendor.id);
+    const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken3);
     const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl, vendorBasePrice);
     sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
       logger.error({ err, vendorId: vendor.id }, "manualRFQ WA vendor failed")

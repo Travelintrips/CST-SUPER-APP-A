@@ -52,6 +52,7 @@ function parseCashierToken(token: string): { id: number; email: string } | null 
   }
 }
 
+
 async function requireCashierAuth(req: Request, res: Response): Promise<{ id: number; name: string; email: string } | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
@@ -64,8 +65,18 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     res.status(401).json({ message: "Token tidak valid" });
     return null;
   }
+
+  // Enforce token expiry to limit replay window for stolen tokens
+  if (Math.floor(Date.now() / 1000) > payload.exp) {
+    res.status(401).json({ message: "Token sudah kedaluwarsa, silakan login ulang" });
+    return null;
+  }
+
+  // Lookup by ID and cross-verify email from the token matches the database record.
+  // This prevents token forgery even if an attacker guesses the ID: the email
+  // in the signed payload must exactly match what is stored in the database.
   const [cashier] = await db.select().from(posCashiersTable).where(eq(posCashiersTable.id, payload.id));
-  if (!cashier || cashier.status !== "approved") {
+  if (!cashier || cashier.status !== "approved" || cashier.email !== payload.email) {
     res.status(403).json({ message: "Akun kasir belum disetujui atau tidak ditemukan" });
     return null;
   }

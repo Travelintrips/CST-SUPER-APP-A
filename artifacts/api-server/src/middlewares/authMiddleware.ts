@@ -90,6 +90,11 @@ export async function authMiddleware(
           .filter(Boolean);
         const isAdmin = adminEmails.includes(supabaseUser.email.toLowerCase());
 
+        // Security: role is NEVER derived from user_metadata (client-controlled).
+        // New bearer-token users are always provisioned as "ecommerce" unless their
+        // email is on the server-side ADMIN_EMAIL allowlist. This prevents any
+        // Supabase portal/mobile user from self-elevating to ERP admin by obtaining
+        // a valid bearer token.
         const [created] = await db
           .insert(usersTable)
           .values({

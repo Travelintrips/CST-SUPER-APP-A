@@ -29,13 +29,21 @@ Dalam scope produksi, trust boundary terpenting ada pada API `artifacts/api-serv
 - **Highest-risk code areas**: `artifacts/api-server/src/middlewares/authMiddleware.ts`, `artifacts/api-server/src/lib/requireAdmin.ts`, `artifacts/api-server/src/lib/supabaseAuth.ts`, `artifacts/api-server/src/routes/trading.ts`, `artifacts/api-server/src/routes/ecommerce.ts`, `artifacts/api-server/src/routes/logistics.ts`, `artifacts/api-server/src/routes/logisticRfq.ts`, `artifacts/api-server/src/routes/logisticOrders.ts`, `artifacts/api-server/src/routes/vendorResponse.ts`, `artifacts/api-server/src/routes/storage.ts`, `artifacts/api-server/src/routes/whatsapp.ts`, `artifacts/api-server/src/routes/webhooks.ts`, `artifacts/api-server/src/routes/aiAgent.ts`, dan route-route lain di `artifacts/api-server/src/routes/` yang memakai `requireClerkUser`, `requireAdmin`, atau auth kustom.
 - **Public surfaces**: customer portal root, public tracking/order routes, public RFQ approval routes, public vendor-response routes, public AI chat/upload/order routes, public POS kasir login/register, `/api/ecommerce` surface yang mencampur endpoint publik dan admin, `/api/logistics` shipment API, `/api/whatsapp` ops API, dan `POST /api/webhook/fonnte`.
 - **Authenticated/admin surfaces**: BizPortal session routes, customer portal bearer routes, portal admin CMS, ERP data routes, storage/media management, POS admin routes, dan OCR/scan-document.
+
+- **Production entry points**: `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/index.ts`, `artifacts/api-server/src/routes/auth.ts`.
+- **Highest-risk code areas**: `artifacts/api-server/src/middlewares/authMiddleware.ts`, `artifacts/api-server/src/lib/requireAdmin.ts`, `artifacts/api-server/src/lib/supabaseAuth.ts`, `artifacts/api-server/src/routes/webhooks.ts`, `artifacts/api-server/src/routes/vendorResponse.ts`, dan route-route di `artifacts/api-server/src/routes/` yang memakai `requireClerkUser`, `requireAdmin`, atau auth kustom.
+- **Public surfaces**: customer portal root, public tracking/order routes, public vendor-response/vendor-confirm routes, public AI chat/upload routes, public POS kasir login/register, dan webhook `POST /api/webhook/fonnte`.
+- **Authenticated/admin surfaces**: BizPortal session routes, customer portal bearer routes, portal admin CMS, ERP data routes, storage/media management, POS admin routes.
+
 - **Usually ignore unless reachability changes**: `mockup-sandbox/`, build output, dan code eksperimen non-mounted.
 
 ## Threat Categories
 
 ### Spoofing
 
+
 BizPortal memakai beberapa mekanisme identitas sekaligus: cookie session internal, bearer Supabase untuk portal/mobile, token kasir POS, dan secret header tertentu. Sistem harus memastikan satu trust domain tidak bisa dipakai untuk menyamar sebagai domain lain. Token/bypass header statis tidak boleh menjadi pengganti identitas pengguna pada route admin atau staff, dan bearer token portal/mobile tidak boleh otomatis diperlakukan sebagai identitas staf internal hanya karena tokennya valid. Webhook pihak ketiga seperti Fonnte harus memverifikasi autentisitas origin dan tidak boleh mempercayai `sender` dari body mentah sebagai identitas admin/vendor.
+BizPortal memakai beberapa mekanisme identitas sekaligus: cookie session internal, bearer Supabase untuk portal/mobile, token kasir POS, webhook dari pihak ketiga, dan beberapa alur berbasis secret bersama. Sistem harus memastikan satu trust domain tidak bisa dipakai untuk menyamar sebagai domain lain. Token/bypass header statis tidak boleh menjadi pengganti identitas pengguna pada route admin atau staff, dan webhook inbound harus memverifikasi bahwa request benar-benar berasal dari provider yang sah sebelum mempercayai `sender`, `message`, atau URL media.
 
 ### Tampering
 
@@ -44,6 +52,7 @@ Banyak route mengubah data bisnis penting: status order, stok, produk, shipment,
 ### Information Disclosure
 
 ERP ini menyimpan PII, data revenue, email masuk, chat AI, dan dokumen operasional. API harus membatasi respons berdasarkan kepemilikan/role, tidak memantulkan data internal ke caller publik, dan tidak membiarkan origin tak tepercaya membaca respons yang dikirim dengan kredensial korban. Route internal seperti dashboard, order management, inbox WhatsApp, storage objek private, dan shipment data tidak boleh bergantung pada hidden menu atau asumsi frontend.
+ERP ini menyimpan PII, data revenue, email masuk, chat AI, dokumen operasional, dan data pelacakan pengiriman. API harus membatasi respons berdasarkan kepemilikan/role, tidak memantulkan data internal ke caller publik, dan tidak membiarkan order number atau identifier publik lain berfungsi sebagai satu-satunya syarat untuk membaca detail order, vendor response, atau status driver.
 
 ### Denial of Service
 

@@ -40,6 +40,10 @@ export async function requireClerkUser(req: Request, res: Response): Promise<boo
     res.status(401).json({ message: "Unauthorized" });
     return false;
   }
+  if ((req.user as { role?: string | null }).role === "ecommerce") {
+    res.status(403).json({ message: "Forbidden: staff access only" });
+    return false;
+  }
   return true;
 }
 
