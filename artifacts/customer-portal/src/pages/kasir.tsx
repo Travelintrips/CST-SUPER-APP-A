@@ -74,6 +74,7 @@ export default function KasirPage() {
   const [, setLocation] = useLocation();
   const [profile, setProfile] = useState<KasirProfile | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("pos");
+  const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
 
   // POS state
   const [products, setProducts] = useState<Product[]>([]);
@@ -100,6 +101,10 @@ export default function KasirPage() {
     if (!isKasirLoggedIn()) { setLocation("/kasir/login"); return; }
     setProfile(getKasirProfile());
     loadProducts();
+    fetch("/api/pos-kasir/settings")
+      .then((r) => r.ok ? r.json() : null)
+      .then((s: Record<string, string> | null) => { if (s?.logoUrl) setLogoUrl(s.logoUrl); })
+      .catch(() => {});
   }, [setLocation]);
 
   const loadProducts = async () => {
@@ -207,7 +212,7 @@ export default function KasirPage() {
         <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xs overflow-hidden print:shadow-none print:rounded-none print:max-w-full">
           {/* Receipt header */}
           <div className="p-6 text-center" style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
-            <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-16 h-16 rounded-2xl object-cover mx-auto mb-3 shadow-lg border-2 border-white/30" />
+            <img src={logoUrl} alt="Thai Tea CST" className="w-16 h-16 rounded-2xl object-cover mx-auto mb-3 shadow-lg border-2 border-white/30" />
             <h2 className="font-black text-xl text-white">Thai Tea CST</h2>
             <p className="text-orange-100 text-xs mt-0.5">Struk Pembayaran</p>
           </div>
@@ -274,7 +279,7 @@ export default function KasirPage() {
       <header className="sticky top-0 z-30 shadow-md" style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-10 h-10 rounded-xl object-cover border-2 border-white/30" />
+            <img src={logoUrl} alt="Thai Tea CST" className="w-10 h-10 rounded-xl object-cover border-2 border-white/30" />
             <div>
               <h1 className="font-black text-white text-base leading-tight">Thai Tea CST</h1>
               <p className="text-orange-100 text-xs">{profile?.name}</p>
