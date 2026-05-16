@@ -134,6 +134,9 @@ export default function KasirPage() {
 
   // Stock (uses products state — no separate stocks state needed)
   const [stockLoading, setStockLoading] = useState<LoadingState>("idle");
+  const [stockAddProduct, setStockAddProduct] = useState<Product | null>(null);
+  const [stockAddQty, setStockAddQty] = useState("1");
+  const [stockAdding, setStockAdding] = useState(false);
 
   const cartRef = useRef<HTMLDivElement>(null);
 
@@ -243,16 +246,42 @@ export default function KasirPage() {
   const loadStocksTab = useCallback(async () => {
     setStockLoading("loading");
     try {
-      const res = await kasirFetch("/api/pos-kasir/products");
+      const res = await kasirFetch(`/api/pos-kasir/products?_t=${Date.now()}`);
       if (res.ok) setProducts(await res.json() as Product[]);
     } catch { /* skip */ }
     finally { setStockLoading("done"); }
   }, []);
 
+  const handleStockAdd = useCallback(async () => {
+    if (!stockAddProduct) return;
+    const qty = Number(stockAddQty);
+    if (!qty || Number.isNaN(qty)) return;
+    setStockAdding(true);
+    try {
+      const res = await kasirFetch(`/api/pos-kasir/products/${stockAddProduct.id}/stock-add`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delta: qty }),
+      });
+      if (res.ok) {
+        setStockAddProduct(null);
+        setStockAddQty("1");
+        await loadStocksTab();
+      }
+    } finally { setStockAdding(false); }
+  }, [stockAddProduct, stockAddQty, loadStocksTab]);
+
   useEffect(() => {
     if (activeTab === "history") loadOrders();
     if (activeTab === "stock") loadStocksTab();
   }, [activeTab, loadOrders, loadStocksTab]);
+
+  // Auto-refresh stok setiap 30 detik saat tab stok aktif
+  useEffect(() => {
+    if (activeTab !== "stock") return;
+    const interval = setInterval(loadStocksTab, 30000);
+    return () => clearInterval(interval);
+  }, [activeTab, loadStocksTab]);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -826,7 +855,10 @@ export default function KasirPage() {
       {activeTab === "stock" && (
         <div className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-black text-gray-800 text-lg">Stok Produk</h2>
+            <div>
+              <h2 className="font-black text-gray-800 text-lg">Stok Produk</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Auto-refresh 30 detik · Stok terpotong otomatis saat transaksi</p>
+            </div>
             <button onClick={loadStocksTab} disabled={stockLoading === "loading"}
               className="text-xs font-bold text-orange-500 hover:underline disabled:opacity-40 flex items-center gap-1">
               {stockLoading === "loading"
@@ -854,10 +886,10 @@ export default function KasirPage() {
                 const aman = stockNum !== null && stockNum > 5;
                 const notTracked = stockNum === null;
                 return (
-                  <div key={p.id} className={`bg-white rounded-2xl p-4 shadow-sm border flex items-center gap-3 ${
+                  <div key={p.id} className={`bg-white rounded-2xl p-3 shadow-sm border flex items-center gap-3 ${
                     habis ? "border-red-100 bg-red-50/30" : rendah ? "border-orange-100" : "border-gray-100"
                   }`}>
-                    <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
+                    <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
                       <img src={resolveProductImage(p.imageUrl, p.name)} alt={p.name}
                         className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = "/menu/thai-tea-original.png"; }} />
                     </div>
@@ -865,17 +897,24 @@ export default function KasirPage() {
                       <p className="font-bold text-gray-800 text-sm truncate">{p.name}</p>
                       <p className="text-xs text-gray-400">{fmt(p.price)}</p>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      {notTracked ? (
-                        <span className="text-xs text-gray-300 font-medium">–</span>
-                      ) : habis ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-black bg-red-100 text-red-600">Habis</span>
-                      ) : (
-                        <span className={`text-lg font-black ${rendah ? "text-orange-500" : aman ? "text-green-600" : "text-gray-700"}`}>
-                          {stockNum!.toLocaleString("id-ID")}
-                        </span>
-                      )}
-                      {!notTracked && <p className="text-xs text-gray-400 mt-0.5">{p.stockUnit ?? "pcs"}</p>}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="text-right">
+                        {notTracked ? (
+                          <span className="text-xs text-gray-300 font-medium">–</span>
+                        ) : habis ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-black bg-red-100 text-red-600">Habis</span>
+                        ) : (
+                          <span className={`text-lg font-black ${rendah ? "text-orange-500" : aman ? "text-green-600" : "text-gray-700"}`}>
+                            {stockNum!.toLocaleString("id-ID")}
+                          </span>
+                        )}
+                        {!notTracked && <p className="text-xs text-gray-400 mt-0.5">{p.stockUnit ?? "pcs"}</p>}
+                      </div>
+                      <button
+                        onClick={() => { setStockAddProduct(p); setStockAddQty("1"); }}
+                        className="w-9 h-9 rounded-full bg-orange-50 border border-orange-200 text-orange-600 text-xl font-black flex items-center justify-center hover:bg-orange-100 active:scale-95 transition-all"
+                        title="Tambah Stok"
+                      >+</button>
                     </div>
                   </div>
                 );
@@ -885,6 +924,52 @@ export default function KasirPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Modal Tambah / Koreksi Stok ──────────────────────────────────── */}
+      {stockAddProduct && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40"
+          onClick={(e) => { if (e.target === e.currentTarget) setStockAddProduct(null); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+            <h3 className="font-black text-gray-800 text-base mb-1">Tambah / Koreksi Stok</h3>
+            <p className="text-sm text-gray-500 mb-4 truncate">{stockAddProduct.name}</p>
+            <div className="mb-4 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 mb-0.5">Stok saat ini</p>
+              <p className="font-black text-gray-800 text-lg">
+                {stockAddProduct.stock != null ? Number(stockAddProduct.stock).toLocaleString("id-ID") : "–"} <span className="text-sm font-medium text-gray-500">{stockAddProduct.stockUnit ?? "pcs"}</span>
+              </p>
+            </div>
+            <div className="mb-5">
+              <label className="text-xs font-bold text-gray-600 block mb-1.5">Jumlah (+tambah / −koreksi)</label>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setStockAddQty((v) => String(Number(v) - 1))}
+                  className="w-11 h-11 rounded-xl bg-gray-100 text-gray-600 text-xl font-bold flex items-center justify-center hover:bg-gray-200 active:scale-95 transition-all">−</button>
+                <input type="number" value={stockAddQty} onChange={(e) => setStockAddQty(e.target.value)}
+                  className="flex-1 h-11 text-center text-xl font-black border border-gray-200 rounded-xl focus:outline-none focus:border-orange-400" />
+                <button onClick={() => setStockAddQty((v) => String(Number(v) + 1))}
+                  className="w-11 h-11 rounded-xl bg-orange-50 text-orange-600 text-xl font-bold flex items-center justify-center hover:bg-orange-100 active:scale-95 transition-all">+</button>
+              </div>
+              {Number(stockAddQty) !== 0 && (
+                <p className="text-xs text-center mt-2 text-gray-400">
+                  Stok baru: <span className="font-bold text-gray-700">
+                    {Math.max(0, (stockAddProduct.stock != null ? Number(stockAddProduct.stock) : 0) + Number(stockAddQty)).toLocaleString("id-ID")} {stockAddProduct.stockUnit ?? "pcs"}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setStockAddProduct(null)}
+                className="flex-1 h-11 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition-all">
+                Batal
+              </button>
+              <button onClick={handleStockAdd} disabled={stockAdding || !stockAddQty || Number(stockAddQty) === 0}
+                className="flex-1 h-11 rounded-xl text-white font-bold text-sm disabled:opacity-40 active:scale-95 transition-all"
+                style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
+                {stockAdding ? "Menyimpan..." : Number(stockAddQty) >= 0 ? `+${Number(stockAddQty)} Tambah` : `${Number(stockAddQty)} Koreksi`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

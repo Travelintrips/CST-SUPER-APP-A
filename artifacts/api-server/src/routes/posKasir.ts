@@ -493,6 +493,24 @@ router.get("/orders/:id", async (req, res) => {
   return res.json({ ...order, items });
 });
 
+// PATCH /api/pos-kasir/products/:id/stock-add — kasir tambah/kurang stok produk
+router.patch("/products/:id/stock-add", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const { delta } = req.body ?? {};
+  if (delta == null || Number.isNaN(Number(delta))) return res.status(400).json({ message: "delta wajib" });
+  await db.execute(sql`
+    UPDATE pos_products
+    SET stock = GREATEST(0, COALESCE(stock, 0) + ${Number(delta)})
+    WHERE id = ${id}
+  `);
+  const [updated] = (await db.execute(sql`SELECT id, name, stock, stock_unit FROM pos_products WHERE id = ${id}`)).rows as Array<Record<string, unknown>>;
+  if (!updated) return res.status(404).json({ message: "Produk tidak ditemukan" });
+  return res.json({ id: updated.id, name: updated.name, stock: updated.stock, stockUnit: updated.stock_unit });
+});
+
 // ── Stock ─────────────────────────────────────────────────────────────────────
 
 // GET /api/pos-kasir/stock
