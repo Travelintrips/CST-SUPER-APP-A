@@ -26,11 +26,16 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+<<<<<<< HEAD
 args = "cd /home/runner/workspace/artifacts/api-server && NODE_ENV=development PORT=8080 node --enable-source-maps ./dist/index.mjs"
 waitForPort = 8080
 
 [workflows.workflow.metadata]
 outputType = "console"
+=======
+args = "bash start-all.sh"
+waitForPort = 5000
+>>>>>>> b7d55d7d9600eb616121efe6afe86dbed4294c30
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -71,11 +76,15 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 5001
 externalPort = 8008
 
 [[ports]]
 localPort = 5174
+=======
+localPort = 8080
+>>>>>>> b7d55d7d9600eb616121efe6afe86dbed4294c30
 externalPort = 8080
 
 [[ports]]
