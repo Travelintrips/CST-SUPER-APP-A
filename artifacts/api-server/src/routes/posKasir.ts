@@ -682,6 +682,132 @@ router.delete("/admin/stock/:id", async (req, res) => {
   return res.json({ message: "Deleted" });
 });
 
+// ── Shift Management ──────────────────────────────────────────────────────────
+
+// GET /api/pos-kasir/shifts/current — kasir auth
+router.get("/shifts/current", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const result = await db.execute(sql`
+    SELECT s.*, b.name as branch_name
+    FROM pos_shifts s
+    LEFT JOIN pos_branches b ON s.branch_id = b.id
+    WHERE s.cashier_id = ${cashier.id} AND s.status = 'open'
+    ORDER BY s.opened_at DESC
+    LIMIT 1
+  `);
+  if (result.rows.length === 0) return res.json(null);
+  const shift = result.rows[0] as Record<string, unknown>;
+  const salesResult = await db.execute(sql`
+    SELECT COALESCE(SUM(total), 0) as total_sales, COUNT(*) as order_count
+    FROM pos_orders
+    WHERE cashier_id = ${cashier.id} AND status = 'paid' AND paid_at >= ${shift.opened_at as Date}
+  `);
+  const sales = salesResult.rows[0] as Record<string, unknown>;
+  return res.json({
+    id: shift.id, branchId: shift.branch_id, branchName: shift.branch_name,
+    cashierId: shift.cashier_id, openedAt: shift.opened_at,
+    openingCash: shift.opening_cash, status: shift.status, notes: shift.notes,
+    currentTotalSales: sales.total_sales, currentOrderCount: Number(sales.order_count),
+  });
+});
+
+// POST /api/pos-kasir/shifts/open — kasir auth
+router.post("/shifts/open", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const existing = await db.execute(sql`
+    SELECT id FROM pos_shifts WHERE cashier_id = ${cashier.id} AND status = 'open' LIMIT 1
+  `);
+  if (existing.rows.length > 0) return res.status(409).json({ message: "Masih ada shift aktif. Tutup shift dulu." });
+  const branchId = cashier.branchId ?? null;
+  if (!branchId) return res.status(400).json({ message: "Kasir belum memiliki cabang yang ditentukan." });
+  const { openingCash = 0, notes } = req.body ?? {};
+  const result = await db.execute(sql`
+    INSERT INTO pos_shifts (branch_id, cashier_id, opening_cash, notes, status, opened_at)
+    VALUES (${branchId}, ${cashier.id}, ${String(openingCash)}, ${notes ?? null}, 'open', NOW())
+    RETURNING *
+  `);
+  const shift = result.rows[0] as Record<string, unknown>;
+  return res.status(201).json({
+    id: shift.id, branchId: shift.branch_id, cashierId: shift.cashier_id,
+    openedAt: shift.opened_at, openingCash: shift.opening_cash,
+    status: shift.status, notes: shift.notes,
+  });
+});
+
+// POST /api/pos-kasir/shifts/close — kasir auth
+router.post("/shifts/close", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const existing = await db.execute(sql`
+    SELECT * FROM pos_shifts WHERE cashier_id = ${cashier.id} AND status = 'open'
+    ORDER BY opened_at DESC LIMIT 1
+  `);
+  if (existing.rows.length === 0) return res.status(404).json({ message: "Tidak ada shift aktif" });
+  const shift = existing.rows[0] as Record<string, unknown>;
+  const { closingCash, notes } = req.body ?? {};
+  const salesResult = await db.execute(sql`
+    SELECT COALESCE(SUM(total), 0) as total_sales, COUNT(*) as order_count
+    FROM pos_orders
+    WHERE cashier_id = ${cashier.id} AND status = 'paid' AND paid_at >= ${shift.opened_at as Date}
+  `);
+  const sales = salesResult.rows[0] as Record<string, unknown>;
+  await db.execute(sql`
+    UPDATE pos_shifts SET
+      status = 'closed', closed_at = NOW(),
+      closing_cash = ${closingCash !== undefined && closingCash !== null ? String(closingCash) : null},
+      total_sales = ${String(sales.total_sales)},
+      order_count = ${Number(sales.order_count)},
+      notes = ${notes !== undefined ? notes : (shift.notes ?? null)}
+    WHERE id = ${shift.id as number}
+  `);
+  const updated = (await db.execute(sql`SELECT * FROM pos_shifts WHERE id = ${shift.id as number}`)).rows[0] as Record<string, unknown>;
+  return res.json({
+    id: updated.id, branchId: updated.branch_id, cashierId: updated.cashier_id,
+    openedAt: updated.opened_at, closedAt: updated.closed_at,
+    openingCash: updated.opening_cash, closingCash: updated.closing_cash,
+    totalSales: updated.total_sales, orderCount: updated.order_count,
+    status: updated.status, notes: updated.notes,
+  });
+});
+
+// GET /api/pos-kasir/admin/shifts — admin auth
+router.get("/admin/shifts", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const { branchId, from, to } = req.query;
+  const start = from ? new Date(String(from)) : (() => { const d = new Date(); d.setDate(d.getDate() - 7); d.setHours(0,0,0,0); return d; })();
+  const end = to ? new Date(String(to) + "T23:59:59") : (() => { const d = new Date(); d.setHours(23,59,59,999); return d; })();
+  const result = branchId
+    ? await db.execute(sql`
+        SELECT s.*, c.name as cashier_name, b.name as branch_name
+        FROM pos_shifts s
+        LEFT JOIN pos_cashiers c ON s.cashier_id = c.id
+        LEFT JOIN pos_branches b ON s.branch_id = b.id
+        WHERE s.branch_id = ${Number(branchId)} AND s.opened_at >= ${start} AND s.opened_at <= ${end}
+        ORDER BY s.opened_at DESC LIMIT 100
+      `)
+    : await db.execute(sql`
+        SELECT s.*, c.name as cashier_name, b.name as branch_name
+        FROM pos_shifts s
+        LEFT JOIN pos_cashiers c ON s.cashier_id = c.id
+        LEFT JOIN pos_branches b ON s.branch_id = b.id
+        WHERE s.opened_at >= ${start} AND s.opened_at <= ${end}
+        ORDER BY s.opened_at DESC LIMIT 100
+      `);
+  return res.json(result.rows.map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: row.id, branchId: row.branch_id, branchName: row.branch_name,
+      cashierId: row.cashier_id, cashierName: row.cashier_name,
+      openedAt: row.opened_at, closedAt: row.closed_at,
+      openingCash: row.opening_cash, closingCash: row.closing_cash,
+      totalSales: row.total_sales, orderCount: row.order_count,
+      status: row.status, notes: row.notes,
+    };
+  }));
+});
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 // GET /api/pos-kasir/settings  — public (so kasir page can load logo without auth)

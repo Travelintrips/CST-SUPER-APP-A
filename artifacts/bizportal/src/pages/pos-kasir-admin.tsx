@@ -87,6 +87,22 @@ interface StockItem {
   branchName?: string | null;
 }
 
+interface Shift {
+  id: number;
+  branchId: number;
+  branchName?: string | null;
+  cashierId: number;
+  cashierName?: string | null;
+  openedAt: string;
+  closedAt?: string | null;
+  openingCash: string;
+  closingCash?: string | null;
+  totalSales: string;
+  orderCount: number;
+  status: "open" | "closed";
+  notes?: string | null;
+}
+
 function fmt(n: number | string) {
   return Number(n).toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 }
@@ -139,6 +155,13 @@ export default function PosKasirAdminPage() {
   const [editingStock, setEditingStock] = useState<StockItem | null>(null);
   const [stockForm, setStockForm] = useState({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "", branchId: "" });
   const [stockBranchFilter, setStockBranchFilter] = useState<string>("all");
+
+  // Shifts
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [shiftsLoading, setShiftsLoading] = useState(false);
+  const [shiftBranchFilter, setShiftBranchFilter] = useState<string>("all");
+  const [shiftFrom, setShiftFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); });
+  const [shiftTo, setShiftTo] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Settings / Logo
   const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
@@ -223,6 +246,19 @@ export default function PosKasirAdminPage() {
     if (res.ok) setStocks(await res.json() as StockItem[]);
   }, [stockBranchFilter]);
 
+  const loadShifts = useCallback(async (branchFilter?: string, from?: string, to?: string) => {
+    setShiftsLoading(true);
+    try {
+      const bFilter = branchFilter ?? shiftBranchFilter;
+      const fFrom = from ?? shiftFrom;
+      const fTo = to ?? shiftTo;
+      const params = new URLSearchParams({ from: fFrom, to: fTo });
+      if (bFilter && bFilter !== "all") params.set("branchId", bFilter);
+      const res = await fetch(`/api/pos-kasir/admin/shifts?${params}`, { credentials: "include" });
+      if (res.ok) setShifts(await res.json() as Shift[]);
+    } finally { setShiftsLoading(false); }
+  }, [shiftBranchFilter, shiftFrom, shiftTo]);
+
   // Realtime: refresh stok dan kasir setiap 15 detik
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -238,7 +274,8 @@ export default function PosKasirAdminPage() {
     loadReport();
     loadProducts();
     loadStocks().then(() => setLastUpdated(new Date()));
-  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadStocks]);
+    loadShifts();
+  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadStocks, loadShifts]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -398,12 +435,15 @@ export default function PosKasirAdminPage() {
         </div>
 
         <Tabs defaultValue="branches">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="branches" className="flex items-center gap-1.5">
               <MapPin className="h-4 w-4" /> Cabang
             </TabsTrigger>
             <TabsTrigger value="cashiers" className="flex items-center gap-1.5">
               <Users className="h-4 w-4" /> Kasir {pendingCount > 0 && <span className="bg-yellow-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{pendingCount}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="shifts" className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4" /> Shift
             </TabsTrigger>
             <TabsTrigger value="report" className="flex items-center gap-1.5">
               <TrendingUp className="h-4 w-4" /> Laporan
@@ -555,6 +595,94 @@ export default function PosKasirAdminPage() {
                         </TableCell>
                       </TableRow>
                     ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── Shifts Tab ── */}
+          <TabsContent value="shifts" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <CardTitle className="text-base">Riwayat Shift Kasir</CardTitle>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <label className="text-sm font-medium">Dari</label>
+                    <Input type="date" value={shiftFrom} onChange={(e) => setShiftFrom(e.target.value)} className="w-36 h-8 text-sm" />
+                    <label className="text-sm font-medium">s/d</label>
+                    <Input type="date" value={shiftTo} onChange={(e) => setShiftTo(e.target.value)} className="w-36 h-8 text-sm" />
+                    <Select value={shiftBranchFilter} onValueChange={setShiftBranchFilter}>
+                      <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="Semua Cabang" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Cabang</SelectItem>
+                        {branches.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" onClick={() => loadShifts()} disabled={shiftsLoading}>
+                      <RefreshCw className={`h-4 w-4 mr-1 ${shiftsLoading ? "animate-spin" : ""}`} /> Tampilkan
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tanggal Buka</TableHead>
+                      <TableHead>Kasir</TableHead>
+                      <TableHead>Cabang</TableHead>
+                      <TableHead className="text-right">Modal Awal</TableHead>
+                      <TableHead className="text-right">Total Penjualan</TableHead>
+                      <TableHead className="text-right">Order</TableHead>
+                      <TableHead className="text-right">Kas Penutup</TableHead>
+                      <TableHead className="text-right">Selisih</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Tutup</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {shifts.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                          {shiftsLoading ? "Memuat..." : "Belum ada data shift"}
+                        </TableCell>
+                      </TableRow>
+                    ) : shifts.map((s) => {
+                      const selisih = s.closingCash !== null && s.closingCash !== undefined
+                        ? Number(s.closingCash) - Number(s.totalSales)
+                        : null;
+                      return (
+                        <TableRow key={s.id}>
+                          <TableCell className="text-sm font-mono">
+                            {new Date(s.openedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </TableCell>
+                          <TableCell className="text-sm font-medium">{s.cashierName ?? "-"}</TableCell>
+                          <TableCell className="text-sm">{s.branchName ?? "-"}</TableCell>
+                          <TableCell className="text-right text-sm">{fmt(s.openingCash)}</TableCell>
+                          <TableCell className="text-right text-sm font-semibold">{fmt(s.totalSales)}</TableCell>
+                          <TableCell className="text-right text-sm">{s.orderCount}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            {s.closingCash !== null && s.closingCash !== undefined ? fmt(s.closingCash) : <span className="text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {selisih !== null ? (
+                              <span className={selisih >= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
+                                {selisih >= 0 ? "+" : ""}{fmt(selisih)}
+                              </span>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell>
+                            {s.status === "open"
+                              ? <Badge className="bg-green-100 text-green-700 border-green-200 text-xs"><Clock className="h-3 w-3 mr-1" />Aktif</Badge>
+                              : <Badge variant="secondary" className="text-xs">Tutup</Badge>}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {s.closedAt ? new Date(s.closedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "-"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>

@@ -181,5 +181,32 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
-  logger.info("POS Kasir migration: selesai (+ cabang + settings)");
+  // pos_shift_status enum
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'pos_shift_status') THEN
+        CREATE TYPE pos_shift_status AS ENUM ('open', 'closed');
+      END IF;
+    END $$;
+  `);
+
+  // pos_shifts table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_shifts (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      cashier_id INTEGER NOT NULL REFERENCES pos_cashiers(id),
+      opened_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMP,
+      opening_cash NUMERIC(12,2) NOT NULL DEFAULT 0,
+      closing_cash NUMERIC(12,2),
+      total_sales NUMERIC(12,2) NOT NULL DEFAULT 0,
+      order_count INTEGER NOT NULL DEFAULT 0,
+      status pos_shift_status NOT NULL DEFAULT 'open',
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  logger.info("POS Kasir migration: selesai (+ cabang + settings + shift)");
 }

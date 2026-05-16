@@ -84,12 +84,33 @@ interface BranchInfo {
   phone?: string | null;
 }
 
+interface Shift {
+  id: number;
+  branchId: number;
+  branchName?: string | null;
+  openedAt: string;
+  openingCash: string;
+  status: "open" | "closed";
+  notes?: string | null;
+  currentTotalSales: string;
+  currentOrderCount: number;
+}
+
 export default function KasirPage() {
   const [, setLocation] = useLocation();
   const [profile, setProfile] = useState<KasirProfile | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("pos");
   const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
   const [branchInfo, setBranchInfo] = useState<BranchInfo | null>(null);
+
+  // Shift management
+  const [currentShift, setCurrentShift] = useState<Shift | null | undefined>(undefined); // undefined = not yet loaded
+  const [showOpenShift, setShowOpenShift] = useState(false);
+  const [showCloseShift, setShowCloseShift] = useState(false);
+  const [openingCashInput, setOpeningCashInput] = useState("0");
+  const [closingCashInput, setClosingCashInput] = useState("0");
+  const [shiftNotes, setShiftNotes] = useState("");
+  const [shiftLoading, setShiftLoading] = useState(false);
 
   // POS state
   const [products, setProducts] = useState<Product[]>([]);
@@ -112,11 +133,72 @@ export default function KasirPage() {
 
   const cartRef = useRef<HTMLDivElement>(null);
 
+  const loadCurrentShift = useCallback(async () => {
+    try {
+      const res = await kasirFetch("/api/pos-kasir/shifts/current");
+      if (res.ok) {
+        const data = await res.json() as Shift | null;
+        setCurrentShift(data);
+      } else {
+        setCurrentShift(null);
+      }
+    } catch {
+      setCurrentShift(null);
+    }
+  }, []);
+
+  const handleOpenShift = async () => {
+    setShiftLoading(true);
+    try {
+      const res = await kasirFetch("/api/pos-kasir/shifts/open", {
+        method: "POST",
+        body: JSON.stringify({ openingCash: Number(openingCashInput) || 0, notes: shiftNotes || undefined }),
+      });
+      if (res.ok) {
+        setShowOpenShift(false);
+        setOpeningCashInput("0");
+        setShiftNotes("");
+        await loadCurrentShift();
+      } else {
+        const d = await res.json() as { message?: string };
+        alert(d.message ?? "Gagal membuka shift");
+      }
+    } catch {
+      alert("Terjadi kesalahan");
+    } finally {
+      setShiftLoading(false);
+    }
+  };
+
+  const handleCloseShift = async () => {
+    setShiftLoading(true);
+    try {
+      const res = await kasirFetch("/api/pos-kasir/shifts/close", {
+        method: "POST",
+        body: JSON.stringify({ closingCash: Number(closingCashInput) || 0, notes: shiftNotes || undefined }),
+      });
+      if (res.ok) {
+        setShowCloseShift(false);
+        setClosingCashInput("0");
+        setShiftNotes("");
+        await loadCurrentShift();
+      } else {
+        const d = await res.json() as { message?: string };
+        alert(d.message ?? "Gagal menutup shift");
+      }
+    } catch {
+      alert("Terjadi kesalahan");
+    } finally {
+      setShiftLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!isKasirLoggedIn()) { setLocation("/kasir/login"); return; }
     const p = getKasirProfile();
     setProfile(p);
     loadProducts();
+    loadCurrentShift();
     fetch("/api/pos-kasir/settings")
       .then((r) => r.ok ? r.json() : null)
       .then((s: Record<string, string> | null) => { if (s?.logoUrl) setLogoUrl(s.logoUrl); })
@@ -131,7 +213,7 @@ export default function KasirPage() {
         })
         .catch(() => {});
     }
-  }, [setLocation]);
+  }, [setLocation, loadCurrentShift]);
 
   const loadProducts = async () => {
     try {
@@ -375,7 +457,32 @@ export default function KasirPage() {
           </button>
         </div>
 
-        {/* Tab bar */}
+          {/* Shift status bar */}
+        {currentShift === undefined ? null : (
+          <div className={`flex items-center justify-between px-4 py-1.5 border-t border-white/10 text-xs ${currentShift ? "bg-white/10" : "bg-red-600/60"}`}>
+            {currentShift ? (
+              <>
+                <span className="text-white/90 font-medium">
+                  ⏱ Shift dibuka {new Date(currentShift.openedAt).toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" })} — Modal: {fmt(currentShift.openingCash)} · {currentShift.currentOrderCount} order · {fmt(currentShift.currentTotalSales)}
+                </span>
+                <button onClick={() => { setClosingCashInput(currentShift.currentTotalSales); setShiftNotes(""); setShowCloseShift(true); }}
+                  className="text-white font-bold bg-white/20 hover:bg-white/30 px-2.5 py-0.5 rounded-lg transition-all ml-2 shrink-0">
+                  Tutup Kas
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-white font-bold">⚠ Shift belum dibuka — Buka kas untuk mulai transaksi</span>
+                <button onClick={() => { setOpeningCashInput("0"); setShiftNotes(""); setShowOpenShift(true); }}
+                  className="text-white font-bold bg-white/20 hover:bg-white/30 px-2.5 py-0.5 rounded-lg transition-all ml-2 shrink-0">
+                  Buka Kas
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+      {/* Tab bar */}
         <div className="flex border-t border-white/10">
           {([
             { id: "pos" as Tab, label: "Kasir", icon: "🛒" },
@@ -393,6 +500,106 @@ export default function KasirPage() {
           ))}
         </div>
       </header>
+
+      {/* ── Modal: Buka Shift ─────────────────────────────────────────────── */}
+      {showOpenShift && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="text-center">
+              <div className="text-4xl mb-2">💰</div>
+              <h2 className="text-lg font-black text-gray-800">Buka Kas</h2>
+              <p className="text-xs text-gray-400">Masukkan jumlah uang awal di laci kas</p>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Modal Awal (Rp)</label>
+              <input type="number" min="0" value={openingCashInput} onChange={(e) => setOpeningCashInput(e.target.value)}
+                className="mt-1 w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-base font-bold text-right text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="0" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Catatan (opsional)</label>
+              <input type="text" value={shiftNotes} onChange={(e) => setShiftNotes(e.target.value)}
+                className="mt-1 w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="Misalnya: Shift pagi..." />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowOpenShift(false)} disabled={shiftLoading}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all">
+                Batal
+              </button>
+              <button onClick={handleOpenShift} disabled={shiftLoading}
+                className="flex-1 py-3 rounded-2xl font-black text-white text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
+                {shiftLoading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : null}
+                Mulai Shift
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Tutup Shift ────────────────────────────────────────────── */}
+      {showCloseShift && currentShift && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="text-center">
+              <div className="text-4xl mb-2">🔒</div>
+              <h2 className="text-lg font-black text-gray-800">Tutup Kas</h2>
+              <p className="text-xs text-gray-400">Ringkasan shift & hitung kas penutup</p>
+            </div>
+            <div className="bg-orange-50 rounded-2xl p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Dibuka pukul</span>
+                <span className="font-semibold">{new Date(currentShift.openedAt).toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Modal awal</span>
+                <span className="font-semibold">{fmt(currentShift.openingCash)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Total penjualan</span>
+                <span className="font-black text-orange-600">{fmt(currentShift.currentTotalSales)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Jumlah order</span>
+                <span className="font-semibold">{currentShift.currentOrderCount} transaksi</span>
+              </div>
+              <div className="border-t border-orange-200 pt-2 flex justify-between">
+                <span className="text-gray-500">Estimasi kas</span>
+                <span className="font-black">{fmt(Number(currentShift.openingCash) + Number(currentShift.currentTotalSales))}</span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Kas Fisik Penutup (Rp)</label>
+              <input type="number" min="0" value={closingCashInput} onChange={(e) => setClosingCashInput(e.target.value)}
+                className="mt-1 w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-base font-bold text-right text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="0" />
+              {closingCashInput && (
+                <p className={`text-xs font-bold mt-1 text-right ${Number(closingCashInput) - (Number(currentShift.openingCash) + Number(currentShift.currentTotalSales)) >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  Selisih: {fmt(Number(closingCashInput) - (Number(currentShift.openingCash) + Number(currentShift.currentTotalSales)))}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Catatan (opsional)</label>
+              <input type="text" value={shiftNotes} onChange={(e) => setShiftNotes(e.target.value)}
+                className="mt-1 w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="Catatan penutupan..." />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowCloseShift(false)} disabled={shiftLoading}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-200 transition-all">
+                Batal
+              </button>
+              <button onClick={handleCloseShift} disabled={shiftLoading}
+                className="flex-1 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-2xl font-black text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2">
+                {shiftLoading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : null}
+                Tutup Kas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── POS Tab ─────────────────────────────────────────────────────── */}
       {activeTab === "pos" && (
