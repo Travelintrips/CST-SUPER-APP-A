@@ -246,7 +246,7 @@ export default function JasaDetail() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { addItem } = useCart();
+  const { addItem, items: cartItems } = useCart();
   const [state, setState] = useState<CalcState>({});
   const [airRows, setAirRows] = useState<AirRow[]>([newAirRow()]);
   const [added, setAdded] = useState(false);
@@ -319,6 +319,16 @@ export default function JasaDetail() {
   }, [params.id]);
 
   function confirmJasaAndCheckout() {
+    // Guard: service must be added to cart before proceeding
+    const hasService = added || cartItems.some((i) => i.calculatorType !== "product");
+    if (!hasService) {
+      toast({
+        title: "Tambahkan layanan ke pesanan terlebih dahulu",
+        description: "Klik tombol \"Tambahkan ke Pesanan\" sebelum melanjutkan.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       const raw = sessionStorage.getItem("pendingJasaReview");
       const parsed = raw ? JSON.parse(raw) as { serviceId?: number; productId?: number; productName?: string; unit?: string; qty?: number; productPrice?: number } : {};
@@ -2215,7 +2225,10 @@ export default function JasaDetail() {
               <p className="text-sm font-semibold text-foreground">Layanan ini dipilih sebagai pengiriman</p>
               <p className="text-xs text-muted-foreground truncate">
                 Pesanan: <span className="font-medium text-foreground">{pendingOrder.productName}</span>
-                {" · "}Pastikan layanan ini sesuai sebelum melanjutkan.
+                {" · "}
+                {(added || cartItems.some((i) => i.calculatorType !== "product"))
+                  ? "Layanan sudah ditambahkan. Klik Konfirmasi untuk lanjut."
+                  : <span className="text-amber-600 font-medium">Klik "Tambahkan ke Pesanan" terlebih dahulu.</span>}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -2232,6 +2245,7 @@ export default function JasaDetail() {
               <Button
                 size="sm"
                 className="gap-2"
+                disabled={!added && !cartItems.some((i) => i.calculatorType !== "product")}
                 onClick={confirmJasaAndCheckout}
               >
                 <CheckCircle2 className="h-4 w-4" />
