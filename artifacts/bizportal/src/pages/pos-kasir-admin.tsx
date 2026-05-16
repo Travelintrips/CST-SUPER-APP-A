@@ -64,11 +64,12 @@ interface Product {
   isActive: boolean;
   sortOrder: number;
   imageUrl?: string | null;
+  productType?: string | null;
+  linkedProductId?: number | null;
   stockItemId?: number | null;
   stockUsagePerUnit?: string | null;
   stock?: string | null;
   stockUnit?: string;
-  linkedProductId?: number | null;
 }
 
 interface InvProduct {
@@ -155,7 +156,7 @@ export default function PosKasirAdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productDialog, setProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs", linkedProductId: "" });
+  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", productType: "STOCK", linkedProductId: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
   const [invProducts, setInvProducts] = useState<InvProduct[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
   const imageFileRef = useRef<HTMLInputElement>(null);
@@ -874,7 +875,7 @@ export default function PosKasirAdminPage() {
                 <CardTitle className="text-base">Menu Thai Tea CST</CardTitle>
                 <Button size="sm" onClick={() => {
                   setEditingProduct(null);
-                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs", linkedProductId: "" });
+                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", productType: "STOCK", linkedProductId: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
                   setProductDialog(true);
                 }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Menu
@@ -935,7 +936,7 @@ export default function PosKasirAdminPage() {
                           <div className="flex justify-end gap-1">
                             <Button size="sm" variant="ghost" onClick={() => {
                               setEditingProduct(p);
-                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "", stockItemId: p.stockItemId ? String(p.stockItemId) : "", stockUsagePerUnit: p.stockUsagePerUnit ?? "1", stock: p.stock != null ? String(p.stock) : "", stockUnit: p.stockUnit ?? "pcs", linkedProductId: p.linkedProductId ? String(p.linkedProductId) : "" });
+                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "", productType: p.productType ?? "STOCK", linkedProductId: p.linkedProductId ? String(p.linkedProductId) : "", stockItemId: p.stockItemId ? String(p.stockItemId) : "", stockUsagePerUnit: p.stockUsagePerUnit ?? "1", stock: p.stock != null ? String(p.stock) : "", stockUnit: p.stockUnit ?? "pcs" });
                               setProductDialog(true);
                             }}>
                               <Pencil className="h-3.5 w-3.5" />
@@ -1246,8 +1247,30 @@ export default function PosKasirAdminPage() {
               </div>
             </div>
             <div className="border-t pt-3 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pemotongan Stok Otomatis</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipe Stok</p>
+              <div>
+                <Label className="text-xs">Tipe Produk</Label>
+                <Select
+                  value={productForm.productType}
+                  onValueChange={(v) => setProductForm((f) => ({ ...f, productType: v }))}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="STOCK">STOCK — kurangi stok langsung dari gudang</SelectItem>
+                    <SelectItem value="RECIPE">RECIPE — kurangi bahan baku sesuai resep</SelectItem>
+                    <SelectItem value="SERVICE">SERVICE — tanpa pengurangan stok</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {productForm.productType === "STOCK" && "Pilih Produk Inventory di bawah sebagai sumber stok."}
+                  {productForm.productType === "RECIPE" && "Pilih Produk Inventory yang memiliki Resep aktif. Bahan baku resep akan dikurangi saat terjual."}
+                  {productForm.productType === "SERVICE" && "Produk layanan — tidak ada stok yang dikurangi."}
+                </p>
+              </div>
               {/* Link ke produk inventory (baru) */}
+              {productForm.productType !== "SERVICE" && (
               <div>
                 <Label className="text-xs">Produk Inventory Terkait</Label>
                 <Select
@@ -1272,6 +1295,7 @@ export default function PosKasirAdminPage() {
                   </p>
                 )}
               </div>
+              )}
               {/* Bahan stok (sistem lama) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>

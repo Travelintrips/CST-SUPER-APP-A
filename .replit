@@ -67,14 +67,28 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
+<<<<<<< HEAD
+=======
+localPort = 5001
+externalPort = 9000
+
+[[ports]]
+localPort = 5173
+externalPort = 8008
+
+[[ports]]
+>>>>>>> 44256b62014f8614e7ebd3e6c2977c613aafce96
 localPort = 8080
 externalPort = 8080
 
 [[ports]]
+<<<<<<< HEAD
 localPort = 8081
 externalPort = 8008
 
 [[ports]]
+=======
+>>>>>>> 44256b62014f8614e7ebd3e6c2977c613aafce96
 localPort = 8082
 externalPort = 3002
 
