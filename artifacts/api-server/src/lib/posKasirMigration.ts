@@ -173,5 +173,13 @@ export async function runPosKasirMigration(): Promise<void> {
     `);
   }
 
-  logger.info("POS Kasir migration: selesai (+ cabang)");
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  logger.info("POS Kasir migration: selesai (+ cabang + settings)");
 }
