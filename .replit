@@ -24,13 +24,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node scripts/proxy5000.mjs"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run dev & PORT=3000 pnpm --filter @workspace/customer-portal run dev & PORT=18442 pnpm --filter @workspace/bizportal run dev & node scripts/proxy5000.mjs"
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -50,7 +50,7 @@ FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com,skylogistic00@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-CASHIER_TOKEN_SECRET = "2d6c334f64de2e54e094ae299a0f2409860abeb9a0601040fea2756b7bf6397d"
+CASHIER_TOKEN_SECRET = "2d5096596de9845ac9b7f16f2f35c84c5d734e4df1d3deddbaa4e88143a66098"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
@@ -67,7 +67,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5174
 localPort = 5173
 externalPort = 8008
 
