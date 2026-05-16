@@ -1,11 +1,35 @@
 import http from "http";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
+import { existsSync } from "fs";
+import { resolve } from "path";
 
-// Kill anything on port 5000 first
+// Kill anything on port 5000 and 8080 first
 try { execSync("fuser -k 5000/tcp", { stdio: "ignore" }); } catch {}
+try { execSync("fuser -k 8080/tcp", { stdio: "ignore" }); } catch {}
+
+// Spawn API server if not already running
+const apiDist = resolve("artifacts/api-server/dist/index.mjs");
+if (existsSync(apiDist)) {
+  const api = spawn("node", ["--enable-source-maps", apiDist], {
+    env: { ...process.env, NODE_ENV: "development", PORT: "8080" },
+    stdio: "inherit",
+  });
+  api.on("exit", (code) => {
+    console.log(`[proxy] API server exited (${code}), restarting in 3s...`);
+    setTimeout(() => {
+      const api2 = spawn("node", ["--enable-source-maps", apiDist], {
+        env: { ...process.env, NODE_ENV: "development", PORT: "8080" },
+        stdio: "inherit",
+      });
+      api2.on("exit", (c) => console.log(`[proxy] API server exited again (${c})`));
+    }, 3000);
+  });
+  console.log("[proxy] API server spawned on port 8080");
+} else {
+  console.warn("[proxy] API dist not found, skipping API server spawn");
+}
 
 // Route rules: requests matching pathPrefix go to the given upstream port.
-// Rules are checked in order; first match wins.
 const ROUTES = [
   { prefix: "/bizportal/",  port: 18442 },
   { prefix: "/bizportal",   port: 18442 },
