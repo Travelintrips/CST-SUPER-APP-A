@@ -10,6 +10,8 @@ interface Product {
   description?: string;
   imageUrl?: string;
   isActive: boolean;
+  stock?: string | null;
+  stockUnit?: string;
 }
 
 interface CartItem {
@@ -636,15 +638,24 @@ export default function KasirPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
                 {filteredProducts.map((p) => {
                   const inCart = cart.find((c) => c.product.id === p.id);
+                  const stockNum = p.stock != null ? Number(p.stock) : null;
+                  const outOfStock = stockNum !== null && stockNum <= 0;
                   return (
-                    <button key={p.id} onClick={() => addToCart(p)}
-                      className={`bg-white rounded-2xl overflow-hidden text-left transition-all duration-150 active:scale-95 relative ${
-                        inCart ? "ring-2 ring-orange-400 shadow-lg" : "shadow-sm hover:shadow-md"
+                    <button key={p.id} onClick={() => !outOfStock && addToCart(p)}
+                      disabled={outOfStock}
+                      className={`bg-white rounded-2xl overflow-hidden text-left transition-all duration-150 relative ${
+                        outOfStock ? "opacity-50 cursor-not-allowed" :
+                        inCart ? "ring-2 ring-orange-400 shadow-lg active:scale-95" : "shadow-sm hover:shadow-md active:scale-95"
                       }`}>
-                      {inCart && (
+                      {inCart && !outOfStock && (
                         <div className="absolute top-2 right-2 z-10 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-black shadow-lg"
                           style={{ background: "#ff6b00" }}>
                           {inCart.qty}
+                        </div>
+                      )}
+                      {outOfStock && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10 rounded-2xl bg-black/20">
+                          <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">Habis</span>
                         </div>
                       )}
                       <div className="w-full aspect-square overflow-hidden bg-orange-50">
@@ -657,7 +668,14 @@ export default function KasirPage() {
                       </div>
                       <div className="p-2.5">
                         <p className="text-xs font-bold text-gray-800 leading-tight line-clamp-2">{p.name}</p>
-                        <p className="text-xs font-black mt-1" style={{ color: "#ff6b00" }}>{fmt(p.price)}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-xs font-black" style={{ color: "#ff6b00" }}>{fmt(p.price)}</p>
+                          {stockNum !== null && !outOfStock && (
+                            <span className={`text-[10px] font-semibold ${stockNum <= 5 ? "text-orange-500" : "text-gray-400"}`}>
+                              Sisa {stockNum}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </button>
                   );
