@@ -68,7 +68,6 @@ Commands:
 
 ## User preferences
 
-- STOP explaining. Just give me the code.
 - Do **not** make changes to files outside the `artifacts`, `lib`, and `packages` directories.
 
 ## Gotchas

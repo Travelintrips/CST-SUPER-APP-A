@@ -70,6 +70,25 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
+  // Kolom baru: relasi produk → stok bahan (opsional, untuk auto-deduct stok saat bayar)
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_item_id INTEGER REFERENCES pos_stock_items(id) ON DELETE SET NULL
+  `);
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_usage_per_unit NUMERIC(12,3) NOT NULL DEFAULT 1
+  `);
+  // Stok langsung per produk (lebih simpel, auto-deduct per transaksi)
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock NUMERIC(12,3)
+  `);
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_unit TEXT NOT NULL DEFAULT 'pcs'
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pos_orders (
       id SERIAL PRIMARY KEY,
@@ -118,6 +137,12 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
+  // Tambah branch_id ke pos_stock_items (stok per-cabang)
+  await db.execute(sql`
+    ALTER TABLE pos_stock_items
+      ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES pos_branches(id) ON DELETE SET NULL
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pos_stock_adjustments (
       id SERIAL PRIMARY KEY,
@@ -143,19 +168,53 @@ export async function runPosKasirMigration(): Promise<void> {
   const cnt = Number((existing.rows[0] as { cnt: string }).cnt);
   if (cnt === 0) {
     await db.execute(sql`
-      INSERT INTO pos_products (name, description, price, category, sort_order) VALUES
-        ('Thai Tea Original', 'Thai tea klasik dengan susu kental manis', 12000, 'minuman', 1),
-        ('Thai Tea Cheese', 'Thai tea dengan topping keju gurih', 15000, 'minuman', 2),
-        ('Thai Tea Brown Sugar', 'Thai tea dengan brown sugar caramel', 14000, 'minuman', 3),
-        ('Thai Tea Taro', 'Thai tea rasa taro ungu', 14000, 'minuman', 4),
-        ('Thai Tea Matcha', 'Perpaduan matcha dan thai tea', 15000, 'minuman', 5),
-        ('Thai Tea Pandan', 'Thai tea dengan aroma pandan segar', 13000, 'minuman', 6),
-        ('Milk Tea Original', 'Milk tea klasik tanpa boba', 11000, 'minuman', 7),
-        ('Boba Thai Tea', 'Thai tea dengan boba pearl', 16000, 'minuman', 8),
-        ('Thai Tea Large', 'Ukuran 500ml, porsi jumbo', 18000, 'minuman', 9),
-        ('Snack Roti Bakar', 'Roti bakar dengan selai coklat', 8000, 'makanan', 10)
+      INSERT INTO pos_products (name, description, price, category, sort_order, image_url) VALUES
+        ('Premium Matcha',    'Matcha premium grade A dengan susu segar',       22000, 'minuman', 1,  '/menu/premium-matcha.png'),
+        ('Premium Chocolate', 'Coklat belgia premium dengan susu full cream',    20000, 'minuman', 2,  '/menu/premium-chocolate.png'),
+        ('Thai Tea',          'Thai tea klasik dengan susu kental manis',        15000, 'minuman', 3,  '/menu/thai-tea.jpg'),
+        ('Matcha',            'Green tea matcha dengan pilihan topping',         16000, 'minuman', 4,  '/menu/matcha.jpg'),
+        ('Chocolate',         'Minuman coklat lezat dengan topping pilihan',     14000, 'minuman', 5,  '/menu/chocolate.jpg'),
+        ('Cream Cheese',      'Thai tea dengan topping cream cheese gurih',      17000, 'minuman', 6,  '/menu/cream-cheese.jpg'),
+        ('Cheese Parut',      'Thai tea dengan taburan keju parut melimpah',     16000, 'minuman', 7,  '/menu/cheese.jpg'),
+        ('Bubble',            'Minuman segar dengan boba pearl kenyal',          15000, 'minuman', 9,  '/menu/bubble.jpg'),
+        ('Premium Thai Tea',  'Thai tea premium dengan susu fresh grade A',      25000, 'minuman', 11, '/menu/premium-thai-tea.png')
     `);
   }
 
-  logger.info("POS Kasir migration: selesai (+ cabang)");
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_shift_status enum
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'pos_shift_status') THEN
+        CREATE TYPE pos_shift_status AS ENUM ('open', 'closed');
+      END IF;
+    END $$;
+  `);
+
+  // pos_shifts table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_shifts (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      cashier_id INTEGER NOT NULL REFERENCES pos_cashiers(id),
+      opened_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMP,
+      opening_cash NUMERIC(12,2) NOT NULL DEFAULT 0,
+      closing_cash NUMERIC(12,2),
+      total_sales NUMERIC(12,2) NOT NULL DEFAULT 0,
+      order_count INTEGER NOT NULL DEFAULT 0,
+      status pos_shift_status NOT NULL DEFAULT 'open',
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  logger.info("POS Kasir migration: selesai (+ cabang + settings + shift)");
 }

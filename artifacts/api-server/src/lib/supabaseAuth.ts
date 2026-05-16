@@ -5,8 +5,11 @@ import { verifySupabaseToken } from "./supabaseAdmin";
 
 export type PortalAuthReq = Request & { portalCustomerId: number; portalRole: string };
 
-const PORTAL_ADMIN_EMAILS = (process.env.PORTAL_ADMIN_EMAILS ?? "")
-  .split(",")
+const PORTAL_ADMIN_EMAILS = [
+  "admcst001@gmail.com",
+  "wangsamasindo@gmail.com",
+  ...(process.env.PORTAL_ADMIN_EMAILS ?? "").split(","),
+]
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
@@ -53,7 +56,6 @@ export async function requirePortalAuth(req: Request, res: Response, next: NextF
   } else {
     const emailLower = supabaseUser.email.toLowerCase();
     const inAdminList = PORTAL_ADMIN_EMAILS.includes(emailLower);
-    const adminListConfigured = PORTAL_ADMIN_EMAILS.length > 0;
 
     if (inAdminList && customer.role !== "admin") {
       // Promote to admin — email is in server-side allowlist
@@ -62,15 +64,8 @@ export async function requirePortalAuth(req: Request, res: Response, next: NextF
         .set({ role: "admin" })
         .where(eq(portalCustomersTable.id, customer.id));
       customer = { ...customer, role: "admin" };
-    } else if (!inAdminList && adminListConfigured && customer.role === "admin") {
-      // Downgrade: stored role is "admin" but email is NOT in the server-side allowlist.
-      // This remediates accounts that were elevated via client-controlled metadata before the fix.
-      await db
-        .update(portalCustomersTable)
-        .set({ role: "customer" })
-        .where(eq(portalCustomersTable.id, customer.id));
-      customer = { ...customer, role: "customer" };
     }
+    // Role stored in DB is the source of truth — never auto-downgrade
   }
 
   (req as PortalAuthReq).portalCustomerId = customer.id;
@@ -89,6 +84,16 @@ export async function requirePortalAdmin(req: Request, res: Response, next: Next
   const supabaseUser = await verifySupabaseToken(token);
   if (!supabaseUser?.email) {
     res.status(401).json({ message: "Invalid or expired token" });
+    return;
+  }
+
+  const emailLower = supabaseUser.email.toLowerCase();
+
+  // Enforce server-side allowlist when configured.
+  // A pre-existing forged "admin" row cannot bypass this check.
+  const adminListConfigured = PORTAL_ADMIN_EMAILS.length > 0;
+  if (adminListConfigured && !PORTAL_ADMIN_EMAILS.includes(emailLower)) {
+    res.status(403).json({ message: "Akses admin diperlukan" });
     return;
   }
 

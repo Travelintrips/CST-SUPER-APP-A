@@ -1,18 +1,21 @@
 import http from "http";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
+import { existsSync } from "fs";
+import { resolve } from "path";
 
 try { execSync("fuser -k 5000/tcp", { stdio: "ignore" }); } catch {}
+try { execSync("fuser -k 8080/tcp", { stdio: "ignore" }); } catch {}
 
-const API_PORT = 8080;
-const FRONTEND_PORT = 3000;
+];
 
-function proxyRequest(req, res, targetPort) {
-  const options = {
-    hostname: "localhost",
-    port: targetPort,
-    path: req.url,
-    method: req.method,
-    headers: { ...req.headers, host: `localhost:${targetPort}` },
+function resolveUpstream(url) {
+  const path = url.split("?")[0];
+
+  if (path === "/bizportal" || path.startsWith("/bizportal/")) {
+    return 18442;
+  }
+}
+
   };
   const proxy = http.request(options, (proxyRes) => {
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
@@ -40,5 +43,3 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(5000, "0.0.0.0", () => {
-  console.log(`Proxy running: port 5000 → frontend :${FRONTEND_PORT} + api :${API_PORT}`);
-});

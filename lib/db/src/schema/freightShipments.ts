@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { salesDocumentsTable } from "./salesDocuments";
 import { purchaseDocumentsTable } from "./purchaseDocuments";
+import { companiesTable } from "./companies";
 
 export const freightShipmentStatusEnum = pgEnum("freight_shipment_status", [
   "draft", "rfq_sent", "confirmed", "in_transit", "completed", "cancelled",
@@ -49,6 +50,7 @@ export const freightShipmentsTable = pgTable("freight_shipments", {
   purchaseDocId: integer("purchase_doc_id").references(() => purchaseDocumentsTable.id, { onDelete: "set null" }),
   approvedVendorName: text("approved_vendor_name"),
   createdById: text("created_by_id"),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
