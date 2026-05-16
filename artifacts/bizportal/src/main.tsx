@@ -11,7 +11,7 @@ import "./index.css";
 if (typeof window !== "undefined") {
   const params = new URLSearchParams(window.location.search);
   if (params.get("portal") === "customer") {
-    window.location.replace(window.location.origin + "/" + window.location.hash);
+    window.location.replace(window.location.origin + "/customer-portal/" + window.location.hash);
   }
 }
 
