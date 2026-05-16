@@ -159,17 +159,16 @@ export async function runPosKasirMigration(): Promise<void> {
   const cnt = Number((existing.rows[0] as { cnt: string }).cnt);
   if (cnt === 0) {
     await db.execute(sql`
-      INSERT INTO pos_products (name, description, price, category, sort_order) VALUES
-        ('Thai Tea Original', 'Thai tea klasik dengan susu kental manis', 12000, 'minuman', 1),
-        ('Thai Tea Cheese', 'Thai tea dengan topping keju gurih', 15000, 'minuman', 2),
-        ('Thai Tea Brown Sugar', 'Thai tea dengan brown sugar caramel', 14000, 'minuman', 3),
-        ('Thai Tea Taro', 'Thai tea rasa taro ungu', 14000, 'minuman', 4),
-        ('Thai Tea Matcha', 'Perpaduan matcha dan thai tea', 15000, 'minuman', 5),
-        ('Thai Tea Pandan', 'Thai tea dengan aroma pandan segar', 13000, 'minuman', 6),
-        ('Milk Tea Original', 'Milk tea klasik tanpa boba', 11000, 'minuman', 7),
-        ('Boba Thai Tea', 'Thai tea dengan boba pearl', 16000, 'minuman', 8),
-        ('Thai Tea Large', 'Ukuran 500ml, porsi jumbo', 18000, 'minuman', 9),
-        ('Snack Roti Bakar', 'Roti bakar dengan selai coklat', 8000, 'makanan', 10)
+      INSERT INTO pos_products (name, description, price, category, sort_order, image_url) VALUES
+        ('Premium Matcha',    'Matcha premium grade A dengan susu segar',       22000, 'minuman', 1,  '/menu/premium-matcha.png'),
+        ('Premium Chocolate', 'Coklat belgia premium dengan susu full cream',    20000, 'minuman', 2,  '/menu/premium-chocolate.png'),
+        ('Thai Tea',          'Thai tea klasik dengan susu kental manis',        15000, 'minuman', 3,  '/menu/thai-tea.jpg'),
+        ('Matcha',            'Green tea matcha dengan pilihan topping',         16000, 'minuman', 4,  '/menu/matcha.jpg'),
+        ('Chocolate',         'Minuman coklat lezat dengan topping pilihan',     14000, 'minuman', 5,  '/menu/chocolate.jpg'),
+        ('Cream Cheese',      'Thai tea dengan topping cream cheese gurih',      17000, 'minuman', 6,  '/menu/cream-cheese.jpg'),
+        ('Cheese Parut',      'Thai tea dengan taburan keju parut melimpah',     16000, 'minuman', 7,  '/menu/cheese.jpg'),
+        ('Bubble',            'Minuman segar dengan boba pearl kenyal',          15000, 'minuman', 9,  '/menu/bubble.jpg'),
+        ('Premium Thai Tea',  'Thai tea premium dengan susu fresh grade A',      25000, 'minuman', 11, '/menu/premium-thai-tea.png')
     `);
   }
 
