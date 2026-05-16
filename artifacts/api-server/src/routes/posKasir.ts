@@ -10,7 +10,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { postStockOut } from "../lib/inventoryStock.js";
+import { checkPosStock, deductPosStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -236,6 +236,7 @@ router.get("/products/all", async (req, res) => {
       imageUrl: row.image_url, isActive: row.is_active, sortOrder: row.sort_order,
       stock: row.stock, stockUnit: row.stock_unit,
       stockItemId: row.stock_item_id, stockUsagePerUnit: row.stock_usage_per_unit,
+      productType: row.product_type ?? "STOCK",
       linkedProductId: row.linked_product_id ?? null,
       createdAt: row.created_at,
     };
@@ -245,20 +246,22 @@ router.get("/products/all", async (req, res) => {
 // POST /api/pos-kasir/products
 router.post("/products", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const { name, description, price, category, imageUrl, isActive, sortOrder, stockItemId, stockUsagePerUnit, stock, stockUnit, linkedProductId } = req.body ?? {};
+  const { name, description, price, category, imageUrl, isActive, sortOrder, productType, linkedProductId, stockItemId, stockUsagePerUnit, stock, stockUnit } = req.body ?? {};
   if (!name || price == null) return res.status(400).json({ message: "name dan price wajib" });
   const r = await db.execute(sql`
     INSERT INTO pos_products
       (name, description, price, category, image_url, is_active, sort_order,
-       stock_item_id, stock_usage_per_unit, stock, stock_unit, linked_product_id)
+       product_type, linked_product_id,
+       stock_item_id, stock_usage_per_unit, stock, stock_unit)
     VALUES
       (${String(name)}, ${description ?? null}, ${String(price)}, ${category ?? "minuman"},
        ${imageUrl ?? null}, ${isActive ?? true}, ${sortOrder ?? 0},
+       ${productType ?? "STOCK"},
+       ${linkedProductId ? Number(linkedProductId) : null},
        ${stockItemId ? Number(stockItemId) : null},
        ${stockUsagePerUnit != null ? String(stockUsagePerUnit) : "1"},
        ${stock != null && stock !== "" ? String(stock) : null},
-       ${stockUnit ?? "pcs"},
-       ${linkedProductId ? Number(linkedProductId) : null})
+       ${stockUnit ?? "pcs"})
     RETURNING *
   `);
   return res.status(201).json(r.rows[0]);
@@ -301,7 +304,8 @@ router.patch("/products/:id", async (req, res) => {
         body.linkedProductId !== undefined
           ? (body.linkedProductId === null || body.linkedProductId === "" ? null : Number(body.linkedProductId))
           : (ex.linked_product_id ?? null)
-      }
+      },
+      product_type        = ${body.productType !== undefined ? String(body.productType) : (ex.product_type ?? "STOCK")}
     WHERE id = ${id}
   `);
 
@@ -315,6 +319,7 @@ router.patch("/products/:id", async (req, res) => {
     imageUrl: updated.image_url,
     isActive: updated.is_active,
     sortOrder: updated.sort_order,
+    productType: updated.product_type ?? "STOCK",
     stock: updated.stock,
     stockUnit: updated.stock_unit,
     stockItemId: updated.stock_item_id,
@@ -344,11 +349,21 @@ router.post("/orders", async (req, res) => {
   }
 
   const productIds: number[] = items.map((i: { productId: number }) => i.productId);
-  const products = await db.select().from(posProductsTable).where(inArray(posProductsTable.id, productIds));
-  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  // Load products with product_type and linked_product_id
+  const posProds = (await db.execute(sql`
+    SELECT id, name, price, is_active, product_type, linked_product_id
+    FROM pos_products WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
+  `)).rows as Array<{
+    id: number; name: string; price: string; is_active: boolean;
+    product_type: string | null; linked_product_id: number | null;
+  }>;
+  const productMap = new Map(posProds.map((p) => [p.id, p]));
 
   let subtotal = 0;
   const lineItems: Array<{ productId: number; productName: string; price: string; qty: number; subtotal: string }> = [];
+  const stockItems: PosProductStock[] = [];
+
   for (const item of items as Array<{ productId: number; qty: number }>) {
     const p = productMap.get(item.productId);
     if (!p) return res.status(400).json({ message: `Produk ID ${item.productId} tidak ditemukan` });
@@ -357,11 +372,29 @@ router.post("/orders", async (req, res) => {
     const sub = price * qty;
     subtotal += sub;
     lineItems.push({ productId: p.id, productName: p.name, price: String(price), qty, subtotal: String(sub) });
+    stockItems.push({
+      productId: p.id,
+      productName: p.name,
+      productType: (p.product_type ?? "STOCK") as ProductType,
+      linkedProductId: p.linked_product_id,
+      qty,
+    });
+  }
+
+  // Cek ketersediaan stok sebelum membuat order
+  const effectiveBranchId = branchId ? Number(branchId) : (cashier.branchId ?? null);
+  if (effectiveBranchId) {
+    const shortages = await checkPosStock(stockItems, effectiveBranchId);
+    if (shortages.length > 0) {
+      return res.status(422).json({
+        message: "Stok tidak cukup untuk menyelesaikan order.",
+        shortages,
+      });
+    }
   }
 
   const discountAmt = Number(discount) || 0;
   const total = subtotal - discountAmt;
-  const effectiveBranchId = branchId ? Number(branchId) : (cashier.branchId ?? null);
 
   const [order] = await db.insert(posOrdersTable).values({
     orderNumber: orderNumber(),
@@ -394,59 +427,44 @@ router.patch("/orders/:id/pay", async (req, res) => {
   if (order.cashierId !== cashier.id) return res.status(403).json({ message: "Bukan order Anda" });
   if (order.status !== "open") return res.status(400).json({ message: "Order sudah diproses" });
 
-  const paid = Number(amountPaid) || Number(order.total);
-  const change = paid - Number(order.total);
+  const orderItems = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
+  const productIds = orderItems.map((i) => i.productId);
 
-  // ── Cek ketersediaan bahan baku SEBELUM pembayaran diproses ──────────────────
+  // Load product_type + linked_product_id for each item
+  const posProds = productIds.length > 0
+    ? (await db.execute(sql`
+        SELECT id, product_type, linked_product_id
+        FROM pos_products WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
+      `)).rows as Array<{ id: number; product_type: string | null; linked_product_id: number | null }>
+    : [];
+  const prodMeta = new Map(posProds.map((p) => [p.id, p]));
+
+  const stockItems: PosProductStock[] = orderItems.map((item) => {
+    const meta = prodMeta.get(item.productId);
+    return {
+      productId: item.productId,
+      productName: item.productName,
+      productType: (meta?.product_type ?? "STOCK") as ProductType,
+      linkedProductId: meta?.linked_product_id ?? null,
+      qty: item.qty,
+    };
+  });
+
+  // ── Cek stok SEKALI LAGI tepat sebelum bayar (race-condition guard) ──────────
   if (cashier.branchId) {
-    const orderItemsForCheck = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
-    const shortages: { productName: string; ingredientName: string; unit: string; required: number; available: number }[] = [];
-
-    for (const item of orderItemsForCheck) {
-      const [recipe] = (await db.execute(sql`
-        SELECT id FROM pos_recipes WHERE product_id = ${item.productId} AND is_active = TRUE
-      `)).rows as Array<{ id: number }>;
-      if (!recipe) continue;
-
-      const recipeIngredients = (await db.execute(sql`
-        SELECT ri.item_id, ri.qty, ri.waste_pct, ii.name AS item_name, ii.unit
-        FROM pos_recipe_items ri
-        JOIN pos_inventory_items ii ON ii.id = ri.item_id
-        WHERE ri.recipe_id = ${recipe.id}
-      `)).rows as Array<{ item_id: number; qty: string; waste_pct: string | null; item_name: string; unit: string }>;
-
-      for (const ingredient of recipeIngredients) {
-        const wasteFactor = 1 + (Number(ingredient.waste_pct ?? 0) / 100);
-        const required = Number(ingredient.qty) * wasteFactor * item.qty;
-        if (required <= 0) continue;
-
-        const [stock] = (await db.execute(sql`
-          SELECT COALESCE(SUM(qty), 0)::numeric AS total_qty
-          FROM pos_inventory_stocks
-          WHERE item_id = ${ingredient.item_id} AND branch_id = ${cashier.branchId}
-        `)).rows as Array<{ total_qty: string }>;
-
-        const available = Number(stock?.total_qty ?? 0);
-        if (available < required) {
-          shortages.push({
-            productName: item.productName,
-            ingredientName: ingredient.item_name,
-            unit: ingredient.unit,
-            required: Math.round(required * 1000) / 1000,
-            available: Math.round(available * 1000) / 1000,
-          });
-        }
-      }
-    }
-
+    const shortages = await checkPosStock(stockItems, cashier.branchId);
     if (shortages.length > 0) {
       return res.status(422).json({
-        message: "Stok bahan baku tidak cukup untuk menyelesaikan transaksi.",
+        message: "Stok tidak cukup untuk menyelesaikan transaksi.",
         shortages,
       });
     }
   }
 
+  const paid = Number(amountPaid) || Number(order.total);
+  const change = paid - Number(order.total);
+
+  // ── Update order status ───────────────────────────────────────────────────────
   const [updated] = await db.update(posOrdersTable).set({
     status: "paid",
     paymentMethod,
@@ -455,172 +473,20 @@ router.patch("/orders/:id/pay", async (req, res) => {
     paidAt: new Date(),
   }).where(eq(posOrdersTable.id, id)).returning();
 
-  const items = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
-
-  // ── Auto-deduct stok per produk (langsung di kolom stock) ───────────────────
-  const productIds = items.map((i) => i.productId);
-  if (productIds.length > 0) {
-    const posProds = (await db.execute(sql`
-      SELECT id, stock, stock_unit, stock_item_id, stock_usage_per_unit, linked_product_id
-      FROM pos_products WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
-    `)).rows as Array<Record<string, unknown>>;
-    const productMap = new Map(posProds.map((p) => [Number(p.id), p]));
-
-    for (const item of items) {
-      const product = productMap.get(item.productId);
-      if (!product) continue;
-
-      // Deduct dari kolom stock langsung (jika diset)
-      const currentStock = product.stock as string | null;
-      if (currentStock != null) {
-        await db.execute(sql`
-          UPDATE pos_products SET stock = GREATEST(0, stock - ${item.qty})
-          WHERE id = ${product.id}
-        `);
-      }
-
-      // Deduct dari pos_stock_items (sistem lama, jika stockItemId diset)
-      const stockItemId = product.stock_item_id as number | null;
-      const usagePerUnit = Number((product.stock_usage_per_unit as string | null) ?? 1);
-      if (stockItemId) {
-        const totalUsage = item.qty * usagePerUnit;
-        let targetStockId = stockItemId;
-        if (cashier.branchId) {
-          const [refStock] = (await db.execute(sql`SELECT name FROM pos_stock_items WHERE id = ${stockItemId}`)).rows as Array<{ name: string }>;
-          if (refStock?.name) {
-            const [branchStock] = (await db.execute(sql`
-              SELECT id FROM pos_stock_items
-              WHERE LOWER(name) = LOWER(${refStock.name}) AND branch_id = ${cashier.branchId}
-              LIMIT 1
-            `)).rows as Array<{ id: number }>;
-            if (branchStock) targetStockId = branchStock.id;
-          }
-        }
-        await db.execute(sql`
-          UPDATE pos_stock_items SET current_stock = current_stock - ${totalUsage}, updated_at = NOW()
-          WHERE id = ${targetStockId}
-        `);
-        await db.insert(posStockAdjustmentsTable).values({
-          stockItemId: targetStockId,
-          cashierId: cashier.id,
-          delta: String(-totalUsage),
-          reason: `auto:order:${order.orderNumber}:${item.productName}×${item.qty}`,
-        });
-      }
-
-      // ── Auto-deduct bahan baku dari RESEP (sistem baru inventory) ────────────
-      // Hanya jalan jika kasir terdaftar di cabang tertentu
-      if (cashier.branchId) {
-        const [recipe] = (await db.execute(sql`
-          SELECT id FROM pos_recipes WHERE product_id = ${item.productId} AND is_active = TRUE
-        `)).rows as Array<{ id: number }>;
-
-        if (recipe) {
-          const recipeIngredients = (await db.execute(sql`
-            SELECT ri.id, ri.item_id, ri.qty, ri.waste_pct, ii.name AS item_name
-            FROM pos_recipe_items ri
-            JOIN pos_inventory_items ii ON ii.id = ri.item_id
-            WHERE ri.recipe_id = ${recipe.id}
-          `)).rows as Array<{ id: number; item_id: number; qty: string; waste_pct: string | null; item_name: string }>;
-
-          for (const ingredient of recipeIngredients) {
-            const wasteFactor = 1 + (Number(ingredient.waste_pct ?? 0) / 100);
-            const totalUsageRecipe = Number(ingredient.qty) * wasteFactor * item.qty;
-            if (totalUsageRecipe <= 0) continue;
-
-            // Ambil stok di cabang kasir — prioritaskan yang punya stok tertinggi
-            const [stock] = (await db.execute(sql`
-              SELECT id, qty, warehouse_id, rack_id
-              FROM pos_inventory_stocks
-              WHERE item_id = ${ingredient.item_id}
-                AND branch_id = ${cashier.branchId}
-              ORDER BY qty DESC
-              LIMIT 1
-            `)).rows as Array<{ id: number; qty: string; warehouse_id: number | null; rack_id: number | null }>;
-
-            if (!stock) continue;
-
-            const qtyBefore = Number(stock.qty);
-            const qtyAfter = Math.max(0, qtyBefore - totalUsageRecipe);
-
-            await db.execute(sql`
-              UPDATE pos_inventory_stocks
-              SET qty = ${String(qtyAfter)}, updated_at = NOW()
-              WHERE id = ${stock.id}
-            `);
-
-            await db.execute(sql`
-              INSERT INTO pos_stock_mutations
-                (item_id, branch_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
-              VALUES
-                (${ingredient.item_id}, ${cashier.branchId}, ${stock.warehouse_id}, ${stock.rack_id},
-                 'RECIPE_CONSUMPTION_OUT', ${String(-totalUsageRecipe)}, ${String(qtyBefore)}, ${String(qtyAfter)},
-                 'POS_SALE', ${order.id},
-                 ${`${item.productName}×${item.qty} via resep (${ingredient.item_name})`})
-            `);
-          }
-        }
-      }
+  // ── Deduct stok via wh_stock + wh_movements (atomic DB transaction + FOR UPDATE)
+  if (cashier.branchId && stockItems.length > 0) {
+    const { warnings } = await deductPosStock(
+      stockItems,
+      cashier.branchId,
+      order.id,
+      order.orderNumber,
+    );
+    if (warnings.length > 0) {
+      console.warn("[pos-stock] deduction warnings:", warnings);
     }
   }
 
-  // ── New inventory_stock deduction (fire-and-forget) ─────────────────────────
-  void (async () => {
-    try {
-      if (!cashier.branchId) return;
-      // Find warehouse mapped to this branch
-      const whRow = (await db.execute(sql`
-        SELECT id FROM warehouses
-        WHERE branch_id = ${cashier.branchId} AND is_active = TRUE
-        ORDER BY id LIMIT 1
-      `)).rows[0] as { id: number } | undefined;
-      if (!whRow) return;
-      const warehouseId = whRow.id;
-
-      // Load linked_product_id for each product in this order
-      const posProds2 = (await db.execute(sql`
-        SELECT id, linked_product_id FROM pos_products
-        WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
-      `)).rows as Array<{ id: number; linked_product_id: number | null }>;
-      const linkedMap = new Map(posProds2.map((p) => [Number(p.id), p.linked_product_id]));
-
-      const warnings: string[] = [];
-      for (const item of items) {
-        const linkedProductId = linkedMap.get(item.productId);
-        if (!linkedProductId) continue;
-
-        // Check available stock first
-        const stockRow = (await db.execute(sql`
-          SELECT stock_available::float FROM inventory_stock
-          WHERE product_id = ${linkedProductId} AND warehouse_id = ${warehouseId}
-          ORDER BY id LIMIT 1
-        `)).rows[0] as { stock_available: number } | undefined;
-        const available = Number(stockRow?.stock_available ?? 0);
-
-        if (available < item.qty) {
-          warnings.push(`${item.productName}: stok tersedia ${available}, diminta ${item.qty}`);
-        }
-
-        await postStockOut({
-          productId: linkedProductId,
-          warehouseId,
-          qty: item.qty,
-          movementType: "POS_SALE",
-          referenceType: "POS_SALE",
-          referenceId: order.id,
-          notes: `POS ${order.orderNumber} — ${item.productName}×${item.qty}`,
-          createdBy: cashier.name,
-        });
-      }
-      if (warnings.length) {
-        console.warn("[inventory] POS stock warnings:", warnings);
-      }
-    } catch (e) {
-      console.error("[inventory] POS stock-out error:", e);
-    }
-  })();
-
-  return res.json({ ...updated, items });
+  return res.json({ ...updated, items: orderItems });
 });
 
 // PATCH /api/pos-kasir/orders/:id/cancel

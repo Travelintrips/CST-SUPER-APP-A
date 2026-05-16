@@ -17,7 +17,7 @@ interface Branch { id: number; name: string; }
 interface Wh { id: number; name: string; branch_id: number; branch_name: string; type: string; is_active: boolean; }
 
 async function apiFetch(path: string, opts?: RequestInit) {
-  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
+  const res = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

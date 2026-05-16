@@ -18,7 +18,7 @@ interface DashboardData {
 }
 
 async function apiFetch(path: string) {
-  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" } });
+  const res = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" } });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

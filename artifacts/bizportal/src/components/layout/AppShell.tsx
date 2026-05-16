@@ -48,6 +48,7 @@ import {
   AlertTriangle,
   PackageCheck,
   QrCode,
+  FileBarChart2,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -277,6 +278,7 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin"],
       children: [
         { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: BarChart2 },
+        { titleKey: "holdingPLReport", href: "/holding/pl-report", icon: FileBarChart2 },
         { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
         { titleKey: "holdingCoa", href: "/accounting/accounts", icon: Landmark },
         { titleKey: "holdingJournals", href: "/accounting/journals", icon: BookOpen },
