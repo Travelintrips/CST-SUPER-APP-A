@@ -29,7 +29,8 @@ export interface PostingInput {
     | "pos_sale"
     | "ecommerce_order"
     | "stock_received"
-    | "manual_payment";
+    | "manual_payment"
+    | "cogs_delivery";
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;
@@ -370,6 +371,49 @@ export async function postEcommerceOrder(args: {
     );
   } catch (err) {
     logger.error({ err, orderId: args.orderId }, "Auto-post ecommerce order failed");
+  }
+}
+
+/** Auto-post COGS when a Sales Order is delivered (DR HPP / CR Persediaan). */
+export async function postSalesCogs(args: {
+  salesDocId: number;
+  docNumber: string;
+  lines: Array<{ name: string; qty: number; costPrice: number }>;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const validLines = args.lines.filter((l) => l.costPrice > 0 && l.qty > 0);
+    if (validLines.length === 0) {
+      logger.info({ salesDocId: args.salesDocId }, "postSalesCogs: all cost prices are 0 — skipping COGS entry");
+      return;
+    }
+    const settings = await ensureAccountingSettings();
+    if (!settings.cogsAccountId || !settings.inventoryAccountId || !settings.purchaseJournalId) {
+      logger.warn({ salesDocId: args.salesDocId }, "Skipping COGS post: cogsAccountId/inventoryAccountId/purchaseJournalId missing in settings");
+      return;
+    }
+    const totalCogs = round2(validLines.reduce((s, l) => s + l.costPrice * l.qty, 0));
+    if (totalCogs <= 0) return;
+    const description = validLines.map((l) => `${l.name} ×${l.qty}`).join(", ");
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: args.docNumber,
+        description: `HPP Penjualan: ${args.docNumber}`,
+        source: "cogs_delivery",
+        sourceId: args.salesDocId,
+        createdById: args.createdById ?? null,
+        lines: [
+          { accountId: settings.cogsAccountId, debit: totalCogs, credit: 0, description: `HPP: ${description}` },
+          { accountId: settings.inventoryAccountId, debit: 0, credit: totalCogs, description: `Persediaan keluar: ${description}` },
+        ],
+      },
+      "PUR",
+    );
+    logger.info({ salesDocId: args.salesDocId, totalCogs, lineCount: validLines.length }, "COGS journal entry posted");
+  } catch (err) {
+    logger.error({ err, salesDocId: args.salesDocId }, "Auto-post COGS delivery failed");
   }
 }
 

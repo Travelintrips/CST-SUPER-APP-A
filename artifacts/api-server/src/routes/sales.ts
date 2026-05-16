@@ -13,7 +13,7 @@ import {
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postSalesInvoice } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -478,14 +478,18 @@ router.post("/documents/:id/action", async (req, res) => {
         const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
         const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
         const legacyWhId: number | undefined = wh?.id;
+        const cogsLines: Array<{ name: string; qty: number; costPrice: number }> = [];
         if (legacyWhId) {
           for (const line of productLines) {
             const qty = Number(line.quantity);
             const cur = await db.execute(sql`
-              SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${legacyWhId} AND rack_id IS NULL
+              SELECT qty::float, COALESCE(cost_price::float, 0) AS cost_price
+              FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${legacyWhId} AND rack_id IS NULL
             `);
             const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+            const costPrice = Number((cur.rows[0] as any)?.cost_price ?? 0);
             const qtyAfter = Math.max(0, qtyBefore - qty);
+            cogsLines.push({ name: line.name, qty, costPrice });
             await db.execute(sql`
               INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
               VALUES (${line.productId}, ${legacyWhId}, NULL, ${qtyAfter}, NOW())
@@ -498,6 +502,15 @@ router.post("/documents/:id/action", async (req, res) => {
                       'sales_order', ${id}, ${`SO Terkirim: ${doc.docNumber}`})
             `);
           }
+        }
+
+        // ── COGS journal entry (DR HPP / CR Persediaan) ──────────────────────
+        if (cogsLines.length > 0) {
+          void postSalesCogs({
+            salesDocId: id,
+            docNumber: doc.docNumber,
+            lines: cogsLines,
+          }).catch((e) => console.error("[accounting] postSalesCogs error:", e));
         }
 
         // ── New inventory_stock deduction ────────────────────────────────────

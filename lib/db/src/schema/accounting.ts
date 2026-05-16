@@ -50,6 +50,7 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "stock_received",
   "manual_payment",
   "reversal",
+  "cogs_delivery",
 ]);
 
 export const accountingPaymentTypeEnum = pgEnum("accounting_payment_type", [
