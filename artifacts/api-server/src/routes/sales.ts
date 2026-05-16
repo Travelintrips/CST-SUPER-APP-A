@@ -13,13 +13,14 @@ import {
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postSalesInvoice } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
+import { postStockOut } from "../lib/inventoryStock.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -464,6 +465,89 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  // T005: When SO is delivered, deduct stock (fire-and-forget)
+  if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+    void (async () => {
+      try {
+        const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+        const productLines = lines.filter((l) => l.productId != null);
+        if (productLines.length === 0) return;
+
+        // ── Legacy wh_stock deduction (backward compat) ─────────────────────
+        const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+        const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+        const legacyWhId: number | undefined = wh?.id;
+        const cogsLines: Array<{ name: string; qty: number; costPrice: number }> = [];
+        if (legacyWhId) {
+          for (const line of productLines) {
+            const qty = Number(line.quantity);
+            const cur = await db.execute(sql`
+              SELECT qty::float, COALESCE(cost_price::float, 0) AS cost_price
+              FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${legacyWhId} AND rack_id IS NULL
+            `);
+            const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+            const costPrice = Number((cur.rows[0] as any)?.cost_price ?? 0);
+            const qtyAfter = Math.max(0, qtyBefore - qty);
+            cogsLines.push({ name: line.name, qty, costPrice });
+            await db.execute(sql`
+              INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, ${qtyAfter}, NOW())
+              ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+              DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
+            `);
+            await db.execute(sql`
+              INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, 'so_delivery', ${qty}, ${qtyBefore}, ${qtyAfter},
+                      'sales_order', ${id}, ${`SO Terkirim: ${doc.docNumber}`})
+            `);
+          }
+        }
+
+        // ── COGS journal entry (DR HPP / CR Persediaan) ──────────────────────
+        if (cogsLines.length > 0) {
+          void postSalesCogs({
+            salesDocId: id,
+            docNumber: doc.docNumber,
+            lines: cogsLines,
+          }).catch((e) => console.error("[accounting] postSalesCogs error:", e));
+        }
+
+        // ── New inventory_stock deduction ────────────────────────────────────
+        const invWh = (await db.execute(sql`
+          SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+        `)).rows[0] as { id: number } | undefined;
+        if (!invWh) return;
+        const invWhId = invWh.id;
+
+        for (const line of productLines) {
+          const qty = Number(line.quantity);
+          // Check available stock — warn but still proceed
+          const stockRow = (await db.execute(sql`
+            SELECT stock_available::float FROM inventory_stock
+            WHERE product_id = ${line.productId} AND warehouse_id = ${invWhId}
+            ORDER BY id LIMIT 1
+          `)).rows[0] as { stock_available: number } | undefined;
+          if (stockRow && Number(stockRow.stock_available) < qty) {
+            console.warn(
+              `[inventory] SO ${doc.docNumber} — produk ${line.productId} stok tersedia ${stockRow.stock_available}, diminta ${qty}`
+            );
+          }
+          await postStockOut({
+            productId: line.productId!,
+            warehouseId: invWhId,
+            qty,
+            movementType: "SALES_DELIVERY",
+            referenceType: "SALES_ORDER",
+            referenceId: id,
+            notes: `SO Terkirim: ${doc.docNumber}`,
+          });
+        }
+      } catch (e) {
+        console.error("[wh] mark_delivered stock-out error:", e);
+      }
+    })();
+  }
 
   // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
   // Guard: only send if status was not already "confirmed" to prevent duplicate notifications on retries

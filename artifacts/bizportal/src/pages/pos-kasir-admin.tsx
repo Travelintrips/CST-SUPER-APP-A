@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin, ImageIcon, Loader2, X } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin, ImageIcon, Loader2, X, Settings } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -64,11 +64,25 @@ interface Product {
   isActive: boolean;
   sortOrder: number;
   imageUrl?: string | null;
+  productType?: string | null;
+  linkedProductId?: number | null;
+  stockItemId?: number | null;
+  stockUsagePerUnit?: string | null;
+  stock?: string | null;
+  stockUnit?: string;
+}
+
+interface InvProduct {
+  id: number;
+  name: string;
+  sku: string;
+  unit: string;
 }
 
 function resolveStoredUrl(url?: string | null): string | null {
   if (!url) return null;
   if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  if (url.startsWith("/pos-images/")) return url;
   if (url.startsWith("/api/")) return url;
   return url;
 }
@@ -80,6 +94,24 @@ interface StockItem {
   currentStock: string;
   minStock: string;
   note?: string;
+  branchId?: number | null;
+  branchName?: string | null;
+}
+
+interface Shift {
+  id: number;
+  branchId: number;
+  branchName?: string | null;
+  cashierId: number;
+  cashierName?: string | null;
+  openedAt: string;
+  closedAt?: string | null;
+  openingCash: string;
+  closingCash?: string | null;
+  totalSales: string;
+  orderCount: number;
+  status: "open" | "closed";
+  notes?: string | null;
 }
 
 function fmt(n: number | string) {
@@ -117,13 +149,15 @@ export default function PosKasirAdminPage() {
   });
   const [reportTo, setReportTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportLoading, setReportLoading] = useState(false);
-  const [reportBranchId, setReportBranchId] = useState<string>("");
+  const [reportBranchId, setReportBranchId] = useState<string>("all");
+  const [reportCashierId, setReportCashierId] = useState<string>("all");
 
   // Products
   const [products, setProducts] = useState<Product[]>([]);
   const [productDialog, setProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "" });
+  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", productType: "STOCK", linkedProductId: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
+  const [invProducts, setInvProducts] = useState<InvProduct[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
   const imageFileRef = useRef<HTMLInputElement>(null);
 
@@ -131,7 +165,56 @@ export default function PosKasirAdminPage() {
   const [stocks, setStocks] = useState<StockItem[]>([]);
   const [stockDialog, setStockDialog] = useState(false);
   const [editingStock, setEditingStock] = useState<StockItem | null>(null);
-  const [stockForm, setStockForm] = useState({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" });
+  const [stockForm, setStockForm] = useState({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "", branchId: "" });
+  const [stockBranchFilter, setStockBranchFilter] = useState<string>("all");
+
+  // Shifts
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [shiftsLoading, setShiftsLoading] = useState(false);
+  const [shiftBranchFilter, setShiftBranchFilter] = useState<string>("all");
+  const [shiftFrom, setShiftFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); });
+  const [shiftTo, setShiftTo] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Settings / Logo
+  const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoFileRef = useRef<HTMLInputElement>(null);
+
+  const loadSettings = useCallback(async () => {
+    const res = await fetch("/api/pos-kasir/settings");
+    if (res.ok) {
+      const s = await res.json() as Record<string, string>;
+      if (s.logoUrl) setLogoUrl(s.logoUrl);
+    }
+  }, []);
+
+  const uploadLogo = async (file: File) => {
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) {
+        let msg = `Error ${res.status}`;
+        try { const e = await res.json() as { message?: string }; msg = e.message ?? msg; } catch { /* ignore */ }
+        toast({ title: "Gagal upload logo", description: msg, variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { url?: string };
+      const uploadedUrl = data.url ?? "";
+      const saveRes = await fetch("/api/pos-kasir/admin/settings", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logoUrl: uploadedUrl }),
+      });
+      if (saveRes.ok) {
+        setLogoUrl(uploadedUrl);
+        toast({ title: "Logo berhasil diperbarui" });
+      } else {
+        toast({ title: "Gagal menyimpan logo", variant: "destructive" });
+      }
+    } finally { setLogoUploading(false); }
+  };
 
   const loadBranches = useCallback(async () => {
     const res = await fetch("/api/pos-kasir/admin/branches", { credentials: "include" });
@@ -149,33 +232,104 @@ export default function PosKasirAdminPage() {
   const loadReport = useCallback(async () => {
     setReportLoading(true);
     try {
-      const branchParam = reportBranchId ? `&branchId=${reportBranchId}` : "";
+      const params = new URLSearchParams({ from: reportFrom, to: reportTo });
+      if (reportBranchId && reportBranchId !== "all") params.set("branchId", reportBranchId);
+      if (reportCashierId && reportCashierId !== "all") params.set("cashierId", reportCashierId);
+      const dailyParams = new URLSearchParams();
+      if (reportBranchId && reportBranchId !== "all") dailyParams.set("branchId", reportBranchId);
       const [rRes, dRes] = await Promise.all([
-        fetch(`/api/pos-kasir/admin/report?from=${reportFrom}&to=${reportTo}${branchParam}`, { credentials: "include" }),
-        fetch(`/api/pos-kasir/admin/report/daily${branchParam ? `?${branchParam.slice(1)}` : ""}`, { credentials: "include" }),
+        fetch(`/api/pos-kasir/admin/report?${params}`, { credentials: "include" }),
+        fetch(`/api/pos-kasir/admin/report/daily${dailyParams.size ? `?${dailyParams}` : ""}`, { credentials: "include" }),
       ]);
       if (rRes.ok) setReport(await rRes.json() as ReportData);
       if (dRes.ok) setDaily(await dRes.json() as DailyRow[]);
     } finally { setReportLoading(false); }
-  }, [reportFrom, reportTo, reportBranchId]);
+  }, [reportFrom, reportTo, reportBranchId, reportCashierId]);
 
   const loadProducts = useCallback(async () => {
-    const res = await fetch("/api/pos-kasir/products/all", { credentials: "include" });
+    const res = await fetch(`/api/pos-kasir/products/all?_t=${Date.now()}`, { credentials: "include", cache: "no-store" });
     if (res.ok) setProducts(await res.json() as Product[]);
   }, []);
 
-  const loadStocks = useCallback(async () => {
-    const res = await fetch("/api/pos-kasir/admin/stock", { credentials: "include" });
-    if (res.ok) setStocks(await res.json() as StockItem[]);
+  const loadInvProducts = useCallback(async () => {
+    const res = await fetch("/api/products?limit=500", { credentials: "include" });
+    if (res.ok) {
+      const data = await res.json() as { items?: InvProduct[]; data?: InvProduct[] } | InvProduct[];
+      setInvProducts(Array.isArray(data) ? data : ((data as { items?: InvProduct[]; data?: InvProduct[] }).items ?? (data as { items?: InvProduct[]; data?: InvProduct[] }).data ?? []));
+    }
   }, []);
 
+  const loadStocks = useCallback(async (branchIdFilter?: string) => {
+    const filter = branchIdFilter ?? stockBranchFilter;
+    const sep = (filter && filter !== "all") ? `?branchId=${filter}&_t=${Date.now()}` : `?_t=${Date.now()}`;
+    const res = await fetch(`/api/pos-kasir/admin/stock${sep}`, { credentials: "include", cache: "no-store" });
+    if (res.ok) setStocks(await res.json() as StockItem[]);
+  }, [stockBranchFilter]);
+
+  const loadShifts = useCallback(async (branchFilter?: string, from?: string, to?: string) => {
+    setShiftsLoading(true);
+    try {
+      const bFilter = branchFilter ?? shiftBranchFilter;
+      const fFrom = from ?? shiftFrom;
+      const fTo = to ?? shiftTo;
+      const params = new URLSearchParams({ from: fFrom, to: fTo });
+      if (bFilter && bFilter !== "all") params.set("branchId", bFilter);
+      const res = await fetch(`/api/pos-kasir/admin/shifts?${params}`, { credentials: "include" });
+      if (res.ok) setShifts(await res.json() as Shift[]);
+    } finally { setShiftsLoading(false); }
+  }, [shiftBranchFilter, shiftFrom, shiftTo]);
+
+  // Quick stock adjust dialog (inline, tanpa buka full edit produk)
+  const [stockAdjProduct, setStockAdjProduct] = useState<Product | null>(null);
+  const [stockAdjValue, setStockAdjValue] = useState("");
+  const [stockAdjSaving, setStockAdjSaving] = useState(false);
+
+  const saveStockAdj = async () => {
+    if (!stockAdjProduct) return;
+    setStockAdjSaving(true);
+    try {
+      const res = await fetch(`/api/pos-kasir/products/${stockAdjProduct.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock: stockAdjValue }),
+      });
+      if (res.ok) {
+        toast({ title: "Stok diperbarui" });
+        setStockAdjProduct(null);
+        loadProducts();
+      } else {
+        let msg = `Error ${res.status}`;
+        try { const d = await res.json() as { message?: string }; msg = d.message ?? msg; } catch { /* */ }
+        toast({ title: "Gagal", description: msg, variant: "destructive" });
+      }
+    } finally { setStockAdjSaving(false); }
+  };
+
+  // Realtime: refresh stok, produk, dan kasir setiap 15 detik
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const refreshRealtime = useCallback(async () => {
+    await Promise.all([loadStocks(), loadCashiers(), loadProducts()]);
+    setLastUpdated(new Date());
+  }, [loadStocks, loadCashiers, loadProducts]);
+
   useEffect(() => {
+    loadSettings();
     loadBranches();
     loadCashiers();
     loadReport();
     loadProducts();
-    loadStocks();
-  }, [loadBranches, loadCashiers, loadReport, loadProducts, loadStocks]);
+    loadInvProducts();
+    loadStocks().then(() => setLastUpdated(new Date()));
+    loadShifts();
+  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadInvProducts, loadStocks, loadShifts]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshRealtime();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [refreshRealtime]);
 
   const approveCashier = async (id: number, status: "approved" | "rejected") => {
     const res = await fetch(`/api/pos-kasir/admin/cashiers/${id}`, {
@@ -238,22 +392,31 @@ export default function PosKasirAdminPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("type", "image");
-      const res = await fetch("/api/storage/uploads/file", { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) { toast({ title: "Gagal upload gambar", variant: "destructive" }); return; }
-      const data = await res.json() as { objectPath?: string; url?: string };
-      const url = data.objectPath ?? data.url ?? "";
-      setProductForm((f) => ({ ...f, imageUrl: url }));
+      const res = await fetch("/api/pos-kasir/admin/upload-image", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) {
+        let msg = `Error ${res.status}`;
+        try { const e = await res.json() as { message?: string }; msg = e.message ?? msg; } catch { /* ignore */ }
+        toast({ title: "Gagal upload gambar", description: msg, variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { url?: string };
+      setProductForm((f) => ({ ...f, imageUrl: data.url ?? "" }));
     } finally { setImageUploading(false); }
   };
 
   const saveProduct = async () => {
     const url = editingProduct ? `/api/pos-kasir/products/${editingProduct.id}` : "/api/pos-kasir/products";
     const method = editingProduct ? "PATCH" : "POST";
+    const body = {
+      ...productForm,
+      stockItemId: productForm.stockItemId ? Number(productForm.stockItemId) : null,
+      stockUsagePerUnit: productForm.stockUsagePerUnit ? String(productForm.stockUsagePerUnit) : "1",
+      linkedProductId: productForm.linkedProductId ? Number(productForm.linkedProductId) : null,
+    };
     const res = await fetch(url, {
       method, credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(productForm),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       toast({ title: editingProduct ? "Produk diperbarui" : "Produk ditambahkan" });
@@ -276,16 +439,24 @@ export default function PosKasirAdminPage() {
   const saveStock = async () => {
     const url = editingStock ? `/api/pos-kasir/admin/stock/${editingStock.id}` : "/api/pos-kasir/admin/stock";
     const method = editingStock ? "PATCH" : "POST";
+    const body = {
+      ...stockForm,
+      branchId: stockForm.branchId ? Number(stockForm.branchId) : null,
+    };
     const res = await fetch(url, {
       method, credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(stockForm),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       toast({ title: editingStock ? "Stok diperbarui" : "Stok ditambahkan" });
       setStockDialog(false);
       setEditingStock(null);
       loadStocks();
+    } else {
+      let msg = `Error ${res.status}`;
+      try { const d = await res.json() as { message?: string }; msg = d.message ?? msg; } catch { /* ignore */ }
+      toast({ title: "Gagal menyimpan stok", description: msg, variant: "destructive" });
     }
   };
 
@@ -303,7 +474,7 @@ export default function PosKasirAdminPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <img src="/thai-tea-cst-logo.jpeg" alt="Thai Tea CST" className="w-8 h-8 rounded-full object-cover bg-orange-500" />
+              <img src={logoUrl} alt="Thai Tea CST" className="w-8 h-8 rounded-full object-cover bg-orange-500" />
               Thai Tea CST — Admin Kasir
             </h1>
             <p className="text-sm text-muted-foreground mt-1">Manajemen cabang, kasir, menu, stok, dan laporan penjualan</p>
@@ -316,12 +487,15 @@ export default function PosKasirAdminPage() {
         </div>
 
         <Tabs defaultValue="branches">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="branches" className="flex items-center gap-1.5">
               <MapPin className="h-4 w-4" /> Cabang
             </TabsTrigger>
             <TabsTrigger value="cashiers" className="flex items-center gap-1.5">
               <Users className="h-4 w-4" /> Kasir {pendingCount > 0 && <span className="bg-yellow-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{pendingCount}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="shifts" className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4" /> Shift
             </TabsTrigger>
             <TabsTrigger value="report" className="flex items-center gap-1.5">
               <TrendingUp className="h-4 w-4" /> Laporan
@@ -331,6 +505,9 @@ export default function PosKasirAdminPage() {
             </TabsTrigger>
             <TabsTrigger value="stock" className="flex items-center gap-1.5">
               <Package className="h-4 w-4" /> Stok
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-1.5">
+              <Settings className="h-4 w-4" /> Pengaturan
             </TabsTrigger>
           </TabsList>
 
@@ -476,6 +653,94 @@ export default function PosKasirAdminPage() {
             </Card>
           </TabsContent>
 
+          {/* ── Shifts Tab ── */}
+          <TabsContent value="shifts" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <CardTitle className="text-base">Riwayat Shift Kasir</CardTitle>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <label className="text-sm font-medium">Dari</label>
+                    <Input type="date" value={shiftFrom} onChange={(e) => setShiftFrom(e.target.value)} className="w-36 h-8 text-sm" />
+                    <label className="text-sm font-medium">s/d</label>
+                    <Input type="date" value={shiftTo} onChange={(e) => setShiftTo(e.target.value)} className="w-36 h-8 text-sm" />
+                    <Select value={shiftBranchFilter} onValueChange={setShiftBranchFilter}>
+                      <SelectTrigger className="w-36 h-8 text-sm"><SelectValue placeholder="Semua Cabang" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Cabang</SelectItem>
+                        {branches.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" onClick={() => loadShifts()} disabled={shiftsLoading}>
+                      <RefreshCw className={`h-4 w-4 mr-1 ${shiftsLoading ? "animate-spin" : ""}`} /> Tampilkan
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tanggal Buka</TableHead>
+                      <TableHead>Kasir</TableHead>
+                      <TableHead>Cabang</TableHead>
+                      <TableHead className="text-right">Modal Awal</TableHead>
+                      <TableHead className="text-right">Total Penjualan</TableHead>
+                      <TableHead className="text-right">Order</TableHead>
+                      <TableHead className="text-right">Kas Penutup</TableHead>
+                      <TableHead className="text-right">Selisih</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Tutup</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {shifts.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                          {shiftsLoading ? "Memuat..." : "Belum ada data shift"}
+                        </TableCell>
+                      </TableRow>
+                    ) : shifts.map((s) => {
+                      const selisih = s.closingCash !== null && s.closingCash !== undefined
+                        ? Number(s.closingCash) - Number(s.totalSales)
+                        : null;
+                      return (
+                        <TableRow key={s.id}>
+                          <TableCell className="text-sm font-mono">
+                            {new Date(s.openedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </TableCell>
+                          <TableCell className="text-sm font-medium">{s.cashierName ?? "-"}</TableCell>
+                          <TableCell className="text-sm">{s.branchName ?? "-"}</TableCell>
+                          <TableCell className="text-right text-sm">{fmt(s.openingCash)}</TableCell>
+                          <TableCell className="text-right text-sm font-semibold">{fmt(s.totalSales)}</TableCell>
+                          <TableCell className="text-right text-sm">{s.orderCount}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            {s.closingCash !== null && s.closingCash !== undefined ? fmt(s.closingCash) : <span className="text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {selisih !== null ? (
+                              <span className={selisih >= 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold"}>
+                                {selisih >= 0 ? "+" : ""}{fmt(selisih)}
+                              </span>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </TableCell>
+                          <TableCell>
+                            {s.status === "open"
+                              ? <Badge className="bg-green-100 text-green-700 border-green-200 text-xs"><Clock className="h-3 w-3 mr-1" />Aktif</Badge>
+                              : <Badge variant="secondary" className="text-xs">Tutup</Badge>}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {s.closedAt ? new Date(s.closedAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "-"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* ── Report Tab ── */}
           <TabsContent value="report" className="space-y-4">
             <Card>
@@ -496,9 +761,23 @@ export default function PosKasirAdminPage() {
                         <SelectValue placeholder="Semua" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Semua Cabang</SelectItem>
+                        <SelectItem value="all">Semua Cabang</SelectItem>
                         {branches.map((b) => (
                           <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium">Kasir</label>
+                    <Select value={reportCashierId} onValueChange={setReportCashierId}>
+                      <SelectTrigger className="w-36 h-8 text-sm">
+                        <SelectValue placeholder="Semua" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Kasir</SelectItem>
+                        {cashiers.filter((c) => c.status === "approved").map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>{c.name} {c.branchName ? `(${c.branchName})` : ""}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -596,7 +875,7 @@ export default function PosKasirAdminPage() {
                 <CardTitle className="text-base">Menu Thai Tea CST</CardTitle>
                 <Button size="sm" onClick={() => {
                   setEditingProduct(null);
-                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "" });
+                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", productType: "STOCK", linkedProductId: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
                   setProductDialog(true);
                 }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Menu
@@ -610,6 +889,7 @@ export default function PosKasirAdminPage() {
                       <TableHead>Nama</TableHead>
                       <TableHead>Kategori</TableHead>
                       <TableHead>Harga</TableHead>
+                      <TableHead>Stok</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
@@ -637,6 +917,17 @@ export default function PosKasirAdminPage() {
                         </TableCell>
                         <TableCell className="font-medium">{fmt(p.price)}</TableCell>
                         <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            {p.stock != null
+                              ? <span className={`text-xs font-semibold ${Number(p.stock) <= 0 ? "text-red-600" : Number(p.stock) <= 5 ? "text-orange-500" : "text-green-700"}`}>{Number(p.stock)} {p.stockUnit ?? "pcs"}</span>
+                              : <span className="text-xs text-muted-foreground">—</span>}
+                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-orange-500 hover:bg-orange-50" title="Atur Stok"
+                              onClick={() => { setStockAdjProduct(p); setStockAdjValue(p.stock != null ? String(Number(p.stock)) : "0"); }}>
+                              <span className="text-xs font-black">+</span>
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
                           {p.isActive
                             ? <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Aktif</Badge>
                             : <Badge variant="secondary" className="text-xs">Non-aktif</Badge>}
@@ -645,7 +936,7 @@ export default function PosKasirAdminPage() {
                           <div className="flex justify-end gap-1">
                             <Button size="sm" variant="ghost" onClick={() => {
                               setEditingProduct(p);
-                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "" });
+                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "", productType: p.productType ?? "STOCK", linkedProductId: p.linkedProductId ? String(p.linkedProductId) : "", stockItemId: p.stockItemId ? String(p.stockItemId) : "", stockUsagePerUnit: p.stockUsagePerUnit ?? "1", stock: p.stock != null ? String(p.stock) : "", stockUnit: p.stockUnit ?? "pcs" });
                               setProductDialog(true);
                             }}>
                               <Pencil className="h-3.5 w-3.5" />
@@ -667,10 +958,28 @@ export default function PosKasirAdminPage() {
           <TabsContent value="stock">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-3">
-                <CardTitle className="text-base">Manajemen Stok Bahan</CardTitle>
+                <div>
+                  <CardTitle className="text-base">Stok Bahan Baku (Raw Material)</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Untuk melacak bahan mentah (bukan stok produk jadi). Stok produk dikelola di tab Menu ↑</p>
+                  {lastUpdated && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Diperbarui: {lastUpdated.toLocaleTimeString("id-ID")} · Auto-refresh tiap 15 detik
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="text-xs font-medium">Filter Cabang:</label>
+                    <Select value={stockBranchFilter} onValueChange={(v) => { setStockBranchFilter(v); loadStocks(v); }}>
+                      <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Semua" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Cabang</SelectItem>
+                        {branches.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
                 <Button size="sm" onClick={() => {
                   setEditingStock(null);
-                  setStockForm({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "" });
+                  setStockForm({ name: "", unit: "pcs", currentStock: "0", minStock: "0", note: "", branchId: stockBranchFilter !== "all" ? stockBranchFilter : "" });
                   setStockDialog(true);
                 }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Bahan
@@ -681,6 +990,7 @@ export default function PosKasirAdminPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nama Bahan</TableHead>
+                      <TableHead>Cabang</TableHead>
                       <TableHead>Satuan</TableHead>
                       <TableHead>Stok</TableHead>
                       <TableHead>Min. Stok</TableHead>
@@ -691,13 +1001,16 @@ export default function PosKasirAdminPage() {
                   <TableBody>
                     {stocks.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">Belum ada data stok</TableCell>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Belum ada data stok{stockBranchFilter !== "all" ? " untuk cabang ini" : ""}</TableCell>
                       </TableRow>
                     ) : stocks.map((s) => {
                       const low = Number(s.currentStock) <= Number(s.minStock);
                       return (
                         <TableRow key={s.id}>
                           <TableCell className="font-medium">{s.name}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {s.branchName ? <Badge variant="outline" className="text-xs">{s.branchName}</Badge> : <span className="text-gray-300">—</span>}
+                          </TableCell>
                           <TableCell>{s.unit}</TableCell>
                           <TableCell className={`font-bold ${low ? "text-red-600" : "text-green-600"}`}>
                             {Number(s.currentStock).toLocaleString("id-ID")}
@@ -712,7 +1025,7 @@ export default function PosKasirAdminPage() {
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="ghost" onClick={() => {
                                 setEditingStock(s);
-                                setStockForm({ name: s.name, unit: s.unit, currentStock: s.currentStock, minStock: s.minStock, note: s.note ?? "" });
+                                setStockForm({ name: s.name, unit: s.unit, currentStock: s.currentStock, minStock: s.minStock, note: s.note ?? "", branchId: s.branchId ? String(s.branchId) : "" });
                                 setStockDialog(true);
                               }}>
                                 <Pencil className="h-3.5 w-3.5" />
@@ -727,6 +1040,46 @@ export default function PosKasirAdminPage() {
                     })}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── Settings Tab ── */}
+          <TabsContent value="settings">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Pengaturan Tampilan Kasir</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-start gap-6">
+                  <div className="flex flex-col items-center gap-3">
+                    <p className="text-sm font-medium text-gray-700">Logo Saat Ini</p>
+                    <div className="w-28 h-28 rounded-2xl overflow-hidden border-2 border-gray-200 bg-orange-50 flex items-center justify-center">
+                      <img src={logoUrl} alt="Logo Thai Tea CST" className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).src = "/thai-tea-cst-logo.jpeg"; }} />
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-3 pt-6">
+                    <p className="text-sm text-muted-foreground">
+                      Upload gambar baru untuk mengganti logo Thai Tea CST. Logo ini akan tampil di halaman kasir, struk, dan header admin.
+                    </p>
+                    <p className="text-xs text-muted-foreground">Format: JPG, PNG, WEBP. Ukuran disarankan: 200×200 px.</p>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        ref={logoFileRef} type="file" accept="image/*" className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = ""; }}
+                      />
+                      <Button
+                        onClick={() => logoFileRef.current?.click()}
+                        disabled={logoUploading}
+                        className="flex items-center gap-2"
+                      >
+                        {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                        {logoUploading ? "Mengupload..." : "Ganti Logo"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -859,6 +1212,26 @@ export default function PosKasirAdminPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
+                <Label className="text-xs">Stok Awal</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="Kosongkan jika tidak dilacak"
+                  value={productForm.stock}
+                  onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Satuan Stok</Label>
+                <Input
+                  placeholder="pcs, cup, botol…"
+                  value={productForm.stockUnit}
+                  onChange={(e) => setProductForm((f) => ({ ...f, stockUnit: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
                 <Label className="text-xs">Urutan</Label>
                 <Input type="number" value={productForm.sortOrder} onChange={(e) => setProductForm((f) => ({ ...f, sortOrder: Number(e.target.value) }))} />
               </div>
@@ -873,9 +1246,119 @@ export default function PosKasirAdminPage() {
                 </label>
               </div>
             </div>
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipe Stok</p>
+              <div>
+                <Label className="text-xs">Tipe Produk</Label>
+                <Select
+                  value={productForm.productType}
+                  onValueChange={(v) => setProductForm((f) => ({ ...f, productType: v }))}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="STOCK">STOCK — kurangi stok langsung dari gudang</SelectItem>
+                    <SelectItem value="RECIPE">RECIPE — kurangi bahan baku sesuai resep</SelectItem>
+                    <SelectItem value="SERVICE">SERVICE — tanpa pengurangan stok</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {productForm.productType === "STOCK" && "Pilih Produk Inventory di bawah sebagai sumber stok."}
+                  {productForm.productType === "RECIPE" && "Pilih Produk Inventory yang memiliki Resep aktif. Bahan baku resep akan dikurangi saat terjual."}
+                  {productForm.productType === "SERVICE" && "Produk layanan — tidak ada stok yang dikurangi."}
+                </p>
+              </div>
+              {/* Link ke produk inventory (baru) */}
+              {productForm.productType !== "SERVICE" && (
+              <div>
+                <Label className="text-xs">Produk Inventory Terkait</Label>
+                <Select
+                  value={productForm.linkedProductId || "none"}
+                  onValueChange={(v) => setProductForm((f) => ({ ...f, linkedProductId: v === "none" ? "" : v }))}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="— Tidak ada (tidak mengurangi inv. stok) —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Tidak ada —</SelectItem>
+                    {invProducts.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        [{p.sku}] {p.name} ({p.unit})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {productForm.linkedProductId && (
+                  <p className="text-xs text-green-600 mt-1">
+                    Setiap penjualan akan mengurangi stok gudang cabang untuk produk ini.
+                  </p>
+                )}
+              </div>
+              )}
+              {/* Bahan stok (sistem lama) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Bahan Stok Terkait (lama)</Label>
+                  <Select value={productForm.stockItemId || "none"} onValueChange={(v) => setProductForm((f) => ({ ...f, stockItemId: v === "none" ? "" : v }))}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="— Tidak ada —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— Tidak ada —</SelectItem>
+                      {stocks.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name} ({s.unit})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Pemakaian per Porsi</Label>
+                  <Input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    value={productForm.stockUsagePerUnit}
+                    onChange={(e) => setProductForm((f) => ({ ...f, stockUsagePerUnit: e.target.value }))}
+                    disabled={!productForm.stockItemId}
+                    placeholder="1"
+                  />
+                </div>
+              </div>
+              {productForm.stockItemId && (
+                <p className="text-xs text-muted-foreground">
+                  Setiap 1 porsi terjual akan memotong <strong>{productForm.stockUsagePerUnit}</strong> {stocks.find((s) => String(s.id) === productForm.stockItemId)?.unit ?? ""} dari stok bahan tersebut.
+                </p>
+              )}
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setProductDialog(false)}>Batal</Button>
               <Button onClick={saveProduct} disabled={imageUploading}>Simpan</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Stock Adjust Dialog */}
+      <Dialog open={!!stockAdjProduct} onOpenChange={(o) => { if (!o) setStockAdjProduct(null); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Atur Stok Produk</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground truncate">{stockAdjProduct?.name}</p>
+            <div>
+              <Label className="text-xs">Stok Baru (jumlah absolut)</Label>
+              <Input type="number" min="0" value={stockAdjValue}
+                onChange={(e) => setStockAdjValue(e.target.value)}
+                placeholder="0" className="mt-1" />
+              <p className="text-xs text-muted-foreground mt-1">
+                Stok saat ini: <strong>{stockAdjProduct?.stock != null ? Number(stockAdjProduct.stock).toLocaleString("id-ID") : "–"} {stockAdjProduct?.stockUnit ?? "pcs"}</strong>
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setStockAdjProduct(null)}>Batal</Button>
+              <Button size="sm" onClick={saveStockAdj} disabled={stockAdjSaving}>
+                {stockAdjSaving ? "Menyimpan..." : "Simpan"}
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -888,6 +1371,17 @@ export default function PosKasirAdminPage() {
             <DialogTitle>{editingStock ? "Edit Stok Bahan" : "Tambah Bahan Baru"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-2">
+            <div>
+              <Label className="text-xs">Cabang <span className="text-red-500">*</span></Label>
+              <Select value={stockForm.branchId || "none"} onValueChange={(v) => setStockForm((f) => ({ ...f, branchId: v === "none" ? "" : v }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="— Pilih Cabang —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Pilih Cabang —</SelectItem>
+                  {branches.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-0.5">Stok ini hanya berlaku untuk cabang yang dipilih</p>
+            </div>
             <div>
               <Label className="text-xs">Nama Bahan</Label>
               <Input value={stockForm.name} onChange={(e) => setStockForm((f) => ({ ...f, name: e.target.value }))} placeholder="Thai Tea Sachet" />
@@ -912,7 +1406,7 @@ export default function PosKasirAdminPage() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setStockDialog(false)}>Batal</Button>
-              <Button onClick={saveStock}>Simpan</Button>
+              <Button onClick={saveStock} disabled={!stockForm.branchId}>Simpan</Button>
             </div>
           </div>
         </DialogContent>

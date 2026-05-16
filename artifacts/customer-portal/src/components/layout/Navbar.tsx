@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { isAuthenticated, removeAuthToken, isPortalAdmin } from "@/lib/auth";
 import { useGetPortalCompany } from "@workspace/api-client-react";
-import { useCart } from "@/lib/cart";
 import { CART_KEY } from "@/lib/logistic-cart";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -59,7 +58,6 @@ export function Navbar() {
   const [logoUploading, setLogoUploading]       = useState(false);
   const isAuth  = isAuthenticated();
   const isAdmin = isPortalAdmin();
-  const { count, openCart } = useCart();
   const { t } = useLanguage();
   const { editMode, content, uploadImage, updateField } = useEditMode();
   const logoFileRef = useRef<HTMLInputElement>(null);
@@ -105,7 +103,7 @@ export function Navbar() {
       window.removeEventListener("storage", sync);
     };
   }, []);
-  const totalCount = count + logisticCount;
+  const totalCount = logisticCount;
   const servicesRef = useRef<HTMLDivElement>(null);
   const moreRef     = useRef<HTMLDivElement>(null);
 
@@ -364,7 +362,7 @@ export function Navbar() {
           <div className="hidden lg:flex items-center gap-2 shrink-0">
             {/* Cart */}
             <button
-              onClick={openCart}
+              onClick={() => window.dispatchEvent(new Event("open-cart-drawer"))}
               className="relative flex items-center justify-center w-9 h-9 rounded-[14px] text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all duration-200"
               aria-label={t("nav.cart")}
             >
@@ -423,7 +421,7 @@ export function Navbar() {
           {/* ── Mobile Header Right ──────────────────────────── */}
           <div className="lg:hidden flex items-center gap-1">
             <button
-              onClick={openCart}
+              onClick={() => window.dispatchEvent(new Event("open-cart-drawer"))}
               className="relative flex items-center justify-center w-9 h-9 rounded-[14px] text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all"
               aria-label={t("nav.cart")}
             >

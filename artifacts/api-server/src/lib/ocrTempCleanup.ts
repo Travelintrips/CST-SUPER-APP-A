@@ -5,9 +5,23 @@ const OCR_TEMP_FOLDER = "private/ocr-temp";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const RUN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
+const isDev = process.env.NODE_ENV !== "production";
+
+function getSupabaseUrl(): string {
+  return (isDev ? process.env.SUPABASE_URL_DEV : undefined)
+    ?? process.env.SUPABASE_URL
+    ?? "";
+}
+
+function getServiceKey(): string {
+  return (isDev ? process.env.SUPABASE_SERVICE_ROLE_KEY_DEV : undefined)
+    ?? process.env.SUPABASE_SERVICE_ROLE_KEY
+    ?? "";
+}
+
 function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = getSupabaseUrl();
+  const key = getServiceKey();
   if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
   return createClient(url, key);
 }
@@ -53,8 +67,8 @@ async function listFilesRecursive(
  * Returns the number of files deleted.
  */
 export async function cleanupOcrTempFiles(): Promise<{ deleted: number; errors: number }> {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = getSupabaseUrl();
+  const key = getServiceKey();
   if (!url || !key) {
     logger.debug("OCR temp cleanup skipped — Supabase not configured");
     return { deleted: 0, errors: 0 };
