@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export interface CartItem {
   cartId: string;
@@ -12,20 +12,40 @@ export interface CartItem {
 
 export const CART_KEY = "logistic_cart";
 
-export function useCart() {
-  const [items, setItems] = useState<CartItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(CART_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+function readFromStorage(): CartItem[] {
+  try {
+    const stored = localStorage.getItem(CART_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
 
+export function useCart() {
+  const [items, setItems] = useState<CartItem[]>(readFromStorage);
+  const instanceId = useRef(Math.random().toString(36).slice(2));
+
+  // Persist to localStorage and notify other instances
   useEffect(() => {
     localStorage.setItem(CART_KEY, JSON.stringify(items));
-    window.dispatchEvent(new Event("logistic-cart-change"));
+    window.dispatchEvent(
+      new CustomEvent("logistic-cart-change", { detail: { source: instanceId.current } })
+    );
   }, [items]);
+
+  // Sync from localStorage when another instance changes the cart
+  useEffect(() => {
+    function handleExternalChange(e: Event) {
+      const ce = e as CustomEvent<{ source: string }>;
+      if (ce.detail?.source === instanceId.current) return;
+      setItems((prev) => {
+        const next = readFromStorage();
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
+    }
+    window.addEventListener("logistic-cart-change", handleExternalChange);
+    return () => window.removeEventListener("logistic-cart-change", handleExternalChange);
+  }, []);
 
   function addItem(item: Omit<CartItem, "cartId">) {
     setItems((prev) => [...prev, { ...item, cartId: crypto.randomUUID() }]);

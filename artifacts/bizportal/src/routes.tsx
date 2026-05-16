@@ -15,6 +15,15 @@ import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
+import PosBranchesPage from "@/pages/pos-branches";
+import PosWarehousesPage from "@/pages/pos-warehouses";
+import PosRacksPage from "@/pages/pos-racks";
+import PosInventoryItemsPage from "@/pages/pos-inventory-items";
+import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
+import PosRecipesPage from "@/pages/pos-recipes";
+import PosStockTransfersPage from "@/pages/pos-stock-transfers";
+import PosStockOpnamePage from "@/pages/pos-stock-opname";
+import PosStockMutationsPage from "@/pages/pos-stock-mutations";
 import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
@@ -72,6 +81,15 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/ecommerce" component={PR(EcommercePage)} />
       <Route path="/trading" component={PR(TradingPage)} />
       <Route path="/pos" component={PR(PosPage)} />
+      <Route path="/pos-inventory/branches" component={PR(PosBranchesPage)} />
+      <Route path="/pos-inventory/warehouses" component={PR(PosWarehousesPage)} />
+      <Route path="/pos-inventory/racks" component={PR(PosRacksPage)} />
+      <Route path="/pos-inventory/items" component={PR(PosInventoryItemsPage)} />
+      <Route path="/pos-inventory/stocks" component={PR(PosInventoryStocksPage)} />
+      <Route path="/pos-inventory/recipes" component={PR(PosRecipesPage)} />
+      <Route path="/pos-inventory/transfers" component={PR(PosStockTransfersPage)} />
+      <Route path="/pos-inventory/opname" component={PR(PosStockOpnamePage)} />
+      <Route path="/pos-inventory/mutations" component={PR(PosStockMutationsPage)} />
       <Route path="/logistics" component={PR(LogisticsPage)} />
       <Route path="/logistics/freight" component={PR(LogisticsFreightPage)} />
       <Route path="/logistics/freight/new" component={PR(LogisticsFreightEditorPage)} />
@@ -97,6 +115,11 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/documents" component={PR(PurchaseDocumentsListPage)} />
       <Route path="/purchase/documents/new" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/documents/:id" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
+      <Route path="/purchase/rfq/new" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/rfq/:id" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/orders" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
+      <Route path="/purchase/orders/:id" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
