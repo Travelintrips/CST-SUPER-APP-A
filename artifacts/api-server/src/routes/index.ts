@@ -35,6 +35,7 @@ import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
 import inventoryStockRouter from "./inventoryStock";
 import thaiTeaSuppliesRouter from "./thaiTeaSupplies";
+import purchaseWorkflowRouter from "./purchaseWorkflow";
 
 const router: IRouter = Router();
 
@@ -76,4 +77,5 @@ router.use("/inventory/receive", inventoryReceiveRouter);
 router.use("/inventory/stock", inventoryStockRouter);
 router.use("/inventory/warehouses", inventoryStockRouter);
 router.use("/thai-tea", thaiTeaSuppliesRouter);
+router.use("/purchase-workflow", purchaseWorkflowRouter);
 export default router;
