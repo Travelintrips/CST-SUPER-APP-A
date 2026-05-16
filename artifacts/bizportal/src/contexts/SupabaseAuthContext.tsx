@@ -74,32 +74,54 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   }, [fetchUser]);
 
   const signInWithGoogle = useCallback(() => {
-    // Use the current page path as returnTo so admin lands back on the intended page after login.
-    // Falls back to the base path if the current path is just the base.
-    const currentPath = window.location.pathname + window.location.search;
-    const base = getBase();
-    const returnTo = encodeURIComponent(currentPath !== "/" ? currentPath : base);
     const origin = getOrigin();
-    const loginUrl = `${origin}/api/login/google?returnTo=${returnTo}`;
-
+    const base = getBase();
     const isInIframe = window !== window.top;
+
     if (isInIframe) {
-      const authWindow = window.open(loginUrl, "_blank", "noopener");
+      // In iframe (Replit preview): open popup with returnTo=popup sentinel.
+      // The popup will postMessage "auth:done" then close itself.
+      const loginUrl = `${origin}/api/login/google?returnTo=${encodeURIComponent("popup")}`;
+      const authWindow = window.open(loginUrl, "_blank", "width=500,height=650,noopener");
+
       if (authWindow) {
+        const onMessage = (evt: MessageEvent) => {
+          if (evt.data === "auth:done") {
+            window.removeEventListener("message", onMessage);
+            clearInterval(poll);
+            // Fetch user immediately after popup signals success
+            fetch("/api/auth/user", { credentials: "include" })
+              .then((r) => r.json())
+              .then((data: { user: AuthUser | null }) => {
+                if (data.user) { writeCache(data.user); setUser(data.user); }
+              })
+              .catch(() => {});
+          } else if (evt.data === "auth:error") {
+            window.removeEventListener("message", onMessage);
+            clearInterval(poll);
+          }
+        };
+        window.addEventListener("message", onMessage);
+
+        // Fallback polling in case postMessage doesn't work (cross-origin popup)
         const poll = setInterval(() => {
-          fetch("/api/auth/user", { credentials: "include" })
-            .then((r) => r.json())
-            .then((data: { user: AuthUser | null }) => {
-              if (data.user) {
-                clearInterval(poll);
-                writeCache(data.user);
-                setUser(data.user);
-              }
-            })
-            .catch(() => {});
-        }, 2000);
-        setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+          if (authWindow.closed) {
+            clearInterval(poll);
+            window.removeEventListener("message", onMessage);
+            fetch("/api/auth/user", { credentials: "include" })
+              .then((r) => r.json())
+              .then((data: { user: AuthUser | null }) => {
+                if (data.user) { writeCache(data.user); setUser(data.user); }
+              })
+              .catch(() => {});
+          }
+        }, 1000);
+        setTimeout(() => {
+          clearInterval(poll);
+          window.removeEventListener("message", onMessage);
+        }, 5 * 60 * 1000);
       } else {
+        // Popup blocked — navigate top-level
         try {
           if (window.top) window.top.location.href = loginUrl;
           else window.location.href = loginUrl;
@@ -108,7 +130,10 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         }
       }
     } else {
-      window.location.href = loginUrl;
+      // Not in iframe: normal redirect flow
+      const currentPath = window.location.pathname + window.location.search;
+      const returnTo = encodeURIComponent(currentPath !== "/" ? currentPath : base);
+      window.location.href = `${origin}/api/login/google?returnTo=${returnTo}`;
     }
   }, []);
 
