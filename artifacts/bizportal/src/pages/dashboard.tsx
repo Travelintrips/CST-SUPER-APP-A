@@ -1,10 +1,10 @@
 import { useCallback, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
-import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
+import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Building2, Globe } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -90,17 +91,55 @@ function getStoredInterval(): IntervalValue {
   return "60000";
 }
 
+// ── Dashboard Summary Types ───────────────────────────────────────────────────
+interface CompanyBreakdownItem {
+  companyId: number;
+  companyName: string;
+  companyCode: string;
+  revenueThisMonth: number;
+  revenuePrevMonth: number;
+  ordersThisMonth: number;
+  totalRevenue: number;
+  contributionPct: number;
+}
+
+interface DashboardSummary {
+  isConsolidated: boolean;
+  scopeCompanyId: number | null;
+  totalOrders: number;
+  totalRevenue: number;
+  totalShipments: number;
+  totalStockValue: number;
+  todayTransactions: number;
+  lowStockCount: number;
+  activeFreightCount: number;
+  awaitingQuoteCount: number;
+  inTransitCount: number;
+  salesRevenueThisMonth: number;
+  salesRevenuePrevMonth: number;
+  salesOrdersThisMonth: number;
+  salesOrdersPrevMonth: number;
+  quotesActive: number;
+  salesOrdersConfirmed: number;
+  monthlyRevenueTrend: { month: string; revenue: number }[];
+  companyBreakdown: CompanyBreakdownItem[];
+}
+
 export default function DashboardPage() {
   const { t } = useLanguage();
+  const { companyQueryParam, isConsolidated, activeCompany } = useCompany();
   const [intervalValue, setIntervalValue] = useState<IntervalValue>(getStoredInterval);
 
   const refetchInterval = intervalValue === "off" ? false : Number(intervalValue);
 
-  const { data: summary, isLoading, isFetching, refetch, dataUpdatedAt } = useGetDashboardSummary({
-    query: {
-      queryKey: getGetDashboardSummaryQueryKey(),
-      refetchInterval,
-    }
+  const { data: summary, isLoading, isFetching, refetch, dataUpdatedAt } = useQuery<DashboardSummary>({
+    queryKey: ["dashboard-summary", companyQueryParam],
+    queryFn: async () => {
+      const res = await fetch(`/api/dashboard/summary?${companyQueryParam}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Gagal mengambil data dashboard");
+      return res.json() as Promise<DashboardSummary>;
+    },
+    refetchInterval,
   });
 
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
@@ -173,6 +212,7 @@ export default function DashboardPage() {
   const activeFreightCount = summary?.activeFreightCount ?? 0;
   const awaitingQuoteCount = summary?.awaitingQuoteCount ?? 0;
   const inTransitCount = summary?.inTransitCount ?? 0;
+  const companyBreakdown = summary?.companyBreakdown ?? [];
 
   const { data: portalOrders = [], isLoading: portalLoading, refetch: refetchPortal } = useListLogisticOrders(undefined, {
     query: { queryKey: ["dashboard-portal-orders"], refetchInterval },
@@ -317,7 +357,18 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
+              {isConsolidated ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
+                  <Globe className="h-3 w-3" />Konsolidasi Semua
+                </span>
+              ) : activeCompany ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">
+                  <Building2 className="h-3 w-3" />{activeCompany.companyName}
+                </span>
+              ) : null}
+            </div>
             <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.dashboard.subtitle}</p>
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -377,23 +428,13 @@ export default function DashboardPage() {
 
         {/* ── KPI Hero Section ── */}
         {(() => {
-          const s = summary as (typeof summary & {
-            salesRevenueThisMonth?: number;
-            salesRevenuePrevMonth?: number;
-            salesOrdersThisMonth?: number;
-            salesOrdersPrevMonth?: number;
-            quotesActive?: number;
-            salesOrdersConfirmed?: number;
-            monthlyRevenueTrend?: { month: string; revenue: number }[];
-          }) | undefined;
-
-          const salesRevThis = s?.salesRevenueThisMonth ?? 0;
-          const salesRevPrev = s?.salesRevenuePrevMonth ?? 0;
-          const salesOrdThis = s?.salesOrdersThisMonth ?? 0;
-          const salesOrdPrev = s?.salesOrdersPrevMonth ?? 0;
-          const quotesAct = s?.quotesActive ?? 0;
-          const ordersConf = s?.salesOrdersConfirmed ?? 0;
-          const trend = s?.monthlyRevenueTrend ?? [];
+          const salesRevThis = summary?.salesRevenueThisMonth ?? 0;
+          const salesRevPrev = summary?.salesRevenuePrevMonth ?? 0;
+          const salesOrdThis = summary?.salesOrdersThisMonth ?? 0;
+          const salesOrdPrev = summary?.salesOrdersPrevMonth ?? 0;
+          const quotesAct = summary?.quotesActive ?? 0;
+          const ordersConf = summary?.salesOrdersConfirmed ?? 0;
+          const trend = summary?.monthlyRevenueTrend ?? [];
 
           const revDiff = salesRevPrev > 0 ? ((salesRevThis - salesRevPrev) / salesRevPrev) * 100 : null;
           const ordDiff = salesOrdPrev > 0 ? ((salesOrdThis - salesOrdPrev) / salesOrdPrev) * 100 : null;
@@ -543,6 +584,90 @@ export default function DashboardPage() {
             </div>
           );
         })()}
+
+        {/* ── Consolidated Company Breakdown (hanya tampil saat mode konsolidasi) ── */}
+        {isConsolidated && companyBreakdown.length > 0 && (
+          <Card className="border-violet-200/60 bg-gradient-to-br from-violet-50/50 to-white">
+            <CardHeader className="pb-3 pt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-violet-600" />
+                  <CardTitle className="text-sm font-medium text-violet-900">Konsolidasi Per Perusahaan — Bulan Ini</CardTitle>
+                </div>
+                {!isLoading && (
+                  <span className="text-xs text-muted-foreground">{companyBreakdown.length} perusahaan aktif</span>
+                )}
+              </div>
+              <CardDescription className="text-xs">Perbandingan revenue sales order (confirmed/done) antar entitas</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pb-4">
+              {isLoading ? (
+                <div className="space-y-2">
+                  {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+                </div>
+              ) : (
+                <>
+                  {/* Summary totals */}
+                  <div className="grid grid-cols-3 gap-3 pb-2 border-b border-violet-100">
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Total Revenue Bulan Ini</p>
+                      <p className="text-sm font-bold text-violet-700">
+                        {formatIDR(companyBreakdown.reduce((s, c) => s + c.revenueThisMonth, 0))}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Total Order</p>
+                      <p className="text-sm font-bold text-blue-700">
+                        {formatNumber(companyBreakdown.reduce((s, c) => s + c.ordersThisMonth, 0))}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Perusahaan Aktif</p>
+                      <p className="text-sm font-bold text-slate-700">{companyBreakdown.length}</p>
+                    </div>
+                  </div>
+
+                  {/* Per-company bars */}
+                  <div className="space-y-2.5">
+                    {companyBreakdown.map((co) => {
+                      const prevDiff = co.revenuePrevMonth > 0
+                        ? ((co.revenueThisMonth - co.revenuePrevMonth) / co.revenuePrevMonth) * 100
+                        : null;
+                      return (
+                        <div key={co.companyId} className="space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-indigo-100 text-indigo-700 text-[9px] font-bold">
+                                {co.companyCode.slice(0, 3).toUpperCase()}
+                              </div>
+                              <span className="text-xs font-medium text-slate-700 truncate">{co.companyName}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {prevDiff !== null && (
+                                <span className={`text-[10px] font-medium ${prevDiff > 0 ? "text-emerald-600" : prevDiff < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                                  {prevDiff > 0 ? "+" : ""}{prevDiff.toFixed(1)}%
+                                </span>
+                              )}
+                              <span className="text-xs font-semibold text-slate-800 tabular-nums">{formatIDR(co.revenueThisMonth)}</span>
+                              <span className="text-[10px] text-muted-foreground w-8 text-right tabular-nums">{co.contributionPct}%</span>
+                            </div>
+                          </div>
+                          {/* Contribution bar */}
+                          <div className="h-1.5 w-full bg-violet-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-500"
+                              style={{ width: `${co.contributionPct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Portal Orders — always at the TOP ── */}
         <Card className="border-primary/20">

@@ -1,5 +1,5 @@
-import { Building2, ChevronDown, Check } from "lucide-react";
-import { useCompany } from "@/contexts/CompanyContext";
+import { Building2, ChevronDown, Check, Globe } from "lucide-react";
+import { useCompany, CONSOLIDATED_ID } from "@/contexts/CompanyContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export function CompanySwitcher() {
-  const { companies, activeCompany, setActiveCompany } = useCompany();
+  const { companies, activeCompany, isConsolidated, setActiveCompany, setConsolidated } = useCompany();
 
-  if (!activeCompany || companies.length === 0) return null;
+  if (companies.length === 0) return null;
+
+  const label = isConsolidated ? "Semua Perusahaan" : (activeCompany?.companyName ?? "—");
 
   return (
     <DropdownMenu>
@@ -22,18 +24,40 @@ export function CompanySwitcher() {
         <Button
           variant="outline"
           size="sm"
-          className="h-8 max-w-[220px] justify-between gap-1 border-slate-700 bg-slate-800/60 text-slate-200 hover:bg-slate-700 hover:text-white text-xs px-2"
+          className="h-8 max-w-[240px] justify-between gap-1 border-slate-700 bg-slate-800/60 text-slate-200 hover:bg-slate-700 hover:text-white text-xs px-2"
         >
-          <Building2 className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
-          <span className="truncate font-medium">{activeCompany.companyName}</span>
+          {isConsolidated
+            ? <Globe className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+            : <Building2 className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+          }
+          <span className="truncate font-medium">{label}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64 bg-slate-900 border-slate-700">
+      <DropdownMenuContent align="start" className="w-68 bg-slate-900 border-slate-700">
         <DropdownMenuLabel className="text-slate-400 text-xs font-normal px-3 py-1.5">
           Pilih Perusahaan Aktif
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-slate-700" />
+
+        {/* All Companies (Consolidated) */}
+        <DropdownMenuItem
+          onClick={setConsolidated}
+          className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800 focus:bg-slate-800 border-b border-slate-700/50 mb-1"
+        >
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-violet-600/20 text-violet-400 text-xs font-bold border border-violet-500/30">
+            <Globe className="h-3.5 w-3.5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-slate-200 truncate">Semua Perusahaan</p>
+            <p className="text-xs text-slate-500">Laporan konsolidasi holding</p>
+          </div>
+          {isConsolidated && (
+            <Check className="h-4 w-4 text-violet-400 shrink-0" />
+          )}
+        </DropdownMenuItem>
+
+        {/* Individual companies */}
         {companies.map((company) => (
           <DropdownMenuItem
             key={company.id}
@@ -49,7 +73,7 @@ export function CompanySwitcher() {
                 <p className="text-xs text-slate-500 truncate">NPWP: {company.npwp}</p>
               )}
             </div>
-            {company.id === activeCompany.id && (
+            {!isConsolidated && company.id === activeCompany?.id && (
               <Check className="h-4 w-4 text-indigo-400 shrink-0" />
             )}
           </DropdownMenuItem>
@@ -60,7 +84,18 @@ export function CompanySwitcher() {
 }
 
 export function CompanyBadge() {
-  const { activeCompany } = useCompany();
+  const { activeCompany, isConsolidated } = useCompany();
+  if (isConsolidated) {
+    return (
+      <Badge
+        variant="outline"
+        className="text-xs border-violet-500/40 text-violet-300 bg-violet-500/10 gap-1 h-5"
+      >
+        <Globe className="h-3 w-3" />
+        Konsolidasi
+      </Badge>
+    );
+  }
   if (!activeCompany) return null;
   return (
     <Badge
