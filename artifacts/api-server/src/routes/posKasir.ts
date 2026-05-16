@@ -446,6 +446,59 @@ router.patch("/orders/:id/pay", async (req, res) => {
           reason: `auto:order:${order.orderNumber}:${item.productName}×${item.qty}`,
         });
       }
+
+      // ── Auto-deduct bahan baku dari RESEP (sistem baru inventory) ────────────
+      // Hanya jalan jika kasir terdaftar di cabang tertentu
+      if (cashier.branchId) {
+        const [recipe] = (await db.execute(sql`
+          SELECT id FROM pos_recipes WHERE product_id = ${item.productId}
+        `)).rows as Array<{ id: number }>;
+
+        if (recipe) {
+          const recipeIngredients = (await db.execute(sql`
+            SELECT ri.id, ri.item_id, ri.qty, ii.name AS item_name
+            FROM pos_recipe_items ri
+            JOIN pos_inventory_items ii ON ii.id = ri.item_id
+            WHERE ri.recipe_id = ${recipe.id}
+          `)).rows as Array<{ id: number; item_id: number; qty: string; item_name: string }>;
+
+          for (const ingredient of recipeIngredients) {
+            const totalUsageRecipe = Number(ingredient.qty) * item.qty;
+            if (totalUsageRecipe <= 0) continue;
+
+            // Ambil stok di cabang kasir — prioritaskan yang punya stok tertinggi
+            const [stock] = (await db.execute(sql`
+              SELECT id, qty, warehouse_id, rack_id
+              FROM pos_inventory_stocks
+              WHERE item_id = ${ingredient.item_id}
+                AND branch_id = ${cashier.branchId}
+              ORDER BY qty DESC
+              LIMIT 1
+            `)).rows as Array<{ id: number; qty: string; warehouse_id: number | null; rack_id: number | null }>;
+
+            if (!stock) continue;
+
+            const qtyBefore = Number(stock.qty);
+            const qtyAfter = Math.max(0, qtyBefore - totalUsageRecipe);
+
+            await db.execute(sql`
+              UPDATE pos_inventory_stocks
+              SET qty = ${String(qtyAfter)}, updated_at = NOW()
+              WHERE id = ${stock.id}
+            `);
+
+            await db.execute(sql`
+              INSERT INTO pos_stock_mutations
+                (item_id, branch_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+              VALUES
+                (${ingredient.item_id}, ${cashier.branchId}, ${stock.warehouse_id}, ${stock.rack_id},
+                 'out', ${String(-totalUsageRecipe)}, ${String(qtyBefore)}, ${String(qtyAfter)},
+                 'pos_order', ${order.id},
+                 ${`auto:${item.productName}×${item.qty} via resep (${ingredient.item_name})`})
+            `);
+          }
+        }
+      }
     }
   }
 
