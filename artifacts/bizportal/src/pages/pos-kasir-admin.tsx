@@ -407,6 +407,10 @@ export default function PosKasirAdminPage() {
       setStockDialog(false);
       setEditingStock(null);
       loadStocks();
+    } else {
+      let msg = `Error ${res.status}`;
+      try { const d = await res.json() as { message?: string }; msg = d.message ?? msg; } catch { /* ignore */ }
+      toast({ title: "Gagal menyimpan stok", description: msg, variant: "destructive" });
     }
   };
 

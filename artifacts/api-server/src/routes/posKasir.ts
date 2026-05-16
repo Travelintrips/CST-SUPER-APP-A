@@ -269,32 +269,36 @@ router.patch("/products/:id", async (req, res) => {
   if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const body = req.body ?? {};
 
-  // Fields yang ada di Drizzle schema posProductsTable
-  const schemaPatch: Record<string, unknown> = {};
-  for (const k of ["name", "description", "price", "category", "imageUrl", "isActive", "sortOrder", "stock", "stockUnit"]) {
-    if (body[k] !== undefined) {
-      if (k === "stock") schemaPatch[k] = body[k] === null || body[k] === "" ? null : String(body[k]);
-      else schemaPatch[k] = body[k];
-    }
-  }
-  if (Object.keys(schemaPatch).length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await db.update(posProductsTable).set(schemaPatch as any).where(eq(posProductsTable.id, id));
-  }
+  // Baca existing dulu agar kolom yang tidak dikirim tetap memakai nilai lama
+  const [existing] = (await db.execute(sql`SELECT * FROM pos_products WHERE id = ${id}`)).rows as Array<Record<string, unknown>>;
+  if (!existing) return res.status(404).json({ message: "Produk tidak ditemukan" });
+  const ex = existing;
 
-  // Fields yang ada di DB via migration tapi TIDAK di Drizzle schema — pakai raw SQL
-  if (body.stockItemId !== undefined) {
-    const sid = body.stockItemId === null || body.stockItemId === "" ? null : Number(body.stockItemId);
-    await db.execute(sql`UPDATE pos_products SET stock_item_id = ${sid} WHERE id = ${id}`);
-  }
-  if (body.stockUsagePerUnit !== undefined) {
-    const sup = body.stockUsagePerUnit === null || body.stockUsagePerUnit === "" ? "1" : String(body.stockUsagePerUnit);
-    await db.execute(sql`UPDATE pos_products SET stock_usage_per_unit = ${sup} WHERE id = ${id}`);
-  }
+  const stockItemId = body.stockItemId !== undefined
+    ? (body.stockItemId === null || body.stockItemId === "" ? null : Number(body.stockItemId))
+    : ex.stock_item_id;
+  const stockUsagePerUnit = body.stockUsagePerUnit !== undefined
+    ? (body.stockUsagePerUnit === null || body.stockUsagePerUnit === "" ? "1" : String(body.stockUsagePerUnit))
+    : (ex.stock_usage_per_unit ?? "1");
 
-  // Return semua kolom termasuk yang tidak ada di Drizzle schema
+  // Satu raw SQL UPDATE — tidak pakai Drizzle set() agar tidak ada masalah mapping
+  await db.execute(sql`
+    UPDATE pos_products SET
+      name                = ${body.name !== undefined ? String(body.name) : ex.name},
+      description         = ${body.description !== undefined ? (body.description || null) : ex.description},
+      price               = ${body.price !== undefined ? String(body.price) : ex.price},
+      category            = ${body.category !== undefined ? String(body.category) : ex.category},
+      image_url           = ${body.imageUrl !== undefined ? (body.imageUrl || null) : ex.image_url},
+      is_active           = ${body.isActive !== undefined ? Boolean(body.isActive) : ex.is_active},
+      sort_order          = ${body.sortOrder !== undefined ? Number(body.sortOrder) : ex.sort_order},
+      stock               = ${body.stock !== undefined ? (body.stock === null || body.stock === "" ? null : String(body.stock)) : ex.stock},
+      stock_unit          = ${body.stockUnit !== undefined ? String(body.stockUnit) : ex.stock_unit},
+      stock_item_id       = ${stockItemId},
+      stock_usage_per_unit = ${stockUsagePerUnit}
+    WHERE id = ${id}
+  `);
+
   const [updated] = (await db.execute(sql`SELECT * FROM pos_products WHERE id = ${id}`)).rows as Array<Record<string, unknown>>;
-  if (!updated) return res.status(404).json({ message: "Produk tidak ditemukan" });
   return res.json({
     id: updated.id,
     name: updated.name,
@@ -707,19 +711,26 @@ router.post("/admin/stock", async (req, res) => {
 router.patch("/admin/stock/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { name, unit, currentStock, minStock, note, branchId } = req.body ?? {};
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
-  if (name !== undefined) patch.name = String(name);
-  if (unit !== undefined) patch.unit = unit;
-  if (currentStock !== undefined) patch.currentStock = String(currentStock);
-  if (minStock !== undefined) patch.minStock = String(minStock);
-  if (note !== undefined) patch.note = note;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await db.update(posStockItemsTable).set(patch as any).where(eq(posStockItemsTable.id, id));
-  if (branchId !== undefined) {
-    const bid = (branchId === null || branchId === "") ? null : Number(branchId);
-    await db.execute(sql`UPDATE pos_stock_items SET branch_id = ${bid} WHERE id = ${id}`);
-  }
+
+  // Baca data existing dulu sebagai fallback untuk kolom yang tidak diubah
+  const [existing] = (await db.execute(sql`SELECT * FROM pos_stock_items WHERE id = ${id}`)).rows;
+  if (!existing) return res.status(404).json({ message: "Stok tidak ditemukan" });
+  const ex = existing as Record<string, unknown>;
+
+  // Gunakan raw SQL template agar mapping kolom dijamin benar (snake_case)
+  await db.execute(sql`
+    UPDATE pos_stock_items SET
+      name          = ${name !== undefined ? String(name) : ex.name},
+      unit          = ${unit !== undefined ? String(unit) : ex.unit},
+      current_stock = ${currentStock !== undefined ? String(currentStock ?? 0) : ex.current_stock},
+      min_stock     = ${minStock !== undefined ? String(minStock ?? 0) : ex.min_stock},
+      note          = ${note !== undefined ? (note === "" ? null : note) : ex.note},
+      branch_id     = ${branchId !== undefined ? (branchId === null || branchId === "" ? null : Number(branchId)) : ex.branch_id},
+      updated_at    = NOW()
+    WHERE id = ${id}
+  `);
   const [updated] = (await db.execute(sql`SELECT * FROM pos_stock_items WHERE id = ${id}`)).rows;
   return res.json(camelizeStockRow(updated as Record<string, unknown>));
 });
