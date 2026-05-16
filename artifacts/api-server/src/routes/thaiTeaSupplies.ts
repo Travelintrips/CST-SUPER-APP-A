@@ -609,6 +609,161 @@ router.delete("/recipes/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ── POST /production ─────────────────────────────────────────────────────────
+// Catat produksi/racikan: deduct bahan baku dari wh_stock + inventory_stock (ERP)
+
+router.post("/production", async (req: Request, res: Response) => {
+  const { recipeId, qty, posWarehouseId, notes, batchNo } = req.body as {
+    recipeId: number;
+    qty: number;
+    posWarehouseId: number;
+    notes?: string;
+    batchNo?: string;
+  };
+  if (!recipeId || !qty || qty <= 0 || !posWarehouseId) {
+    res.status(400).json({ message: "recipeId, qty > 0, dan posWarehouseId wajib diisi" });
+    return;
+  }
+
+  const recipe = (await db.execute(sql`
+    SELECT pr.id, pr.yield_qty::float, pr.yield_unit, p.name AS product_name
+    FROM product_recipes pr
+    JOIN products p ON p.id = pr.product_id
+    WHERE pr.id = ${recipeId} AND pr.is_active = TRUE
+  `)).rows[0] as { id: number; yield_qty: number; yield_unit: string; product_name: string } | undefined;
+
+  if (!recipe) {
+    res.status(404).json({ message: "Recipe tidak ditemukan atau tidak aktif" });
+    return;
+  }
+
+  const ingredients = (await db.execute(sql`
+    SELECT ri.ingredient_product_id, ri.qty::float, ri.unit, p.name AS ingredient_name
+    FROM product_recipe_items ri
+    JOIN products p ON p.id = ri.ingredient_product_id
+    WHERE ri.recipe_id = ${recipeId}
+  `)).rows as Array<{ ingredient_product_id: number; qty: number; unit: string; ingredient_name: string }>;
+
+  if (!ingredients.length) {
+    res.status(400).json({ message: "Recipe tidak memiliki bahan baku" });
+    return;
+  }
+
+  // Cek ERP warehouse link untuk pos_warehouse ini
+  const erpLink = (await db.execute(sql`
+    SELECT erp_warehouse_id FROM thai_tea_warehouse_links
+    WHERE pos_warehouse_id = ${posWarehouseId} AND is_active = TRUE
+    LIMIT 1
+  `)).rows[0] as { erp_warehouse_id: number } | undefined;
+
+  const batchId = batchNo ?? `PROD/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}/${Date.now().toString().slice(-5)}`;
+  const deductions: Array<{ ingredientName: string; unit: string; requiredQty: number; deductedQty: number; whBefore: number; whAfter: number }> = [];
+
+  await db.transaction(async (tx) => {
+    for (const ing of ingredients) {
+      const required = ing.qty * qty;
+
+      const cur = (await tx.execute(sql`
+        SELECT id, qty::float, cost_price::float FROM wh_stock
+        WHERE product_id = ${ing.ingredient_product_id} AND warehouse_id = ${posWarehouseId}
+        FOR UPDATE
+      `)).rows[0] as { id: number; qty: number; cost_price: number } | undefined;
+
+      const whBefore = Number(cur?.qty ?? 0);
+      const whAfter = Math.max(0, whBefore - required);
+      const costPrice = Number(cur?.cost_price ?? 0);
+
+      if (cur) {
+        await tx.execute(sql`
+          UPDATE wh_stock SET qty = ${String(whAfter)}, updated_at = NOW()
+          WHERE id = ${cur.id}
+        `);
+      } else {
+        await tx.execute(sql`
+          INSERT INTO wh_stock (product_id, warehouse_id, qty, cost_price, updated_at)
+          VALUES (${ing.ingredient_product_id}, ${posWarehouseId}, 0, 0, NOW())
+        `);
+      }
+
+      await tx.execute(sql`
+        INSERT INTO wh_movements
+          (product_id, warehouse_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note, created_at)
+        VALUES
+          (${ing.ingredient_product_id}, ${posWarehouseId}, 'production_consumption',
+           ${String(-required)}, ${String(whBefore)}, ${String(whAfter)}, ${String(costPrice)},
+           ${'thai_tea_production'}, ${null},
+           ${`${batchId} — ${recipe.product_name} ×${qty} — ${notes ?? ""}`}, NOW())
+      `);
+
+      deductions.push({
+        ingredientName: ing.ingredient_name,
+        unit: ing.unit,
+        requiredQty: required,
+        deductedQty: Math.min(required, whBefore),
+        whBefore,
+        whAfter,
+      });
+    }
+  });
+
+  // Sync ke ERP inventory_stock
+  if (erpLink?.erp_warehouse_id) {
+    for (const ing of ingredients) {
+      const required = ing.qty * qty;
+      try {
+        await postStockIn({
+          productId: ing.ingredient_product_id,
+          warehouseId: erpLink.erp_warehouse_id,
+          qty: -required,
+          unitCost: 0,
+          movementType: "PRODUCTION_CONSUMPTION",
+          referenceType: "MANUAL",
+          referenceId: null,
+          notes: `${batchId} — Thai Tea Produksi — ${recipe.product_name} ×${qty}`,
+          createdBy: null,
+        });
+      } catch (_) { /* non-fatal */ }
+    }
+  }
+
+  res.status(201).json({
+    batchId,
+    recipeId,
+    productName: recipe.product_name,
+    qty,
+    posWarehouseId,
+    deductions,
+    message: `Produksi ${recipe.product_name} ×${qty} berhasil dicatat`,
+  });
+});
+
+// ── GET /movements ────────────────────────────────────────────────────────────
+// Riwayat gerakan stok untuk bahan Thai Tea (wh_movements)
+
+router.get("/movements", async (req: Request, res: Response) => {
+  const limit = Math.min(Number(req.query.limit ?? 200), 500);
+  const type = req.query.type as string | undefined;
+  const productId = req.query.product_id ? Number(req.query.product_id) : undefined;
+
+  const rows = await db.execute(sql`
+    SELECT
+      wm.id, wm.type, wm.qty::float, wm.qty_before::float, wm.qty_after::float,
+      wm.cost_price::float, wm.ref_type, wm.ref_id, wm.note, wm.created_at,
+      p.name AS product_name, p.sku AS product_sku, p.unit,
+      pw.name AS warehouse_name, pb.name AS branch_name
+    FROM wh_movements wm
+    JOIN products p ON p.id = wm.product_id
+    LEFT JOIN pos_warehouses pw ON pw.id = wm.warehouse_id
+    LEFT JOIN pos_branches pb ON pb.id = pw.branch_id
+    WHERE p.subcategory = 'bahan_thai_tea'
+      ${type ? sql`AND wm.type = ${type}` : sql``}
+      ${productId ? sql`AND wm.product_id = ${productId}` : sql``}
+    ORDER BY wm.created_at DESC
+    LIMIT ${limit}
+  `);
+  res.json(rows.rows);
+});
+
 // ── POST /seed ───────────────────────────────────────────────────────────────
 
 router.post("/seed", async (_req: Request, res: Response) => {

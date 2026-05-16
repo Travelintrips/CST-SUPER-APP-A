@@ -85,6 +85,12 @@ import WarehouseRecipesPage from "@/pages/warehouse/recipes";
 import WarehouseOpnamePage from "@/pages/warehouse/opname";
 import PurchaseReceivePage from "@/pages/purchase/receive";
 import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
+import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
+import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
+import ThaiTeaStockPage from "@/pages/thai-tea/stock";
+import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
+import ThaiTeaProductionPage from "@/pages/thai-tea/production";
+import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
 import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
 import PosInventoryItemsPage from "@/pages/pos-inventory-items";
 import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
@@ -370,6 +376,13 @@ function Router() {
         <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
         {/* Thai Tea Purchase */}
         <Route path="/purchase/thai-tea" component={() => <ProtectedRoute component={ThaiTeaPurchasePage} />} />
+        {/* Thai Tea CST */}
+        <Route path="/thai-tea/dashboard" component={() => <ProtectedRoute component={ThaiTeaDashboardPage} />} />
+        <Route path="/thai-tea/recipes" component={() => <ProtectedRoute component={ThaiTeaRecipesPage} />} />
+        <Route path="/thai-tea/stock" component={() => <ProtectedRoute component={ThaiTeaStockPage} />} />
+        <Route path="/thai-tea/branches" component={() => <ProtectedRoute component={ThaiTeaBranchesPage} />} />
+        <Route path="/thai-tea/production" component={() => <ProtectedRoute component={ThaiTeaProductionPage} />} />
+        <Route path="/thai-tea/reports" component={() => <ProtectedRoute component={ThaiTeaReportsPage} />} />
         {/* POS Inventory */}
         <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
         <Route path="/pos-inventory/branches" component={() => <ProtectedRoute component={PosBranchesPage} />} />
