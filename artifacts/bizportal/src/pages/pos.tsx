@@ -108,8 +108,9 @@ export default function PosPage() {
   const filteredProducts = useMemo(() => {
     if (!products) return [];
     const q = search.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categories ?? []).some((c) => c.toLowerCase().includes(q)));
+    const barang = products.filter((p) => p.itemType === "barang");
+    if (!q) return barang;
+    return barang.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categories ?? []).some((c) => c.toLowerCase().includes(q)));
   }, [products, search]);
 
   const addToCart = (p: Pick<Product, "id" | "name" | "price"> & { imageUrl?: string | null }) => {

@@ -60,18 +60,18 @@ function DocUploader({
   async function handleFile(file: File) {
     onChange({ label, name: file.name, objectPath: "", uploading: true });
     try {
-      const tokenRes = await fetch("/api/portal/order-upload-url", {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/portal/order-upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ contentType: file.type || "application/pdf" }),
+        headers: { ...getAuthHeaders() },
+        body: form,
       });
-      if (!tokenRes.ok) throw new Error("Gagal mendapatkan URL upload");
-      const { uploadURL, objectPath } = await tokenRes.json() as { uploadURL: string; objectPath: string };
-      const putRes = await fetch(uploadURL, {
-        method: "PUT", body: file,
-        headers: { "Content-Type": file.type || "application/pdf" },
-      });
-      if (!putRes.ok) throw new Error("Upload gagal");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(body.message ?? "Upload gagal");
+      }
+      const { objectPath } = await res.json() as { objectPath: string };
       onChange({ label, name: file.name, objectPath, uploading: false });
     } catch (err) {
       onChange({ label, name: file.name, objectPath: "", uploading: false, error: String(err) });

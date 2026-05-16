@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { logger } from "../lib/logger";
 import { db, aiAgentSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin } from "../lib/requireAdmin.js";
+import { requireClerkUser, requireAdmin } from "../lib/requireAdmin.js";
 
 const require_ = createRequire(import.meta.url);
 type PdfParseFn = (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
@@ -110,11 +110,9 @@ function cleanPdfText(raw: string, headers: string[] = BOILERPLATE_HEADERS): Cle
   return { text: text.slice(0, PDF_TEXT_MAX_CHARS), truncatedAt, lineIndex, charLimitHit };
 }
 
-router.use((req, res, next) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
+router.use(async (req, res, next) => {
+  const ok = await requireClerkUser(req, res);
+  if (!ok) return;
   next();
 });
 

@@ -3,7 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Map, Navigation, WifiOff } from "lucide-react";
+import { Map as MapIcon, Navigation, WifiOff } from "lucide-react";
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -221,7 +221,7 @@ export default function DriverMap({ drivers, activeJobByDriver, sseConnected, ge
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Map className="w-4 h-4 text-primary" />
+            <MapIcon className="w-4 h-4 text-primary" />
             <CardTitle className="text-base">Peta Lokasi Driver</CardTitle>
           </div>
           <div className="flex items-center gap-2">
@@ -248,7 +248,7 @@ export default function DriverMap({ drivers, activeJobByDriver, sseConnected, ge
       <CardContent className="p-0">
         {locCount === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-2">
-            <Map className="w-10 h-10 opacity-20" />
+            <MapIcon className="w-10 h-10 opacity-20" />
             <p className="text-sm">Belum ada driver dengan data GPS.</p>
             <p className="text-xs opacity-60">Lokasi akan muncul saat driver mengaktifkan GPS dari app.</p>
           </div>

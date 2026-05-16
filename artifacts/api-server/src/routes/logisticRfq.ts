@@ -7,6 +7,8 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import { requireClerkUser } from "../lib/requireAdmin.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -360,29 +362,37 @@ function buildAdminQuoteNotif(rfqNumber: string, orderNumber: string, vendorName
   );
 }
 
-const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: string) => ({
-  id: q.id,
-  rfqId: q.rfqId,
-  orderId: q.orderId,
-  vendorId: q.vendorId,
-  vendorName,
-  vendorPrice: Number(q.vendorPrice),
-  estimatedPickup: q.estimatedPickup ?? null,
-  estimatedDelivery: q.estimatedDelivery ?? null,
-  estimatedDays: q.estimatedDays ?? null,
-  vendorNotes: q.vendorNotes ?? null,
-  markupType: q.markupType,
-  markupPercentage: Number(q.markupPercentage),
-  fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
-  sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
-  quoteStatus: q.quoteStatus,
-  replySource: q.replySource,
-  replyTimestamp: q.replyTimestamp?.toISOString() ?? null,
-  createdAt: q.createdAt.toISOString(),
-});
+const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: string) => {
+  const vp = Number(q.vendorPrice);
+  const mt = q.markupType;
+  const mp = Number(q.markupPercentage ?? 0);
+  const fp = q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null;
+  const sp = q.sellingPrice != null ? Number(q.sellingPrice) : calcSellingPrice(vp, mt, mp, fp);
+  return {
+    id: q.id,
+    rfqId: q.rfqId,
+    orderId: q.orderId,
+    vendorId: q.vendorId,
+    vendorName,
+    vendorPrice: vp,
+    estimatedPickup: q.estimatedPickup ?? null,
+    estimatedDelivery: q.estimatedDelivery ?? null,
+    estimatedDays: q.estimatedDays ?? null,
+    vendorNotes: q.vendorNotes ?? null,
+    markupType: mt,
+    markupPercentage: mp,
+    fixedSellingPrice: fp,
+    sellingPrice: sp,
+    quoteStatus: q.quoteStatus,
+    replySource: q.replySource,
+    replyTimestamp: q.replyTimestamp?.toISOString() ?? null,
+    createdAt: q.createdAt.toISOString(),
+  };
+};
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
 logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request, res: Response) => {
+logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.query.orderId ?? ""), 10);
   const token = String(req.query.token ?? "").trim();
   if (isNaN(orderId) || !token) return res.status(400).json({ message: "orderId dan token wajib diisi" });
@@ -416,6 +426,10 @@ logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request,
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
 logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res: Response) => {
   const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
+logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, res: Response) => {
+  const { orderId, token, action, vendorPrice: submittedVendorPrice } = req.body as {
+    orderId: number; token: string; action: "accept" | "reject"; vendorPrice?: number;
+  };
   if (!orderId || !token || !action) return res.status(400).json({ message: "orderId, token, dan action wajib diisi" });
   if (action !== "accept" && action !== "reject") return res.status(400).json({ message: "action harus 'accept' atau 'reject'" });
 
@@ -433,12 +447,25 @@ logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res
   const newQuoteStatus = action === "accept" ? "vendor_confirmed" : "vendor_rejected";
   const newOrderStatus = action === "accept" ? "Vendor Confirmed" : "Vendor Rejected";
 
+  // If vendor submitted an updated price (accept only), validate and use it
+  const updatedPrice =
+    action === "accept" &&
+    typeof submittedVendorPrice === "number" &&
+    submittedVendorPrice > 0
+      ? submittedVendorPrice
+      : null;
+
   await db.update(logisticOrderQuotesTable)
-    .set({ quoteStatus: newQuoteStatus, replyTimestamp: new Date(), replySource: "vendor_confirm" } as any)
+    .set({
+      quoteStatus: newQuoteStatus,
+      replyTimestamp: new Date(),
+      replySource: "vendor_confirm",
+      ...(updatedPrice != null ? { vendorPrice: String(updatedPrice) } : {}),
+    } as any)
     .where(eq(logisticOrderQuotesTable.id, quote.id));
 
   const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
-  const basePrice = Number(quote.vendorPrice);
+  const basePrice = updatedPrice ?? Number(quote.vendorPrice);
   const markupPct = Number(quote.markupPercentage) || 20;
   const finalPrice = basePrice * (1 + markupPct / 100);
 
@@ -968,8 +995,9 @@ logisticRfqRouter.get("/logistic-vendors", async (_req: Request, res: Response) 
   return res.json(logistic.map((v) => ({ id: v.id, name: v.name, serviceType: v.serviceType ?? "", hasPhone: !!v.phone })));
 });
 
-// POST /api/logistic/orders/:id/manual-rfq — manually create RFQ and send WA to selected vendors
+// POST /api/logistic/orders/:id/manual-rfq — manually create RFQ and send WA to selected vendors (staff only)
 logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -1043,8 +1071,9 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
   return res.json({ ok: true, rfqNumber, vendorCount: eligible.length });
 });
 
-// GET /api/logistic/orders/approve-form/:orderNumber — public approve form data
+// GET /api/logistic/orders/approve-form/:orderNumber — approve form data (staff only)
 logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderNumber = req.params["orderNumber"] as string;
   if (!orderNumber) return res.status(400).json({ message: "orderNumber wajib diisi" });
 
@@ -1085,15 +1114,18 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
       markupType: q.markupType,
       markupPercentage: Number(q.markupPercentage),
       fixedSellingPrice: q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null,
-      sellingPrice: q.sellingPrice != null ? Number(q.sellingPrice) : null,
+      sellingPrice: q.sellingPrice != null
+        ? Number(q.sellingPrice)
+        : calcSellingPrice(Number(q.vendorPrice), q.markupType, Number(q.markupPercentage ?? 0), q.fixedSellingPrice != null ? Number(q.fixedSellingPrice) : null),
       quoteStatus: q.quoteStatus,
       replySource: q.replySource,
     })),
   });
 });
 
-// POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer
+// POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer (staff only)
 logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
@@ -1186,7 +1218,52 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
     );
   }
 
-  logger.info({ orderId, quoteId, sellingPrice, vendorId: quote.vendorId }, "Quote approved, quotation sent to customer");
+  // Email ke customer saat quote diapprove
+  if (isSmtpConfigured() && updatedOrder.email) {
+    const fmtRpEmail = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+    const emailHtmlRows = [
+      `<tr><td style="padding:6px 12px;color:#555;font-weight:600">No. Order</td><td style="padding:6px 12px;color:#222"><strong>${updatedOrder.orderNumber}</strong></td></tr>`,
+      `<tr><td style="padding:6px 12px;color:#555;font-weight:600">Jenis</td><td style="padding:6px 12px;color:#222">${updatedOrder.shipmentType}</td></tr>`,
+      `<tr><td style="padding:6px 12px;color:#555;font-weight:600">Rute</td><td style="padding:6px 12px;color:#222">${updatedOrder.origin} → ${updatedOrder.destination}</td></tr>`,
+      updatedOrder.commodity ? `<tr><td style="padding:6px 12px;color:#555;font-weight:600">Komoditi</td><td style="padding:6px 12px;color:#222">${updatedOrder.commodity}</td></tr>` : "",
+      quote.estimatedPickup ? `<tr><td style="padding:6px 12px;color:#555;font-weight:600">ETA Pickup</td><td style="padding:6px 12px;color:#222">${quote.estimatedPickup}</td></tr>` : "",
+      quote.estimatedDelivery ? `<tr><td style="padding:6px 12px;color:#555;font-weight:600">ETA Kirim</td><td style="padding:6px 12px;color:#222">${quote.estimatedDelivery}</td></tr>` : "",
+      `<tr style="background:#f0f9ff"><td style="padding:6px 12px;color:#1e40af;font-weight:700">Total Harga</td><td style="padding:6px 12px;color:#1e40af;font-weight:700">${fmtRpEmail(sellingPrice)}</td></tr>`,
+    ].filter(Boolean).join("");
+    const confirmBtnHtml = confirmUrl
+      ? `<div style="margin-top:24px;text-align:center">
+          <a href="${confirmUrl}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px">✅ Setuju & Konfirmasi</a>
+          <a href="${confirmUrl}?cancel=1" style="display:inline-block;margin-left:12px;background:#ef4444;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px">❌ Tolak</a>
+         </div>`
+      : "";
+    const emailHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+<tr><td style="background:#1e40af;padding:24px 32px">
+  <h1 style="margin:0;color:#fff;font-size:20px">🚢 CST Logistics</h1>
+  <p style="margin:4px 0 0;color:#bfdbfe;font-size:14px">Penawaran Harga Anda Telah Siap</p>
+</td></tr>
+<tr><td style="padding:24px 32px">
+  <p style="margin:0 0 20px;color:#374151;font-size:15px">Halo <strong>${updatedOrder.customerName}</strong>,<br><br>Tim CST Logistics telah menyiapkan penawaran terbaik untuk permintaan Anda. Silakan tinjau detailnya dan konfirmasi persetujuan Anda.</p>
+  <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">${emailHtmlRows}</table>
+  ${confirmBtnHtml}
+  <p style="margin:24px 0 0;color:#6b7280;font-size:13px">Penawaran berlaku selama 3 hari. Hubungi kami jika ada pertanyaan: <strong>(021) 6241234</strong></p>
+</td></tr>
+<tr><td style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb">
+  <p style="margin:0;color:#9ca3af;font-size:12px">CST Logistics — Jln. Ternate No. 10B/C, Jakarta 10150</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`;
+    sendMail({
+      to: updatedOrder.email,
+      subject: `Penawaran Harga Siap — ${updatedOrder.orderNumber}`,
+      html: emailHtml,
+      text: `Halo ${updatedOrder.customerName},\n\nPenawaran harga untuk order ${updatedOrder.orderNumber} telah siap.\nRute: ${updatedOrder.origin} → ${updatedOrder.destination}\nTotal: ${fmtRpEmail(sellingPrice)}\n${confirmUrl ? `\nKonfirmasi: ${confirmUrl}` : ""}`,
+    }).catch((e: unknown) => logger.error({ e }, "Email customer quotation failed"));
+  }
+
+  logger.info({ orderId, quoteId, sellingPrice, vendorId: quote.vendorId }, "Quote approved, quotation sent to customer via WA + email");
 
   return res.json({
     id: updatedOrder.id,
@@ -1611,20 +1688,22 @@ logisticRfqRouter.post("/choose-option", async (req: Request, res: Response) => 
 
 // GET /estimate-price — public: auto-estimate lowest vendor rate for a given mode/route
 logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => {
-  const { transport_mode, origin, dest, truck_type } = req.query as Record<string, string>;
+  const { transport_mode, origin, dest, truck_type, distance_km } = req.query as Record<string, string>;
   if (!transport_mode) {
     return res.status(400).json({ message: "transport_mode wajib diisi" });
   }
 
   const DISCLAIMER = "Estimasi berdasarkan tarif vendor aktif. Harga final mengikuti penawaran yang dikonfirmasi admin.";
+  const distKm = distance_km ? parseFloat(distance_km) : null;
 
   try {
     const yearCutoff = new Date().getFullYear() - 5;
-    let estimatedPrice: number | null = null;
+    const candidates: number[] = [];
 
     if (transport_mode === "TRUCKING") {
-      const rows = await db
-        .select({ baseRate: vendorRatesTable.baseRate })
+      // 1) vendorRatesTable — per_trip (flat) OR per_km × distance
+      const rateRows = await db
+        .select({ baseRate: vendorRatesTable.baseRate, unit: vendorRatesTable.unit })
         .from(vendorRatesTable)
         .innerJoin(suppliersTable, eq(vendorRatesTable.vendorId, suppliersTable.id))
         .where(
@@ -1635,12 +1714,39 @@ logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => 
             sql`(${suppliersTable.yearVehicle} IS NULL OR ${suppliersTable.yearVehicle} >= ${yearCutoff})`
           )
         );
-      if (rows.length > 0) {
-        estimatedPrice = Math.min(...rows.map((r) => Number(r.baseRate)));
+      for (const r of rateRows) {
+        const base = Number(r.baseRate);
+        if (r.unit === "per_km" && distKm && distKm > 0) {
+          candidates.push(base * distKm);
+        } else if (r.unit !== "per_km") {
+          candidates.push(base);
+        }
+        // per_km without distance → skip (can't compute)
+      }
+
+      // 2) vendor_catalog_items — unit contains 'km', price_base × (1+markup/100) × distance
+      if (distKm && distKm > 0) {
+        const catalogRows = await db
+          .select({ priceBase: vendorCatalogItemsTable.priceBase, markupPct: vendorCatalogItemsTable.markupPct })
+          .from(vendorCatalogItemsTable)
+          .innerJoin(suppliersTable, eq(vendorCatalogItemsTable.vendorId, suppliersTable.id))
+          .where(
+            and(
+              eq(vendorCatalogItemsTable.isActive, true),
+              sql`LOWER(${vendorCatalogItemsTable.unit}) LIKE '%km%'`
+            )
+          );
+        for (const c of catalogRows) {
+          const base = Number(c.priceBase);
+          const markup = Number(c.markupPct) || 0;
+          if (base > 0) {
+            candidates.push(base * (1 + markup / 100) * distKm);
+          }
+        }
       }
     } else if (transport_mode === "AIR_FREIGHT" || transport_mode === "SEA_FREIGHT") {
       const rows = await db
-        .select({ baseRate: vendorRatesTable.baseRate })
+        .select({ baseRate: vendorRatesTable.baseRate, unit: vendorRatesTable.unit })
         .from(vendorRatesTable)
         .where(
           and(
@@ -1648,11 +1754,12 @@ logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => 
             eq(vendorRatesTable.isActive, true)
           )
         );
-      if (rows.length > 0) {
-        estimatedPrice = Math.min(...rows.map((r) => Number(r.baseRate)));
+      for (const r of rows) {
+        candidates.push(Number(r.baseRate));
       }
     }
 
+    const estimatedPrice = candidates.length > 0 ? Math.min(...candidates) : null;
     return res.json({ estimated_price: estimatedPrice, disclaimer: DISCLAIMER });
   } catch (e: unknown) {
     logger.error({ e }, "[estimate-price] Error querying vendor_rates");

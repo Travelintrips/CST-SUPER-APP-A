@@ -18,19 +18,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Start application"
+args = "Customer Portal"
 
 [[workflows.workflow]]
-name = "Start application"
+name = "Customer Portal"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run dev & pnpm --filter @workspace/bizportal run dev"
+args = "cd artifacts/customer-portal && PORT=5000 BASE_PATH=/ pnpm run dev"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -39,7 +39,7 @@ integrations = ["google-drive:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 120000
+timeoutMs = 20000
 
 [userenv]
 
@@ -64,8 +64,16 @@ packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp
 defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
+localPort = 3000
+externalPort = 6800
+
+[[ports]]
 localPort = 5000
-externalPort = 80
+externalPort = 8008
+
+[[ports]]
+localPort = 5001
+externalPort = 8081
 
 [[ports]]
 localPort = 8080
@@ -73,7 +81,7 @@ externalPort = 8080
 
 [[ports]]
 localPort = 8081
-externalPort = 9000
+externalPort = 80
 
 [[ports]]
 localPort = 8082
@@ -100,10 +108,6 @@ localPort = 18442
 externalPort = 3000
 
 [[ports]]
-localPort = 18443
-externalPort = 6800
-
-[[ports]]
 localPort = 19368
 externalPort = 6000
 
@@ -121,4 +125,4 @@ externalPort = 5173
 
 [[ports]]
 localPort = 23435
-externalPort = 8081
+externalPort = 9000

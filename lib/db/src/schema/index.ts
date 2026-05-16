@@ -36,3 +36,5 @@ export * from "./waIncomingMessages";
 export * from "./quoteRequests";
 export * from "./mediaAssets";
 export * from "./posKasir";
+export * from "./warehouse";
+export * from "./inventory";

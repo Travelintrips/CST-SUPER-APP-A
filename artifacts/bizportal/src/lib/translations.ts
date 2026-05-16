@@ -79,6 +79,7 @@ export interface Translations {
     settings: string;
     holding: string;
     holdingDashboard: string;
+    holdingPLReport: string;
     holdingCompanies: string;
     holdingCoa: string;
     holdingJournals: string;
@@ -455,6 +456,7 @@ const id: Translations = {
     settings: "Pengaturan",
     holding: "Holding",
     holdingDashboard: "Holding Dashboard",
+    holdingPLReport: "Laporan Laba Rugi",
     holdingCompanies: "Data Perusahaan",
     holdingCoa: "Bagan Akun",
     holdingJournals: "Jurnal",
@@ -831,6 +833,7 @@ const en: Translations = {
     settings: "Settings",
     holding: "Holding",
     holdingDashboard: "Holding Dashboard",
+    holdingPLReport: "P&L Report",
     holdingCompanies: "Companies",
     holdingCoa: "Chart of Accounts",
     holdingJournals: "Journals",
@@ -1205,6 +1208,7 @@ const zhCN: DeepPartial<Translations> = {
     settings: "设置",
     holding: "控股",
     holdingDashboard: "控股仪表板",
+    holdingPLReport: "损益报告",
     holdingCompanies: "公司管理",
     holdingCoa: "科目表",
     holdingJournals: "日记账",

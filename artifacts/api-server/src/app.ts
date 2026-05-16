@@ -9,6 +9,7 @@ import router from "./routes";
 import authRouter from "./routes/auth";
 import companiesRouter from "./routes/companies";
 import { authMiddleware } from "./middlewares/authMiddleware";
+import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
 
@@ -94,11 +95,23 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(cookieParser());
 
+// Rate-limit bearer-token requests before any auth processing.
+// Applies only to requests carrying "Authorization: Bearer ..." headers
+// (portal/mobile Supabase tokens). Internal BizPortal session-cookie
+// requests carry no Authorization header and are not affected.
+app.use(bearerRateLimiter);
+
 // Replit Auth middleware — populates req.user and req.isAuthenticated()
 app.use(authMiddleware);
 
 // Auth routes (login/callback/logout/mobile-auth) — mounted under /api
 app.use("/api", authRouter);
+
+// ─── POS Images Static Serving ───────────────────────────────────────────────
+// Gambar produk POS kasir disimpan di folder ini dan diakses secara publik.
+const POS_IMAGES_DIR = path.resolve(process.cwd(), "public/pos-images");
+if (!fs.existsSync(POS_IMAGES_DIR)) fs.mkdirSync(POS_IMAGES_DIR, { recursive: true });
+app.use("/pos-images", express.static(POS_IMAGES_DIR, { maxAge: "7d" }));
 
 // ─── Customer Portal Static Serving ──────────────────────────────────────────
 // Customer portal is built with base="/" so assets are at /assets/...

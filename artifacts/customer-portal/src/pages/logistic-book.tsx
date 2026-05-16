@@ -78,6 +78,12 @@ function getServiceDetailRows(
       ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
     ];
   }
+  if (calculatorType === "product") {
+    return [
+      ...(inputData.qty ? [{ label: "Qty", value: String(inputData.qty) }] : []),
+      ...(inputData.unit ? [{ label: "Unit", value: str(inputData.unit) }] : []),
+    ];
+  }
   const skipped = new Set(["unitPrice", "serviceFee", "adminFee", "ratePerKg", "ratePerCbm", "minimumCharge", "freightRate", "handlingFee", "truckingRate", "loadingFee", "customsFee", "documentFee", "pibPebFee", "permitFee", "notes"]);
   return Object.entries(inputData)
     .filter(([k, v]) => v && !skipped.has(k))
@@ -183,18 +189,55 @@ function calcResult(calcType: string, state: CalcState): Record<string, unknown>
   }
 }
 
-function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (data: Omit<CartItem, "cartId">) => void; onBack: () => void }) {
+function CalculatorForm({ item, onAdd, onBack, transportMode, truckType, origin, destination }: {
+  item: ServiceItem;
+  onAdd: (data: Omit<CartItem, "cartId">) => void;
+  onBack: () => void;
+  transportMode?: string;
+  truckType?: string;
+  origin?: string;
+  destination?: string;
+}) {
   const [state, setState] = useState<CalcState>({});
+  const [autoRateFetching, setAutoRateFetching] = useState(false);
   const { toast } = useToast();
 
   function set(key: string, val: string) {
     setState((prev) => ({ ...prev, [key]: val }));
   }
 
+  // Auto-calculate trucking rate from estimate-price when distance changes
+  useEffect(() => {
+    if (item.calculatorType !== "trucking") return;
+    const dist = parseFloat(state.distance ?? "");
+    if (!dist || dist <= 0) return;
+    const mode = transportMode || "TRUCKING";
+    const params = new URLSearchParams({ transport_mode: mode, distance_km: String(dist) });
+    if (truckType || state.vehicleType) params.set("truck_type", (truckType || state.vehicleType)!);
+    if (origin) params.set("origin", origin);
+    if (destination) params.set("dest", destination);
+    setAutoRateFetching(true);
+    fetch(`/api/logistic/orders/estimate-price?${params.toString()}`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((d: { estimated_price: number | null }) => {
+        if (d.estimated_price != null && d.estimated_price > 0) {
+          setState((prev) => ({ ...prev, truckingRate: String(Math.round(d.estimated_price!)) }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAutoRateFetching(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.distance, state.vehicleType, item.calculatorType]);
+
   const subtotal = calcSubtotal(item.calculatorType, state);
 
   function handleAdd() {
-    if (subtotal <= 0) {
+    if (item.calculatorType === "trucking") {
+      if (!state.pickupCity || !state.destCity || !state.vehicleType) {
+        toast({ title: "Isi kota asal, kota tujuan, dan tipe kendaraan", variant: "destructive" });
+        return;
+      }
+    } else if (subtotal <= 0) {
       toast({ title: "Isi data kalkulator terlebih dahulu", variant: "destructive" });
       return;
     }
@@ -315,9 +358,19 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label className="text-xs">Distance (km)</Label><Input type="number" placeholder="0" value={state.distance||""} onChange={e => set("distance", e.target.value)} /></div>
-            <div><Label className="text-xs">Trucking Rate (IDR)</Label><Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} /></div>
+            <div>
+              <Label className="text-xs flex items-center gap-1">
+                Trucking Rate (IDR)
+                {autoRateFetching && <span className="text-[10px] text-muted-foreground animate-pulse">menghitung…</span>}
+                {!autoRateFetching && state.truckingRate && state.distance && <span className="text-[10px] text-emerald-600">● auto</span>}
+              </Label>
+              <Input type="number" placeholder="0" value={state.truckingRate||""} onChange={e => set("truckingRate", e.target.value)} />
+            </div>
           </div>
-          <div><Label className="text-xs">Loading Fee (IDR)</Label><Input type="number" placeholder="0" value={state.loadingFee||""} onChange={e => set("loadingFee", e.target.value)} /></div>
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-0.5">
+            <p className="font-semibold">Harga Akan Dikonfirmasi oleh Vendor</p>
+            <p>Harga trucking akan diberikan setelah vendor menerima dan mengkonfirmasi pesanan Anda.</p>
+          </div>
         </>}
 
         {ct === "storage" && <>
@@ -362,13 +415,25 @@ function CalculatorForm({ item, onAdd, onBack }: { item: ServiceItem; onAdd: (da
         </>}
 
         <Separator />
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Subtotal</span>
-          <span className="text-lg font-bold text-accent">{formatCurrency(subtotal)}</span>
-        </div>
-        <Button className="w-full" onClick={handleAdd} disabled={subtotal <= 0}>
-          <Plus className="w-4 h-4 mr-2" /> Add to Order
-        </Button>
+        {item.calculatorType === "trucking" ? (
+          <Button
+            className="w-full"
+            onClick={handleAdd}
+            disabled={!state.pickupCity || !state.destCity || !state.vehicleType}
+          >
+            <Plus className="w-4 h-4 mr-2" /> Add to Order
+          </Button>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">Subtotal</span>
+              <span className="text-lg font-bold text-accent">{formatCurrency(subtotal)}</span>
+            </div>
+            <Button className="w-full" onClick={handleAdd} disabled={subtotal <= 0}>
+              <Plus className="w-4 h-4 mr-2" /> Add to Order
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -447,7 +512,7 @@ export default function BookPage() {
     }));
   }, [portalUser]);
 
-  // Auto-populate origin/destination + trucking cargo fields from cart items' inputData
+  // Auto-populate origin/destination + transport mode + trucking cargo fields from cart items' inputData
   useEffect(() => {
     if (cartItems.length === 0) return;
     const deriveOrigin = cartItems
@@ -462,15 +527,32 @@ export default function BookPage() {
     const deriveJumlahKoli   = truckingData?.koli_qty         ? String(truckingData.koli_qty)         : "";
     const deriveNamaPenerima  = truckingData?.receiver_name  ? String(truckingData.receiver_name)  : "";
     const deriveNomorPenerima = truckingData?.receiver_phone ? String(truckingData.receiver_phone) : "";
+    // Derive transport mode from cart service types
+    const hasTrucking  = cartItems.some(c => c.calculatorType === "trucking");
+    const hasAir       = cartItems.some(c => c.calculatorType === "air_freight");
+    const hasSea       = cartItems.some(c => c.calculatorType === "sea_fcl" || c.calculatorType === "sea_lcl");
+    const deriveMode   = hasTrucking ? "TRUCKING" : hasAir ? "AIR_FREIGHT" : hasSea ? "SEA_FREIGHT" : "";
+    // Derive port/airport from cart
+    const airItem = cartItems.find(c => c.calculatorType === "air_freight")?.inputData;
+    const seaItem = cartItems.find(c => c.calculatorType === "sea_fcl" || c.calculatorType === "sea_lcl")?.inputData;
+    const deriveOriginPort = airItem?.originAirport ? String(airItem.originAirport) : seaItem?.originPort ? String(seaItem.originPort) : "";
+    const deriveDestPort   = airItem?.destinationAirport ? String(airItem.destinationAirport) : seaItem?.destinationPort ? String(seaItem.destinationPort) : "";
+    const deriveOriginDistrict = truckingData?.pickupCity ? String(truckingData.pickupCity) : "";
+    const deriveDestDistrict   = truckingData?.destCity   ? String(truckingData.destCity)   : "";
     setCustomerForm((prev) => ({
       ...prev,
-      origin:         prev.origin         || deriveOrigin,
-      destination:    prev.destination    || deriveDestination,
-      grossWeight:    prev.grossWeight    || deriveGrossWeight,
-      volumeCbm:      prev.volumeCbm      || deriveVolumeCbm,
-      jumlahKoli:     prev.jumlahKoli     || deriveJumlahKoli,
-      namaPenerima:   prev.namaPenerima   || deriveNamaPenerima,
-      nomorPenerima:  prev.nomorPenerima  || deriveNomorPenerima,
+      origin:          prev.origin         || deriveOrigin,
+      destination:     prev.destination    || deriveDestination,
+      grossWeight:     prev.grossWeight    || deriveGrossWeight,
+      volumeCbm:       prev.volumeCbm      || deriveVolumeCbm,
+      jumlahKoli:      prev.jumlahKoli     || deriveJumlahKoli,
+      namaPenerima:    prev.namaPenerima   || deriveNamaPenerima,
+      nomorPenerima:   prev.nomorPenerima  || deriveNomorPenerima,
+      transportMode:   prev.transportMode  || deriveMode,
+      originPort:      prev.originPort     || deriveOriginPort,
+      destPort:        prev.destPort       || deriveDestPort,
+      originDistrict:  prev.originDistrict || deriveOriginDistrict,
+      destDistrict:    prev.destDistrict   || deriveDestDistrict,
     }));
 
     // Parse payment_type from trucking cart inputData and populate payment state
@@ -528,6 +610,20 @@ export default function BookPage() {
         quantity: String(qty),
         unit: unit ?? prev.unit,
       }));
+      // Auto-add product as cart item (always, even without a fixed price)
+      const alreadyInCart = cartItems.some(
+        (c) => c.calculatorType === "product" && c.serviceName === commodity
+      );
+      if (!alreadyInCart) {
+        addItem({
+          category: "Produk",
+          serviceName: commodity,
+          calculatorType: "product",
+          inputData: { qty, price: productPrice, unit: unit ?? "" },
+          calculationResult: { total: (productPrice * qty).toFixed(2) },
+          subtotal: productPrice * qty,
+        });
+      }
     }
 
     const serviceId = params.get("service");
@@ -542,8 +638,22 @@ export default function BookPage() {
         setStep(1);
       }
     } else if (commodity) {
-      // From product page without specific service → skip Tipe Pengiriman, go to Pilih Layanan
-      setStep(1);
+      // From product page without specific service
+      if (params.get("step") === "2") {
+        setStep(2);
+      } else {
+        setStep(1);
+      }
+    } else if (params.get("step") === "3" && cartItems.length > 0) {
+      // Direct to Data Pemesan from CartDrawer checkout button
+      try {
+        const meta = localStorage.getItem(DRAFT_META_KEY);
+        if (meta) {
+          const { shipmentType: saved } = JSON.parse(meta) as { shipmentType: ShipmentType };
+          if (saved) setShipmentType(saved);
+        }
+      } catch { /* ignore */ }
+      setStep(3);
     } else if (cartItems.length > 0) {
       // Restore draft: jump to Ringkasan and restore shipmentType if saved
       try {
@@ -579,8 +689,8 @@ export default function BookPage() {
 
   function handleSubmit() {
     const { companyName, customerName, email, phone, origin, destination } = customerForm;
-    if (!companyName || !customerName || !email || !phone) {
-      toast({ title: "Lengkapi data perusahaan", variant: "destructive" });
+    if (!customerName || !email) {
+      toast({ title: "Lengkapi nama PIC dan email", variant: "destructive" });
       return;
     }
     if (cartItems.length === 0) {
@@ -770,6 +880,10 @@ export default function BookPage() {
             item={selectedItem}
             onAdd={(data) => { handleAddToCart(data); setStep(2); }}
             onBack={() => setSelectedItem(null)}
+            transportMode={customerForm.transportMode}
+            truckType={customerForm.truckType}
+            origin={customerForm.origin}
+            destination={customerForm.destination}
           />
         )}
       </div>
@@ -798,29 +912,6 @@ export default function BookPage() {
           </div>
         </div>
 
-        {/* Product summary in cart */}
-        {fromProduct && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center gap-3">
-            <Package className="w-5 h-5 text-amber-600 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-amber-700 font-semibold uppercase tracking-wide">Barang / Komoditi</p>
-              <p className="font-semibold text-amber-900">{fromProduct.name}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                {fromProduct.qty > 1 && (
-                  <p className="text-xs text-amber-700">Qty: {fromProduct.qty}</p>
-                )}
-                {fromProduct.unit && (
-                  <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium">{fromProduct.unit}</span>
-                )}
-              </div>
-            </div>
-            {fromProduct.price > 0 && (
-              <p className="font-bold text-amber-900 shrink-0">
-                {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price * fromProduct.qty)}
-              </p>
-            )}
-          </div>
-        )}
 
         {cartItems.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -831,34 +922,56 @@ export default function BookPage() {
           </div>
         ) : (
           <>
-            <div className="space-y-3">
-              {cartItems.map((item) => (
-                <div key={item.cartId} className="bg-card border border-border rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
-                      <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
-                      <dl className="mt-2 space-y-1">
-                        {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
-                          <div key={label} className="flex gap-2 text-xs leading-relaxed">
-                            <dt className="font-medium text-foreground shrink-0 w-28">{label}</dt>
-                            <dd className="text-muted-foreground">{value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
-                      <button
-                        onClick={() => removeItem(item.cartId)}
-                        className="text-destructive hover:text-destructive/80"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+            <div className="rounded-xl border-2 border-primary/20 bg-primary/5 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-primary/10 border-b border-primary/20">
+                <Package className="w-4 h-4 text-primary" />
+                <span className="text-xs font-bold text-primary uppercase tracking-wide">1 Pesanan</span>
+                <span className="text-xs text-primary/70">— semua layanan di bawah diproses dalam satu paket</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {cartItems.map((item, idx) => (
+                  <div key={item.cartId}>
+                    {idx > 0 && (
+                      <div className="flex items-center gap-2 py-1">
+                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center flex-shrink-0 ml-2">
+                          <span className="text-[10px] font-bold text-muted-foreground">+</span>
+                        </div>
+                        <div className="flex-1 border-t border-dashed border-border" />
+                      </div>
+                    )}
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <Badge variant="outline" className="text-xs mb-1">{item.category}</Badge>
+                          <p className="font-semibold text-foreground text-sm">{item.serviceName}</p>
+                          <dl className="mt-2 space-y-1">
+                            {getServiceDetailRows(item.calculatorType, item.inputData).map(({ label, value }) => (
+                              <div key={label} className="flex gap-2 text-xs leading-relaxed">
+                                <dt className="font-medium text-foreground shrink-0 w-28">{label}</dt>
+                                <dd className="text-muted-foreground">{value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {item.calculatorType === "trucking"
+                            ? <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">Harga menyusul</span>
+                            : item.subtotal > 0
+                              ? <span className="font-bold text-accent text-sm">{formatCurrency(item.subtotal)}</span>
+                              : <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">Harga nego</span>
+                          }
+                          <button
+                            onClick={() => removeItem(item.cartId)}
+                            className="text-destructive hover:text-destructive/80"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             <div className="bg-muted/40 rounded-lg border border-border p-4 space-y-2">
@@ -867,23 +980,37 @@ export default function BookPage() {
                 <div key={item.cartId} className="flex justify-between text-sm gap-2">
                   <span className="text-foreground font-medium min-w-0 truncate">{item.serviceName}</span>
                   <span className="font-medium shrink-0">
-                    {item.subtotal > 0 ? formatCurrency(item.subtotal) : <span className="text-amber-600 text-xs">Harga nego</span>}
+                    {item.calculatorType === "trucking"
+                      ? <span className="text-blue-600 text-xs font-semibold">Harga menyusul</span>
+                      : item.subtotal > 0 ? formatCurrency(item.subtotal) : <span className="text-amber-600 text-xs">Harga nego</span>}
                   </span>
                 </div>
               ))}
-              <Separator />
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
-                <span className="font-medium">{formatCurrency(tax)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between">
-                <span className="font-bold text-foreground">Total Estimasi</span>
-                <span className="font-bold text-accent text-lg">{formatCurrency(grandTotal)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground italic">
-                Ini adalah estimasi harga. Penawaran final akan dikonfirmasi oleh tim kami.
-              </p>
+              {grandTotal > 0 ? (
+                <>
+                  <Separator />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">PPN {taxRate === 0.011 ? "1,1%" : "11%"}</span>
+                    <span className="font-medium">{formatCurrency(tax)}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="font-bold text-foreground">Total Estimasi</span>
+                    <span className="font-bold text-accent text-lg">{formatCurrency(grandTotal)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">
+                    Ini adalah estimasi harga. Penawaran final akan dikonfirmasi oleh tim kami.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Separator />
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-0.5">
+                    <p className="font-semibold">Harga Akan Diberikan oleh Vendor</p>
+                    <p>Setelah pesanan diterima, vendor akan membalas dengan penawaran harga untuk Anda.</p>
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}
@@ -894,6 +1021,13 @@ export default function BookPage() {
     if (step === 3) {
       const f = customerForm;
       const set = (k: string, v: string) => setCustomerForm((p) => ({ ...p, [k]: v }));
+      const hasLogisticService = cartItems.some(c =>
+        ["trucking","air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType)
+      );
+      const hasOriginDest = cartItems.some(c =>
+        c.inputData?.pickupCity || c.inputData?.originAirport || c.inputData?.originPort ||
+        c.inputData?.destCity   || c.inputData?.destinationAirport || c.inputData?.destinationPort
+      );
       return (
         <div className="space-y-5">
           <div>
@@ -908,7 +1042,7 @@ export default function BookPage() {
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Nama Perusahaan <span className="text-destructive">*</span></Label>
+                <Label className="text-xs">Nama Perusahaan</Label>
                 <Input placeholder="PT. ..." value={f.companyName} onChange={e => set("companyName", e.target.value)} />
               </div>
               <div className="col-span-2 sm:col-span-1">
@@ -920,26 +1054,29 @@ export default function BookPage() {
                 <Input type="email" placeholder="email@perusahaan.com" value={f.email} onChange={e => set("email", e.target.value)} />
               </div>
               <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Telepon / WhatsApp <span className="text-destructive">*</span></Label>
+                <Label className="text-xs">Telepon / WhatsApp</Label>
                 <Input placeholder="+62..." value={f.phone} onChange={e => set("phone", e.target.value)} />
               </div>
-              {/* ── Mode Pengiriman ─── */}
-              <div className="col-span-2">
-                <Label className="text-xs">Mode Pengiriman</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  value={f.transportMode}
-                  onChange={e => set("transportMode", e.target.value)}
-                >
-                  <option value="">-- Pilih Mode (opsional) --</option>
-                  <option value="TRUCKING">🚛 Trucking / Darat</option>
-                  <option value="AIR_FREIGHT">✈️ Air Freight / Udara</option>
-                  <option value="SEA_FREIGHT">🚢 Sea Freight / Laut</option>
-                </select>
-              </div>
+
+              {/* ── Mode Pengiriman — hanya tampil jika ada layanan logistik ─── */}
+              {hasLogisticService && (
+                <div className="col-span-2">
+                  <Label className="text-xs">Mode Pengiriman</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={f.transportMode}
+                    onChange={e => set("transportMode", e.target.value)}
+                  >
+                    <option value="">-- Pilih Mode (opsional) --</option>
+                    <option value="TRUCKING">🚛 Trucking / Darat</option>
+                    <option value="AIR_FREIGHT">✈️ Air Freight / Udara</option>
+                    <option value="SEA_FREIGHT">🚢 Sea Freight / Laut</option>
+                  </select>
+                </div>
+              )}
 
               {/* ── Trucking-specific fields ─── */}
-              {f.transportMode === "TRUCKING" && (<>
+              {hasLogisticService && f.transportMode === "TRUCKING" && (<>
                 <div className="col-span-2 sm:col-span-1">
                   <Label className="text-xs">Kota Asal (Kecamatan)</Label>
                   <Input placeholder="Cakung, Jakarta Timur" value={f.originDistrict} onChange={e => set("originDistrict", e.target.value)} />
@@ -977,7 +1114,7 @@ export default function BookPage() {
               </>)}
 
               {/* ── Air/Sea-specific fields ─── */}
-              {(f.transportMode === "AIR_FREIGHT" || f.transportMode === "SEA_FREIGHT") && (<>
+              {hasLogisticService && (f.transportMode === "AIR_FREIGHT" || f.transportMode === "SEA_FREIGHT") && (<>
                 <div className="col-span-2 sm:col-span-1">
                   <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Asal</Label>
                   <Input placeholder={f.transportMode === "AIR_FREIGHT" ? "CGK / Soekarno-Hatta" : "Tanjung Priok"} value={f.originPort} onChange={e => set("originPort", e.target.value)} />
@@ -1015,15 +1152,17 @@ export default function BookPage() {
                 </div>
               </>)}
 
-              {/* ── Asal & Tujuan Pengiriman ─── */}
-              <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Asal Pengiriman</Label>
-                <Input placeholder="Jakarta" value={f.origin} onChange={e => set("origin", e.target.value)} />
-              </div>
-              <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Tujuan Pengiriman</Label>
-                <Input placeholder="Surabaya" value={f.destination} onChange={e => set("destination", e.target.value)} />
-              </div>
+              {/* ── Asal & Tujuan Pengiriman — hanya tampil jika ada data dari layanan ─── */}
+              {hasOriginDest && (<>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Asal Pengiriman</Label>
+                  <Input placeholder="Jakarta" value={f.origin} onChange={e => set("origin", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Tujuan Pengiriman</Label>
+                  <Input placeholder="Surabaya" value={f.destination} onChange={e => set("destination", e.target.value)} />
+                </div>
+              </>)}
 
               <div className="col-span-2">
                 <Label className="text-xs">Catatan Tambahan</Label>
@@ -1104,7 +1243,7 @@ export default function BookPage() {
     if (step === 0) return !!shipmentType;
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
-    if (step === 3) return !!(customerForm.companyName && customerForm.customerName && customerForm.email && customerForm.phone);
+    if (step === 3) return !!(customerForm.customerName && customerForm.email);
     return false;
   };
 
@@ -1149,8 +1288,8 @@ export default function BookPage() {
         </div>
       </div>
 
-      {/* Product banner — shown when coming from products page */}
-      {fromProduct && (
+      {/* Product banner — only show for commodity-only (no price) context */}
+      {fromProduct && fromProduct.price <= 0 && (
         <div className="bg-amber-50 border-b border-amber-200">
           <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
             <Package className="w-5 h-5 text-amber-600 shrink-0" />
@@ -1161,14 +1300,6 @@ export default function BookPage() {
                 <span className="inline-block text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium mt-0.5">{fromProduct.unit}</span>
               )}
             </div>
-            {fromProduct.price > 0 && (
-              <div className="text-right shrink-0">
-                <p className="text-xs text-amber-700">Qty {fromProduct.qty} ×</p>
-                <p className="font-bold text-amber-900 text-sm">
-                  {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(fromProduct.price)}
-                </p>
-              </div>
-            )}
           </div>
         </div>
       )}

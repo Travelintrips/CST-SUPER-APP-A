@@ -29,6 +29,7 @@ export default function VendorQuoteFormPage() {
   const params = new URLSearchParams(window.location.search);
   const rfqNumber = params.get("rfq") ?? "";
   const vendorId = params.get("v") ?? "";
+  const token = params.get("token") ?? "";
 
   const [data, setData] = useState<RfqFormData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +51,12 @@ export default function VendorQuoteFormPage() {
       setLoading(false);
       return;
     }
-    fetch(apiUrl(`/api/logistic/orders/rfq-form?rfq=${encodeURIComponent(rfqNumber)}&v=${encodeURIComponent(vendorId)}`))
+    if (!token) {
+      setError("Link tidak valid. Token tidak ditemukan.");
+      setLoading(false);
+      return;
+    }
+    fetch(apiUrl(`/api/logistic/orders/rfq-form?rfq=${encodeURIComponent(rfqNumber)}&v=${encodeURIComponent(vendorId)}&token=${encodeURIComponent(token)}`))
       .then((r) => r.ok ? r.json() : r.json().then((e: { message: string }) => Promise.reject(e.message)))
       .then((d: RfqFormData) => {
         setData(d);
@@ -58,7 +64,7 @@ export default function VendorQuoteFormPage() {
       })
       .catch((msg: unknown) => setError(typeof msg === "string" ? msg : "Gagal memuat data RFQ"))
       .finally(() => setLoading(false));
-  }, [rfqNumber, vendorId]);
+  }, [rfqNumber, vendorId, token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +80,7 @@ export default function VendorQuoteFormPage() {
         rfqNumber,
         vendorId: parseInt(vendorId, 10),
         vendorPrice: price,
+        token,
       };
       if (estimatedPickup) body.estimatedPickup = estimatedPickup;
       if (estimatedDelivery) body.estimatedDelivery = estimatedDelivery;

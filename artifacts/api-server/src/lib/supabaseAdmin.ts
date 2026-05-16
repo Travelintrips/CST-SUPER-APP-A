@@ -1,15 +1,24 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 function normalizeSupabaseUrl(raw: string): string {
   if (!raw) return "";
   if (raw.startsWith("https://") || raw.startsWith("http://")) return raw;
   return `https://${raw}.supabase.co`;
 }
 
+// In development, prefer _DEV credentials; fall back to shared/prod if not set.
 const url = normalizeSupabaseUrl(
-  process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ""
+  (isDev ? process.env.SUPABASE_URL_DEV : undefined) ??
+  process.env.SUPABASE_URL ??
+  process.env.VITE_SUPABASE_URL ??
+  ""
 );
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const key =
+  (isDev ? process.env.SUPABASE_SERVICE_ROLE_KEY_DEV : undefined) ??
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  "";
 
 let _client: SupabaseClient | null = null;
 

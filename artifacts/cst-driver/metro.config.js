@@ -32,6 +32,9 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
+// Include the full workspace root so Metro can map workspace-relative bundle
+// URLs (e.g. "artifacts/cst-driver/entry.bundle") to the correct file.
+// Required for the production static build (scripts/build.js).
 // Watch the entire workspace root so Metro's TreeFS includes pnpm's
 // content-addressable store (.pnpm/PACKAGE@hash/node_modules/) in its
 // file registry. Without this, Metro can follow the symlinks in
@@ -50,6 +53,14 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
+// Block the Metro CRAWLER (and FallbackWatcher) from descending into pnpm
+// temporary directories created and deleted during `pnpm install`.
+// FallbackWatcher (used when Watchman is unavailable) calls fs.watch() on
+// every directory it crawls; if a dir vanishes mid-crawl it throws ENOENT
+// and crashes Metro.  Patterns covered:
+//   *_tmp_NNNN/**  — any pnpm package temp dir (e.g. path-scurry_tmp_10056)
+//   .local/**      — agent skill temp dirs
+config.resolver.blockList = /_tmp_\d+[/\\].*|[/\\]\.local[/\\].*/;
 // Block transient directories that can vanish mid-crawl (pnpm install temp dirs,
 // agent skill temp dirs). FallbackWatcher calls fs.watch() on every directory it
 // finds; if one disappears it throws ENOENT and crashes Metro.

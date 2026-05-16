@@ -43,7 +43,7 @@ export default function AccountingSettingsPage() {
   const { toast } = useToast();
   const { t } = useLanguage();
   const { activeCompanyId } = useCompany();
-  const { data: settings, isLoading } = useGetAccountingSettings({ company: activeCompanyId });
+  const { data: settings, isLoading } = useGetAccountingSettings();
   const { data: accounts } = useListAccounts();
   const { data: journals } = useListJournals();
   const { data: taxes } = useListTaxes();

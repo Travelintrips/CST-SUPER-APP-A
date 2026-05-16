@@ -9,6 +9,26 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
 
+// Per-user rate limit for presigned URL generation: 50 per user per hour.
+// Keyed by authenticated user ID (Clerk session) so it cannot be bypassed by
+// rotating IPs or forging x-forwarded-for headers.
+interface RateEntry { count: number; resetAt: number }
+const UPLOAD_URL_USER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_URL_USER_LIMIT = 50;
+const uploadUrlUserRateMap = new Map<string, RateEntry>();
+
+function checkUploadUrlUserLimit(userId: string): boolean {
+  const now = Date.now();
+  let entry = uploadUrlUserRateMap.get(userId);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + UPLOAD_URL_USER_WINDOW_MS };
+  }
+  if (entry.count >= UPLOAD_URL_USER_LIMIT) return false;
+  entry.count += 1;
+  uploadUrlUserRateMap.set(userId, entry);
+  return true;
+}
+
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -54,22 +74,85 @@ router.post("/storage/uploads/file", upload.single("file"), async (req: Request,
   }
 });
 
+// ── Presigned upload guard ────────────────────────────────────────────────────
+// When a presigned PUT URL is issued we record the expected objectPath and a
+// hard size cap (100 MB for internal staff).  A background interval fires after
+// the URL has expired and automatically deletes any object that exceeds the cap,
+// without relying on the client to call a separate endpoint.
+//
+// Enforcement timeline:
+//   t=0        : URL issued, session recorded with checkAfter = t + ttl + 60s
+//   t=15m      : presigned URL expires (GCS rejects any PUT after this)
+//   t=16m      : background interval may fire and check the object
+//   t≤16m+5min : background interval fires; oversized object deleted if present
+//
+// This gives a worst-case enforcement window of ~21 minutes for internal staff.
+// For portal customers (self-registered) the upload is server-proxied with multer
+// so enforcement is immediate at the byte level.
+
+const PRESIGNED_MAX_BYTES = 100 * 1024 * 1024; // 100 MB hard cap for staff uploads
+const PRESIGNED_URL_TTL_SEC = 900;              // must match signObjectURL ttlSec
+
+interface UploadGuardSession {
+  objectPath: string;
+  userId: string;
+  checkAfter: number; // ms — check once URL has expired + 60s grace
+}
+const pendingUploadGuards = new Map<string, UploadGuardSession>();
+
+// Runs every 5 minutes; only processes sessions whose checkAfter has elapsed.
+const _uploadGuardInterval = setInterval(async () => {
+  const now = Date.now();
+  for (const [key, session] of [...pendingUploadGuards.entries()]) {
+    if (now < session.checkAfter) continue;
+    pendingUploadGuards.delete(key);
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(session.objectPath);
+      const [metadata] = await objectFile.getMetadata();
+      const sizeBytes = Number(metadata.size ?? 0);
+      if (sizeBytes > PRESIGNED_MAX_BYTES) {
+        await objectFile.delete();
+        console.warn(
+          `[upload-guard] Deleted oversized presigned upload: ${session.objectPath}` +
+          ` (${(sizeBytes / 1024 / 1024).toFixed(1)} MB, user: ${session.userId})`,
+        );
+      }
+    } catch {
+      // Object not found (URL unused or already deleted) — no action needed.
+    }
+  }
+}, 5 * 60 * 1000);
+// Allow Node.js to exit even if interval is still pending (dev/test convenience).
+if (typeof _uploadGuardInterval.unref === "function") _uploadGuardInterval.unref();
+
 /**
  * POST /storage/uploads/request-url
  *
  * Request a presigned GCS URL for file upload.
- * The client sends JSON metadata (name, size, contentType) — NOT the file.
- * Client then uploads the file directly to the returned presigned URL (GCS).
+ * Restricted to internal BizPortal staff (Clerk/session auth).
  *
- * Note: ACL metadata cannot be set at this point because the GCS object does
- * not yet exist.  Objects created through this flow will have no ACL metadata
- * at the time of upload; the business route that ultimately saves the objectPath
- * is responsible for calling trySetObjectEntityAclPolicy.  Until then the
- * download endpoint applies the admin-only fallback for these objects.
+ * Size enforcement: every issued URL is registered with the upload-guard
+ * background job.  After the URL's TTL expires the guard automatically checks
+ * the uploaded object's size and deletes it if it exceeds PRESIGNED_MAX_BYTES
+ * (100 MB).  This is a server-side, non-optional enforcement that does not
+ * depend on the client calling a separate validate endpoint.
+ *
+ * ACL metadata: cannot be set here because the GCS object does not yet exist.
+ * The business route that ultimately saves objectPath is responsible for calling
+ * trySetObjectEntityAclPolicy.  Until then the download endpoint applies
+ * admin-only fallback.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Unauthorized" });
+  // Restrict to internal BizPortal staff only (Clerk/session auth).
+  // Supabase bearer tokens (customer portal / mobile) are rejected here even
+  // though authMiddleware resolves req.user for them, because req.isInternalSession
+  // is false for bearer requests.
+  if (!await requireClerkUser(req, res)) return;
+
+  // Rate-limit by authenticated user ID — cannot be spoofed via headers.
+  const userId = (req.user as { id: string }).id;
+  if (!checkUploadUrlUserLimit(userId)) {
+    res.status(429).json({ error: "Terlalu banyak permintaan upload. Coba lagi dalam 1 jam." });
     return;
   }
 
@@ -83,6 +166,14 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
     const { name, size, contentType } = parsed.data;
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+    // Register size-guard session: background job will delete this object after
+    // the presigned URL expires if its size exceeds PRESIGNED_MAX_BYTES.
+    pendingUploadGuards.set(objectPath, {
+      objectPath,
+      userId,
+      checkAfter: Date.now() + (PRESIGNED_URL_TTL_SEC + 60) * 1000,
+    });
 
     res.json(
       RequestUploadUrlResponse.parse({

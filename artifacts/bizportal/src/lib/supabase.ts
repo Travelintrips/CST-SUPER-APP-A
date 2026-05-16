@@ -1,7 +1,14 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+// In dev mode (Vite dev server), prefer the _DEV credentials so the
+// development Supabase project is used instead of production.
+const isDev = import.meta.env.DEV;
+
+const rawUrl = (isDev ? import.meta.env.VITE_SUPABASE_URL_DEV : undefined)
+  ?? (import.meta.env.VITE_SUPABASE_URL as string | undefined);
+
+const supabaseAnonKey = (isDev ? import.meta.env.VITE_SUPABASE_ANON_KEY_DEV : undefined)
+  ?? (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
 
 function normalizeSupabaseUrl(url: string | undefined): string | null {
   if (!url) return null;

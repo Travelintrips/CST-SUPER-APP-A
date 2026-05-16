@@ -10,7 +10,8 @@ import {
   driverJobLogsTable,
   driverPhotosTable,
 } from "@workspace/db";
-import { eq, ilike, and, gte, lte, or, sql, desc } from "drizzle-orm";
+import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
+import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
@@ -87,6 +88,17 @@ function toItem(row: typeof logisticOrderItemsTable.$inferSelect) {
     inputData: row.inputData,
     calculationResult: row.calculationResult,
     subtotal: parseFloat(row.subtotal),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** Public-safe item projection — strips financial and raw-input data */
+function toPublicItem(row: typeof logisticOrderItemsTable.$inferSelect) {
+  return {
+    id: row.id,
+    category: row.category,
+    serviceName: row.serviceName,
+    calculatorType: row.calculatorType,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -254,9 +266,47 @@ sendLogisticOrderNotification({
   });
 });
 
+/** Public-safe order projection — strips PII, payment, financial, and internal approval fields */
+function toPublicOrder(row: typeof logisticOrdersTable.$inferSelect) {
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    shipmentType: row.shipmentType,
+    origin: row.origin,
+    destination: row.destination,
+    grossWeight: row.grossWeight ? parseFloat(row.grossWeight) : null,
+    volumeCbm: row.volumeCbm ? parseFloat(row.volumeCbm) : null,
+    jumlahKoli: row.jumlahKoli ?? null,
+    requiredDate: row.requiredDate ?? null,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** Simple in-memory rate limiter for public order-number lookup endpoints */
+const publicLookupHits = new Map<string, { count: number; resetAt: number }>();
+function publicLookupRateLimit(req: Request, res: Response, next: () => void) {
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
+  const now = Date.now();
+  const window = 60_000;
+  const limit = 20;
+  const entry = publicLookupHits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    publicLookupHits.set(ip, { count: 1, resetAt: now + window });
+    return next();
+  }
+  if (entry.count >= limit) {
+    res.status(429).json({ error: "Terlalu banyak permintaan. Coba lagi sebentar." });
+    return;
+  }
+  entry.count += 1;
+  next();
+}
+
 // GET /api/logistic/orders/by-number/:orderNumber — lookup by order number (public)
 logisticOrdersRouter.get(
   "/by-number/:orderNumber",
+  publicLookupRateLimit,
   async (req: Request, res: Response) => {
     const parsed = GetLogisticOrderByNumberParams.safeParse(req.params);
     if (!parsed.success) return res.status(400).json({ message: "Parameter tidak valid" });
@@ -274,13 +324,14 @@ logisticOrdersRouter.get(
       .from(logisticOrderItemsTable)
       .where(eq(logisticOrderItemsTable.orderId, order.id));
 
-    return res.json({ ...toOrder(order), items: items.map(toItem) });
+    return res.json({ ...toPublicOrder(order), items: items.map(toPublicItem) });
   }
 );
 
-// GET /api/logistic/orders/track/:orderNumber — full tracking data with driver job (public)
+// GET /api/logistic/orders/track/:orderNumber — tracking data with driver job (public)
 logisticOrdersRouter.get(
   "/track/:orderNumber",
+  publicLookupRateLimit,
   async (req: Request, res: Response) => {
     const orderNumber = String(req.params.orderNumber ?? "").toUpperCase().trim();
     if (!orderNumber) return res.status(400).json({ message: "Nomor order tidak valid" });
@@ -323,35 +374,24 @@ logisticOrdersRouter.get(
         jobNumber: driverJob.jobNumber,
         status: driverJob.status,
         vehicleType: driverJob.vehicleType ?? null,
-        truckPlate: driverJob.truckPlate ?? null,
-        pickupAddress: driverJob.pickupAddress ?? null,
-        deliveryAddress: driverJob.deliveryAddress ?? null,
         pickupDateTime: driverJob.pickupDateTime?.toISOString() ?? null,
         deliveryDateTime: driverJob.deliveryDateTime?.toISOString() ?? null,
         cargoDescription: driverJob.cargoDescription ?? null,
         weight: driverJob.weight ?? null,
         distance: driverJob.distance ?? null,
-        podReceiverName: driverJob.podReceiverName ?? null,
         assignedAt: driverJob.assignedAt.toISOString(),
         completedAt: driverJob.completedAt?.toISOString() ?? null,
         logs: logs.map((l) => ({
           id: l.id,
           status: l.status,
-          note: l.note ?? null,
           timestamp: l.timestamp.toISOString(),
-        })),
-        photos: photos.map((p) => ({
-          id: p.id,
-          url: p.url,
-          photoType: p.photoType,
-          takenAt: p.takenAt.toISOString(),
         })),
       };
     }
 
     return res.json({
-      ...toOrder(order),
-      items: items.map(toItem),
+      ...toPublicOrder(order),
+      items: items.map(toPublicItem),
       driverJob: driverJobData,
     });
   }
@@ -414,7 +454,24 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
           .from(logisticOrdersTable)
           .orderBy(sql`${logisticOrdersTable.createdAt} DESC`);
 
-  return res.json(rows.map((row) => toOrder(row)));
+  // Attach linked sales doc info for each order
+  const orderIds = rows.map((r) => r.id);
+  const linkedDocMap = new Map<number, { id: number; docNumber: string }>();
+  if (orderIds.length > 0) {
+    const linkedDocs = await db
+      .select({ logisticOrderId: salesDocumentsTable.logisticOrderId, id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+      .from(salesDocumentsTable)
+      .where(and(isNotNull(salesDocumentsTable.logisticOrderId), inArray(salesDocumentsTable.logisticOrderId, orderIds)));
+    for (const d of linkedDocs) {
+      if (d.logisticOrderId != null) linkedDocMap.set(d.logisticOrderId, { id: d.id, docNumber: d.docNumber });
+    }
+  }
+
+  return res.json(rows.map((row) => ({
+    ...toOrder(row),
+    linkedSalesDocId: linkedDocMap.get(row.id)?.id ?? null,
+    linkedSalesDocNumber: linkedDocMap.get(row.id)?.docNumber ?? null,
+  })));
 });
 
 // GET /api/logistic/orders/summary — dashboard stats (admin)
@@ -532,10 +589,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
 
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-  const items = await db
-    .select()
-    .from(logisticOrderItemsTable)
-    .where(eq(logisticOrderItemsTable.orderId, id));
+  const [items, linkedDocRows] = await Promise.all([
+    db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, id)),
+    db.select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+      .from(salesDocumentsTable)
+      .where(eq(salesDocumentsTable.logisticOrderId, id))
+      .limit(1),
+  ]);
 
   let approvedVendorName: string | null = null;
   if (order.approvedVendorId) {
@@ -543,7 +603,13 @@ logisticOrdersRouter.get("/:id", async (req: Request, res: Response) => {
     approvedVendorName = v?.name ?? null;
   }
 
-  return res.json({ ...toOrder(order, approvedVendorName), items: items.map(toItem) });
+  const linkedDoc = linkedDocRows[0] ?? null;
+  return res.json({
+    ...toOrder(order, approvedVendorName),
+    items: items.map(toItem),
+    linkedSalesDocId: linkedDoc?.id ?? null,
+    linkedSalesDocNumber: linkedDoc?.docNumber ?? null,
+  });
 });
 
 // PUT /api/logistic/orders/:id/status — update status (admin)
