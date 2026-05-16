@@ -155,6 +155,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "rfq", href: "/purchase/rfq", icon: ClipboardList },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/receive", icon: PackageCheck },
+        { titleKey: "Bahan Thai Tea", href: "/purchase/thai-tea", icon: ChefHat },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "vendorService", href: "/logistics/vendors", icon: Truck },
         { titleKey: "bills", href: "/purchase/bills", icon: FileText },

@@ -34,6 +34,7 @@ import posInventoryRouter from "./posInventory";
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
 import inventoryStockRouter from "./inventoryStock";
+import thaiTeaSuppliesRouter from "./thaiTeaSupplies";
 
 const router: IRouter = Router();
 
@@ -74,4 +75,5 @@ router.use("/warehouse", warehouseRouter);
 router.use("/inventory/receive", inventoryReceiveRouter);
 router.use("/inventory/stock", inventoryStockRouter);
 router.use("/inventory/warehouses", inventoryStockRouter);
+router.use("/thai-tea", thaiTeaSuppliesRouter);
 export default router;

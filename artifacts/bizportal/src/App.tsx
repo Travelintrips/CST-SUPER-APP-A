@@ -84,6 +84,7 @@ import WarehouseReturnsPage from "@/pages/warehouse/returns";
 import WarehouseRecipesPage from "@/pages/warehouse/recipes";
 import WarehouseOpnamePage from "@/pages/warehouse/opname";
 import PurchaseReceivePage from "@/pages/purchase/receive";
+import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
 import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
 import PosInventoryItemsPage from "@/pages/pos-inventory-items";
 import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
@@ -367,6 +368,8 @@ function Router() {
         <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
         {/* Purchase Receive */}
         <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
+        {/* Thai Tea Purchase */}
+        <Route path="/purchase/thai-tea" component={() => <ProtectedRoute component={ThaiTeaPurchasePage} />} />
         {/* POS Inventory */}
         <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
         <Route path="/pos-inventory/branches" component={() => <ProtectedRoute component={PosBranchesPage} />} />
