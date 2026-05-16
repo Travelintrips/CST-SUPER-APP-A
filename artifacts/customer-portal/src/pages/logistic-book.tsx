@@ -688,7 +688,7 @@ export default function BookPage() {
   }
 
   function handleSubmit() {
-    const { companyName, customerName, email } = customerForm;
+    const { companyName, customerName, email, phone, origin, destination } = customerForm;
     if (!customerName || !email) {
       toast({ title: "Lengkapi nama PIC dan email", variant: "destructive" });
       return;
