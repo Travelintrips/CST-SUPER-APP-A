@@ -118,9 +118,8 @@ export default function Login() {
       return;
     }
     setErrorMsg("");
-    // Redirect to /bizportal/?portal=customer which is whitelisted in Supabase redirect URLs.
-    // The ?portal=customer param tells BizPortal's main.tsx to forward tokens back to Customer Portal.
-    const redirectTo = `${window.location.origin}/bizportal/?portal=customer`;
+    // Redirect back to this exact customer portal page after Google OAuth.
+    const redirectTo = window.location.origin + window.location.pathname;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

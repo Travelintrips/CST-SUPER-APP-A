@@ -46,6 +46,9 @@ import {
   GitBranch,
   RotateCcw,
   AlertTriangle,
+  AlertTriangle,
+  RotateCcw,
+  PackageCheck,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -151,6 +154,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "purchaseDashboard", href: "/purchase", icon: LayoutDashboard },
         { titleKey: "rfq", href: "/purchase/rfq", icon: ClipboardList },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
+        { titleKey: "Terima Barang (GRN)", href: "/purchase/receive", icon: PackageCheck },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "vendorService", href: "/logistics/vendors", icon: Truck },
         { titleKey: "bills", href: "/purchase/bills", icon: FileText },
@@ -225,6 +229,22 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Rusak / Hilang", href: "/pos-inventory/losses", icon: AlertTriangle },
         { titleKey: "Stock Opname", href: "/pos-inventory/opname", icon: ClipboardCheck },
         { titleKey: "Mutasi Stok", href: "/pos-inventory/mutations", icon: Activity },
+      ],
+    },
+    {
+      type: "group",
+      titleKey: "Warehouse",
+      basePath: "/warehouse",
+      icon: Warehouse,
+      roles: ["admin"],
+      children: [
+        { titleKey: "Stok Gudang", href: "/warehouse/stock", icon: Boxes },
+        { titleKey: "Mutasi Stok", href: "/warehouse/movements", icon: Activity },
+        { titleKey: "Transfer Antar Gudang", href: "/warehouse/transfers", icon: ArrowLeftRight },
+        { titleKey: "Rusak / Hilang", href: "/warehouse/damage", icon: AlertTriangle },
+        { titleKey: "Retur Barang", href: "/warehouse/returns", icon: RotateCcw },
+        { titleKey: "Resep / BOM", href: "/warehouse/recipes", icon: ChefHat },
+        { titleKey: "Stock Opname", href: "/warehouse/opname", icon: ClipboardCheck },
       ],
     },
     {

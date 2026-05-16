@@ -68,6 +68,14 @@ interface Product {
   stockUsagePerUnit?: string | null;
   stock?: string | null;
   stockUnit?: string;
+  linkedProductId?: number | null;
+}
+
+interface InvProduct {
+  id: number;
+  name: string;
+  sku: string;
+  unit: string;
 }
 
 function resolveStoredUrl(url?: string | null): string | null {
@@ -147,7 +155,8 @@ export default function PosKasirAdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productDialog, setProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
+  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs", linkedProductId: "" });
+  const [invProducts, setInvProducts] = useState<InvProduct[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
   const imageFileRef = useRef<HTMLInputElement>(null);
 
@@ -241,6 +250,14 @@ export default function PosKasirAdminPage() {
     if (res.ok) setProducts(await res.json() as Product[]);
   }, []);
 
+  const loadInvProducts = useCallback(async () => {
+    const res = await fetch("/api/products?limit=500", { credentials: "include" });
+    if (res.ok) {
+      const data = await res.json() as { items?: InvProduct[]; data?: InvProduct[] } | InvProduct[];
+      setInvProducts(Array.isArray(data) ? data : ((data as { items?: InvProduct[]; data?: InvProduct[] }).items ?? (data as { items?: InvProduct[]; data?: InvProduct[] }).data ?? []));
+    }
+  }, []);
+
   const loadStocks = useCallback(async (branchIdFilter?: string) => {
     const filter = branchIdFilter ?? stockBranchFilter;
     const sep = (filter && filter !== "all") ? `?branchId=${filter}&_t=${Date.now()}` : `?_t=${Date.now()}`;
@@ -301,9 +318,10 @@ export default function PosKasirAdminPage() {
     loadCashiers();
     loadReport();
     loadProducts();
+    loadInvProducts();
     loadStocks().then(() => setLastUpdated(new Date()));
     loadShifts();
-  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadStocks, loadShifts]);
+  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadInvProducts, loadStocks, loadShifts]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -392,6 +410,7 @@ export default function PosKasirAdminPage() {
       ...productForm,
       stockItemId: productForm.stockItemId ? Number(productForm.stockItemId) : null,
       stockUsagePerUnit: productForm.stockUsagePerUnit ? String(productForm.stockUsagePerUnit) : "1",
+      linkedProductId: productForm.linkedProductId ? Number(productForm.linkedProductId) : null,
     };
     const res = await fetch(url, {
       method, credentials: "include",
@@ -855,7 +874,7 @@ export default function PosKasirAdminPage() {
                 <CardTitle className="text-base">Menu Thai Tea CST</CardTitle>
                 <Button size="sm" onClick={() => {
                   setEditingProduct(null);
-                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
+                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs", linkedProductId: "" });
                   setProductDialog(true);
                 }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Menu
@@ -916,7 +935,7 @@ export default function PosKasirAdminPage() {
                           <div className="flex justify-end gap-1">
                             <Button size="sm" variant="ghost" onClick={() => {
                               setEditingProduct(p);
-                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "", stockItemId: p.stockItemId ? String(p.stockItemId) : "", stockUsagePerUnit: p.stockUsagePerUnit ?? "1", stock: p.stock != null ? String(p.stock) : "", stockUnit: p.stockUnit ?? "pcs" });
+                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "", stockItemId: p.stockItemId ? String(p.stockItemId) : "", stockUsagePerUnit: p.stockUsagePerUnit ?? "1", stock: p.stock != null ? String(p.stock) : "", stockUnit: p.stockUnit ?? "pcs", linkedProductId: p.linkedProductId ? String(p.linkedProductId) : "" });
                               setProductDialog(true);
                             }}>
                               <Pencil className="h-3.5 w-3.5" />
@@ -1228,9 +1247,35 @@ export default function PosKasirAdminPage() {
             </div>
             <div className="border-t pt-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pemotongan Stok Otomatis</p>
+              {/* Link ke produk inventory (baru) */}
+              <div>
+                <Label className="text-xs">Produk Inventory Terkait</Label>
+                <Select
+                  value={productForm.linkedProductId || "none"}
+                  onValueChange={(v) => setProductForm((f) => ({ ...f, linkedProductId: v === "none" ? "" : v }))}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="— Tidak ada (tidak mengurangi inv. stok) —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Tidak ada —</SelectItem>
+                    {invProducts.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        [{p.sku}] {p.name} ({p.unit})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {productForm.linkedProductId && (
+                  <p className="text-xs text-green-600 mt-1">
+                    Setiap penjualan akan mengurangi stok gudang cabang untuk produk ini.
+                  </p>
+                )}
+              </div>
+              {/* Bahan stok (sistem lama) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs">Bahan Stok Terkait</Label>
+                  <Label className="text-xs">Bahan Stok Terkait (lama)</Label>
                   <Select value={productForm.stockItemId || "none"} onValueChange={(v) => setProductForm((f) => ({ ...f, stockItemId: v === "none" ? "" : v }))}>
                     <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="— Tidak ada —" /></SelectTrigger>
                     <SelectContent>
