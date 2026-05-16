@@ -237,14 +237,14 @@ export default function PosKasirAdminPage() {
   }, [reportFrom, reportTo, reportBranchId, reportCashierId]);
 
   const loadProducts = useCallback(async () => {
-    const res = await fetch("/api/pos-kasir/products/all", { credentials: "include" });
+    const res = await fetch(`/api/pos-kasir/products/all?_t=${Date.now()}`, { credentials: "include", cache: "no-store" });
     if (res.ok) setProducts(await res.json() as Product[]);
   }, []);
 
   const loadStocks = useCallback(async (branchIdFilter?: string) => {
     const filter = branchIdFilter ?? stockBranchFilter;
-    const params = (filter && filter !== "all") ? `?branchId=${filter}` : "";
-    const res = await fetch(`/api/pos-kasir/admin/stock${params}`, { credentials: "include" });
+    const sep = (filter && filter !== "all") ? `?branchId=${filter}&_t=${Date.now()}` : `?_t=${Date.now()}`;
+    const res = await fetch(`/api/pos-kasir/admin/stock${sep}`, { credentials: "include", cache: "no-store" });
     if (res.ok) setStocks(await res.json() as StockItem[]);
   }, [stockBranchFilter]);
 
