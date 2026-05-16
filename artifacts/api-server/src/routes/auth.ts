@@ -70,16 +70,18 @@ function getGoogleOrigin(req: Request): string {
 }
 
 function setSessionCookie(res: Response, sid: string) {
+  // In the Replit dev environment the BizPortal frontend runs inside a
+  // cross-site iframe (top-level: replit.com, API/app: *.replit.dev).
+  // SameSite=Lax blocks cookies on cross-site fetch requests, which makes
+  // /api/auth/user always return {user:null} inside the preview pane.
+  // We use SameSite=None (which still requires Secure=true) so the session
+  // cookie is included in credentialed fetch calls from the iframe.
+  // In production (REPLIT_DEPLOYMENT=1) we revert to Lax for CSRF safety.
+  const isReplitDev = !!process.env.REPLIT_DEV_DOMAIN && !process.env.REPLIT_DEPLOYMENT;
   res.cookie(SESSION_COOKIE, sid, {
     httpOnly: true,
     secure: true,
-    // "lax" prevents the browser from including the session cookie in
-    // cross-site sub-resource requests (fetch/XHR with credentials, form POST
-    // from a third-party page). Top-level GET navigations (e.g. the Google
-    // OAuth callback redirect) still carry the cookie. The API and BizPortal
-    // share the same eTLD+1 (cstlogistic.co.id / replit.dev in dev), so
-    // same-site requests are unaffected.
-    sameSite: "lax",
+    sameSite: isReplitDev ? "none" : "lax",
     path: "/",
     maxAge: SESSION_TTL,
   });

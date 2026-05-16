@@ -35,7 +35,9 @@ const connectionString = resolveConnectionString();
 export const pool = new Pool({
   connectionString,
   ssl: { rejectUnauthorized: false },
-  max: 10,
+  // Supabase session pooler caps at pool_size=15 shared across all processes.
+  // Keep max low so we don't exhaust it, especially during startup migrations.
+  max: 5,
   idleTimeoutMillis: 20000,
   connectionTimeoutMillis: 5000,
   keepAlive: true,

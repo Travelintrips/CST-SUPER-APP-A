@@ -121,13 +121,12 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
           window.removeEventListener("message", onMessage);
         }, 5 * 60 * 1000);
       } else {
-        // Popup blocked — navigate top-level
-        try {
-          if (window.top) window.top.location.href = loginUrl;
-          else window.location.href = loginUrl;
-        } catch {
-          window.location.href = loginUrl;
-        }
+        // Popup blocked — navigate the iframe directly using a normal returnTo
+        // (NOT the "popup" sentinel, which would render the close-me page).
+        const currentPath = window.location.pathname + window.location.search;
+        const fallbackReturnTo = encodeURIComponent(currentPath !== "/" ? currentPath : base);
+        const fallbackUrl = `${origin}/api/login/google?returnTo=${fallbackReturnTo}`;
+        window.location.href = fallbackUrl;
       }
     } else {
       // Not in iframe: normal redirect flow
