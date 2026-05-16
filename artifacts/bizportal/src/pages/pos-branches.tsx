@@ -22,6 +22,7 @@ interface Branch {
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api${path}`, {
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...opts,
   });

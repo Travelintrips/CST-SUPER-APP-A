@@ -19,7 +19,7 @@ interface Branch { id: number; name: string; }
 interface Transfer { id: number; transfer_number: string; from_branch_name: string; to_branch_name: string; status: string; }
 
 async function apiFetch(path: string) {
-  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" } });
+  const res = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" } });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
