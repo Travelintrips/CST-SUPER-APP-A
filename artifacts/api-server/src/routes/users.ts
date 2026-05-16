@@ -105,13 +105,25 @@ router.get("/me", async (req, res) => {
 // GET /api/users — admin only
 router.get("/", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
-  const all = await db.select().from(usersTable);
-  return res.json(all.map((u) => ({
+  const { sql: rawSql } = await import("drizzle-orm");
+  const rows = await db.execute(rawSql`
+    SELECT u.id, u.email, u.name, u.role, u.division,
+           cr.id   AS custom_role_id,
+           cr.name AS custom_role_name,
+           cr.color AS custom_role_color
+    FROM users u
+    LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id
+    ORDER BY u.name
+  `);
+  return res.json(rows.rows.map((u: any) => ({
     id: u.id,
     email: u.email,
     name: u.name,
     role: u.role,
     division: u.division,
+    customRoleId: u.custom_role_id ?? null,
+    customRoleName: u.custom_role_name ?? null,
+    customRoleColor: u.custom_role_color ?? null,
   })));
 });
 
