@@ -5,6 +5,8 @@ import { getLastResponseTime, useListLogisticOrders } from "@workspace/api-clien
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, Building2, Globe } from "lucide-react";
+import { ShoppingCart, DollarSign, Truck, Package, Activity, AlertTriangle, ChevronRight, Ship, ArrowRight, Clock, RefreshCw, TrendingUp, TrendingDown, Minus, PackageOpen, ChevronDown, ChevronUp, FilePlus, X, Users, CheckCircle2, CircleDot, FileText, BarChart2, ExternalLink, LayoutGrid, Building2 } from "lucide-react";
+import { useCompany } from "@/contexts/CompanyContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateLogisticOrderStatus, useCreateSalesDocument, getListLogisticOrdersQueryKey } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
@@ -93,6 +95,7 @@ function getStoredInterval(): IntervalValue {
 
 // ── Dashboard Summary Types ───────────────────────────────────────────────────
 interface CompanyBreakdownItem {
+interface PerCompanyEntry {
   companyId: number;
   companyName: string;
   companyCode: string;
@@ -106,6 +109,11 @@ interface CompanyBreakdownItem {
 interface DashboardSummary {
   isConsolidated: boolean;
   scopeCompanyId: number | null;
+  ordersThisMonth: number;
+  contribution: number;
+}
+
+interface DashboardSummary {
   totalOrders: number;
   totalRevenue: number;
   totalShipments: number;
@@ -123,11 +131,15 @@ interface DashboardSummary {
   salesOrdersConfirmed: number;
   monthlyRevenueTrend: { month: string; revenue: number }[];
   companyBreakdown: CompanyBreakdownItem[];
+  consolidated?: boolean;
+  companyId?: number | null;
+  perCompany?: PerCompanyEntry[];
 }
 
 export default function DashboardPage() {
   const { t } = useLanguage();
   const { companyQueryParam, isConsolidated, activeCompany } = useCompany();
+  const { activeCompany, isConsolidated, companyQueryParam } = useCompany();
   const [intervalValue, setIntervalValue] = useState<IntervalValue>(getStoredInterval);
 
   const refetchInterval = intervalValue === "off" ? false : Number(intervalValue);
@@ -137,6 +149,7 @@ export default function DashboardPage() {
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/summary?${companyQueryParam}`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal mengambil data dashboard");
+      if (!res.ok) throw new Error("Failed to fetch dashboard summary");
       return res.json() as Promise<DashboardSummary>;
     },
     refetchInterval,
@@ -367,6 +380,16 @@ export default function DashboardPage() {
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">
                   <Building2 className="h-3 w-3" />{activeCompany.companyName}
                 </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
+              {isConsolidated ? (
+                <Badge className="bg-purple-100 text-purple-800 border border-purple-200 gap-1 text-xs font-medium">
+                  <LayoutGrid className="h-3 w-3" /> Holding Consolidated
+                </Badge>
+              ) : activeCompany ? (
+                <Badge className="bg-indigo-100 text-indigo-800 border border-indigo-200 gap-1 text-xs font-medium">
+                  <Building2 className="h-3 w-3" /> {activeCompany.companyName}
+                </Badge>
               ) : null}
             </div>
             <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">{t.dashboard.subtitle}</p>
@@ -665,6 +688,54 @@ export default function DashboardPage() {
                   </div>
                 </>
               )}
+        {/* ── Holding Consolidated Breakdown ── */}
+        {isConsolidated && summary?.perCompany && summary.perCompany.length > 0 && (
+          <Card className="border-purple-200/60">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5 text-purple-600" />
+                <CardTitle className="text-base">Revenue per Perusahaan — Bulan Ini</CardTitle>
+              </div>
+              <CardDescription className="text-xs">Perbandingan kontribusi revenue masing-masing perusahaan</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {summary.perCompany.map((co) => {
+                const barW = Math.max(co.contribution, 2);
+                return (
+                  <div key={co.companyId} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="inline-flex h-5 w-12 shrink-0 items-center justify-center rounded bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+                          {co.companyCode.slice(0, 3).toUpperCase()}
+                        </span>
+                        <span className="font-medium truncate">{co.companyName}</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 text-right">
+                        <span className="text-xs text-muted-foreground">{co.ordersThisMonth} order</span>
+                        <span className="font-semibold text-emerald-700 tabular-nums">
+                          {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(co.revenueThisMonth)}
+                        </span>
+                        <span className="text-xs font-medium text-purple-700 w-8 text-right">{co.contribution}%</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
+                        style={{ width: `${barW}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Total row */}
+              <div className="pt-2 border-t border-border flex items-center justify-between text-sm font-semibold">
+                <span>Total Holding</span>
+                <span className="text-emerald-700 tabular-nums">
+                  {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(
+                    summary.perCompany.reduce((s, c) => s + c.revenueThisMonth, 0)
+                  )}
+                </span>
+              </div>
             </CardContent>
           </Card>
         )}

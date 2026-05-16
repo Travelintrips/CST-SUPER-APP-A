@@ -1,4 +1,5 @@
 import { Building2, ChevronDown, Check, Globe } from "lucide-react";
+import { Building2, ChevronDown, Check, LayoutGrid } from "lucide-react";
 import { useCompany, CONSOLIDATED_ID } from "@/contexts/CompanyContext";
 import {
   DropdownMenu,
@@ -17,6 +18,11 @@ export function CompanySwitcher() {
   if (companies.length === 0) return null;
 
   const label = isConsolidated ? "Semua Perusahaan" : (activeCompany?.companyName ?? "—");
+  const { companies, activeCompany, activeCompanyId, isConsolidated, setActiveCompany, setConsolidatedMode } = useCompany();
+
+  if (companies.length === 0) return null;
+
+  const triggerLabel = isConsolidated ? "Holding Consolidated" : (activeCompany?.companyName ?? "Pilih Perusahaan");
 
   return (
     <DropdownMenu>
@@ -31,6 +37,10 @@ export function CompanySwitcher() {
             : <Building2 className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
           }
           <span className="truncate font-medium">{label}</span>
+            ? <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-purple-400" />
+            : <Building2 className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+          }
+          <span className="truncate font-medium">{triggerLabel}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
@@ -59,6 +69,26 @@ export function CompanySwitcher() {
 
         {/* Individual companies */}
         {companies.map((company) => (
+        {/* Holding Consolidated option */}
+        <DropdownMenuItem
+          onClick={setConsolidatedMode}
+          className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800 focus:bg-slate-800"
+        >
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-600/20 text-purple-400 text-xs font-bold border border-purple-500/30">
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-slate-200">Holding Consolidated</p>
+            <p className="text-xs text-slate-500">Laporan gabungan semua perusahaan</p>
+          </div>
+          {isConsolidated && (
+            <Check className="h-4 w-4 text-purple-400 shrink-0" />
+          )}
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator className="bg-slate-700" />
+
+        {companies.filter((c) => !c.isHolding).map((company) => (
           <DropdownMenuItem
             key={company.id}
             onClick={() => setActiveCompany(company)}
@@ -93,6 +123,10 @@ export function CompanyBadge() {
       >
         <Globe className="h-3 w-3" />
         Konsolidasi
+        className="text-xs border-purple-500/40 text-purple-300 bg-purple-500/10 gap-1 h-5"
+      >
+        <LayoutGrid className="h-3 w-3" />
+        CONSOLIDATED
       </Badge>
     );
   }
