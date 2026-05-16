@@ -12,16 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export function CompanySwitcher() {
-  const { companies, activeCompany, isConsolidated, setActiveCompany, setConsolidated } = useCompany();
+  const { companies, activeCompany, isConsolidated, setActiveCompany, setConsolidatedMode } = useCompany();
 
   if (companies.length === 0) return null;
 
-  const label = isConsolidated ? "Semua Perusahaan" : (activeCompany?.companyName ?? "—");
-  const { companies, activeCompany, activeCompanyId, isConsolidated, setActiveCompany, setConsolidatedMode } = useCompany();
-
-  if (companies.length === 0) return null;
-
-  const triggerLabel = isConsolidated ? "Holding Consolidated" : (activeCompany?.companyName ?? "Pilih Perusahaan");
+  const label = isConsolidated ? "Holding Consolidated" : (activeCompany?.companyName ?? "Pilih Perusahaan");
 
   return (
     <DropdownMenu>
@@ -32,14 +27,10 @@ export function CompanySwitcher() {
           className="h-8 max-w-[240px] justify-between gap-1 border-slate-700 bg-slate-800/60 text-slate-200 hover:bg-slate-700 hover:text-white text-xs px-2"
         >
           {isConsolidated
-            ? <Globe className="h-3.5 w-3.5 shrink-0 text-violet-400" />
-            : <Building2 className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
-          }
-          <span className="truncate font-medium">{label}</span>
             ? <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-purple-400" />
             : <Building2 className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
           }
-          <span className="truncate font-medium">{triggerLabel}</span>
+          <span className="truncate font-medium">{label}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
@@ -49,29 +40,9 @@ export function CompanySwitcher() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-slate-700" />
 
-        {/* All Companies (Consolidated) */}
-        <DropdownMenuItem
-          onClick={setConsolidated}
-          className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800 focus:bg-slate-800 border-b border-slate-700/50 mb-1"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-violet-600/20 text-violet-400 text-xs font-bold border border-violet-500/30">
-            <Globe className="h-3.5 w-3.5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-200 truncate">Semua Perusahaan</p>
-            <p className="text-xs text-slate-500">Laporan konsolidasi holding</p>
-          </div>
-          {isConsolidated && (
-            <Check className="h-4 w-4 text-violet-400 shrink-0" />
-          )}
-        </DropdownMenuItem>
-
-        {/* Individual companies */}
-        {companies.map((company) => (
-        {/* Holding Consolidated option */}
         <DropdownMenuItem
           onClick={setConsolidatedMode}
-          className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800 focus:bg-slate-800"
+          className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800 focus:bg-slate-800 border-b border-slate-700/50 mb-1"
         >
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-600/20 text-purple-400 text-xs font-bold border border-purple-500/30">
             <LayoutGrid className="h-3.5 w-3.5" />
@@ -84,8 +55,6 @@ export function CompanySwitcher() {
             <Check className="h-4 w-4 text-purple-400 shrink-0" />
           )}
         </DropdownMenuItem>
-
-        <DropdownMenuSeparator className="bg-slate-700" />
 
         {companies.filter((c) => !c.isHolding).map((company) => (
           <DropdownMenuItem
@@ -118,10 +87,6 @@ export function CompanyBadge() {
     return (
       <Badge
         variant="outline"
-        className="text-xs border-violet-500/40 text-violet-300 bg-violet-500/10 gap-1 h-5"
-      >
-        <Globe className="h-3 w-3" />
-        Konsolidasi
         className="text-xs border-purple-500/40 text-purple-300 bg-purple-500/10 gap-1 h-5"
       >
         <LayoutGrid className="h-3 w-3" />

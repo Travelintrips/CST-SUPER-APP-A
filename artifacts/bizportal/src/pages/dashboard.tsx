@@ -16,7 +16,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useCompany } from "@/contexts/CompanyContext";
 
 interface ResponseTimeEntry {
   timestamp: string;
@@ -93,6 +92,16 @@ function getStoredInterval(): IntervalValue {
 
 // ── Dashboard Summary Types ───────────────────────────────────────────────────
 interface CompanyBreakdownItem {
+  companyId: number;
+  companyName: string;
+  companyCode: string;
+  revenueThisMonth: number;
+  revenuePrevMonth: number;
+  ordersThisMonth: number;
+  totalRevenue: number;
+  contributionPct: number;
+}
+
 interface PerCompanyEntry {
   companyId: number;
   companyName: string;
@@ -109,9 +118,6 @@ interface DashboardSummary {
   scopeCompanyId: number | null;
   ordersThisMonth: number;
   contribution: number;
-}
-
-interface DashboardSummary {
   totalOrders: number;
   totalRevenue: number;
   totalShipments: number;
@@ -137,7 +143,6 @@ interface DashboardSummary {
 export default function DashboardPage() {
   const { t } = useLanguage();
   const { companyQueryParam, isConsolidated, activeCompany } = useCompany();
-  const { activeCompany, isConsolidated, companyQueryParam } = useCompany();
   const [intervalValue, setIntervalValue] = useState<IntervalValue>(getStoredInterval);
 
   const refetchInterval = intervalValue === "off" ? false : Number(intervalValue);
@@ -147,7 +152,6 @@ export default function DashboardPage() {
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/summary?${companyQueryParam}`, { credentials: "include" });
       if (!res.ok) throw new Error("Gagal mengambil data dashboard");
-      if (!res.ok) throw new Error("Failed to fetch dashboard summary");
       return res.json() as Promise<DashboardSummary>;
     },
     refetchInterval,
@@ -368,16 +372,6 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
-              {isConsolidated ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
-                  <Globe className="h-3 w-3" />Konsolidasi Semua
-                </span>
-              ) : activeCompany ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">
-                  <Building2 className="h-3 w-3" />{activeCompany.companyName}
-                </span>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t.dashboard.title}</h1>
               {isConsolidated ? (
@@ -686,6 +680,10 @@ export default function DashboardPage() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* ── Holding Consolidated Breakdown ── */}
         {isConsolidated && summary?.perCompany && summary.perCompany.length > 0 && (
           <Card className="border-purple-200/60">
