@@ -46,9 +46,8 @@ import {
   GitBranch,
   RotateCcw,
   AlertTriangle,
-  AlertTriangle,
-  RotateCcw,
   PackageCheck,
+  QrCode,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -224,11 +223,14 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Bahan Baku", href: "/pos-inventory/items", icon: PackageSearch },
         { titleKey: "Stok", href: "/pos-inventory/stocks", icon: Boxes },
         { titleKey: "Resep / BOM", href: "/pos-inventory/recipes", icon: ChefHat },
+        { titleKey: "Dashboard", href: "/pos-inventory/dashboard", icon: LayoutDashboard },
         { titleKey: "Transfer Stok", href: "/pos-inventory/transfers", icon: ArrowLeftRight },
         { titleKey: "Retur Barang", href: "/pos-inventory/returns", icon: RotateCcw },
         { titleKey: "Rusak / Hilang", href: "/pos-inventory/losses", icon: AlertTriangle },
         { titleKey: "Stock Opname", href: "/pos-inventory/opname", icon: ClipboardCheck },
         { titleKey: "Mutasi Stok", href: "/pos-inventory/mutations", icon: Activity },
+        { titleKey: "QR Generator", href: "/pos-inventory/qr-generator", icon: QrCode },
+        { titleKey: "QR Scanner", href: "/pos-inventory/qr-scanner", icon: ScanLine },
       ],
     },
     {

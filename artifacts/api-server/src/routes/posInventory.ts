@@ -996,4 +996,168 @@ router.get("/reports/low-stock", requireClerkUser, async (_req: Request, res: Re
   res.json(rows.rows);
 });
 
+// ── SCAN RESULT ENDPOINTS ────────────────────────────────────────────────────
+
+router.get("/scan-result/product/:id", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const item = await db.execute(sql`SELECT * FROM pos_inventory_items WHERE id = ${id}`);
+  if (item.rows.length === 0) { res.status(404).json({ message: "Item tidak ditemukan" }); return; }
+  const stocks = await db.execute(sql`
+    SELECT s.qty, b.name as branch_name, w.name as warehouse_name, r.name as rack_name
+    FROM pos_inventory_stocks s
+    JOIN pos_branches b ON b.id = s.branch_id
+    LEFT JOIN pos_warehouses w ON w.id = s.warehouse_id
+    LEFT JOIN pos_racks r ON r.id = s.rack_id
+    WHERE s.item_id = ${id}
+    ORDER BY b.name, w.name
+  `);
+  res.json({ item: item.rows[0], stocks: stocks.rows });
+});
+
+router.get("/scan-result/rack/:id", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const rack = await db.execute(sql`
+    SELECT r.*, w.name as warehouse_name, b.name as branch_name
+    FROM pos_racks r
+    JOIN pos_warehouses w ON w.id = r.warehouse_id
+    JOIN pos_branches b ON b.id = w.branch_id
+    WHERE r.id = ${id}
+  `);
+  if (rack.rows.length === 0) { res.status(404).json({ message: "Rak tidak ditemukan" }); return; }
+  const stocks = await db.execute(sql`
+    SELECT s.qty, i.name as item_name, i.unit, i.sku
+    FROM pos_inventory_stocks s
+    JOIN pos_inventory_items i ON i.id = s.item_id
+    WHERE s.rack_id = ${id}
+    ORDER BY i.name
+  `);
+  res.json({ rack: rack.rows[0], stocks: stocks.rows });
+});
+
+router.get("/scan-result/warehouse/:id", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const wh = await db.execute(sql`
+    SELECT w.*, b.name as branch_name FROM pos_warehouses w
+    JOIN pos_branches b ON b.id = w.branch_id WHERE w.id = ${id}
+  `);
+  if (wh.rows.length === 0) { res.status(404).json({ message: "Gudang tidak ditemukan" }); return; }
+  const stocks = await db.execute(sql`
+    SELECT s.qty, i.name as item_name, i.unit, i.sku, i.min_stock
+    FROM pos_inventory_stocks s
+    JOIN pos_inventory_items i ON i.id = s.item_id
+    WHERE s.warehouse_id = ${id}
+    ORDER BY i.name
+  `);
+  res.json({ warehouse: wh.rows[0], stocks: stocks.rows });
+});
+
+router.get("/scan-result/transfer/:id", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const transfer = await db.execute(sql`
+    SELECT t.*, fb.name as from_branch_name, tb.name as to_branch_name
+    FROM pos_stock_transfers t
+    JOIN pos_branches fb ON fb.id = t.from_branch_id
+    JOIN pos_branches tb ON tb.id = t.to_branch_id
+    WHERE t.id = ${id}
+  `);
+  if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
+  const items = await db.execute(sql`
+    SELECT ti.qty, i.name as item_name, i.unit
+    FROM pos_stock_transfer_items ti
+    JOIN pos_inventory_items i ON i.id = ti.item_id
+    WHERE ti.transfer_id = ${id}
+  `);
+  res.json({ transfer: transfer.rows[0], items: items.rows });
+});
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+
+router.get("/dashboard", requireClerkUser, async (_req: Request, res: Response) => {
+  const [
+    stockByWarehouse,
+    lowStockItems,
+    transferStats,
+    recentLosses,
+    recentMutations,
+    posOrdersToday,
+  ] = await Promise.all([
+    db.execute(sql`
+      SELECT w.name as warehouse_name, b.name as branch_name,
+             COUNT(DISTINCT s.item_id) as item_count,
+             COALESCE(SUM(s.qty), 0) as total_qty
+      FROM pos_warehouses w
+      JOIN pos_branches b ON b.id = w.branch_id
+      LEFT JOIN pos_inventory_stocks s ON s.warehouse_id = w.id
+      GROUP BY w.id, w.name, b.name
+      ORDER BY b.name, w.name
+    `),
+    db.execute(sql`
+      SELECT i.name as item_name, i.sku, i.unit, i.min_stock,
+             b.name as branch_name,
+             COALESCE(SUM(s.qty), 0) as total_qty,
+             i.min_stock - COALESCE(SUM(s.qty), 0) as shortage
+      FROM pos_inventory_items i
+      CROSS JOIN pos_branches b
+      LEFT JOIN pos_inventory_stocks s ON s.item_id = i.id AND s.branch_id = b.id
+      WHERE i.is_active = true
+      GROUP BY i.id, i.name, i.sku, i.unit, i.min_stock, b.id, b.name
+      HAVING COALESCE(SUM(s.qty), 0) <= i.min_stock
+      ORDER BY shortage DESC
+      LIMIT 20
+    `),
+    db.execute(sql`
+      SELECT status, COUNT(*) as cnt
+      FROM pos_stock_transfers
+      GROUP BY status
+    `),
+    db.execute(sql`
+      SELECT l.loss_type, COUNT(*) as cnt,
+             SUM(l.qty) as total_qty,
+             i.name as item_name, i.unit, b.name as branch_name,
+             l.reason, l.created_at
+      FROM pos_stock_losses l
+      JOIN pos_inventory_items i ON i.id = l.item_id
+      JOIN pos_branches b ON b.id = l.branch_id
+      WHERE l.created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY l.loss_type, i.name, i.unit, b.name, l.reason, l.created_at
+      ORDER BY l.created_at DESC
+      LIMIT 20
+    `),
+    db.execute(sql`
+      SELECT m.type, m.qty, m.qty_before, m.qty_after, m.note, m.created_at,
+             i.name as item_name, i.unit, b.name as branch_name
+      FROM pos_stock_mutations m
+      JOIN pos_inventory_items i ON i.id = m.item_id
+      JOIN pos_branches b ON b.id = m.branch_id
+      ORDER BY m.created_at DESC
+      LIMIT 20
+    `),
+    db.execute(sql`
+      SELECT COUNT(*) as cnt, COALESCE(SUM(o.total), 0) as total_revenue
+      FROM pos_orders o
+      WHERE o.status = 'paid'
+        AND DATE(o.paid_at) = CURRENT_DATE
+    `),
+  ]);
+
+  const transferByStatus: Record<string, number> = {};
+  for (const row of transferStats.rows as { status: string; cnt: string }[]) {
+    transferByStatus[row.status] = Number(row.cnt);
+  }
+
+  res.json({
+    stockByWarehouse: stockByWarehouse.rows,
+    lowStockItems: lowStockItems.rows,
+    transferByStatus,
+    recentLosses: recentLosses.rows,
+    recentMutations: recentMutations.rows,
+    posOrdersToday: posOrdersToday.rows[0],
+    summary: {
+      lowStockCount: lowStockItems.rows.length,
+      pendingTransfers: (transferByStatus["pending"] ?? 0) + (transferByStatus["in_transit"] ?? 0),
+      lossCount7d: recentLosses.rows.length,
+    },
+  });
+});
+
 export default router;

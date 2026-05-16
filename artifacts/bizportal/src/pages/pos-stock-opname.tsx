@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,15 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ClipboardCheck, Eye, CheckCircle } from "lucide-react";
+import { Plus, ClipboardCheck, Eye, CheckCircle, ScanLine, Camera, CameraOff, Search } from "lucide-react";
 
 interface Branch { id: number; name: string; }
 interface Wh { id: number; name: string; branch_id: number; }
-interface Opname {
-  id: number; opname_number: string; branch_name: string; warehouse_name: string | null;
-  status: string; note: string | null; created_at: string; confirmed_at: string | null;
-}
-interface OpnameItem { item_id: number; item_name: string; unit: string; system_qty: string; actual_qty: string; diff_qty: string; note: string | null; }
+interface Opname { id: number; opname_number: string; branch_name: string; warehouse_name: string | null; status: string; note: string | null; created_at: string; confirmed_at: string | null; }
+interface OpnameItem { item_id: number; item_name: string; unit: string; system_qty: string; actual_qty: string; diff_qty: string; note: string | null; sku?: string; }
 interface OpnameDetail extends Opname { items: OpnameItem[]; }
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -30,6 +27,14 @@ async function apiFetch(path: string, opts?: RequestInit) {
 const fmt = (n: string | number) => Number(n).toLocaleString("id-ID", { maximumFractionDigits: 3 });
 const fmtDate = (d: string) => new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
+function parseQrProduct(raw: string): number | null {
+  try {
+    const obj = JSON.parse(raw);
+    if (obj.t === "product" && obj.id) return Number(obj.id);
+  } catch { /**/ }
+  return null;
+}
+
 export default function PosStockOpnamePage() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -37,6 +42,14 @@ export default function PosStockOpnamePage() {
   const [viewId, setViewId] = useState<number | null>(null);
   const [form, setForm] = useState({ branchId: "", warehouseId: "", note: "" });
   const [editItems, setEditItems] = useState<{ itemId: number; actualQty: string; note: string }[]>([]);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const controlsRef = useRef<{ stop: () => void } | null>(null);
+  const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const { data: branches = [] } = useQuery<Branch[]>({ queryKey: ["pos-branches"], queryFn: () => apiFetch("/pos-inventory/branches") });
   const { data: warehouses = [] } = useQuery<Wh[]>({ queryKey: ["pos-warehouses"], queryFn: () => apiFetch("/pos-inventory/warehouses") });
@@ -53,6 +66,12 @@ export default function PosStockOpnamePage() {
   });
 
   const filteredWarehouses = form.branchId ? warehouses.filter(w => w.branch_id === Number(form.branchId)) : [];
+
+  const filteredItems = detail?.items.filter(i => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return i.item_name.toLowerCase().includes(q) || (i.sku ?? "").toLowerCase().includes(q);
+  }) ?? [];
 
   const createMutation = useMutation({
     mutationFn: () => apiFetch("/pos-inventory/stock-opnames", {
@@ -91,6 +110,47 @@ export default function PosStockOpnamePage() {
   function updateActualQty(itemId: number, val: string) {
     setEditItems(prev => prev.map(i => i.itemId === itemId ? { ...i, actualQty: val } : i));
   }
+
+  const startScan = useCallback(async () => {
+    setScanError(null);
+    try {
+      const { BrowserMultiFormatReader } = await import("@zxing/browser");
+      const reader = new BrowserMultiFormatReader();
+      if (!videoRef.current) return;
+      const controls = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
+        if (result) {
+          const productId = parseQrProduct(result.getText());
+          if (productId) {
+            setHighlightId(productId);
+            setTimeout(() => {
+              inputRefs.current[productId]?.focus();
+              inputRefs.current[productId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }, 100);
+            toast({ title: `Produk ditemukan (ID ${productId}) — silakan input qty aktual` });
+            controls.stop();
+            controlsRef.current = null;
+            setScanning(false);
+            setScanOpen(false);
+          } else {
+            setScanError("QR bukan QR produk inventory. Coba scan ulang.");
+          }
+        }
+      });
+      controlsRef.current = controls;
+      setScanning(true);
+    } catch {
+      setScanError("Kamera tidak bisa diakses.");
+      setScanning(false);
+    }
+  }, [toast]);
+
+  const stopScan = useCallback(() => {
+    controlsRef.current?.stop();
+    controlsRef.current = null;
+    setScanning(false);
+  }, []);
+
+  useEffect(() => () => { controlsRef.current?.stop(); }, []);
 
   return (
     <AppShell>
@@ -137,7 +197,7 @@ export default function PosStockOpnamePage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{fmtDate(o.created_at)}</TableCell>
                       <TableCell className="text-right">
-                        <Button size="icon" variant="ghost" onClick={() => setViewId(o.id)}>
+                        <Button size="icon" variant="ghost" onClick={() => { setHighlightId(null); setSearchQuery(""); setViewId(o.id); }}>
                           <Eye className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -191,20 +251,32 @@ export default function PosStockOpnamePage() {
       </Dialog>
 
       {/* Detail Opname */}
-      <Dialog open={!!viewId} onOpenChange={v => { if (!v) setViewId(null); }}>
+      <Dialog open={!!viewId} onOpenChange={v => { if (!v) { setViewId(null); stopScan(); } }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Detail Opname — {detail?.opname_number}</DialogTitle>
           </DialogHeader>
           {detail && (
             <div className="space-y-4">
-              <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-4 text-sm flex-wrap">
                 <div><span className="text-muted-foreground">Cabang:</span> <span className="font-medium ml-1">{detail.branch_name}</span></div>
                 <div><span className="text-muted-foreground">Gudang:</span> <span className="font-medium ml-1">{detail.warehouse_name ?? "Semua"}</span></div>
                 <Badge variant={detail.status === "confirmed" ? "default" : "secondary"} className="ml-auto">
                   {detail.status === "confirmed" ? "Dikonfirmasi" : "Draft"}
                 </Badge>
               </div>
+
+              {detail.status === "draft" && (
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input className="pl-9 h-8 text-sm" placeholder="Cari item..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  </div>
+                  <Button size="sm" variant="outline" className="gap-2 shrink-0" onClick={() => setScanOpen(true)}>
+                    <ScanLine className="h-4 w-4" /> Scan QR
+                  </Button>
+                </div>
+              )}
 
               <div className="max-h-80 overflow-y-auto">
                 <Table>
@@ -217,29 +289,32 @@ export default function PosStockOpnamePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(detail.status === "draft" ? editItems.map(ei => {
-                      const orig = detail.items.find(di => di.item_id === ei.itemId);
-                      return orig ? { ...orig, actual_qty: ei.actualQty } : null;
-                    }).filter(Boolean) : detail.items).map((item) => {
-                      const i = item as OpnameItem & { actual_qty: string };
-                      const diff = Number(i.actual_qty) - Number(i.system_qty);
+                    {(detail.status === "draft" ? filteredItems : detail.items).map((item) => {
+                      const ei = editItems.find(e => e.itemId === item.item_id);
+                      const actualVal = detail.status === "draft" ? (ei?.actualQty ?? String(item.actual_qty)) : String(item.actual_qty);
+                      const diff = Number(actualVal) - Number(item.system_qty);
+                      const isHighlighted = highlightId === item.item_id;
                       return (
-                        <TableRow key={i.item_id}>
-                          <TableCell>{i.item_name} <span className="text-xs text-muted-foreground">({i.unit})</span></TableCell>
-                          <TableCell className="text-right">{fmt(i.system_qty)}</TableCell>
+                        <TableRow key={item.item_id} className={isHighlighted ? "bg-primary/10 ring-1 ring-primary" : ""}>
+                          <TableCell>
+                            {item.item_name}
+                            <span className="text-xs text-muted-foreground ml-1">({item.unit})</span>
+                            {isHighlighted && <Badge className="ml-2 text-xs" variant="default">Scan</Badge>}
+                          </TableCell>
+                          <TableCell className="text-right">{fmt(item.system_qty)}</TableCell>
                           <TableCell className="text-right">
                             {detail.status === "draft" ? (
-                              <Input type="number" className="w-24 h-7 text-xs text-right ml-auto"
-                                value={editItems.find(ei => ei.itemId === i.item_id)?.actualQty ?? ""}
-                                onChange={e => updateActualQty(i.item_id, e.target.value)} />
-                            ) : fmt(i.actual_qty)}
+                              <Input
+                                type="number"
+                                className="w-24 h-7 text-xs text-right ml-auto"
+                                value={ei?.actualQty ?? ""}
+                                onChange={e => updateActualQty(item.item_id, e.target.value)}
+                                ref={el => { inputRefs.current[item.item_id] = el; }}
+                              />
+                            ) : fmt(item.actual_qty)}
                           </TableCell>
                           <TableCell className={`text-right font-medium ${diff < 0 ? "text-red-400" : diff > 0 ? "text-green-400" : "text-muted-foreground"}`}>
-                            {detail.status === "draft" ? (
-                              <span>{Number((editItems.find(ei => ei.itemId === i.item_id)?.actualQty ?? 0)) - Number(i.system_qty) > 0 ? "+" : ""}{fmt(Number((editItems.find(ei => ei.itemId === i.item_id)?.actualQty ?? 0)) - Number(i.system_qty))}</span>
-                            ) : (
-                              <span>{Number(i.diff_qty) >= 0 ? "+" : ""}{fmt(i.diff_qty)}</span>
-                            )}
+                            {diff >= 0 ? "+" : ""}{fmt(diff)}
                           </TableCell>
                         </TableRow>
                       );
@@ -263,6 +338,34 @@ export default function PosStockOpnamePage() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Scan Dialog */}
+      <Dialog open={scanOpen} onOpenChange={v => { if (!v) { stopScan(); setScanOpen(false); setScanError(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><ScanLine className="h-5 w-5" /> Scan QR Produk</DialogTitle></DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative w-full aspect-square bg-black rounded-xl overflow-hidden">
+              <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
+              {scanning && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="border-2 border-primary w-40 h-40 rounded-lg animate-pulse opacity-70" />
+                </div>
+              )}
+              {!scanning && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white">
+                  <Camera className="h-10 w-10 opacity-50" />
+                  <p className="text-xs opacity-70">Tekan "Mulai Scan"</p>
+                </div>
+              )}
+            </div>
+            {scanError && <p className="text-xs text-destructive text-center">{scanError}</p>}
+            <p className="text-xs text-muted-foreground text-center">Scan QR produk dari halaman Generator QR. Kamera akan otomatis berhenti setelah scan berhasil.</p>
+            <Button className="w-full gap-2" onClick={scanning ? stopScan : startScan} variant={scanning ? "destructive" : "default"}>
+              {scanning ? <><CameraOff className="h-4 w-4" /> Stop</> : <><Camera className="h-4 w-4" /> Mulai Scan</>}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </AppShell>

@@ -26,6 +26,9 @@ import PosStockReturnsPage from "@/pages/pos-stock-returns";
 import PosStockLossesPage from "@/pages/pos-stock-losses";
 import PosStockOpnamePage from "@/pages/pos-stock-opname";
 import PosStockMutationsPage from "@/pages/pos-stock-mutations";
+import PosQrGeneratorPage from "@/pages/pos-qr-generator";
+import PosQrScannerPage from "@/pages/pos-qr-scanner";
+import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
 import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
@@ -94,6 +97,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/pos-inventory/losses" component={PR(PosStockLossesPage)} />
       <Route path="/pos-inventory/opname" component={PR(PosStockOpnamePage)} />
       <Route path="/pos-inventory/mutations" component={PR(PosStockMutationsPage)} />
+      <Route path="/pos-inventory/dashboard" component={PR(PosInventoryDashboardPage)} />
+      <Route path="/pos-inventory/qr-generator" component={PR(PosQrGeneratorPage)} />
+      <Route path="/pos-inventory/qr-scanner" component={PR(PosQrScannerPage)} />
       <Route path="/logistics" component={PR(LogisticsPage)} />
       <Route path="/logistics/freight" component={PR(LogisticsFreightPage)} />
       <Route path="/logistics/freight/new" component={PR(LogisticsFreightEditorPage)} />
