@@ -44,6 +44,8 @@ import {
   Activity,
   ChefHat,
   GitBranch,
+  AlertTriangle,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -221,6 +223,22 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Transfer Stok", href: "/pos-inventory/transfers", icon: ArrowLeftRight },
         { titleKey: "Stock Opname", href: "/pos-inventory/opname", icon: ClipboardCheck },
         { titleKey: "Mutasi Stok", href: "/pos-inventory/mutations", icon: Activity },
+      ],
+    },
+    {
+      type: "group",
+      titleKey: "Warehouse",
+      basePath: "/warehouse",
+      icon: Warehouse,
+      roles: ["admin"],
+      children: [
+        { titleKey: "Stok Gudang", href: "/warehouse/stock", icon: Boxes },
+        { titleKey: "Mutasi Stok", href: "/warehouse/movements", icon: Activity },
+        { titleKey: "Transfer Antar Gudang", href: "/warehouse/transfers", icon: ArrowLeftRight },
+        { titleKey: "Rusak / Hilang", href: "/warehouse/damage", icon: AlertTriangle },
+        { titleKey: "Retur Barang", href: "/warehouse/returns", icon: RotateCcw },
+        { titleKey: "Resep / BOM", href: "/warehouse/recipes", icon: ChefHat },
+        { titleKey: "Stock Opname", href: "/warehouse/opname", icon: ClipboardCheck },
       ],
     },
     {

@@ -465,6 +465,42 @@ router.post("/documents/:id/action", async (req, res) => {
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
 
+  // T005: When SO is delivered, deduct stock from default warehouse (fire-and-forget)
+  if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+    void (async () => {
+      try {
+        const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+        const productLines = lines.filter((l) => l.productId != null);
+        if (productLines.length === 0) return;
+        const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+        const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+        const warehouseId: number | undefined = wh?.id;
+        if (!warehouseId) return;
+        for (const line of productLines) {
+          const qty = Number(line.quantity);
+          const cur = await db.execute(sql`
+            SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${warehouseId} AND rack_id IS NULL
+          `);
+          const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+          const qtyAfter = Math.max(0, qtyBefore - qty);
+          await db.execute(sql`
+            INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
+            VALUES (${line.productId}, ${warehouseId}, NULL, ${qtyAfter}, NOW())
+            ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+            DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
+          `);
+          await db.execute(sql`
+            INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+            VALUES (${line.productId}, ${warehouseId}, NULL, 'so_delivery', ${qty}, ${qtyBefore}, ${qtyAfter},
+                    'sales_order', ${id}, ${`SO Terkirim: ${doc.docNumber}`})
+          `);
+        }
+      } catch (e) {
+        console.error("[wh] mark_delivered stock-out error:", e);
+      }
+    })();
+  }
+
   // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
   // Guard: only send if status was not already "confirmed" to prevent duplicate notifications on retries
   if (action === "confirm" && doc.status !== "confirmed") {
