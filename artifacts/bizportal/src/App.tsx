@@ -83,6 +83,14 @@ import WarehouseReturnsPage from "@/pages/warehouse/returns";
 import WarehouseRecipesPage from "@/pages/warehouse/recipes";
 import WarehouseOpnamePage from "@/pages/warehouse/opname";
 import PurchaseReceivePage from "@/pages/purchase/receive";
+import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
+import PosInventoryItemsPage from "@/pages/pos-inventory-items";
+import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
+import PosStockLossesPage from "@/pages/pos-stock-losses";
+import PosStockMutationsPage from "@/pages/pos-stock-mutations";
+import PosStockOpnamePage from "@/pages/pos-stock-opname";
+import PosStockReturnsPage from "@/pages/pos-stock-returns";
+import PosStockTransfersPage from "@/pages/pos-stock-transfers";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -351,6 +359,15 @@ function Router() {
         <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
         {/* Purchase Receive */}
         <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
+        {/* POS Inventory */}
+        <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
+        <Route path="/pos-inventory/items" component={() => <ProtectedRoute component={PosInventoryItemsPage} />} />
+        <Route path="/pos-inventory/stocks" component={() => <ProtectedRoute component={PosInventoryStocksPage} />} />
+        <Route path="/pos-inventory/losses" component={() => <ProtectedRoute component={PosStockLossesPage} />} />
+        <Route path="/pos-inventory/mutations" component={() => <ProtectedRoute component={PosStockMutationsPage} />} />
+        <Route path="/pos-inventory/opname" component={() => <ProtectedRoute component={PosStockOpnamePage} />} />
+        <Route path="/pos-inventory/returns" component={() => <ProtectedRoute component={PosStockReturnsPage} />} />
+        <Route path="/pos-inventory/transfers" component={() => <ProtectedRoute component={PosStockTransfersPage} />} />
         {/* Warehouse */}
         <Route path="/warehouse/stock" component={() => <ProtectedRoute component={WarehouseStockPage} />} />
         <Route path="/warehouse/movements" component={() => <ProtectedRoute component={WarehouseMovementsPage} />} />
