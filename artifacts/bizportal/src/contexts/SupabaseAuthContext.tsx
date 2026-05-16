@@ -47,14 +47,23 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   const fetchUser = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/user", { credentials: "include" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (res.status >= 500) {
+        // Transient server error (e.g. DB connection drop). Don't clear the
+        // cached session — the client will retry on the next interaction.
+        return;
+      }
+      if (!res.ok) {
+        // 401/403 → definitely not authenticated
+        setUser(null);
+        writeCache(null);
+        return;
+      }
       const data = await res.json() as { user: AuthUser | null };
       const u = data.user ?? null;
       setUser(u);
       writeCache(u);
     } catch {
-      setUser(null);
-      writeCache(null);
+      // Network error — keep existing cached session, don't flash login screen
     } finally {
       setIsLoading(false);
     }

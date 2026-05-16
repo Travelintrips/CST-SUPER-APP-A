@@ -43,18 +43,26 @@ export async function authMiddleware(
   // ── 1. Session cookie (Google OAuth / Replit OIDC) ──────────────────────────
   const sid = getSessionId(req);
   if (sid && !req.headers.authorization?.startsWith("Bearer ")) {
-    const session = await getSession(sid);
-    if (session?.user) {
-      req.user = {
-        id: session.user.id,
-        email: session.user.email ?? null,
-        firstName: session.user.firstName ?? null,
-        lastName: session.user.lastName ?? null,
-        profileImageUrl: session.user.profileImageUrl ?? null,
-      };
-      req.isInternalSession = true;
-      next();
-      return;
+    try {
+      const session = await getSession(sid);
+      if (session?.user) {
+        req.user = {
+          id: session.user.id,
+          email: session.user.email ?? null,
+          firstName: session.user.firstName ?? null,
+          lastName: session.user.lastName ?? null,
+          profileImageUrl: session.user.profileImageUrl ?? null,
+        };
+        req.isInternalSession = true;
+        next();
+        return;
+      }
+    } catch (err) {
+      // DB transient error (e.g. Supabase idle-connection drop) — log and
+      // continue unauthenticated rather than returning 500 to the client.
+      // The client will retry and succeed once the pool reconnects.
+      const msg = err instanceof Error ? err.message : String(err);
+      req.log?.warn?.({ sid: sid.slice(0, 8) + "...", err: msg }, "[authMiddleware] getSession failed, treating as unauthenticated");
     }
   }
 
