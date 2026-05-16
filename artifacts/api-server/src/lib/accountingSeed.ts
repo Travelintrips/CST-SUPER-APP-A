@@ -505,8 +505,9 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     const ppnIn       = needFor("1-1050", companyId);
     const ap          = needFor("2-1010", companyId);
     const ppnOut      = needFor("2-1020", companyId);
-    const salesIncome = needFor("4-1010", companyId);
-    const cogs        = needFor("5-1010", companyId);
+    const salesIncome       = needFor("4-1010", companyId);
+    const cogs              = needFor("5-1010", companyId);
+    const freightExpense    = needFor("5-1011", companyId);
 
     const cSalesJ = getJournal("SAL", companyId);
     const cPurJ   = getJournal("PUR", companyId);
@@ -517,7 +518,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       arAccountId:             ar.id,
       apAccountId:             ap.id,
       salesIncomeAccountId:    salesIncome.id,
-      purchaseExpenseAccountId: cogs.id,
+      purchaseExpenseAccountId: freightExpense.id,
       defaultBankAccountId:    bankMandiri.id,
       defaultCashAccountId:    cash.id,
       ppnOutputAccountId:      ppnOut.id,

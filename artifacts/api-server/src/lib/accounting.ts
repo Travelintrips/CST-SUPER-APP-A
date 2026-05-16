@@ -208,52 +208,117 @@ export async function postSalesInvoice(args: {
   }
 }
 
-/** Auto-post when a Purchase document gets billed. */
+/** Auto-post when a Purchase document gets billed.
+ *
+ * Debit allocation (per line):
+ *  - Lines with productId (barang/inventory)  → DR 1-1040 Persediaan
+ *  - Lines without productId (jasa/beban)     → DR purchaseExpenseAccountId (5-1011)
+ *  - Tax                                      → DR 1-1050 PPN Masukan
+ *  Credit: 2-1010 Hutang Usaha (grand total)
+ */
 export async function postPurchaseBill(args: {
   purchaseDocId: number;
   docNumber: string;
   supplierName: string;
-  netAmount: number;
+  /** Lines from purchase_document_lines — used to split inventory vs expense debit */
+  docLines?: Array<{ productId: number | null; unitCost: number; quantity: number }>;
+  /** Fallback if docLines not provided */
+  netAmount?: number;
   taxAmount: number;
   taxAccountId: number | null;
   createdById?: string | null;
 }): Promise<void> {
   try {
     const settings = await ensureAccountingSettings();
-    if (
-      !settings.apAccountId ||
-      !settings.purchaseExpenseAccountId ||
-      !settings.purchaseJournalId
-    ) {
-      logger.warn(
-        { purchaseDocId: args.purchaseDocId },
-        "Skipping auto-post purchase bill: accounting settings incomplete",
-      );
+    if (!settings.apAccountId || !settings.purchaseJournalId) {
+      logger.warn({ purchaseDocId: args.purchaseDocId }, "Skipping auto-post purchase bill: accounting settings incomplete");
       return;
     }
-    const grand = round2(args.netAmount + args.taxAmount);
-    const lines: PostingLine[] = [
-      {
-        accountId: settings.purchaseExpenseAccountId,
-        debit: round2(args.netAmount),
-        credit: 0,
-        description: `Pembelian ${args.docNumber}`,
-      },
-    ];
-    if (args.taxAmount > 0 && (args.taxAccountId ?? settings.ppnInputAccountId)) {
+
+    // Split net amount into inventory portion vs service/expense portion
+    let inventoryAmount = 0;
+    let expenseAmount = 0;
+
+    if (args.docLines && args.docLines.length > 0) {
+      for (const line of args.docLines) {
+        const lineTotal = round2(Number(line.unitCost) * Number(line.quantity));
+        if (line.productId != null) {
+          inventoryAmount = round2(inventoryAmount + lineTotal);
+        } else {
+          expenseAmount = round2(expenseAmount + lineTotal);
+        }
+      }
+    } else {
+      // Fallback: treat full amount as expense (legacy behaviour)
+      expenseAmount = round2(args.netAmount ?? 0);
+    }
+
+    const netTotal = round2(inventoryAmount + expenseAmount);
+    const taxAmount = round2(args.taxAmount);
+    const grand = round2(netTotal + taxAmount);
+
+    if (grand <= 0) {
+      logger.warn({ purchaseDocId: args.purchaseDocId }, "Skipping purchase bill post: grand total is 0");
+      return;
+    }
+
+    const lines: PostingLine[] = [];
+
+    // DR Persediaan for product lines
+    if (inventoryAmount > 0) {
+      if (!settings.inventoryAccountId) {
+        logger.warn({ purchaseDocId: args.purchaseDocId }, "inventoryAccountId missing — falling back to expense account for product lines");
+        expenseAmount = round2(expenseAmount + inventoryAmount);
+        inventoryAmount = 0;
+      } else {
+        lines.push({
+          accountId: settings.inventoryAccountId,
+          debit: inventoryAmount,
+          credit: 0,
+          description: `Persediaan barang: ${args.docNumber}`,
+        });
+      }
+    }
+
+    // DR Beban/Jasa for non-product lines
+    if (expenseAmount > 0) {
+      const expAcct = settings.purchaseExpenseAccountId;
+      if (!expAcct) {
+        logger.warn({ purchaseDocId: args.purchaseDocId }, "purchaseExpenseAccountId missing — skipping service/expense lines");
+      } else {
+        lines.push({
+          accountId: expAcct,
+          debit: expenseAmount,
+          credit: 0,
+          description: `Pembelian jasa/beban: ${args.docNumber}`,
+        });
+      }
+    }
+
+    // DR PPN Masukan
+    if (taxAmount > 0 && (args.taxAccountId ?? settings.ppnInputAccountId)) {
       lines.push({
         accountId: (args.taxAccountId ?? settings.ppnInputAccountId)!,
-        debit: round2(args.taxAmount),
+        debit: taxAmount,
         credit: 0,
         description: `PPN Masukan ${args.docNumber}`,
       });
     }
+
+    // CR Hutang Usaha
+    const totalDebitCheck = round2(lines.reduce((s, l) => s + l.debit, 0));
     lines.push({
       accountId: settings.apAccountId,
       debit: 0,
-      credit: grand,
+      credit: totalDebitCheck,
       description: `Hutang ${args.supplierName} - ${args.docNumber}`,
     });
+
+    if (lines.length < 2) {
+      logger.warn({ purchaseDocId: args.purchaseDocId }, "Skipping purchase bill post: no debit lines generated");
+      return;
+    }
+
     await postEntry(
       {
         journalId: settings.purchaseJournalId,
@@ -267,6 +332,7 @@ export async function postPurchaseBill(args: {
       },
       "PUR",
     );
+    logger.info({ purchaseDocId: args.purchaseDocId, inventoryAmount, expenseAmount, taxAmount }, "Purchase bill journal entry posted");
   } catch (err) {
     logger.error({ err, purchaseDocId: args.purchaseDocId }, "Auto-post purchase bill failed");
   }

@@ -377,16 +377,34 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   if (action === "mark_billed" && doc.billStatus !== "billed") {
-    const net = Number(doc.totalAmount);
     const taxAmount = Number(doc.taxAmount ?? 0);
-    void postPurchaseBill({
-      purchaseDocId: doc.id,
-      docNumber: doc.docNumber,
-      supplierName: doc.supplierName,
-      netAmount: net,
-      taxAmount,
-      taxAccountId: null,
-    });
+    // Fetch lines to split inventory vs service/expense debit
+    void (async () => {
+      try {
+        const billLines = await db
+          .select({
+            productId: purchaseDocumentLinesTable.productId,
+            unitCost: purchaseDocumentLinesTable.unitCost,
+            quantity: purchaseDocumentLinesTable.quantity,
+          })
+          .from(purchaseDocumentLinesTable)
+          .where(eq(purchaseDocumentLinesTable.documentId, id));
+        await postPurchaseBill({
+          purchaseDocId: doc.id,
+          docNumber: doc.docNumber,
+          supplierName: doc.supplierName,
+          docLines: billLines.map((l) => ({
+            productId: l.productId,
+            unitCost: Number(l.unitCost),
+            quantity: Number(l.quantity),
+          })),
+          taxAmount,
+          taxAccountId: null,
+        });
+      } catch (e) {
+        console.error("[accounting] postPurchaseBill error:", e);
+      }
+    })();
   }
 
   const detail = await loadDocWithLines(id);
