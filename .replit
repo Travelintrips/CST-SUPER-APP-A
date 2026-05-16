@@ -29,7 +29,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node scripts/proxy5000.mjs"
+args = "cd artifacts/api-server && NODE_ENV=development PORT=5000 node --enable-source-maps ./dist/index.mjs"
 waitForPort = 5000
 
 [agent]
@@ -45,7 +45,7 @@ timeoutMs = 20000
 
 [userenv.shared]
 ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,skylogistic00@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,skylogistic00@gmail.com,divatranssoetta@gmail.com,wangsamasindo@gmail.com,divarestorxr@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,skylogistic00@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
 ADMIN_EMAIL = "admcst001@gmail.com,skylogistic00@gmail.com"
@@ -64,34 +64,19 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 9000
+externalPort = 8080
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-<<<<<<< HEAD
-localPort = 5001
-externalPort = 8008
-
-[[ports]]
-localPort = 5174
-externalPort = 8080
-
-[[ports]]
 localPort = 8081
-externalPort = 9000
-
-[[ports]]
-localPort = 8082
 externalPort = 3002
 
 [[ports]]
-=======
->>>>>>> 966f9b1de713ab82a8c4c02eae5e3b55514cc8dc
-localPort = 8083
-externalPort = 3001
+localPort = 8082
+externalPort = 8008
 
 [[ports]]
 localPort = 8084
@@ -112,6 +97,10 @@ externalPort = 3000
 [[ports]]
 localPort = 18443
 externalPort = 6800
+
+[[ports]]
+localPort = 18444
+externalPort = 3001
 
 [[ports]]
 localPort = 19368
