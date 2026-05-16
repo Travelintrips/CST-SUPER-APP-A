@@ -35,6 +35,11 @@ const connectionString = resolveConnectionString();
 export const pool = new Pool({
   connectionString,
   ssl: { rejectUnauthorized: false },
+  max: 10,
+  idleTimeoutMillis: 20000,
+  connectionTimeoutMillis: 5000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
 });
 
 // Wajib: tangkap error dari idle pool client agar tidak menjadi uncaught exception
