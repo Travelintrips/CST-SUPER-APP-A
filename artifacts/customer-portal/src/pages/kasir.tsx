@@ -316,47 +316,90 @@ export default function KasirPage() {
   const handleLogout = () => { removeKasirToken(); setLocation("/kasir/login"); };
   const printReceipt = () => window.print();
 
-  // ── RawBT Print (Android intent via deep-link) ────────────────────────────
+  // ── RawBT Print (ESC/POS via Android intent) ─────────────────────────────
   const printRawBT = () => {
     if (!receipt) return;
-    const storeName = "THAI TEA CST";
-    const branchLine = branchInfo?.name ? `Cabang: ${branchInfo.name}` : "";
-    const addrLine = branchInfo?.address ? branchInfo.address : "";
-    const divider = "-".repeat(32);
+
+    const ESC = 0x1b;
+    const GS  = 0x1d;
+    const LF  = 0x0a;
+    const buf: number[] = [];
+
+    const b  = (...bytes: number[]) => buf.push(...bytes);
+    const tx = (s: string) => { for (let i = 0; i < s.length; i++) buf.push(s.charCodeAt(i) & 0xff); };
+    const ln = (s: string) => { tx(s); b(LF); };
+
+    // Initialize
+    b(ESC, 0x40);
+    // Code page Latin-1 (PC850)
+    b(ESC, 0x74, 0x02);
+
+    const W = 32;
+    const divider = "-".repeat(W);
+
+    // Store name — center, bold, double height
+    b(ESC, 0x61, 0x01);          // center
+    b(ESC, 0x45, 0x01);          // bold on
+    b(GS,  0x21, 0x10);          // double height
+    ln("THAI TEA CST");
+    b(GS,  0x21, 0x00);          // normal size
+    b(ESC, 0x45, 0x00);          // bold off
+    if (branchInfo?.name) ln(`Cabang: ${branchInfo.name}`);
+    if (branchInfo?.address) {
+      const addr = branchInfo.address;
+      for (let i = 0; i < addr.length; i += W) ln(addr.substring(i, i + W));
+    }
+
+    // Left align for body
+    b(ESC, 0x61, 0x00);
+    ln(divider);
+
     const dateStr = new Date(receipt.paidAt ?? receipt.createdAt).toLocaleString("id-ID", {
       day: "2-digit", month: "2-digit", year: "numeric",
       hour: "2-digit", minute: "2-digit",
     }).replace(",", "");
 
-    const lines: string[] = [
-      storeName,
-      ...(branchLine ? [branchLine] : []),
-      ...(addrLine ? [addrLine] : []),
-      divider,
-      `Invoice: ${receipt.orderNumber}`,
-      `Kasir  : ${profile?.name ?? ""}`,
-      `Tanggal: ${dateStr}`,
-      divider,
-      ...(receipt.items ?? []).flatMap((item) => {
-        const harga = Number(item.price).toLocaleString("id-ID");
-        const sub = Number(item.subtotal).toLocaleString("id-ID");
-        const qtyLine = `${item.qty} x ${harga}`;
-        const nameLine = item.productName.length > 20 ? item.productName.substring(0, 20) : item.productName;
-        const pad = 32 - qtyLine.length - sub.length;
-        return [nameLine, `${qtyLine}${" ".repeat(Math.max(1, pad))}${sub}`];
-      }),
-      divider,
-      `${"TOTAL".padEnd(18)}${Number(receipt.total).toLocaleString("id-ID").padStart(14)}`,
-      `${"BAYAR".padEnd(18)}${Number(receipt.amountPaid ?? receipt.total).toLocaleString("id-ID").padStart(14)}`,
-      ...(Number(receipt.change ?? 0) > 0 ? [`${"KEMBALI".padEnd(18)}${Number(receipt.change).toLocaleString("id-ID").padStart(14)}`] : []),
-      divider,
-      "Terima kasih sudah berbelanja!",
-      "",
-    ];
+    ln(`Invoice: ${receipt.orderNumber}`);
+    ln(`Kasir  : ${profile?.name ?? ""}`);
+    ln(`Tgl    : ${dateStr}`);
+    ln(divider);
 
-    const text = lines.join("\n");
-    const b64 = btoa(unescape(encodeURIComponent(text)));
-    const intentUrl = `intent://rawbt?data=${b64}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end`;
+    for (const item of receipt.items ?? []) {
+      const harga = Number(item.price).toLocaleString("id-ID");
+      const sub   = Number(item.subtotal).toLocaleString("id-ID");
+      const qtyStr = `${item.qty} x ${harga}`;
+      const name   = item.productName.length > W ? item.productName.substring(0, W) : item.productName;
+      const pad    = W - qtyStr.length - sub.length;
+      ln(name);
+      ln(`${qtyStr}${" ".repeat(Math.max(1, pad))}${sub}`);
+    }
+
+    ln(divider);
+
+    // Total — bold
+    b(ESC, 0x45, 0x01);
+    ln(`${"TOTAL".padEnd(18)}${Number(receipt.total).toLocaleString("id-ID").padStart(14)}`);
+    b(ESC, 0x45, 0x00);
+    ln(`${"BAYAR".padEnd(18)}${Number(receipt.amountPaid ?? receipt.total).toLocaleString("id-ID").padStart(14)}`);
+    if (Number(receipt.change ?? 0) > 0) {
+      b(ESC, 0x45, 0x01);
+      ln(`${"KEMBALI".padEnd(18)}${Number(receipt.change).toLocaleString("id-ID").padStart(14)}`);
+      b(ESC, 0x45, 0x00);
+    }
+
+    ln(divider);
+    b(ESC, 0x61, 0x01); // center
+    ln("Terima kasih sudah berbelanja!");
+    b(LF, LF, LF);
+    // Feed + full cut
+    b(GS, 0x56, 0x41, 0x00);
+
+    // Encode raw bytes → base64
+    let raw = "";
+    for (const byte of buf) raw += String.fromCharCode(byte);
+    const encoded = btoa(raw);
+
+    const intentUrl = `intent://rawbt?data=${encoded}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end`;
     const a = document.createElement("a");
     a.href = intentUrl;
     a.setAttribute("target", "_blank");
@@ -368,63 +411,70 @@ export default function KasirPage() {
   // ── Receipt modal ─────────────────────────────────────────────────────────
   if (receipt) {
     return (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:bg-white print:p-0">
-        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xs overflow-hidden print:shadow-none print:rounded-none print:max-w-full">
-          {/* Receipt header */}
-          <div className="p-6 text-center" style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
-            <img src={logoUrl} alt="Thai Tea CST" className="w-16 h-16 rounded-2xl object-cover mx-auto mb-3 shadow-lg border-2 border-white/30" />
-            <h2 className="font-black text-xl text-white">Thai Tea CST</h2>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center sm:items-center p-0 sm:p-4 z-50 print:bg-white print:p-0">
+        <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-xs sm:max-w-xs flex flex-col print:shadow-none print:rounded-none print:max-w-full"
+          style={{ maxHeight: "92dvh" }}>
+          {/* Receipt header — sticky di dalam modal */}
+          <div className="shrink-0 p-5 text-center rounded-t-3xl sm:rounded-t-3xl" style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
+            <img src={logoUrl} alt="Thai Tea CST" className="w-14 h-14 rounded-2xl object-cover mx-auto mb-2 shadow-lg border-2 border-white/30" />
+            <h2 className="font-black text-lg text-white leading-tight">Thai Tea CST</h2>
             {branchInfo?.name && <p className="text-orange-100 text-xs font-semibold mt-0.5">Cabang: {branchInfo.name}</p>}
-            {branchInfo?.address && <p className="text-orange-100/80 text-xs mt-0.5">{branchInfo.address}</p>}
-          </div>
-          {/* Order info */}
-          <div className="px-5 py-3 bg-orange-50 border-b border-orange-100 space-y-0.5">
-            <div className="flex justify-between text-xs text-orange-700">
-              <span className="font-mono font-bold">{receipt.orderNumber}</span>
-              <span>{new Date(receipt.paidAt ?? receipt.createdAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-            </div>
-            <div className="flex justify-between text-xs text-orange-600/70">
-              <span>Kasir: <strong>{profile?.name}</strong></span>
-              <span>{PAYMENT_LABELS[receipt.paymentMethod as PaymentMethod] ?? receipt.paymentMethod}</span>
-            </div>
+            {branchInfo?.address && <p className="text-orange-100/80 text-xs mt-0.5 leading-snug">{branchInfo.address}</p>}
           </div>
 
-          <div className="p-5 space-y-2.5">
-            {receipt.items?.map((item, i) => (
-              <div key={i} className="flex justify-between text-sm">
-                <span className="text-gray-700">{item.productName} <span className="text-gray-400">×{item.qty}</span></span>
-                <span className="font-semibold text-gray-800">{fmt(item.subtotal)}</span>
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            {/* Order info */}
+            <div className="px-5 py-3 bg-orange-50 border-b border-orange-100 space-y-0.5">
+              <div className="flex justify-between text-xs text-orange-700">
+                <span className="font-mono font-bold">{receipt.orderNumber}</span>
+                <span>{new Date(receipt.paidAt ?? receipt.createdAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
               </div>
-            ))}
+              <div className="flex justify-between text-xs text-orange-600/70">
+                <span>Kasir: <strong>{profile?.name}</strong></span>
+                <span>{PAYMENT_LABELS[receipt.paymentMethod as PaymentMethod] ?? receipt.paymentMethod}</span>
+              </div>
+            </div>
 
-            <div className="border-t border-dashed border-gray-200 pt-2.5 space-y-1.5">
-              {Number(receipt.discount ?? 0) > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Diskon</span>
-                  <span>-{fmt(receipt.discount ?? 0)}</span>
+            <div className="p-5 space-y-2.5">
+              {receipt.items?.map((item, i) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span className="text-gray-700">{item.productName} <span className="text-gray-400">×{item.qty}</span></span>
+                  <span className="font-semibold text-gray-800">{fmt(item.subtotal)}</span>
                 </div>
-              )}
-              <div className="flex justify-between font-black text-base">
-                <span>Total</span>
-                <span className="text-orange-600">{fmt(receipt.total)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Bayar</span>
-                <span>{fmt(receipt.amountPaid ?? receipt.total)}</span>
-              </div>
-              {Number(receipt.change ?? 0) > 0 && (
-                <div className="flex justify-between text-sm font-bold text-blue-600 bg-blue-50 rounded-xl px-3 py-1.5">
-                  <span>Kembalian</span>
-                  <span>{fmt(receipt.change ?? 0)}</span>
+              ))}
+
+              <div className="border-t border-dashed border-gray-200 pt-2.5 space-y-1.5">
+                {Number(receipt.discount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>Diskon</span>
+                    <span>-{fmt(receipt.discount ?? 0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-black text-base">
+                  <span>Total</span>
+                  <span className="text-orange-600">{fmt(receipt.total)}</span>
                 </div>
-              )}
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Bayar</span>
+                  <span>{fmt(receipt.amountPaid ?? receipt.total)}</span>
+                </div>
+                {Number(receipt.change ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm font-bold text-blue-600 bg-blue-50 rounded-xl px-3 py-1.5">
+                    <span>Kembalian</span>
+                    <span>{fmt(receipt.change ?? 0)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 pb-2 text-center text-xs text-gray-300 print:block hidden">
+              Terima kasih sudah berbelanja! 🧡
             </div>
           </div>
 
-          <div className="px-5 pb-2 text-center text-xs text-gray-300 print:block hidden">
-            Terima kasih sudah berbelanja! 🧡
-          </div>
-          <div className="p-4 space-y-2 print:hidden">
+          {/* Tombol — selalu sticky di bawah */}
+          <div className="shrink-0 p-4 space-y-2 border-t border-gray-100 bg-white rounded-b-3xl print:hidden">
             <div className="flex gap-2">
               <button onClick={printReceipt}
                 className="flex-1 py-3 rounded-2xl font-bold text-white text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
@@ -436,9 +486,8 @@ export default function KasirPage() {
                 Tutup
               </button>
             </div>
-            {/* RawBT — hanya muncul di perangkat Android */}
             <button onClick={printRawBT}
-              className="w-full py-2.5 rounded-2xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border-2 border-orange-300 text-orange-600 hover:bg-orange-50">
+              className="w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border-2 border-orange-300 text-orange-600 hover:bg-orange-50">
               📲 Cetak via RawBT (Bluetooth)
             </button>
           </div>
