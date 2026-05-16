@@ -3,6 +3,7 @@ import { pgTable, serial, text, integer, numeric, boolean, timestamp, pgEnum } f
 export const kasirStatusEnum = pgEnum("kasir_status", ["pending", "approved", "rejected"]);
 export const posOrderStatusEnum = pgEnum("pos_order_status", ["open", "paid", "cancelled"]);
 export const posPaymentMethodEnum = pgEnum("pos_payment_method", ["cash", "qris", "debit", "credit", "transfer"]);
+export const posShiftStatusEnum = pgEnum("pos_shift_status", ["open", "closed"]);
 
 export const posBranchesTable = pgTable("pos_branches", {
   id: serial("id").primaryKey(),
@@ -34,6 +35,8 @@ export const posProductsTable = pgTable("pos_products", {
   imageUrl: text("image_url"),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  stock: numeric("stock", { precision: 12, scale: 3 }),
+  stockUnit: text("stock_unit").notNull().default("pcs"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -87,4 +90,19 @@ export const posSettingsTable = pgTable("pos_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const posShiftsTable = pgTable("pos_shifts", {
+  id: serial("id").primaryKey(),
+  branchId: integer("branch_id").notNull().references(() => posBranchesTable.id),
+  cashierId: integer("cashier_id").notNull().references(() => posCashiersTable.id),
+  openedAt: timestamp("opened_at").notNull().defaultNow(),
+  closedAt: timestamp("closed_at"),
+  openingCash: numeric("opening_cash", { precision: 12, scale: 2 }).notNull().default("0"),
+  closingCash: numeric("closing_cash", { precision: 12, scale: 2 }),
+  totalSales: numeric("total_sales", { precision: 12, scale: 2 }).notNull().default("0"),
+  orderCount: integer("order_count").notNull().default(0),
+  status: posShiftStatusEnum("status").notNull().default("open"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -1,16 +1,11 @@
 import http from "http";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
+import { existsSync } from "fs";
+import { resolve } from "path";
 
 try { execSync("fuser -k 5000/tcp", { stdio: "ignore" }); } catch {}
+try { execSync("fuser -k 8080/tcp", { stdio: "ignore" }); } catch {}
 
-const API_PREFIXES = [
-  "/api/",
-  "/login",
-  "/logout",
-  "/callback",
-  "/auth",
-  "/mobile-auth",
-  "/pos-images",
 ];
 
 function resolveUpstream(url) {
@@ -19,12 +14,6 @@ function resolveUpstream(url) {
   if (path === "/bizportal" || path.startsWith("/bizportal/")) {
     return 18442;
   }
-
-  if (API_PREFIXES.some((p) => path === p.trimEnd() || path.startsWith(p))) {
-    return 8080;
-  }
-
-  return 3000;
 }
 
 const server = http.createServer((req, res) => {
@@ -48,5 +37,4 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(5000, "0.0.0.0", () => {
-  console.log("Proxy running: port 5000 → /bizportal/* → :18442, /api/* → :8080, /* → :3000");
 });

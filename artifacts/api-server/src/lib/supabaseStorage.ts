@@ -1,13 +1,26 @@
 import { randomUUID } from "crypto";
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? "";
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const isDev = process.env.NODE_ENV !== "production";
+
+function getSupabaseUrl(): string {
+  return (isDev ? process.env.SUPABASE_URL_DEV : undefined)
+    ?? process.env.SUPABASE_URL
+    ?? process.env.VITE_SUPABASE_URL
+    ?? "";
+}
+
+function getServiceKey(): string {
+  return (isDev ? process.env.SUPABASE_SERVICE_ROLE_KEY_DEV : undefined)
+    ?? process.env.SUPABASE_SERVICE_ROLE_KEY
+    ?? "";
+}
+
 const MEDIA_BUCKET = "media";
 
 function getSupabaseHeaders() {
   return {
-    Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-    apikey: SUPABASE_SERVICE_KEY,
+    Authorization: `Bearer ${getServiceKey()}`,
+    apikey: getServiceKey(),
   };
 }
 
@@ -36,8 +49,11 @@ export async function uploadToSupabase(
   contentType: string,
   folder = "uploads",
 ): Promise<{ publicUrl: string; storagePath: string }> {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    throw new Error("VITE_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY tidak dikonfigurasi");
+  const supabaseUrl = getSupabaseUrl();
+  const serviceKey = getServiceKey();
+
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY tidak dikonfigurasi");
   }
 
   const ext = extFromContentType(contentType);
@@ -45,7 +61,7 @@ export async function uploadToSupabase(
   const fileName = `${objectId}.${ext}`;
   const storagePath = `${folder}/${fileName}`;
 
-  const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${MEDIA_BUCKET}/${storagePath}`;
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/${MEDIA_BUCKET}/${storagePath}`;
   const res = await fetch(uploadUrl, {
     method: "POST",
     headers: {
@@ -60,7 +76,7 @@ export async function uploadToSupabase(
     throw new Error(`Supabase upload gagal (${res.status}): ${body}`);
   }
 
-  const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${MEDIA_BUCKET}/${storagePath}`;
+  const publicUrl = `${supabaseUrl}/storage/v1/object/public/${MEDIA_BUCKET}/${storagePath}`;
   return { publicUrl, storagePath };
 }
 
@@ -69,10 +85,14 @@ export async function uploadToSupabase(
  * Returns Buffer.
  */
 export async function downloadFromSupabase(storagePath: string): Promise<Buffer> {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  const supabaseUrl = getSupabaseUrl();
+  const serviceKey = getServiceKey();
+
+  if (!supabaseUrl || !serviceKey) {
     throw new Error("Supabase tidak dikonfigurasi");
   }
-  const downloadUrl = `${SUPABASE_URL}/storage/v1/object/${MEDIA_BUCKET}/${storagePath}`;
+
+  const downloadUrl = `${supabaseUrl}/storage/v1/object/${MEDIA_BUCKET}/${storagePath}`;
   const res = await fetch(downloadUrl, {
     headers: getSupabaseHeaders(),
   });
