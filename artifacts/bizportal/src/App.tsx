@@ -284,10 +284,15 @@ function Router() {
         <Route path="/sales/items" component={() => <ProtectedRoute component={SalesItemsPage} />} />
         {/* Purchase */}
         <Route path="/purchase" component={() => <ProtectedRoute component={PurchaseDashboardPage} />} />
-        <Route path="/purchase/documents" component={() => <ProtectedRoute component={PurchaseDocumentsListPage} />} />
+        <Route path="/purchase/documents" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
         <Route path="/purchase/documents/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/documents/:id/edit" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/documents/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
+        <Route path="/purchase/rfq/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/rfq/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
+        <Route path="/purchase/orders" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
+        <Route path="/purchase/orders/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
         <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
         <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
