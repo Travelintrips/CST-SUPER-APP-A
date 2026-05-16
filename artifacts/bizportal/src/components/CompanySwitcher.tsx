@@ -1,5 +1,4 @@
-import { Building2, ChevronDown, Check, Globe } from "lucide-react";
-import { Building2, ChevronDown, Check, LayoutGrid } from "lucide-react";
+import { Building2, ChevronDown, Check, Globe, LayoutGrid } from "lucide-react";
 import { useCompany, CONSOLIDATED_ID } from "@/contexts/CompanyContext";
 import {
   DropdownMenu,
