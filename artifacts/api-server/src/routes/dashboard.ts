@@ -37,10 +37,7 @@ router.get("/summary", async (req, res) => {
   const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfPrevMonth = startOfThisMonth;
 
-<<<<<<< HEAD
-=======
   // Raw SQL company filter fragments
->>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
   const companyFilter = (!isConsolidated && companyId !== null)
     ? sql` AND (sd.company_id = ${companyId} OR sd.company_id IS NULL)`
     : sql``;
@@ -49,10 +46,7 @@ router.get("/summary", async (req, res) => {
     ? sql` AND (company_id = ${companyId} OR company_id IS NULL)`
     : sql``;
 
-<<<<<<< HEAD
-=======
   // ORM filters for freight shipments
->>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
   const freightCompanyFilter = (!isConsolidated && companyId !== null)
     ? eq(freightShipmentsTable.companyId, companyId)
     : undefined;
@@ -95,10 +89,7 @@ router.get("/summary", async (req, res) => {
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
       .where(and(eq(freightShipmentsTable.status, "in_transit"), freightCompanyFilter)),
 
-<<<<<<< HEAD
-=======
     // Revenue dari sales orders bulan ini — pure raw SQL
->>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
     db.execute<{ total: string }>(sql`
       SELECT coalesce(sum(grand_total), 0)::text AS total
       FROM sales_documents
@@ -203,40 +194,6 @@ router.get("/summary", async (req, res) => {
     ...c,
     contributionPct: totalThisMonth > 0 ? Math.round((c.revenueThisMonth / totalThisMonth) * 100) : 0,
   }));
-<<<<<<< HEAD
-
-  let perCompany: Array<{
-    companyId: number; companyName: string; companyCode: string;
-    revenueThisMonth: number; ordersThisMonth: number; contribution: number;
-  }> = [];
-  if (isConsolidated) {
-    const breakdown = await db.execute<{
-      company_id: string; company_name: string; company_code: string; revenue: string; orders: string;
-    }>(sql`
-      SELECT
-        c.id::text AS company_id,
-        c.company_name,
-        c.company_code,
-        coalesce(sum(CASE WHEN sd.kind = 'order' AND sd.status IN ('confirmed','done') AND sd.created_at >= date_trunc('month', now()) THEN sd.grand_total ELSE 0 END), 0)::text AS revenue,
-        coalesce(count(CASE WHEN sd.kind = 'order' AND sd.status IN ('confirmed','done') AND sd.created_at >= date_trunc('month', now()) THEN 1 END), 0)::text AS orders
-      FROM companies c
-      LEFT JOIN sales_documents sd ON sd.company_id = c.id
-      WHERE c.is_active = true AND c.is_holding = false
-      GROUP BY c.id, c.company_name, c.company_code
-      ORDER BY revenue DESC
-    `);
-    const totalRev = breakdown.rows.reduce((s, r) => s + Number(r.revenue), 0);
-    perCompany = breakdown.rows.map((r) => ({
-      companyId: Number(r.company_id),
-      companyName: r.company_name,
-      companyCode: r.company_code,
-      revenueThisMonth: Number(r.revenue),
-      ordersThisMonth: Number(r.orders),
-      contribution: totalRev > 0 ? Math.round((Number(r.revenue) / totalRev) * 100) : 0,
-    }));
-  }
-=======
->>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
 
   return res.json({
     isConsolidated,
@@ -252,10 +209,7 @@ router.get("/summary", async (req, res) => {
     awaitingQuoteCount: Number(awaitingQuote?.count ?? 0),
     inTransitCount: Number(inTransit?.count ?? 0),
 
-<<<<<<< HEAD
-=======
     // Sales metrics (company-scoped)
->>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
     salesRevenueThisMonth: Number(salesRevenueThisMonthResult.rows[0]?.total ?? 0),
     salesRevenuePrevMonth: Number(salesRevenuePrevMonthResult.rows[0]?.total ?? 0),
     salesOrdersThisMonth: Number(salesOrdersThisMonthResult.rows[0]?.count ?? 0),
@@ -265,10 +219,6 @@ router.get("/summary", async (req, res) => {
     monthlyRevenueTrend: trend,
 
     companyBreakdown: companyBreakdownWithPct,
-<<<<<<< HEAD
-    perCompany,
-=======
->>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
   });
 });
 
