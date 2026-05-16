@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable, apiResponseTimesTable, salesDocumentsTable } from "@workspace/db";
-import { sql, and, ne, eq, gte, lt } from "drizzle-orm";
+import { db, ordersTable, shipmentsTable, stocksTable, transactionsTable, productsTable, freightShipmentsTable, apiResponseTimesTable, salesDocumentsTable, companiesTable } from "@workspace/db";
+import { sql, and, ne, eq, gte, lt, isNull, inArray } from "drizzle-orm";
 import { getRecentResponseTimesFromDb } from "../lib/responseTimeLog";
 import { requireAdmin } from "../lib/requireAdmin.js";
 
@@ -11,8 +11,24 @@ router.use(async (req, res, next) => {
   next();
 });
 
+// Resolve company scope from query params.
+// ?companyId=N  → single company mode
+// ?consolidated=true → all companies aggregate mode
+// Returns null companyId for consolidated, or a validated number.
+function resolveCompanyScope(query: Record<string, unknown>): { consolidated: boolean; companyId: number | null } {
+  if (query["consolidated"] === "true") return { consolidated: true, companyId: null };
+  const raw = query["companyId"];
+  if (raw && typeof raw === "string") {
+    const n = Number(raw);
+    if (!Number.isNaN(n) && n > 0) return { consolidated: false, companyId: n };
+  }
+  return { consolidated: false, companyId: null };
+}
+
 // GET /api/dashboard/summary
 router.get("/summary", async (req, res) => {
+  const { consolidated, companyId } = resolveCompanyScope(req.query as Record<string, unknown>);
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -20,6 +36,16 @@ router.get("/summary", async (req, res) => {
   const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfPrevMonth = startOfThisMonth;
+
+  // Company filter for sales_documents
+  const salesCompanyFilter = (!consolidated && companyId !== null)
+    ? eq(salesDocumentsTable.companyId, companyId)
+    : undefined;
+
+  // Company filter for freight_shipments
+  const freightCompanyFilter = (!consolidated && companyId !== null)
+    ? eq(freightShipmentsTable.companyId, companyId)
+    : undefined;
 
   const [
     [orderCount],
@@ -31,7 +57,6 @@ router.get("/summary", async (req, res) => {
     [activeFreight],
     [awaitingQuote],
     [inTransit],
-    // Sales metrics
     [salesRevenueThisMonth],
     [salesRevenuePrevMonth],
     [salesOrdersThisMonth],
@@ -49,20 +74,25 @@ router.get("/summary", async (req, res) => {
     db.select({ count: sql<number>`count(*)` }).from(productsTable)
       .where(sql`stock < 10`),
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
-      .where(and(ne(freightShipmentsTable.status, "cancelled"), ne(freightShipmentsTable.status, "completed"))),
+      .where(and(
+        ne(freightShipmentsTable.status, "cancelled"),
+        ne(freightShipmentsTable.status, "completed"),
+        freightCompanyFilter,
+      )),
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
-      .where(eq(freightShipmentsTable.status, "rfq_sent")),
+      .where(and(eq(freightShipmentsTable.status, "rfq_sent"), freightCompanyFilter)),
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
-      .where(eq(freightShipmentsTable.status, "in_transit")),
-    // Revenue dari sales orders bulan ini (confirmed/done)
+      .where(and(eq(freightShipmentsTable.status, "in_transit"), freightCompanyFilter)),
+    // Revenue sales bulan ini
     db.select({ total: sql<number>`coalesce(sum(grand_total), 0)` })
       .from(salesDocumentsTable)
       .where(and(
         eq(salesDocumentsTable.kind, "order"),
         sql`status IN ('confirmed','done')`,
         gte(salesDocumentsTable.createdAt, startOfThisMonth),
+        salesCompanyFilter,
       )),
-    // Revenue dari sales orders bulan lalu
+    // Revenue sales bulan lalu
     db.select({ total: sql<number>`coalesce(sum(grand_total), 0)` })
       .from(salesDocumentsTable)
       .where(and(
@@ -70,6 +100,7 @@ router.get("/summary", async (req, res) => {
         sql`status IN ('confirmed','done')`,
         gte(salesDocumentsTable.createdAt, startOfPrevMonth),
         lt(salesDocumentsTable.createdAt, endOfPrevMonth),
+        salesCompanyFilter,
       )),
     // Jumlah order bulan ini
     db.select({ count: sql<number>`count(*)` })
@@ -78,6 +109,7 @@ router.get("/summary", async (req, res) => {
         eq(salesDocumentsTable.kind, "order"),
         sql`status IN ('confirmed','done')`,
         gte(salesDocumentsTable.createdAt, startOfThisMonth),
+        salesCompanyFilter,
       )),
     // Jumlah order bulan lalu
     db.select({ count: sql<number>`count(*)` })
@@ -87,38 +119,80 @@ router.get("/summary", async (req, res) => {
         sql`status IN ('confirmed','done')`,
         gte(salesDocumentsTable.createdAt, startOfPrevMonth),
         lt(salesDocumentsTable.createdAt, endOfPrevMonth),
+        salesCompanyFilter,
       )),
-    // Quotation aktif (draft/sent)
+    // Quotation aktif
     db.select({ count: sql<number>`count(*)` })
       .from(salesDocumentsTable)
       .where(and(
         eq(salesDocumentsTable.kind, "quote"),
         sql`status IN ('draft','sent')`,
+        salesCompanyFilter,
       )),
-    // Sales orders confirmed (all time, belum done)
+    // Sales orders confirmed
     db.select({ count: sql<number>`count(*)` })
       .from(salesDocumentsTable)
       .where(and(
         eq(salesDocumentsTable.kind, "order"),
         eq(salesDocumentsTable.status, "confirmed"),
+        salesCompanyFilter,
       )),
-    // Tren revenue 6 bulan terakhir
-    db.execute<{ month: string; revenue: string }>(sql`
-      SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
-             coalesce(sum(grand_total), 0)::text AS revenue
-      FROM sales_documents
-      WHERE kind = 'order'
-        AND status IN ('confirmed','done')
-        AND created_at >= date_trunc('month', now()) - INTERVAL '5 months'
-      GROUP BY date_trunc('month', created_at)
-      ORDER BY 1
-    `),
+    // Tren revenue 6 bulan
+    companyId !== null && !consolidated
+      ? db.execute<{ month: string; revenue: string }>(sql`
+          SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+                 coalesce(sum(grand_total), 0)::text AS revenue
+          FROM sales_documents
+          WHERE kind = 'order'
+            AND status IN ('confirmed','done')
+            AND created_at >= date_trunc('month', now()) - INTERVAL '5 months'
+            AND company_id = ${companyId}
+          GROUP BY date_trunc('month', created_at)
+          ORDER BY 1
+        `)
+      : db.execute<{ month: string; revenue: string }>(sql`
+          SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+                 coalesce(sum(grand_total), 0)::text AS revenue
+          FROM sales_documents
+          WHERE kind = 'order'
+            AND status IN ('confirmed','done')
+            AND created_at >= date_trunc('month', now()) - INTERVAL '5 months'
+          GROUP BY date_trunc('month', created_at)
+          ORDER BY 1
+        `),
   ]);
 
   const trend = monthlyTrend.rows.map((r) => ({
     month: r.month,
     revenue: Number(r.revenue),
   }));
+
+  // Per-company breakdown for consolidated mode
+  let perCompany: Array<{ companyId: number; companyName: string; companyCode: string; revenueThisMonth: number; ordersThisMonth: number; contribution: number }> = [];
+  if (consolidated) {
+    const breakdown = await db.execute<{ company_id: string; company_name: string; company_code: string; revenue: string; orders: string }>(sql`
+      SELECT
+        c.id::text AS company_id,
+        c.company_name,
+        c.company_code,
+        coalesce(sum(CASE WHEN sd.kind = 'order' AND sd.status IN ('confirmed','done') AND sd.created_at >= date_trunc('month', now()) THEN sd.grand_total ELSE 0 END), 0)::text AS revenue,
+        coalesce(count(CASE WHEN sd.kind = 'order' AND sd.status IN ('confirmed','done') AND sd.created_at >= date_trunc('month', now()) THEN 1 END), 0)::text AS orders
+      FROM companies c
+      LEFT JOIN sales_documents sd ON sd.company_id = c.id
+      WHERE c.is_active = true AND c.is_holding = false
+      GROUP BY c.id, c.company_name, c.company_code
+      ORDER BY revenue DESC
+    `);
+    const totalRev = breakdown.rows.reduce((s, r) => s + Number(r.revenue), 0);
+    perCompany = breakdown.rows.map((r) => ({
+      companyId: Number(r.company_id),
+      companyName: r.company_name,
+      companyCode: r.company_code,
+      revenueThisMonth: Number(r.revenue),
+      ordersThisMonth: Number(r.orders),
+      contribution: totalRev > 0 ? Math.round((Number(r.revenue) / totalRev) * 100) : 0,
+    }));
+  }
 
   return res.json({
     totalOrders: Number(orderCount.count),
@@ -130,7 +204,6 @@ router.get("/summary", async (req, res) => {
     activeFreightCount: Number(activeFreight.count),
     awaitingQuoteCount: Number(awaitingQuote.count),
     inTransitCount: Number(inTransit.count),
-    // Sales metrics
     salesRevenueThisMonth: Number(salesRevenueThisMonth.total),
     salesRevenuePrevMonth: Number(salesRevenuePrevMonth.total),
     salesOrdersThisMonth: Number(salesOrdersThisMonth.count),
@@ -138,11 +211,14 @@ router.get("/summary", async (req, res) => {
     quotesActive: Number(quotesActive.count),
     salesOrdersConfirmed: Number(salesOrdersConfirmed.count),
     monthlyRevenueTrend: trend,
+    // Company scope metadata
+    consolidated,
+    companyId: companyId ?? null,
+    perCompany,
   });
 });
 
 // GET /api/dashboard/response-times?path=<path-fragment>
-// Returns the rolling log of response times, optionally filtered by path.
 router.get("/response-times", async (req, res) => {
   const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
   const entries = await getRecentResponseTimesFromDb(pathFilter);
@@ -150,9 +226,6 @@ router.get("/response-times", async (req, res) => {
 });
 
 // GET /api/dashboard/response-time-stats?path=<fragment>&window=<24h|7d|30d>
-// Returns per-path aggregate stats (count, min, max, avg, p95) computed in the DB.
-// ?window limits results to the last 24h / 7d / 30d (default: 24h; returns 400 for
-// unknown values so the client can catch misconfiguration early).
 const WINDOW_INTERVALS: Record<string, string> = {
   "24h": "24 hours",
   "7d":  "7 days",
@@ -168,7 +241,6 @@ router.get("/response-time-stats", async (req, res) => {
     const intervalStr = WINDOW_INTERVALS[windowParam]!;
     const pathFilter = typeof req.query["path"] === "string" ? req.query["path"] : undefined;
 
-    // Aggregate in the DB — no row-cap issue, parameterised interval (no sql.raw)
     const result = await db.execute<{
       path: string;
       count: string;
