@@ -35,9 +35,9 @@ const connectionString = resolveConnectionString();
 export const pool = new Pool({
   connectionString,
   ssl: { rejectUnauthorized: false },
-  max: 10,
+  max: isDev ? 3 : 10,
   idleTimeoutMillis: 20000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
 });
