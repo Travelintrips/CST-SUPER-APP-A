@@ -10,6 +10,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { postStockOut } from "../lib/inventoryStock.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -235,6 +236,7 @@ router.get("/products/all", async (req, res) => {
       imageUrl: row.image_url, isActive: row.is_active, sortOrder: row.sort_order,
       stock: row.stock, stockUnit: row.stock_unit,
       stockItemId: row.stock_item_id, stockUsagePerUnit: row.stock_usage_per_unit,
+      linkedProductId: row.linked_product_id ?? null,
       createdAt: row.created_at,
     };
   }));
@@ -243,23 +245,23 @@ router.get("/products/all", async (req, res) => {
 // POST /api/pos-kasir/products
 router.post("/products", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const { name, description, price, category, imageUrl, isActive, sortOrder, stockItemId, stockUsagePerUnit, stock, stockUnit } = req.body ?? {};
+  const { name, description, price, category, imageUrl, isActive, sortOrder, stockItemId, stockUsagePerUnit, stock, stockUnit, linkedProductId } = req.body ?? {};
   if (!name || price == null) return res.status(400).json({ message: "name dan price wajib" });
-  const extraFields = {
-    stockItemId: stockItemId ? Number(stockItemId) : null,
-    stockUsagePerUnit: stockUsagePerUnit != null ? String(stockUsagePerUnit) : "1",
-    stock: stock != null && stock !== "" ? String(stock) : null,
-    stockUnit: stockUnit ?? "pcs",
-  };
-  const [created] = await db.insert(posProductsTable).values({
-    name: String(name), description: description ?? null,
-    price: String(price), category: category ?? "minuman",
-    imageUrl: imageUrl ?? null, isActive: isActive ?? true,
-    sortOrder: sortOrder ?? 0,
-    ...extraFields,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any).returning();
-  return res.status(201).json(created);
+  const r = await db.execute(sql`
+    INSERT INTO pos_products
+      (name, description, price, category, image_url, is_active, sort_order,
+       stock_item_id, stock_usage_per_unit, stock, stock_unit, linked_product_id)
+    VALUES
+      (${String(name)}, ${description ?? null}, ${String(price)}, ${category ?? "minuman"},
+       ${imageUrl ?? null}, ${isActive ?? true}, ${sortOrder ?? 0},
+       ${stockItemId ? Number(stockItemId) : null},
+       ${stockUsagePerUnit != null ? String(stockUsagePerUnit) : "1"},
+       ${stock != null && stock !== "" ? String(stock) : null},
+       ${stockUnit ?? "pcs"},
+       ${linkedProductId ? Number(linkedProductId) : null})
+    RETURNING *
+  `);
+  return res.status(201).json(r.rows[0]);
 });
 
 // PATCH /api/pos-kasir/products/:id
@@ -294,7 +296,12 @@ router.patch("/products/:id", async (req, res) => {
       stock               = ${body.stock !== undefined ? (body.stock === null || body.stock === "" ? null : String(body.stock)) : ex.stock},
       stock_unit          = ${body.stockUnit !== undefined ? String(body.stockUnit) : ex.stock_unit},
       stock_item_id       = ${stockItemId},
-      stock_usage_per_unit = ${stockUsagePerUnit}
+      stock_usage_per_unit = ${stockUsagePerUnit},
+      linked_product_id   = ${
+        body.linkedProductId !== undefined
+          ? (body.linkedProductId === null || body.linkedProductId === "" ? null : Number(body.linkedProductId))
+          : (ex.linked_product_id ?? null)
+      }
     WHERE id = ${id}
   `);
 
@@ -312,6 +319,7 @@ router.patch("/products/:id", async (req, res) => {
     stockUnit: updated.stock_unit,
     stockItemId: updated.stock_item_id,
     stockUsagePerUnit: updated.stock_usage_per_unit,
+    linkedProductId: updated.linked_product_id ?? null,
     createdAt: updated.created_at,
   });
 });
@@ -402,15 +410,18 @@ router.patch("/orders/:id/pay", async (req, res) => {
   // ── Auto-deduct stok per produk (langsung di kolom stock) ───────────────────
   const productIds = items.map((i) => i.productId);
   if (productIds.length > 0) {
-    const products = await db.select().from(posProductsTable).where(inArray(posProductsTable.id, productIds));
-    const productMap = new Map(products.map((p) => [p.id, p]));
+    const posProds = (await db.execute(sql`
+      SELECT id, stock, stock_unit, stock_item_id, stock_usage_per_unit, linked_product_id
+      FROM pos_products WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
+    `)).rows as Array<Record<string, unknown>>;
+    const productMap = new Map(posProds.map((p) => [Number(p.id), p]));
 
     for (const item of items) {
       const product = productMap.get(item.productId);
       if (!product) continue;
 
       // Deduct dari kolom stock langsung (jika diset)
-      const currentStock = (product as { stock?: string | null }).stock;
+      const currentStock = product.stock as string | null;
       if (currentStock != null) {
         await db.execute(sql`
           UPDATE pos_products SET stock = GREATEST(0, stock - ${item.qty})
@@ -419,8 +430,8 @@ router.patch("/orders/:id/pay", async (req, res) => {
       }
 
       // Deduct dari pos_stock_items (sistem lama, jika stockItemId diset)
-      const stockItemId = (product as { stockItemId?: number | null }).stockItemId;
-      const usagePerUnit = Number((product as { stockUsagePerUnit?: string | number }).stockUsagePerUnit ?? 1);
+      const stockItemId = product.stock_item_id as number | null;
+      const usagePerUnit = Number((product.stock_usage_per_unit as string | null) ?? 1);
       if (stockItemId) {
         const totalUsage = item.qty * usagePerUnit;
         let targetStockId = stockItemId;
@@ -446,8 +457,117 @@ router.patch("/orders/:id/pay", async (req, res) => {
           reason: `auto:order:${order.orderNumber}:${item.productName}×${item.qty}`,
         });
       }
+
+      // ── Auto-deduct bahan baku dari RESEP (sistem baru inventory) ────────────
+      // Hanya jalan jika kasir terdaftar di cabang tertentu
+      if (cashier.branchId) {
+        const [recipe] = (await db.execute(sql`
+          SELECT id FROM pos_recipes WHERE product_id = ${item.productId}
+        `)).rows as Array<{ id: number }>;
+
+        if (recipe) {
+          const recipeIngredients = (await db.execute(sql`
+            SELECT ri.id, ri.item_id, ri.qty, ii.name AS item_name
+            FROM pos_recipe_items ri
+            JOIN pos_inventory_items ii ON ii.id = ri.item_id
+            WHERE ri.recipe_id = ${recipe.id}
+          `)).rows as Array<{ id: number; item_id: number; qty: string; item_name: string }>;
+
+          for (const ingredient of recipeIngredients) {
+            const totalUsageRecipe = Number(ingredient.qty) * item.qty;
+            if (totalUsageRecipe <= 0) continue;
+
+            // Ambil stok di cabang kasir — prioritaskan yang punya stok tertinggi
+            const [stock] = (await db.execute(sql`
+              SELECT id, qty, warehouse_id, rack_id
+              FROM pos_inventory_stocks
+              WHERE item_id = ${ingredient.item_id}
+                AND branch_id = ${cashier.branchId}
+              ORDER BY qty DESC
+              LIMIT 1
+            `)).rows as Array<{ id: number; qty: string; warehouse_id: number | null; rack_id: number | null }>;
+
+            if (!stock) continue;
+
+            const qtyBefore = Number(stock.qty);
+            const qtyAfter = Math.max(0, qtyBefore - totalUsageRecipe);
+
+            await db.execute(sql`
+              UPDATE pos_inventory_stocks
+              SET qty = ${String(qtyAfter)}, updated_at = NOW()
+              WHERE id = ${stock.id}
+            `);
+
+            await db.execute(sql`
+              INSERT INTO pos_stock_mutations
+                (item_id, branch_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+              VALUES
+                (${ingredient.item_id}, ${cashier.branchId}, ${stock.warehouse_id}, ${stock.rack_id},
+                 'out', ${String(-totalUsageRecipe)}, ${String(qtyBefore)}, ${String(qtyAfter)},
+                 'pos_order', ${order.id},
+                 ${`auto:${item.productName}×${item.qty} via resep (${ingredient.item_name})`})
+            `);
+          }
+        }
+      }
     }
   }
+
+  // ── New inventory_stock deduction (fire-and-forget) ─────────────────────────
+  void (async () => {
+    try {
+      if (!cashier.branchId) return;
+      // Find warehouse mapped to this branch
+      const whRow = (await db.execute(sql`
+        SELECT id FROM warehouses
+        WHERE branch_id = ${cashier.branchId} AND is_active = TRUE
+        ORDER BY id LIMIT 1
+      `)).rows[0] as { id: number } | undefined;
+      if (!whRow) return;
+      const warehouseId = whRow.id;
+
+      // Load linked_product_id for each product in this order
+      const posProds2 = (await db.execute(sql`
+        SELECT id, linked_product_id FROM pos_products
+        WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
+      `)).rows as Array<{ id: number; linked_product_id: number | null }>;
+      const linkedMap = new Map(posProds2.map((p) => [Number(p.id), p.linked_product_id]));
+
+      const warnings: string[] = [];
+      for (const item of items) {
+        const linkedProductId = linkedMap.get(item.productId);
+        if (!linkedProductId) continue;
+
+        // Check available stock first
+        const stockRow = (await db.execute(sql`
+          SELECT stock_available::float FROM inventory_stock
+          WHERE product_id = ${linkedProductId} AND warehouse_id = ${warehouseId}
+          ORDER BY id LIMIT 1
+        `)).rows[0] as { stock_available: number } | undefined;
+        const available = Number(stockRow?.stock_available ?? 0);
+
+        if (available < item.qty) {
+          warnings.push(`${item.productName}: stok tersedia ${available}, diminta ${item.qty}`);
+        }
+
+        await postStockOut({
+          productId: linkedProductId,
+          warehouseId,
+          qty: item.qty,
+          movementType: "POS_SALE",
+          referenceType: "POS_SALE",
+          referenceId: order.id,
+          notes: `POS ${order.orderNumber} — ${item.productName}×${item.qty}`,
+          createdBy: cashier.name,
+        });
+      }
+      if (warnings.length) {
+        console.warn("[inventory] POS stock warnings:", warnings);
+      }
+    } catch (e) {
+      console.error("[inventory] POS stock-out error:", e);
+    }
+  })();
 
   return res.json({ ...updated, items });
 });

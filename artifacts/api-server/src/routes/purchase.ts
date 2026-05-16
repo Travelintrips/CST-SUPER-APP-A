@@ -299,6 +299,12 @@ router.post("/documents/:id/action", async (req, res) => {
       patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
       if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
       break;
+    case "receive_to_warehouse": {
+      // Mark received + post stock movements to wh_stock
+      patch["receiveStatus"] = "received" satisfies PurchaseReceiveStatus;
+      if (doc.billStatus === "billed") patch["status"] = "done" satisfies PurchaseStatus;
+      break;
+    }
     case "mark_billed": {
       // Auto-numbering: BILL/YYYY/NNNN
       const billYear = new Date().getFullYear();
@@ -331,6 +337,44 @@ router.post("/documents/:id/action", async (req, res) => {
   }
 
   await db.update(purchaseDocumentsTable).set(patch).where(eq(purchaseDocumentsTable.id, id));
+
+  // T004: When PO is received, post stock-in movements to default warehouse (fire-and-forget)
+  if (action === "mark_received" && doc.receiveStatus !== "received") {
+    void (async () => {
+      try {
+        const lines = await db.select().from(purchaseDocumentLinesTable).where(eq(purchaseDocumentLinesTable.documentId, id));
+        const productLines = lines.filter((l) => l.productId != null);
+        if (productLines.length === 0) return;
+        // Get default warehouse (first active)
+        const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+        const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+        const warehouseId: number | undefined = wh?.id;
+        if (!warehouseId) return;
+        for (const line of productLines) {
+          const qty = Number(line.quantity);
+          const costPrice = Number(line.unitCost);
+          const cur = await db.execute(sql`
+            SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${warehouseId} AND rack_id IS NULL
+          `);
+          const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+          const qtyAfter = qtyBefore + qty;
+          await db.execute(sql`
+            INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, cost_price, updated_at)
+            VALUES (${line.productId}, ${warehouseId}, NULL, ${qtyAfter}, ${costPrice}, NOW())
+            ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+            DO UPDATE SET qty = ${qtyAfter}, cost_price = ${costPrice}, updated_at = NOW()
+          `);
+          await db.execute(sql`
+            INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
+            VALUES (${line.productId}, ${warehouseId}, NULL, 'po_receipt', ${qty}, ${qtyBefore}, ${qtyAfter}, ${costPrice},
+                    'purchase_order', ${id}, ${`PO Diterima: ${doc.docNumber}`})
+          `);
+        }
+      } catch (e) {
+        console.error("[wh] mark_received stock-in error:", e);
+      }
+    })();
+  }
 
   if (action === "mark_billed" && doc.billStatus !== "billed") {
     const net = Number(doc.totalAmount);
