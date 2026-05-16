@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,15 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ArrowLeftRight, Truck, CheckCircle, Eye, X } from "lucide-react";
+import { Plus, ArrowLeftRight, Truck, CheckCircle, Eye, X, Clock, Ban } from "lucide-react";
 
 interface Branch { id: number; name: string; }
 interface Wh { id: number; name: string; branch_id: number; }
 interface InvItem { id: number; name: string; unit: string; sku: string; }
 interface Transfer {
   id: number; transfer_number: string; from_branch_name: string; to_branch_name: string;
-  status: string; note: string | null; created_at: string; sent_at: string | null; received_at: string | null;
+  status: string; note: string | null; created_at: string;
 }
 interface TransferDetail extends Transfer {
   items: { item_id: number; item_name: string; unit: string; qty: string; from_warehouse_name: string | null; to_warehouse_name: string | null; }[];
@@ -29,14 +30,28 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
-const STATUS_LABEL: Record<string, string> = { draft: "Draft", sent: "Dikirim", received: "Diterima" };
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = { draft: "secondary", sent: "default", received: "outline" };
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  pending: "Menunggu",
+  in_transit: "Dikirim",
+  received: "Diterima",
+  cancelled: "Dibatalkan",
+};
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  draft: "secondary",
+  pending: "outline",
+  in_transit: "default",
+  received: "outline",
+  cancelled: "destructive",
+};
 
 export default function PosStockTransfersPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [openNew, setOpenNew] = useState(false);
   const [viewId, setViewId] = useState<number | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [form, setForm] = useState({ fromBranchId: "", toBranchId: "", note: "" });
   const [lineItems, setLineItems] = useState<{ itemId: string; qty: string; fromWarehouseId: string; toWarehouseId: string }[]>([]);
 
@@ -53,6 +68,11 @@ export default function PosStockTransfersPage() {
   const fromWarehouses = form.fromBranchId ? warehouses.filter(w => w.branch_id === Number(form.fromBranchId)) : [];
   const toWarehouses = form.toBranchId ? warehouses.filter(w => w.branch_id === Number(form.toBranchId)) : [];
 
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["pos-stock-transfers"] });
+    qc.invalidateQueries({ queryKey: ["pos-stock-transfer-detail", viewId] });
+  };
+
   const createMutation = useMutation({
     mutationFn: () => apiFetch("/pos-inventory/stock-transfers", {
       method: "POST",
@@ -67,19 +87,37 @@ export default function PosStockTransfersPage() {
         })),
       }),
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pos-stock-transfers"] }); toast({ title: "Transfer dibuat" }); setOpenNew(false); },
+    onSuccess: () => { invalidate(); toast({ title: "Transfer dibuat" }); setOpenNew(false); },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const pendingMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/pos-inventory/stock-transfers/${id}/pending`, { method: "PATCH" }),
+    onSuccess: () => { invalidate(); toast({ title: "Transfer dipending" }); },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
   const sendMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/pos-inventory/stock-transfers/${id}/send`, { method: "PATCH" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pos-stock-transfers"] }); qc.invalidateQueries({ queryKey: ["pos-stock-transfer-detail", viewId] }); toast({ title: "Transfer dikirim, stok asal berkurang" }); },
+    onSuccess: () => { invalidate(); toast({ title: "Transfer dikirim – stok asal berkurang" }); },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
   const receiveMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/pos-inventory/stock-transfers/${id}/receive`, { method: "PATCH" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pos-stock-transfers"] }); qc.invalidateQueries({ queryKey: ["pos-stock-transfer-detail", viewId] }); toast({ title: "Transfer diterima, stok tujuan bertambah" }); },
+    onSuccess: () => { invalidate(); toast({ title: "Transfer diterima – stok tujuan bertambah" }); },
+    onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      apiFetch(`/pos-inventory/stock-transfers/${id}/cancel`, { method: "PATCH", body: JSON.stringify({ reason }) }),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Transfer dibatalkan" });
+      setCancelOpen(false);
+      setCancelReason("");
+    },
     onError: (e: Error) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
 
@@ -108,7 +146,7 @@ export default function PosStockTransfersPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">Transfer Stok</h1>
-              <p className="text-sm text-muted-foreground">Kirim stok antar cabang</p>
+              <p className="text-sm text-muted-foreground">Kirim stok antar cabang — Draft → Menunggu → Dikirim → Diterima</p>
             </div>
           </div>
           <Button onClick={() => { setForm({ fromBranchId: "", toBranchId: "", note: "" }); setLineItems([{ itemId: "", qty: "", fromWarehouseId: "", toWarehouseId: "" }]); setOpenNew(true); }} className="gap-2">
@@ -272,20 +310,52 @@ export default function PosStockTransfersPage() {
                 </TableBody>
               </Table>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 flex-wrap">
                 {detail.status === "draft" && (
-                  <Button className="flex-1 gap-2" onClick={() => { if (confirm("Kirim transfer? Stok asal akan berkurang.")) sendMutation.mutate(detail.id); }} disabled={sendMutation.isPending}>
-                    <Truck className="h-4 w-4" /> Kirim Transfer
+                  <Button variant="outline" className="gap-2 flex-1" onClick={() => pendingMutation.mutate(detail.id)} disabled={pendingMutation.isPending}>
+                    <Clock className="h-4 w-4" /> Ajukan Pending
                   </Button>
                 )}
-                {detail.status === "sent" && (
-                  <Button className="flex-1 gap-2" onClick={() => { if (confirm("Konfirmasi penerimaan? Stok tujuan akan bertambah.")) receiveMutation.mutate(detail.id); }} disabled={receiveMutation.isPending}>
+                {(detail.status === "draft" || detail.status === "pending") && (
+                  <Button className="gap-2 flex-1" onClick={() => { if (confirm("Kirim sekarang? Stok asal akan berkurang.")) sendMutation.mutate(detail.id); }} disabled={sendMutation.isPending}>
+                    <Truck className="h-4 w-4" /> Kirim (In Transit)
+                  </Button>
+                )}
+                {detail.status === "in_transit" && (
+                  <Button className="gap-2 flex-1" onClick={() => { if (confirm("Konfirmasi penerimaan? Stok tujuan akan bertambah.")) receiveMutation.mutate(detail.id); }} disabled={receiveMutation.isPending}>
                     <CheckCircle className="h-4 w-4" /> Konfirmasi Terima
+                  </Button>
+                )}
+                {["draft", "pending", "in_transit"].includes(detail.status) && (
+                  <Button variant="destructive" size="icon" onClick={() => setCancelOpen(true)} title="Batalkan transfer">
+                    <Ban className="h-4 w-4" />
                   </Button>
                 )}
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Dialog */}
+      <Dialog open={cancelOpen} onOpenChange={v => { if (!v) { setCancelOpen(false); setCancelReason(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Batalkan Transfer</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {detail?.status === "in_transit" && (
+              <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">Stok asal akan dikembalikan karena transfer sudah in transit.</p>
+            )}
+            <div className="space-y-1">
+              <Label>Alasan (opsional)</Label>
+              <Textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder="Alasan pembatalan..." rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCancelOpen(false); setCancelReason(""); }}>Kembali</Button>
+            <Button variant="destructive" onClick={() => { if (viewId) cancelMutation.mutate({ id: viewId, reason: cancelReason || undefined }); }} disabled={cancelMutation.isPending}>
+              {cancelMutation.isPending ? "Memproses..." : "Batalkan Transfer"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppShell>

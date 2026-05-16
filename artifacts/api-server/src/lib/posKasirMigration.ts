@@ -412,5 +412,69 @@ export async function runPosKasirMigration(): Promise<void> {
     `);
   }
 
+  // Transfer enhancements (v3) – pending / in_transit / cancelled statuses
+  await db.execute(sql`ALTER TABLE pos_stock_transfers ADD COLUMN IF NOT EXISTS pending_at TIMESTAMP`);
+  await db.execute(sql`ALTER TABLE pos_stock_transfers ADD COLUMN IF NOT EXISTS in_transit_at TIMESTAMP`);
+  await db.execute(sql`ALTER TABLE pos_stock_transfers ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
+  await db.execute(sql`ALTER TABLE pos_stock_transfers ADD COLUMN IF NOT EXISTS cancelled_reason TEXT`);
+
+  // pos_stock_returns
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_returns (
+      id SERIAL PRIMARY KEY,
+      return_number TEXT NOT NULL UNIQUE,
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      warehouse_id INTEGER REFERENCES pos_warehouses(id),
+      return_type TEXT NOT NULL DEFAULT 'customer',
+      status TEXT NOT NULL DEFAULT 'draft',
+      note TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      approved_at TIMESTAMP,
+      cancelled_at TIMESTAMP
+    )
+  `);
+
+  // pos_stock_return_items
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_return_items (
+      id SERIAL PRIMARY KEY,
+      return_id INTEGER NOT NULL REFERENCES pos_stock_returns(id) ON DELETE CASCADE,
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+      condition TEXT NOT NULL DEFAULT 'good',
+      note TEXT
+    )
+  `);
+
+  // pos_stock_losses (rusak / hilang / kadaluarsa langsung dicatat)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_losses (
+      id SERIAL PRIMARY KEY,
+      loss_number TEXT NOT NULL UNIQUE,
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      warehouse_id INTEGER REFERENCES pos_warehouses(id),
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      qty NUMERIC(12,3) NOT NULL,
+      loss_type TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_stock_quarantine (barang retur kondisi rusak/expired)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_quarantine (
+      id SERIAL PRIMARY KEY,
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      warehouse_id INTEGER REFERENCES pos_warehouses(id),
+      qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+      condition TEXT NOT NULL DEFAULT 'damaged',
+      return_id INTEGER REFERENCES pos_stock_returns(id),
+      reason TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
   logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory)");
 }

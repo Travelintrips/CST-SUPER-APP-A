@@ -25,6 +25,24 @@ function makeTransferNumber(): string {
   return `TRF/${y}${m}${d}/${ms}`;
 }
 
+function makeReturnNumber(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const ms = now.getTime().toString().slice(-5);
+  return `RTN/${y}${m}${d}/${ms}`;
+}
+
+function makeLossNumber(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const ms = now.getTime().toString().slice(-5);
+  return `LSS/${y}${m}${d}/${ms}`;
+}
+
 // ── CABANG ───────────────────────────────────────────────────────────────────
 
 router.get("/branches", requireClerkUser, async (_req: Request, res: Response) => {
@@ -458,18 +476,32 @@ router.post("/stock-transfers", requireClerkUser, async (req: Request, res: Resp
   res.json(result.rows[0]);
 });
 
-router.patch("/stock-transfers/:id/send", requireClerkUser, async (req: Request, res: Response) => {
+// Draft → Pending (tanpa perubahan stok)
+router.patch("/stock-transfers/:id/pending", requireClerkUser, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
   if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
   if ((transfer.rows[0] as { status: string }).status !== "draft") {
-    res.status(400).json({ message: "Hanya transfer berstatus draft yang bisa dikirim" }); return;
+    res.status(400).json({ message: "Hanya transfer berstatus draft yang bisa di-pending-kan" }); return;
+  }
+  await db.execute(sql`UPDATE pos_stock_transfers SET status = 'pending', pending_at = NOW() WHERE id = ${id}`);
+  res.json({ ok: true });
+});
+
+// Draft/Pending → In Transit (stok asal berkurang)
+router.patch("/stock-transfers/:id/send", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
+  if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
+  const st = (transfer.rows[0] as { status: string }).status;
+  if (st !== "draft" && st !== "pending") {
+    res.status(400).json({ message: "Hanya transfer berstatus draft/pending yang bisa dikirim" }); return;
   }
 
   const items = await db.execute(sql`SELECT * FROM pos_stock_transfer_items WHERE transfer_id = ${id}`);
   const t = transfer.rows[0] as { from_branch_id: number };
 
-  for (const item of items.rows as { item_id: number; qty: string; from_warehouse_id: number | null; rack_id: number | null }[]) {
+  for (const item of items.rows as { item_id: number; qty: string; from_warehouse_id: number | null }[]) {
     const existing = await db.execute(sql`
       SELECT * FROM pos_inventory_stocks
       WHERE item_id = ${item.item_id} AND branch_id = ${t.from_branch_id}
@@ -486,11 +518,11 @@ router.patch("/stock-transfers/:id/send", requireClerkUser, async (req: Request,
     }
     await db.execute(sql`
       INSERT INTO pos_stock_mutations (item_id, branch_id, warehouse_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
-      VALUES (${item.item_id}, ${t.from_branch_id}, ${item.from_warehouse_id ?? null}, 'transfer_out', ${-Number(item.qty)}, ${qtyBefore}, ${qtyAfter}, 'transfer', ${id}, 'Transfer keluar')
+      VALUES (${item.item_id}, ${t.from_branch_id}, ${item.from_warehouse_id ?? null}, 'TRANSFER_OUT', ${-Number(item.qty)}, ${qtyBefore}, ${qtyAfter}, 'transfer', ${id}, 'Transfer keluar – in transit')
     `);
   }
 
-  await db.execute(sql`UPDATE pos_stock_transfers SET status = 'sent', sent_at = NOW() WHERE id = ${id}`);
+  await db.execute(sql`UPDATE pos_stock_transfers SET status = 'in_transit', in_transit_at = NOW() WHERE id = ${id}`);
   res.json({ ok: true });
 });
 
@@ -498,8 +530,8 @@ router.patch("/stock-transfers/:id/receive", requireClerkUser, async (req: Reque
   const id = Number(req.params.id);
   const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
   if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
-  if ((transfer.rows[0] as { status: string }).status !== "sent") {
-    res.status(400).json({ message: "Hanya transfer berstatus sent yang bisa diterima" }); return;
+  if ((transfer.rows[0] as { status: string }).status !== "in_transit") {
+    res.status(400).json({ message: "Hanya transfer berstatus in_transit yang bisa diterima" }); return;
   }
 
   const items = await db.execute(sql`SELECT * FROM pos_stock_transfer_items WHERE transfer_id = ${id}`);
@@ -533,6 +565,241 @@ router.patch("/stock-transfers/:id/receive", requireClerkUser, async (req: Reque
 
   await db.execute(sql`UPDATE pos_stock_transfers SET status = 'received', received_at = NOW() WHERE id = ${id}`);
   res.json({ ok: true });
+});
+
+// Cancel transfer (draft/pending tanpa reversal; in_transit dengan reversal stok asal)
+router.patch("/stock-transfers/:id/cancel", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const { reason } = req.body as { reason?: string };
+  const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
+  if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
+  const st = (transfer.rows[0] as { status: string }).status;
+  if (!["draft", "pending", "in_transit"].includes(st)) {
+    res.status(400).json({ message: "Transfer sudah selesai atau dibatalkan" }); return;
+  }
+
+  if (st === "in_transit") {
+    const items = await db.execute(sql`SELECT * FROM pos_stock_transfer_items WHERE transfer_id = ${id}`);
+    const t = transfer.rows[0] as { from_branch_id: number };
+    for (const item of items.rows as { item_id: number; qty: string; from_warehouse_id: number | null }[]) {
+      const existing = await db.execute(sql`
+        SELECT * FROM pos_inventory_stocks
+        WHERE item_id = ${item.item_id} AND branch_id = ${t.from_branch_id}
+          AND warehouse_id IS NOT DISTINCT FROM ${item.from_warehouse_id ?? null}
+      `);
+      const qtyBefore = existing.rows.length > 0 ? Number((existing.rows[0] as { qty: string }).qty) : 0;
+      const qtyAfter = qtyBefore + Number(item.qty);
+      if (existing.rows.length > 0) {
+        await db.execute(sql`
+          UPDATE pos_inventory_stocks SET qty = ${qtyAfter}, updated_at = NOW()
+          WHERE item_id = ${item.item_id} AND branch_id = ${t.from_branch_id}
+            AND warehouse_id IS NOT DISTINCT FROM ${item.from_warehouse_id ?? null}
+        `);
+      } else {
+        await db.execute(sql`
+          INSERT INTO pos_inventory_stocks (item_id, branch_id, warehouse_id, qty)
+          VALUES (${item.item_id}, ${t.from_branch_id}, ${item.from_warehouse_id ?? null}, ${qtyAfter})
+        `);
+      }
+      await db.execute(sql`
+        INSERT INTO pos_stock_mutations (item_id, branch_id, warehouse_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+        VALUES (${item.item_id}, ${t.from_branch_id}, ${item.from_warehouse_id ?? null}, 'TRANSFER_CANCEL', ${Number(item.qty)}, ${qtyBefore}, ${qtyAfter}, 'transfer', ${id}, 'Pembatalan transfer – stok dikembalikan')
+      `);
+    }
+  }
+
+  await db.execute(sql`
+    UPDATE pos_stock_transfers SET status = 'cancelled', cancelled_at = NOW(), cancelled_reason = ${reason ?? null}
+    WHERE id = ${id}
+  `);
+  res.json({ ok: true });
+});
+
+// ── RETUR BARANG ─────────────────────────────────────────────────────────────
+
+router.get("/stock-returns", requireClerkUser, async (req: Request, res: Response) => {
+  const branchId = req.query.branchId ? Number(req.query.branchId) : null;
+  let q = sql`
+    SELECT r.*, b.name as branch_name, w.name as warehouse_name
+    FROM pos_stock_returns r
+    JOIN pos_branches b ON b.id = r.branch_id
+    LEFT JOIN pos_warehouses w ON w.id = r.warehouse_id
+    WHERE 1=1
+  `;
+  if (branchId) q = sql`${q} AND r.branch_id = ${branchId}`;
+  q = sql`${q} ORDER BY r.created_at DESC`;
+  const rows = await db.execute(q);
+  res.json(rows.rows);
+});
+
+router.get("/stock-returns/:id", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const ret = await db.execute(sql`
+    SELECT r.*, b.name as branch_name, w.name as warehouse_name
+    FROM pos_stock_returns r
+    JOIN pos_branches b ON b.id = r.branch_id
+    LEFT JOIN pos_warehouses w ON w.id = r.warehouse_id
+    WHERE r.id = ${id}
+  `);
+  if (ret.rows.length === 0) { res.status(404).json({ message: "Retur tidak ditemukan" }); return; }
+  const items = await db.execute(sql`
+    SELECT ri.*, i.name as item_name, i.unit
+    FROM pos_stock_return_items ri
+    JOIN pos_inventory_items i ON i.id = ri.item_id
+    WHERE ri.return_id = ${id}
+  `);
+  res.json({ ...ret.rows[0], items: items.rows });
+});
+
+router.post("/stock-returns", requireClerkUser, async (req: Request, res: Response) => {
+  const { branchId, warehouseId, returnType, note, items } = req.body as {
+    branchId: number; warehouseId?: number; returnType?: string; note?: string;
+    items: { itemId: number; qty: number; condition: string; note?: string }[];
+  };
+  if (!branchId) { res.status(400).json({ message: "branchId wajib diisi" }); return; }
+  if (!items || items.length === 0) { res.status(400).json({ message: "items wajib diisi" }); return; }
+
+  const returnNumber = makeReturnNumber();
+  const result = await db.execute(sql`
+    INSERT INTO pos_stock_returns (return_number, branch_id, warehouse_id, return_type, note, status)
+    VALUES (${returnNumber}, ${branchId}, ${warehouseId ?? null}, ${returnType ?? 'customer'}, ${note ?? null}, 'draft')
+    RETURNING *
+  `);
+  const ret = result.rows[0] as { id: number };
+
+  for (const item of items) {
+    await db.execute(sql`
+      INSERT INTO pos_stock_return_items (return_id, item_id, qty, condition, note)
+      VALUES (${ret.id}, ${item.itemId}, ${item.qty}, ${item.condition ?? 'good'}, ${item.note ?? null})
+    `);
+  }
+  res.json(result.rows[0]);
+});
+
+router.patch("/stock-returns/:id/approve", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const ret = await db.execute(sql`SELECT * FROM pos_stock_returns WHERE id = ${id}`);
+  if (ret.rows.length === 0) { res.status(404).json({ message: "Retur tidak ditemukan" }); return; }
+  if ((ret.rows[0] as { status: string }).status !== "draft") {
+    res.status(400).json({ message: "Hanya retur berstatus draft yang bisa diapprove" }); return;
+  }
+  const r = ret.rows[0] as { branch_id: number; warehouse_id: number | null };
+  const items = await db.execute(sql`SELECT * FROM pos_stock_return_items WHERE return_id = ${id}`);
+
+  for (const item of items.rows as { item_id: number; qty: string; condition: string; note: string | null }[]) {
+    if (item.condition === "good") {
+      const existing = await db.execute(sql`
+        SELECT * FROM pos_inventory_stocks
+        WHERE item_id = ${item.item_id} AND branch_id = ${r.branch_id}
+          AND warehouse_id IS NOT DISTINCT FROM ${r.warehouse_id ?? null}
+      `);
+      const qtyBefore = existing.rows.length > 0 ? Number((existing.rows[0] as { qty: string }).qty) : 0;
+      const qtyAfter = qtyBefore + Number(item.qty);
+      if (existing.rows.length > 0) {
+        await db.execute(sql`
+          UPDATE pos_inventory_stocks SET qty = ${qtyAfter}, updated_at = NOW()
+          WHERE item_id = ${item.item_id} AND branch_id = ${r.branch_id}
+            AND warehouse_id IS NOT DISTINCT FROM ${r.warehouse_id ?? null}
+        `);
+      } else {
+        await db.execute(sql`
+          INSERT INTO pos_inventory_stocks (item_id, branch_id, warehouse_id, qty)
+          VALUES (${item.item_id}, ${r.branch_id}, ${r.warehouse_id ?? null}, ${qtyAfter})
+        `);
+      }
+      await db.execute(sql`
+        INSERT INTO pos_stock_mutations (item_id, branch_id, warehouse_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+        VALUES (${item.item_id}, ${r.branch_id}, ${r.warehouse_id ?? null}, 'RETURN_IN', ${Number(item.qty)}, ${qtyBefore}, ${qtyAfter}, 'return', ${id}, 'Retur masuk – kondisi baik')
+      `);
+    } else {
+      // Damaged / Expired → karantina, tidak ubah stok available
+      await db.execute(sql`
+        INSERT INTO pos_stock_quarantine (item_id, branch_id, warehouse_id, qty, condition, return_id, reason)
+        VALUES (${item.item_id}, ${r.branch_id}, ${r.warehouse_id ?? null}, ${Number(item.qty)}, ${item.condition}, ${id}, ${item.note ?? null})
+      `);
+      const existing = await db.execute(sql`
+        SELECT * FROM pos_inventory_stocks
+        WHERE item_id = ${item.item_id} AND branch_id = ${r.branch_id}
+          AND warehouse_id IS NOT DISTINCT FROM ${r.warehouse_id ?? null}
+      `);
+      const qtySnapshot = existing.rows.length > 0 ? Number((existing.rows[0] as { qty: string }).qty) : 0;
+      await db.execute(sql`
+        INSERT INTO pos_stock_mutations (item_id, branch_id, warehouse_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+        VALUES (${item.item_id}, ${r.branch_id}, ${r.warehouse_id ?? null}, 'RETURN_QUARANTINE', ${Number(item.qty)}, ${qtySnapshot}, ${qtySnapshot}, 'return', ${id}, ${'Retur karantina – kondisi ' + item.condition})
+      `);
+    }
+  }
+
+  await db.execute(sql`UPDATE pos_stock_returns SET status = 'approved', approved_at = NOW() WHERE id = ${id}`);
+  res.json({ ok: true });
+});
+
+router.patch("/stock-returns/:id/cancel", requireClerkUser, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const ret = await db.execute(sql`SELECT * FROM pos_stock_returns WHERE id = ${id}`);
+  if (ret.rows.length === 0) { res.status(404).json({ message: "Retur tidak ditemukan" }); return; }
+  if ((ret.rows[0] as { status: string }).status !== "draft") {
+    res.status(400).json({ message: "Hanya retur berstatus draft yang bisa dibatalkan" }); return;
+  }
+  await db.execute(sql`UPDATE pos_stock_returns SET status = 'cancelled', cancelled_at = NOW() WHERE id = ${id}`);
+  res.json({ ok: true });
+});
+
+// ── BARANG RUSAK / HILANG / KADALUARSA ────────────────────────────────────────
+
+router.get("/stock-losses", requireClerkUser, async (req: Request, res: Response) => {
+  const branchId = req.query.branchId ? Number(req.query.branchId) : null;
+  let q = sql`
+    SELECT l.*, b.name as branch_name, w.name as warehouse_name, i.name as item_name, i.unit
+    FROM pos_stock_losses l
+    JOIN pos_branches b ON b.id = l.branch_id
+    LEFT JOIN pos_warehouses w ON w.id = l.warehouse_id
+    JOIN pos_inventory_items i ON i.id = l.item_id
+    WHERE 1=1
+  `;
+  if (branchId) q = sql`${q} AND l.branch_id = ${branchId}`;
+  q = sql`${q} ORDER BY l.created_at DESC LIMIT 200`;
+  const rows = await db.execute(q);
+  res.json(rows.rows);
+});
+
+router.post("/stock-losses", requireClerkUser, async (req: Request, res: Response) => {
+  const { branchId, warehouseId, itemId, qty, lossType, reason } = req.body as {
+    branchId: number; warehouseId?: number; itemId: number;
+    qty: number; lossType: string; reason: string;
+  };
+  if (!branchId || !itemId || !qty || !lossType || !reason) {
+    res.status(400).json({ message: "branchId, itemId, qty, lossType, reason wajib diisi" }); return;
+  }
+
+  const existing = await db.execute(sql`
+    SELECT * FROM pos_inventory_stocks
+    WHERE item_id = ${itemId} AND branch_id = ${branchId}
+      AND warehouse_id IS NOT DISTINCT FROM ${warehouseId ?? null}
+  `);
+  const qtyBefore = existing.rows.length > 0 ? Number((existing.rows[0] as { qty: string }).qty) : 0;
+  const qtyAfter = Math.max(0, qtyBefore - qty);
+  if (existing.rows.length > 0) {
+    await db.execute(sql`
+      UPDATE pos_inventory_stocks SET qty = ${qtyAfter}, updated_at = NOW()
+      WHERE item_id = ${itemId} AND branch_id = ${branchId}
+        AND warehouse_id IS NOT DISTINCT FROM ${warehouseId ?? null}
+    `);
+  }
+
+  const lossNumber = makeLossNumber();
+  const result = await db.execute(sql`
+    INSERT INTO pos_stock_losses (loss_number, branch_id, warehouse_id, item_id, qty, loss_type, reason)
+    VALUES (${lossNumber}, ${branchId}, ${warehouseId ?? null}, ${itemId}, ${qty}, ${lossType}, ${reason})
+    RETURNING *
+  `);
+
+  await db.execute(sql`
+    INSERT INTO pos_stock_mutations (item_id, branch_id, warehouse_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+    VALUES (${itemId}, ${branchId}, ${warehouseId ?? null}, ${'LOSS_' + lossType.toUpperCase()}, ${-qty}, ${qtyBefore}, ${qtyAfter}, 'loss', ${(result.rows[0] as { id: number }).id}, ${reason})
+  `);
+
+  res.json(result.rows[0]);
 });
 
 // ── STOCK OPNAME ─────────────────────────────────────────────────────────────
