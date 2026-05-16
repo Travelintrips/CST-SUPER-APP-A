@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated, isPortalAdmin, getAuthHeaders, setAuthToken } from "@/lib/auth";
 import { resolveImageUrl } from "@/lib/utils";
-import { getProductFallbackImage } from "@/lib/categoryImages";
+import { getProductFallbackImage, getServiceFallbackImage } from "@/lib/categoryImages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -742,7 +742,7 @@ function ItemEditCard({
                 (item as Product).categories ?? [],
                 item.name,
                 (item as Product).subcategory ?? null
-              ) : null}
+              ) : getServiceFallbackImage([], item.name)}
             />
           </div>
         </div>
