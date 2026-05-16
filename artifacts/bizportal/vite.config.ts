@@ -87,6 +87,10 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
     strictPort: false,
     host: "0.0.0.0",
     allowedHosts: true,
+    hmr: {
+      clientPort: 443,
+      protocol: "wss",
+    },
     watch: {
       ignored: [
         "**/node_modules/**",

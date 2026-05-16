@@ -5,12 +5,16 @@ version = "1.0.0"
 id = "3B4_FFSkEVBkAeYMFRJ2e"
 
 [[services]]
-localPort = 8080
+localPort = 5000
 name = "API Server"
 paths = ["/api"]
 
 [services.development]
-run = "pnpm --filter @workspace/api-server run dev"
+run = "fuser -k 5000/tcp 2>/dev/null || true; sleep 1; node --enable-source-maps /home/runner/workspace/artifacts/api-server/dist/index.mjs"
+
+[services.development.env]
+PORT = "5000"
+NODE_ENV = "development"
 
 [services.production]
 
@@ -24,7 +28,7 @@ NODE_ENV = "production"
 args = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
 
 [services.production.run.env]
-PORT = "8080"
+PORT = "5000"
 NODE_ENV = "production"
 
 [services.production.health.startup]
