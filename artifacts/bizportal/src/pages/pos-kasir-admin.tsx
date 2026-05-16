@@ -66,6 +66,8 @@ interface Product {
   imageUrl?: string | null;
   stockItemId?: number | null;
   stockUsagePerUnit?: string | null;
+  stock?: string | null;
+  stockUnit?: string;
 }
 
 function resolveStoredUrl(url?: string | null): string | null {
@@ -145,7 +147,7 @@ export default function PosKasirAdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productDialog, setProductDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1" });
+  const [productForm, setProductForm] = useState({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
   const [imageUploading, setImageUploading] = useState(false);
   const imageFileRef = useRef<HTMLInputElement>(null);
 
@@ -405,6 +407,10 @@ export default function PosKasirAdminPage() {
       setStockDialog(false);
       setEditingStock(null);
       loadStocks();
+    } else {
+      let msg = `Error ${res.status}`;
+      try { const d = await res.json() as { message?: string }; msg = d.message ?? msg; } catch { /* ignore */ }
+      toast({ title: "Gagal menyimpan stok", description: msg, variant: "destructive" });
     }
   };
 
@@ -823,7 +829,7 @@ export default function PosKasirAdminPage() {
                 <CardTitle className="text-base">Menu Thai Tea CST</CardTitle>
                 <Button size="sm" onClick={() => {
                   setEditingProduct(null);
-                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1" });
+                  setProductForm({ name: "", description: "", price: "", category: "minuman", isActive: true, sortOrder: 0, imageUrl: "", stockItemId: "", stockUsagePerUnit: "1", stock: "", stockUnit: "pcs" });
                   setProductDialog(true);
                 }}>
                   <Plus className="h-4 w-4 mr-1" /> Tambah Menu
@@ -837,6 +843,7 @@ export default function PosKasirAdminPage() {
                       <TableHead>Nama</TableHead>
                       <TableHead>Kategori</TableHead>
                       <TableHead>Harga</TableHead>
+                      <TableHead>Stok</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
@@ -864,6 +871,11 @@ export default function PosKasirAdminPage() {
                         </TableCell>
                         <TableCell className="font-medium">{fmt(p.price)}</TableCell>
                         <TableCell>
+                          {p.stock != null
+                            ? <span className={`text-xs font-semibold ${Number(p.stock) <= 0 ? "text-red-600" : Number(p.stock) <= 5 ? "text-orange-500" : "text-green-700"}`}>{Number(p.stock)} {p.stockUnit ?? "pcs"}</span>
+                            : <span className="text-xs text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell>
                           {p.isActive
                             ? <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Aktif</Badge>
                             : <Badge variant="secondary" className="text-xs">Non-aktif</Badge>}
@@ -872,7 +884,7 @@ export default function PosKasirAdminPage() {
                           <div className="flex justify-end gap-1">
                             <Button size="sm" variant="ghost" onClick={() => {
                               setEditingProduct(p);
-                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "", stockItemId: p.stockItemId ? String(p.stockItemId) : "", stockUsagePerUnit: p.stockUsagePerUnit ?? "1" });
+                              setProductForm({ name: p.name, description: p.description ?? "", price: p.price, category: p.category, isActive: p.isActive, sortOrder: p.sortOrder, imageUrl: p.imageUrl ?? "", stockItemId: p.stockItemId ? String(p.stockItemId) : "", stockUsagePerUnit: p.stockUsagePerUnit ?? "1", stock: p.stock != null ? String(p.stock) : "", stockUnit: p.stockUnit ?? "pcs" });
                               setProductDialog(true);
                             }}>
                               <Pencil className="h-3.5 w-3.5" />
@@ -1144,6 +1156,26 @@ export default function PosKasirAdminPage() {
                   {imageUploading ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Mengunggah…</> : "Ganti Gambar"}
                 </Button>
               )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Stok Awal</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="Kosongkan jika tidak dilacak"
+                  value={productForm.stock}
+                  onChange={(e) => setProductForm((f) => ({ ...f, stock: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Satuan Stok</Label>
+                <Input
+                  placeholder="pcs, cup, botol…"
+                  value={productForm.stockUnit}
+                  onChange={(e) => setProductForm((f) => ({ ...f, stockUnit: e.target.value }))}
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

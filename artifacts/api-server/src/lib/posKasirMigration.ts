@@ -79,6 +79,15 @@ export async function runPosKasirMigration(): Promise<void> {
     ALTER TABLE pos_products
       ADD COLUMN IF NOT EXISTS stock_usage_per_unit NUMERIC(12,3) NOT NULL DEFAULT 1
   `);
+  // Stok langsung per produk (lebih simpel, auto-deduct per transaksi)
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock NUMERIC(12,3)
+  `);
+  await db.execute(sql`
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_unit TEXT NOT NULL DEFAULT 'pcs'
+  `);
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pos_orders (

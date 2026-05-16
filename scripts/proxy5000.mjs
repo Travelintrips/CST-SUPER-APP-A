@@ -10,30 +10,35 @@ try { execSync("fuser -k 8080/tcp", { stdio: "ignore" }); } catch {}
 // Spawn API server if not already running
 const apiDist = resolve("artifacts/api-server/dist/index.mjs");
 if (existsSync(apiDist)) {
-  const api = spawn("node", ["--enable-source-maps", apiDist], {
-    env: { ...process.env, NODE_ENV: "development", PORT: "8080" },
-    stdio: "inherit",
-  });
-  api.on("exit", (code) => {
-    console.log(`[proxy] API server exited (${code}), restarting in 3s...`);
-    setTimeout(() => {
-      const api2 = spawn("node", ["--enable-source-maps", apiDist], {
-        env: { ...process.env, NODE_ENV: "development", PORT: "8080" },
-        stdio: "inherit",
-      });
-      api2.on("exit", (c) => console.log(`[proxy] API server exited again (${c})`));
-    }, 3000);
-  });
+  const spawnApi = () => {
+    const api = spawn("node", ["--enable-source-maps", apiDist], {
+      env: { ...process.env, NODE_ENV: "development", PORT: "8080" },
+      stdio: "inherit",
+    });
+    api.on("exit", (code) => {
+      console.log(`[proxy] API server exited (${code}), restarting in 3s...`);
+      setTimeout(spawnApi, 3000);
+    });
+    return api;
+  };
+  spawnApi();
   console.log("[proxy] API server spawned on port 8080");
 } else {
   console.warn("[proxy] API dist not found, skipping API server spawn");
 }
 
-// Route rules: requests matching pathPrefix go to the given upstream port.
+// Route rules (checked in order, first match wins):
+// - /bizportal/* → BizPortal Vite dev (18442)
+// - /api/*       → API server Express (8080)
+// - everything else → Customer Portal Vite dev (23434)
 const ROUTES = [
   { prefix: "/bizportal/",  port: 18442 },
   { prefix: "/bizportal",   port: 18442 },
-  { prefix: "/",            port: 8080  },
+  { prefix: "/api/",        port: 8080  },
+  { prefix: "/api",         port: 8080  },
+  { prefix: "/objects/",    port: 8080  },
+  { prefix: "/auth/",       port: 8080  },
+  { prefix: "/",            port: 23434 },
 ];
 
 function resolveUpstream(url) {
@@ -42,7 +47,7 @@ function resolveUpstream(url) {
       return port;
     }
   }
-  return 8080;
+  return 23434;
 }
 
 const server = http.createServer((req, res) => {
@@ -66,5 +71,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(5000, "0.0.0.0", () => {
-  console.log("Proxy running: port 5000 → /bizportal/* → :18442, /* → :8080");
+  console.log("Proxy: 5000 → /bizportal/* :18442, /api/* :8080, /* :23434");
 });

@@ -537,9 +537,18 @@ router.get("/admin/products", requirePortalAdmin, async (_req, res) => {
   }));
 });
 
+// GET /api/portal/admin/product-categories
+router.get("/admin/product-categories", requirePortalAdmin, async (_req, res) => {
+  const cats = await db
+    .select({ id: productCategoriesTable.id, name: productCategoriesTable.name })
+    .from(productCategoriesTable)
+    .orderBy(productCategoriesTable.name);
+  return res.json(cats);
+});
+
 // POST /api/portal/admin/products  — create a new product (admin only)
 router.post("/admin/products", requirePortalAdmin, async (req, res) => {
-  const { name, description, price, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems, unit, unitOptions, categories } = req.body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Nama produk harus diisi" });
   }
@@ -550,21 +559,31 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
     .from(productsTable);
   const nextId = (Number(maxRow?.maxId ?? 0) + 1);
   const autoSku = `PRD-${year}-${String(nextId).padStart(4, "0")}`;
-  const [created] = await db
-    .insert(productsTable)
-    .values({
-      name: name.trim(),
-      sku: autoSku,
-      description: description ? String(description).trim() : null,
-      price: parsedPrice.toFixed(2),
-      imageUrl: imageUrl ? String(imageUrl).trim() : null,
-      mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
-      itemType: "barang",
-      unit: unit ? String(unit).trim() : "pcs",
-      unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : (unitOptions ? JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]"),
-      isActive: true,
-    })
-    .returning();
+  const catNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
+  const created = await db.transaction(async (tx) => {
+    const [p] = await tx
+      .insert(productsTable)
+      .values({
+        name: name.trim(),
+        sku: autoSku,
+        description: description ? String(description).trim() : null,
+        price: parsedPrice.toFixed(2),
+        imageUrl: imageUrl ? String(imageUrl).trim() : null,
+        mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
+        itemType: "barang",
+        unit: unit ? String(unit).trim() : "pcs",
+        unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : (unitOptions ? JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]"),
+        isActive: true,
+      })
+      .returning();
+    if (catNames.length > 0) {
+      const validCats = await tx.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, catNames));
+      if (validCats.length > 0) {
+        await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: p.id, categoryId: c.id })));
+      }
+    }
+    return { ...p, categories: catNames };
+  });
   return res.status(201).json(created);
 });
 
@@ -572,7 +591,7 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
 router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, stock, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
+  const { name, description, price, stock, imageUrl, mediaItems, unit, unitOptions, categories } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
@@ -586,9 +605,27 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
       ? JSON.stringify(unitOptions)
       : JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean));
   }
-  if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
-  const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
-  return res.json(updated);
+  const catNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
+  const hasProductUpdates = Object.keys(updates).length > 0;
+  const hasCategoryUpdate = categories !== undefined;
+  if (!hasProductUpdates && !hasCategoryUpdate) return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  const result = await db.transaction(async (tx) => {
+    let updated = hasProductUpdates
+      ? (await tx.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning())[0]
+      : (await tx.select().from(productsTable).where(eq(productsTable.id, id)))[0];
+    if (hasCategoryUpdate) {
+      await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
+      if (catNames.length > 0) {
+        const validCats = await tx.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, catNames));
+        if (validCats.length > 0) {
+          await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: id, categoryId: c.id })));
+        }
+      }
+    }
+    const catMap = await getProductCategories([id]);
+    return { ...updated, categories: catMap[id] ?? [] };
+  });
+  return res.json(result);
 });
 
 // DELETE /api/portal/admin/products/:id — hapus produk (admin only)

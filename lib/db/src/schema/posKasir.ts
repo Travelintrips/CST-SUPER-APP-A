@@ -35,6 +35,8 @@ export const posProductsTable = pgTable("pos_products", {
   imageUrl: text("image_url"),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  stock: numeric("stock", { precision: 12, scale: 3 }),
+  stockUnit: text("stock_unit").notNull().default("pcs"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

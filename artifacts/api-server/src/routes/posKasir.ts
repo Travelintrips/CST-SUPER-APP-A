@@ -226,18 +226,30 @@ router.get("/products", async (_req, res) => {
 // GET /api/pos-kasir/products/all  (admin)
 router.get("/products/all", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const rows = await db.select().from(posProductsTable).orderBy(posProductsTable.sortOrder, posProductsTable.name);
-  return res.json(rows);
+  const result = await db.execute(sql`SELECT * FROM pos_products ORDER BY sort_order ASC, name ASC`);
+  return res.json(result.rows.map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: row.id, name: row.name, description: row.description,
+      price: row.price, category: row.category,
+      imageUrl: row.image_url, isActive: row.is_active, sortOrder: row.sort_order,
+      stock: row.stock, stockUnit: row.stock_unit,
+      stockItemId: row.stock_item_id, stockUsagePerUnit: row.stock_usage_per_unit,
+      createdAt: row.created_at,
+    };
+  }));
 });
 
 // POST /api/pos-kasir/products
 router.post("/products", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const { name, description, price, category, imageUrl, isActive, sortOrder, stockItemId, stockUsagePerUnit } = req.body ?? {};
+  const { name, description, price, category, imageUrl, isActive, sortOrder, stockItemId, stockUsagePerUnit, stock, stockUnit } = req.body ?? {};
   if (!name || price == null) return res.status(400).json({ message: "name dan price wajib" });
   const extraFields = {
     stockItemId: stockItemId ? Number(stockItemId) : null,
     stockUsagePerUnit: stockUsagePerUnit != null ? String(stockUsagePerUnit) : "1",
+    stock: stock != null && stock !== "" ? String(stock) : null,
+    stockUnit: stockUnit ?? "pcs",
   };
   const [created] = await db.insert(posProductsTable).values({
     name: String(name), description: description ?? null,
@@ -255,16 +267,53 @@ router.patch("/products/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const patch: Record<string, unknown> = {};
-  for (const k of ["name", "description", "price", "category", "imageUrl", "isActive", "sortOrder", "stockItemId", "stockUsagePerUnit"]) {
-    if (req.body?.[k] !== undefined) {
-      if (k === "stockItemId") patch[k] = req.body[k] === null || req.body[k] === "" ? null : Number(req.body[k]);
-      else patch[k] = req.body[k];
-    }
-  }
-  await db.update(posProductsTable).set(patch).where(eq(posProductsTable.id, id));
-  const [updated] = await db.select().from(posProductsTable).where(eq(posProductsTable.id, id));
-  return res.json(updated);
+  const body = req.body ?? {};
+
+  // Baca existing dulu agar kolom yang tidak dikirim tetap memakai nilai lama
+  const [existing] = (await db.execute(sql`SELECT * FROM pos_products WHERE id = ${id}`)).rows as Array<Record<string, unknown>>;
+  if (!existing) return res.status(404).json({ message: "Produk tidak ditemukan" });
+  const ex = existing;
+
+  const stockItemId = body.stockItemId !== undefined
+    ? (body.stockItemId === null || body.stockItemId === "" ? null : Number(body.stockItemId))
+    : ex.stock_item_id;
+  const stockUsagePerUnit = body.stockUsagePerUnit !== undefined
+    ? (body.stockUsagePerUnit === null || body.stockUsagePerUnit === "" ? "1" : String(body.stockUsagePerUnit))
+    : (ex.stock_usage_per_unit ?? "1");
+
+  // Satu raw SQL UPDATE — tidak pakai Drizzle set() agar tidak ada masalah mapping
+  await db.execute(sql`
+    UPDATE pos_products SET
+      name                = ${body.name !== undefined ? String(body.name) : ex.name},
+      description         = ${body.description !== undefined ? (body.description || null) : ex.description},
+      price               = ${body.price !== undefined ? String(body.price) : ex.price},
+      category            = ${body.category !== undefined ? String(body.category) : ex.category},
+      image_url           = ${body.imageUrl !== undefined ? (body.imageUrl || null) : ex.image_url},
+      is_active           = ${body.isActive !== undefined ? Boolean(body.isActive) : ex.is_active},
+      sort_order          = ${body.sortOrder !== undefined ? Number(body.sortOrder) : ex.sort_order},
+      stock               = ${body.stock !== undefined ? (body.stock === null || body.stock === "" ? null : String(body.stock)) : ex.stock},
+      stock_unit          = ${body.stockUnit !== undefined ? String(body.stockUnit) : ex.stock_unit},
+      stock_item_id       = ${stockItemId},
+      stock_usage_per_unit = ${stockUsagePerUnit}
+    WHERE id = ${id}
+  `);
+
+  const [updated] = (await db.execute(sql`SELECT * FROM pos_products WHERE id = ${id}`)).rows as Array<Record<string, unknown>>;
+  return res.json({
+    id: updated.id,
+    name: updated.name,
+    description: updated.description,
+    price: updated.price,
+    category: updated.category,
+    imageUrl: updated.image_url,
+    isActive: updated.is_active,
+    sortOrder: updated.sort_order,
+    stock: updated.stock,
+    stockUnit: updated.stock_unit,
+    stockItemId: updated.stock_item_id,
+    stockUsagePerUnit: updated.stock_usage_per_unit,
+    createdAt: updated.created_at,
+  });
 });
 
 // DELETE /api/pos-kasir/products/:id
@@ -350,10 +399,7 @@ router.patch("/orders/:id/pay", async (req, res) => {
 
   const items = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
 
-  // ── Auto-deduct stok bahan berbasis cabang kasir ──────────────────────────
-  // Strategi: ambil stockItemId dari produk → cari nama bahan → cari stok dengan
-  // nama yang sama di cabang kasir → kurangi stok cabang tersebut.
-  // Fallback: jika tidak ada stok di cabang kasir, gunakan stockItemId langsung.
+  // ── Auto-deduct stok per produk (langsung di kolom stock) ───────────────────
   const productIds = items.map((i) => i.productId);
   if (productIds.length > 0) {
     const products = await db.select().from(posProductsTable).where(inArray(posProductsTable.id, productIds));
@@ -362,36 +408,44 @@ router.patch("/orders/:id/pay", async (req, res) => {
     for (const item of items) {
       const product = productMap.get(item.productId);
       if (!product) continue;
-      const stockItemId = (product as { stockItemId?: number | null }).stockItemId;
-      const usagePerUnit = Number((product as { stockUsagePerUnit?: string | number }).stockUsagePerUnit ?? 1);
-      if (!stockItemId) continue;
 
-      const totalUsage = item.qty * usagePerUnit;
-
-      // Cari stok dengan nama sama di cabang kasir (per-branch isolation)
-      let targetStockId = stockItemId;
-      if (cashier.branchId) {
-        const [refStock] = (await db.execute(sql`SELECT name FROM pos_stock_items WHERE id = ${stockItemId}`)).rows as Array<{ name: string }>;
-        if (refStock?.name) {
-          const [branchStock] = (await db.execute(sql`
-            SELECT id FROM pos_stock_items
-            WHERE LOWER(name) = LOWER(${refStock.name}) AND branch_id = ${cashier.branchId}
-            LIMIT 1
-          `)).rows as Array<{ id: number }>;
-          if (branchStock) targetStockId = branchStock.id;
-        }
+      // Deduct dari kolom stock langsung (jika diset)
+      const currentStock = (product as { stock?: string | null }).stock;
+      if (currentStock != null) {
+        await db.execute(sql`
+          UPDATE pos_products SET stock = GREATEST(0, stock - ${item.qty})
+          WHERE id = ${product.id}
+        `);
       }
 
-      await db.execute(sql`
-        UPDATE pos_stock_items SET current_stock = current_stock - ${totalUsage}, updated_at = NOW()
-        WHERE id = ${targetStockId}
-      `);
-      await db.insert(posStockAdjustmentsTable).values({
-        stockItemId: targetStockId,
-        cashierId: cashier.id,
-        delta: String(-totalUsage),
-        reason: `auto:order:${order.orderNumber}:${item.productName}×${item.qty}`,
-      });
+      // Deduct dari pos_stock_items (sistem lama, jika stockItemId diset)
+      const stockItemId = (product as { stockItemId?: number | null }).stockItemId;
+      const usagePerUnit = Number((product as { stockUsagePerUnit?: string | number }).stockUsagePerUnit ?? 1);
+      if (stockItemId) {
+        const totalUsage = item.qty * usagePerUnit;
+        let targetStockId = stockItemId;
+        if (cashier.branchId) {
+          const [refStock] = (await db.execute(sql`SELECT name FROM pos_stock_items WHERE id = ${stockItemId}`)).rows as Array<{ name: string }>;
+          if (refStock?.name) {
+            const [branchStock] = (await db.execute(sql`
+              SELECT id FROM pos_stock_items
+              WHERE LOWER(name) = LOWER(${refStock.name}) AND branch_id = ${cashier.branchId}
+              LIMIT 1
+            `)).rows as Array<{ id: number }>;
+            if (branchStock) targetStockId = branchStock.id;
+          }
+        }
+        await db.execute(sql`
+          UPDATE pos_stock_items SET current_stock = current_stock - ${totalUsage}, updated_at = NOW()
+          WHERE id = ${targetStockId}
+        `);
+        await db.insert(posStockAdjustmentsTable).values({
+          stockItemId: targetStockId,
+          cashierId: cashier.id,
+          delta: String(-totalUsage),
+          reason: `auto:order:${order.orderNumber}:${item.productName}×${item.qty}`,
+        });
+      }
     }
   }
 
@@ -657,19 +711,26 @@ router.post("/admin/stock", async (req, res) => {
 router.patch("/admin/stock/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const { name, unit, currentStock, minStock, note, branchId } = req.body ?? {};
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
-  if (name !== undefined) patch.name = String(name);
-  if (unit !== undefined) patch.unit = unit;
-  if (currentStock !== undefined) patch.currentStock = String(currentStock);
-  if (minStock !== undefined) patch.minStock = String(minStock);
-  if (note !== undefined) patch.note = note;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await db.update(posStockItemsTable).set(patch as any).where(eq(posStockItemsTable.id, id));
-  if (branchId !== undefined) {
-    const bid = (branchId === null || branchId === "") ? null : Number(branchId);
-    await db.execute(sql`UPDATE pos_stock_items SET branch_id = ${bid} WHERE id = ${id}`);
-  }
+
+  // Baca data existing dulu sebagai fallback untuk kolom yang tidak diubah
+  const [existing] = (await db.execute(sql`SELECT * FROM pos_stock_items WHERE id = ${id}`)).rows;
+  if (!existing) return res.status(404).json({ message: "Stok tidak ditemukan" });
+  const ex = existing as Record<string, unknown>;
+
+  // Gunakan raw SQL template agar mapping kolom dijamin benar (snake_case)
+  await db.execute(sql`
+    UPDATE pos_stock_items SET
+      name          = ${name !== undefined ? String(name) : ex.name},
+      unit          = ${unit !== undefined ? String(unit) : ex.unit},
+      current_stock = ${currentStock !== undefined ? String(currentStock ?? 0) : ex.current_stock},
+      min_stock     = ${minStock !== undefined ? String(minStock ?? 0) : ex.min_stock},
+      note          = ${note !== undefined ? (note === "" ? null : note) : ex.note},
+      branch_id     = ${branchId !== undefined ? (branchId === null || branchId === "" ? null : Number(branchId)) : ex.branch_id},
+      updated_at    = NOW()
+    WHERE id = ${id}
+  `);
   const [updated] = (await db.execute(sql`SELECT * FROM pos_stock_items WHERE id = ${id}`)).rows;
   return res.json(camelizeStockRow(updated as Record<string, unknown>));
 });

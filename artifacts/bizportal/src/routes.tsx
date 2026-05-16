@@ -97,6 +97,11 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/documents" component={PR(PurchaseDocumentsListPage)} />
       <Route path="/purchase/documents/new" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/documents/:id" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
+      <Route path="/purchase/rfq/new" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/rfq/:id" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/orders" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
+      <Route path="/purchase/orders/:id" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
