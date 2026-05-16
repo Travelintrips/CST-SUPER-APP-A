@@ -25,7 +25,7 @@ interface TransferDetail extends Transfer {
 }
 
 async function apiFetch(path: string, opts?: RequestInit) {
-  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
+  const res = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
