@@ -46,6 +46,7 @@ import {
   GitBranch,
   AlertTriangle,
   RotateCcw,
+  PackageCheck,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -151,6 +152,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "purchaseDashboard", href: "/purchase", icon: LayoutDashboard },
         { titleKey: "rfq", href: "/purchase/rfq", icon: ClipboardList },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
+        { titleKey: "Terima Barang (GRN)", href: "/purchase/receive", icon: PackageCheck },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "vendorService", href: "/logistics/vendors", icon: Truck },
         { titleKey: "bills", href: "/purchase/bills", icon: FileText },

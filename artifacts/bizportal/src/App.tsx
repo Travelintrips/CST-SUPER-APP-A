@@ -82,6 +82,7 @@ import WarehouseDamagePage from "@/pages/warehouse/damage";
 import WarehouseReturnsPage from "@/pages/warehouse/returns";
 import WarehouseRecipesPage from "@/pages/warehouse/recipes";
 import WarehouseOpnamePage from "@/pages/warehouse/opname";
+import PurchaseReceivePage from "@/pages/purchase/receive";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -348,6 +349,8 @@ function Router() {
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
         {/* POS Kasir Thai Tea */}
         <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
+        {/* Purchase Receive */}
+        <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
         {/* Warehouse */}
         <Route path="/warehouse/stock" component={() => <ProtectedRoute component={WarehouseStockPage} />} />
         <Route path="/warehouse/movements" component={() => <ProtectedRoute component={WarehouseMovementsPage} />} />
