@@ -14,13 +14,11 @@ export interface Company {
   isHolding?: boolean;
 }
 
-// Sentinel ID used to represent "All Companies (Consolidated)" mode.
-// Must not clash with any real company id (which are positive integers).
+// Sentinel ID for "All Companies (Consolidated)" mode.
+// Must not clash with any real company id (positive integers starting from 1).
 export const CONSOLIDATED_ID = 0;
 
 export type CompanyScope = number | typeof CONSOLIDATED_ID;
-// Special sentinel value for "Holding Consolidated" mode
-export const CONSOLIDATED_ID = -1;
 
 interface CompanyContextValue {
   companies: Company[];
@@ -29,16 +27,10 @@ interface CompanyContextValue {
   isConsolidated: boolean;
   setActiveCompany: (company: Company) => void;
   setConsolidated: () => void;
-  isLoading: boolean;
-  refetch: () => void;
-  /** Returns the query param string for API calls, e.g. "companyId=3" or "companyId=all" */
-  activeCompanyId: number;
-  isConsolidated: boolean;
-  setActiveCompany: (company: Company) => void;
   setConsolidatedMode: () => void;
   isLoading: boolean;
   refetch: () => void;
-  /** Returns query string like "companyId=2" or "consolidated=true" */
+  /** Query param string for API calls, e.g. "companyId=3" or "companyId=all" */
   companyQueryParam: string;
 }
 
@@ -56,7 +48,7 @@ const CompanyContext = createContext<CompanyContextValue>({
 });
 
 const STORAGE_KEY = "biz_active_company_id";
-const CONSOLIDATED_STORAGE_VALUE = "consolidated";
+const CONSOLIDATED_STORAGE_VALUE = "all";
 
 export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useSupabaseAuth();
@@ -65,7 +57,6 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [activeCompanyId, setActiveCompanyIdState] = useState<CompanyScope>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored === "all") return CONSOLIDATED_ID;
       if (stored === CONSOLIDATED_STORAGE_VALUE) return CONSOLIDATED_ID;
       return stored ? Number(stored) : 1;
     } catch {
@@ -82,14 +73,12 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return;
       const data = (await res.json()) as Company[];
       setCompanies(data);
-      if (data.length > 0) {
-        const storedRaw = (() => { try { return localStorage.getItem(STORAGE_KEY); } catch { return null; } })();
-        if (storedRaw === "all") return; // consolidated stays as-is
-        const storedId = storedRaw ? Number(storedRaw) : 1;
       if (data.length > 0 && activeCompanyId !== CONSOLIDATED_ID) {
-        const storedId = (() => {
-          try { return Number(localStorage.getItem(STORAGE_KEY)) || 1; } catch { return 1; }
+        const storedRaw = (() => {
+          try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
         })();
+        if (storedRaw === CONSOLIDATED_STORAGE_VALUE) return;
+        const storedId = storedRaw ? Number(storedRaw) : 1;
         if (!data.find((c) => c.id === storedId)) {
           setActiveCompanyIdState(data[0].id);
         }
@@ -121,13 +110,10 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
 
   const setConsolidated = useCallback(() => {
     setActiveCompanyIdState(CONSOLIDATED_ID);
-    try { localStorage.setItem(STORAGE_KEY, "all"); } catch {}
-  const setConsolidatedMode = useCallback(() => {
-    setActiveCompanyId(CONSOLIDATED_ID);
-    try {
-      localStorage.setItem(STORAGE_KEY, CONSOLIDATED_STORAGE_VALUE);
-    } catch {}
+    try { localStorage.setItem(STORAGE_KEY, CONSOLIDATED_STORAGE_VALUE); } catch {}
   }, []);
+
+  const setConsolidatedMode = setConsolidated;
 
   const isConsolidated = activeCompanyId === CONSOLIDATED_ID;
   const activeCompany = isConsolidated
@@ -139,8 +125,6 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     : (activeCompany?.id ?? activeCompanyId);
 
   const companyQueryParam = isConsolidated ? "companyId=all" : `companyId=${resolvedId}`;
-  const resolvedId = isConsolidated ? CONSOLIDATED_ID : (activeCompany?.id ?? activeCompanyId);
-  const companyQueryParam = isConsolidated ? "consolidated=true" : `companyId=${resolvedId}`;
 
   return (
     <CompanyContext.Provider
@@ -167,7 +151,6 @@ export function useCompany() {
 }
 
 /** @deprecated Use companyQueryParam from useCompany() instead */
-/** @deprecated use companyQueryParam from useCompany() instead */
 export function useCompanyQuery() {
   const { companyQueryParam } = useCompany();
   return companyQueryParam;
