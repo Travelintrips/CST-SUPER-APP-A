@@ -261,13 +261,39 @@ export default function PosKasirAdminPage() {
     } finally { setShiftsLoading(false); }
   }, [shiftBranchFilter, shiftFrom, shiftTo]);
 
-  // Realtime: refresh stok dan kasir setiap 15 detik
+  // Quick stock adjust dialog (inline, tanpa buka full edit produk)
+  const [stockAdjProduct, setStockAdjProduct] = useState<Product | null>(null);
+  const [stockAdjValue, setStockAdjValue] = useState("");
+  const [stockAdjSaving, setStockAdjSaving] = useState(false);
+
+  const saveStockAdj = async () => {
+    if (!stockAdjProduct) return;
+    setStockAdjSaving(true);
+    try {
+      const res = await fetch(`/api/pos-kasir/products/${stockAdjProduct.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock: stockAdjValue }),
+      });
+      if (res.ok) {
+        toast({ title: "Stok diperbarui" });
+        setStockAdjProduct(null);
+        loadProducts();
+      } else {
+        let msg = `Error ${res.status}`;
+        try { const d = await res.json() as { message?: string }; msg = d.message ?? msg; } catch { /* */ }
+        toast({ title: "Gagal", description: msg, variant: "destructive" });
+      }
+    } finally { setStockAdjSaving(false); }
+  };
+
+  // Realtime: refresh stok, produk, dan kasir setiap 15 detik
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const refreshRealtime = useCallback(async () => {
-    await Promise.all([loadStocks(), loadCashiers()]);
+    await Promise.all([loadStocks(), loadCashiers(), loadProducts()]);
     setLastUpdated(new Date());
-  }, [loadStocks, loadCashiers]);
+  }, [loadStocks, loadCashiers, loadProducts]);
 
   useEffect(() => {
     loadSettings();
@@ -871,9 +897,15 @@ export default function PosKasirAdminPage() {
                         </TableCell>
                         <TableCell className="font-medium">{fmt(p.price)}</TableCell>
                         <TableCell>
-                          {p.stock != null
-                            ? <span className={`text-xs font-semibold ${Number(p.stock) <= 0 ? "text-red-600" : Number(p.stock) <= 5 ? "text-orange-500" : "text-green-700"}`}>{Number(p.stock)} {p.stockUnit ?? "pcs"}</span>
-                            : <span className="text-xs text-muted-foreground">—</span>}
+                          <div className="flex items-center gap-1.5">
+                            {p.stock != null
+                              ? <span className={`text-xs font-semibold ${Number(p.stock) <= 0 ? "text-red-600" : Number(p.stock) <= 5 ? "text-orange-500" : "text-green-700"}`}>{Number(p.stock)} {p.stockUnit ?? "pcs"}</span>
+                              : <span className="text-xs text-muted-foreground">—</span>}
+                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-orange-500 hover:bg-orange-50" title="Atur Stok"
+                              onClick={() => { setStockAdjProduct(p); setStockAdjValue(p.stock != null ? String(Number(p.stock)) : "0"); }}>
+                              <span className="text-xs font-black">+</span>
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell>
                           {p.isActive
@@ -907,7 +939,8 @@ export default function PosKasirAdminPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <div>
-                  <CardTitle className="text-base">Manajemen Stok Bahan</CardTitle>
+                  <CardTitle className="text-base">Stok Bahan Baku (Raw Material)</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Untuk melacak bahan mentah (bukan stok produk jadi). Stok produk dikelola di tab Menu ↑</p>
                   {lastUpdated && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Diperbarui: {lastUpdated.toLocaleTimeString("id-ID")} · Auto-refresh tiap 15 detik
@@ -1230,6 +1263,33 @@ export default function PosKasirAdminPage() {
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setProductDialog(false)}>Batal</Button>
               <Button onClick={saveProduct} disabled={imageUploading}>Simpan</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Stock Adjust Dialog */}
+      <Dialog open={!!stockAdjProduct} onOpenChange={(o) => { if (!o) setStockAdjProduct(null); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Atur Stok Produk</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground truncate">{stockAdjProduct?.name}</p>
+            <div>
+              <Label className="text-xs">Stok Baru (jumlah absolut)</Label>
+              <Input type="number" min="0" value={stockAdjValue}
+                onChange={(e) => setStockAdjValue(e.target.value)}
+                placeholder="0" className="mt-1" />
+              <p className="text-xs text-muted-foreground mt-1">
+                Stok saat ini: <strong>{stockAdjProduct?.stock != null ? Number(stockAdjProduct.stock).toLocaleString("id-ID") : "–"} {stockAdjProduct?.stockUnit ?? "pcs"}</strong>
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setStockAdjProduct(null)}>Batal</Button>
+              <Button size="sm" onClick={saveStockAdj} disabled={stockAdjSaving}>
+                {stockAdjSaving ? "Menyimpan..." : "Simpan"}
+              </Button>
             </div>
           </div>
         </DialogContent>
