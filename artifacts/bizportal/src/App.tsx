@@ -343,7 +343,6 @@ function Router() {
         <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
         <Route component={NotFound} />
       </Switch>
-      <AppRoutes rootGuard={AuthRouteGuard} />
     </WouterRouter>
   );
 }
