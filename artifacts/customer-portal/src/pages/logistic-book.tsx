@@ -512,7 +512,7 @@ export default function BookPage() {
     }));
   }, [portalUser]);
 
-  // Auto-populate origin/destination + trucking cargo fields from cart items' inputData
+  // Auto-populate origin/destination + transport mode + trucking cargo fields from cart items' inputData
   useEffect(() => {
     if (cartItems.length === 0) return;
     const deriveOrigin = cartItems
@@ -527,15 +527,32 @@ export default function BookPage() {
     const deriveJumlahKoli   = truckingData?.koli_qty         ? String(truckingData.koli_qty)         : "";
     const deriveNamaPenerima  = truckingData?.receiver_name  ? String(truckingData.receiver_name)  : "";
     const deriveNomorPenerima = truckingData?.receiver_phone ? String(truckingData.receiver_phone) : "";
+    // Derive transport mode from cart service types
+    const hasTrucking  = cartItems.some(c => c.calculatorType === "trucking");
+    const hasAir       = cartItems.some(c => c.calculatorType === "air_freight");
+    const hasSea       = cartItems.some(c => c.calculatorType === "sea_fcl" || c.calculatorType === "sea_lcl");
+    const deriveMode   = hasTrucking ? "TRUCKING" : hasAir ? "AIR_FREIGHT" : hasSea ? "SEA_FREIGHT" : "";
+    // Derive port/airport from cart
+    const airItem = cartItems.find(c => c.calculatorType === "air_freight")?.inputData;
+    const seaItem = cartItems.find(c => c.calculatorType === "sea_fcl" || c.calculatorType === "sea_lcl")?.inputData;
+    const deriveOriginPort = airItem?.originAirport ? String(airItem.originAirport) : seaItem?.originPort ? String(seaItem.originPort) : "";
+    const deriveDestPort   = airItem?.destinationAirport ? String(airItem.destinationAirport) : seaItem?.destinationPort ? String(seaItem.destinationPort) : "";
+    const deriveOriginDistrict = truckingData?.pickupCity ? String(truckingData.pickupCity) : "";
+    const deriveDestDistrict   = truckingData?.destCity   ? String(truckingData.destCity)   : "";
     setCustomerForm((prev) => ({
       ...prev,
-      origin:         prev.origin         || deriveOrigin,
-      destination:    prev.destination    || deriveDestination,
-      grossWeight:    prev.grossWeight    || deriveGrossWeight,
-      volumeCbm:      prev.volumeCbm      || deriveVolumeCbm,
-      jumlahKoli:     prev.jumlahKoli     || deriveJumlahKoli,
-      namaPenerima:   prev.namaPenerima   || deriveNamaPenerima,
-      nomorPenerima:  prev.nomorPenerima  || deriveNomorPenerima,
+      origin:          prev.origin         || deriveOrigin,
+      destination:     prev.destination    || deriveDestination,
+      grossWeight:     prev.grossWeight    || deriveGrossWeight,
+      volumeCbm:       prev.volumeCbm      || deriveVolumeCbm,
+      jumlahKoli:      prev.jumlahKoli     || deriveJumlahKoli,
+      namaPenerima:    prev.namaPenerima   || deriveNamaPenerima,
+      nomorPenerima:   prev.nomorPenerima  || deriveNomorPenerima,
+      transportMode:   prev.transportMode  || deriveMode,
+      originPort:      prev.originPort     || deriveOriginPort,
+      destPort:        prev.destPort       || deriveDestPort,
+      originDistrict:  prev.originDistrict || deriveOriginDistrict,
+      destDistrict:    prev.destDistrict   || deriveDestDistrict,
     }));
 
     // Parse payment_type from trucking cart inputData and populate payment state
@@ -671,9 +688,9 @@ export default function BookPage() {
   }
 
   function handleSubmit() {
-    const { companyName, customerName, email, phone, origin, destination } = customerForm;
-    if (!companyName || !customerName || !email || !phone) {
-      toast({ title: "Lengkapi data perusahaan", variant: "destructive" });
+    const { customerName, email } = customerForm;
+    if (!customerName || !email) {
+      toast({ title: "Lengkapi nama PIC dan email", variant: "destructive" });
       return;
     }
     if (cartItems.length === 0) {
@@ -1004,6 +1021,13 @@ export default function BookPage() {
     if (step === 3) {
       const f = customerForm;
       const set = (k: string, v: string) => setCustomerForm((p) => ({ ...p, [k]: v }));
+      const hasLogisticService = cartItems.some(c =>
+        ["trucking","air_freight","sea_fcl","sea_lcl"].includes(c.calculatorType)
+      );
+      const hasOriginDest = cartItems.some(c =>
+        c.inputData?.pickupCity || c.inputData?.originAirport || c.inputData?.originPort ||
+        c.inputData?.destCity   || c.inputData?.destinationAirport || c.inputData?.destinationPort
+      );
       return (
         <div className="space-y-5">
           <div>
@@ -1018,7 +1042,7 @@ export default function BookPage() {
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Nama Perusahaan <span className="text-destructive">*</span></Label>
+                <Label className="text-xs">Nama Perusahaan</Label>
                 <Input placeholder="PT. ..." value={f.companyName} onChange={e => set("companyName", e.target.value)} />
               </div>
               <div className="col-span-2 sm:col-span-1">
@@ -1030,26 +1054,29 @@ export default function BookPage() {
                 <Input type="email" placeholder="email@perusahaan.com" value={f.email} onChange={e => set("email", e.target.value)} />
               </div>
               <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Telepon / WhatsApp <span className="text-destructive">*</span></Label>
+                <Label className="text-xs">Telepon / WhatsApp</Label>
                 <Input placeholder="+62..." value={f.phone} onChange={e => set("phone", e.target.value)} />
               </div>
-              {/* ── Mode Pengiriman ─── */}
-              <div className="col-span-2">
-                <Label className="text-xs">Mode Pengiriman</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  value={f.transportMode}
-                  onChange={e => set("transportMode", e.target.value)}
-                >
-                  <option value="">-- Pilih Mode (opsional) --</option>
-                  <option value="TRUCKING">🚛 Trucking / Darat</option>
-                  <option value="AIR_FREIGHT">✈️ Air Freight / Udara</option>
-                  <option value="SEA_FREIGHT">🚢 Sea Freight / Laut</option>
-                </select>
-              </div>
+
+              {/* ── Mode Pengiriman — hanya tampil jika ada layanan logistik ─── */}
+              {hasLogisticService && (
+                <div className="col-span-2">
+                  <Label className="text-xs">Mode Pengiriman</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={f.transportMode}
+                    onChange={e => set("transportMode", e.target.value)}
+                  >
+                    <option value="">-- Pilih Mode (opsional) --</option>
+                    <option value="TRUCKING">🚛 Trucking / Darat</option>
+                    <option value="AIR_FREIGHT">✈️ Air Freight / Udara</option>
+                    <option value="SEA_FREIGHT">🚢 Sea Freight / Laut</option>
+                  </select>
+                </div>
+              )}
 
               {/* ── Trucking-specific fields ─── */}
-              {f.transportMode === "TRUCKING" && (<>
+              {hasLogisticService && f.transportMode === "TRUCKING" && (<>
                 <div className="col-span-2 sm:col-span-1">
                   <Label className="text-xs">Kota Asal (Kecamatan)</Label>
                   <Input placeholder="Cakung, Jakarta Timur" value={f.originDistrict} onChange={e => set("originDistrict", e.target.value)} />
@@ -1087,7 +1114,7 @@ export default function BookPage() {
               </>)}
 
               {/* ── Air/Sea-specific fields ─── */}
-              {(f.transportMode === "AIR_FREIGHT" || f.transportMode === "SEA_FREIGHT") && (<>
+              {hasLogisticService && (f.transportMode === "AIR_FREIGHT" || f.transportMode === "SEA_FREIGHT") && (<>
                 <div className="col-span-2 sm:col-span-1">
                   <Label className="text-xs">{f.transportMode === "AIR_FREIGHT" ? "Bandara" : "Pelabuhan"} Asal</Label>
                   <Input placeholder={f.transportMode === "AIR_FREIGHT" ? "CGK / Soekarno-Hatta" : "Tanjung Priok"} value={f.originPort} onChange={e => set("originPort", e.target.value)} />
@@ -1125,15 +1152,17 @@ export default function BookPage() {
                 </div>
               </>)}
 
-              {/* ── Asal & Tujuan Pengiriman ─── */}
-              <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Asal Pengiriman</Label>
-                <Input placeholder="Jakarta" value={f.origin} onChange={e => set("origin", e.target.value)} />
-              </div>
-              <div className="col-span-2 sm:col-span-1">
-                <Label className="text-xs">Tujuan Pengiriman</Label>
-                <Input placeholder="Surabaya" value={f.destination} onChange={e => set("destination", e.target.value)} />
-              </div>
+              {/* ── Asal & Tujuan Pengiriman — hanya tampil jika ada data dari layanan ─── */}
+              {hasOriginDest && (<>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Asal Pengiriman</Label>
+                  <Input placeholder="Jakarta" value={f.origin} onChange={e => set("origin", e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs">Tujuan Pengiriman</Label>
+                  <Input placeholder="Surabaya" value={f.destination} onChange={e => set("destination", e.target.value)} />
+                </div>
+              </>)}
 
               <div className="col-span-2">
                 <Label className="text-xs">Catatan Tambahan</Label>
@@ -1214,7 +1243,7 @@ export default function BookPage() {
     if (step === 0) return !!shipmentType;
     if (step === 1) return false;
     if (step === 2) return cartItems.length > 0;
-    if (step === 3) return !!(customerForm.companyName && customerForm.customerName && customerForm.email && customerForm.phone);
+    if (step === 3) return !!(customerForm.customerName && customerForm.email);
     return false;
   };
 
