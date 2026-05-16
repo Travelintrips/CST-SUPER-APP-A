@@ -69,14 +69,36 @@ router.get("/me", async (req, res) => {
 
   const authUser = req.user;
   const fullName = [authUser.firstName, authUser.lastName].filter(Boolean).join(" ") || null;
-  const u = await ensureUserRecord(authUser.id, authUser.email, fullName);
+  await ensureUserRecord(authUser.id, authUser.email, fullName);
+
+  // Use raw SQL to join custom_roles (not in Drizzle schema)
+  const { sql } = await import("drizzle-orm");
+  const rows = await db.execute(sql`
+    SELECT u.id, u.email, u.name, u.role, u.division,
+           cr.id AS custom_role_id, cr.name AS custom_role_name, cr.permissions AS custom_role_permissions
+    FROM users u
+    LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id
+    WHERE u.id = ${authUser.id}
+  `);
+  const u = rows.rows[0] as any;
   if (!u) return res.status(500).json({ message: "Failed to retrieve user record" });
+
+  let customRolePermissions: string[] | null = null;
+  if (u.custom_role_permissions != null) {
+    customRolePermissions = Array.isArray(u.custom_role_permissions)
+      ? u.custom_role_permissions
+      : JSON.parse(u.custom_role_permissions);
+  }
+
   return res.json({
     id: u.id,
     email: u.email,
     name: u.name,
     role: u.role,
     division: u.division,
+    customRoleId: u.custom_role_id ?? null,
+    customRoleName: u.custom_role_name ?? null,
+    customRolePermissions,
   });
 });
 

@@ -49,6 +49,7 @@ import {
   PackageCheck,
   QrCode,
   FileBarChart2,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -265,6 +266,7 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", titleKey: "correspondences", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "emailInbox", href: "/email-inbox", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "users", href: "/users", icon: Users, roles: ["admin"] },
+    { type: "flat", titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck, roles: ["admin"] },
     { type: "flat", titleKey: "Image Manager", href: "/media", icon: ImageIcon, roles: ["admin"] },
     { type: "flat", titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin"] },
     { type: "flat", titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen, roles: ["admin"] },
@@ -299,7 +301,19 @@ export function AppShell({ children }: AppShellProps) {
   });
   const aiDraftCount = aiDrafts.length;
 
-  const filteredNav = navItems.filter((item) => dbUser?.role && item.roles.includes(dbUser.role));
+  const customRolePermissions = (dbUser as any)?.customRolePermissions as string[] | null | undefined;
+
+  const filteredNav = navItems.filter((item) => {
+    if (!dbUser?.role) return false;
+    if (dbUser.role === "admin") return true;
+    if (customRolePermissions != null) {
+      const path = item.type === "group" ? item.basePath : item.href;
+      const seg = path.replace(/^\//, "").split("/")[0] ?? "";
+      const full = path.replace(/^\//, "");
+      return customRolePermissions.includes(seg) || customRolePermissions.includes(full);
+    }
+    return item.roles.includes(dbUser.role);
+  });
 
   const DASHBOARD_CHILD_PATHS = ["/portal-product-orders"];
   const isGroupActive = (g: GroupItem) => {
