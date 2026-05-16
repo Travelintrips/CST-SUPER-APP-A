@@ -318,7 +318,23 @@ export default function KasirPage() {
         method: "PATCH",
         body: JSON.stringify({ paymentMethod: payMethod, amountPaid: payMethod === "cash" ? Number(amountPaid) : total }),
       });
-      if (!payRes.ok) { alert("Gagal memproses pembayaran"); return; }
+      if (!payRes.ok) {
+        if (payRes.status === 422) {
+          const errData = await payRes.json() as {
+            message: string;
+            shortages: { productName: string; ingredientName: string; unit: string; required: number; available: number }[];
+          };
+          const lines = errData.shortages.map(s =>
+            `• ${s.ingredientName} untuk ${s.productName}: butuh ${s.required} ${s.unit}, tersedia ${s.available} ${s.unit}`
+          ).join("\n");
+          alert(`⚠️ Stok bahan baku tidak cukup!\n\n${lines}`);
+        } else {
+          alert("Gagal memproses pembayaran");
+        }
+        // Hapus order yang sudah dibuat karena tidak jadi bayar
+        await kasirFetch(`/api/pos-kasir/orders/${order.id}/cancel`, { method: "PATCH" }).catch(() => {});
+        return;
+      }
       const paidOrder = await payRes.json() as typeof order;
       setReceipt(paidOrder);
       setCart([]);

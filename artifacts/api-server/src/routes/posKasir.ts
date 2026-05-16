@@ -389,6 +389,56 @@ router.patch("/orders/:id/pay", async (req, res) => {
   const paid = Number(amountPaid) || Number(order.total);
   const change = paid - Number(order.total);
 
+  // ── Cek ketersediaan bahan baku SEBELUM pembayaran diproses ──────────────────
+  if (cashier.branchId) {
+    const orderItemsForCheck = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
+    const shortages: { productName: string; ingredientName: string; unit: string; required: number; available: number }[] = [];
+
+    for (const item of orderItemsForCheck) {
+      const [recipe] = (await db.execute(sql`
+        SELECT id FROM pos_recipes WHERE product_id = ${item.productId} AND is_active = TRUE
+      `)).rows as Array<{ id: number }>;
+      if (!recipe) continue;
+
+      const recipeIngredients = (await db.execute(sql`
+        SELECT ri.item_id, ri.qty, ri.waste_pct, ii.name AS item_name, ii.unit
+        FROM pos_recipe_items ri
+        JOIN pos_inventory_items ii ON ii.id = ri.item_id
+        WHERE ri.recipe_id = ${recipe.id}
+      `)).rows as Array<{ item_id: number; qty: string; waste_pct: string | null; item_name: string; unit: string }>;
+
+      for (const ingredient of recipeIngredients) {
+        const wasteFactor = 1 + (Number(ingredient.waste_pct ?? 0) / 100);
+        const required = Number(ingredient.qty) * wasteFactor * item.qty;
+        if (required <= 0) continue;
+
+        const [stock] = (await db.execute(sql`
+          SELECT COALESCE(SUM(qty), 0)::numeric AS total_qty
+          FROM pos_inventory_stocks
+          WHERE item_id = ${ingredient.item_id} AND branch_id = ${cashier.branchId}
+        `)).rows as Array<{ total_qty: string }>;
+
+        const available = Number(stock?.total_qty ?? 0);
+        if (available < required) {
+          shortages.push({
+            productName: item.productName,
+            ingredientName: ingredient.item_name,
+            unit: ingredient.unit,
+            required: Math.round(required * 1000) / 1000,
+            available: Math.round(available * 1000) / 1000,
+          });
+        }
+      }
+    }
+
+    if (shortages.length > 0) {
+      return res.status(422).json({
+        message: "Stok bahan baku tidak cukup untuk menyelesaikan transaksi.",
+        shortages,
+      });
+    }
+  }
+
   const [updated] = await db.update(posOrdersTable).set({
     status: "paid",
     paymentMethod,
@@ -451,19 +501,20 @@ router.patch("/orders/:id/pay", async (req, res) => {
       // Hanya jalan jika kasir terdaftar di cabang tertentu
       if (cashier.branchId) {
         const [recipe] = (await db.execute(sql`
-          SELECT id FROM pos_recipes WHERE product_id = ${item.productId}
+          SELECT id FROM pos_recipes WHERE product_id = ${item.productId} AND is_active = TRUE
         `)).rows as Array<{ id: number }>;
 
         if (recipe) {
           const recipeIngredients = (await db.execute(sql`
-            SELECT ri.id, ri.item_id, ri.qty, ii.name AS item_name
+            SELECT ri.id, ri.item_id, ri.qty, ri.waste_pct, ii.name AS item_name
             FROM pos_recipe_items ri
             JOIN pos_inventory_items ii ON ii.id = ri.item_id
             WHERE ri.recipe_id = ${recipe.id}
-          `)).rows as Array<{ id: number; item_id: number; qty: string; item_name: string }>;
+          `)).rows as Array<{ id: number; item_id: number; qty: string; waste_pct: string | null; item_name: string }>;
 
           for (const ingredient of recipeIngredients) {
-            const totalUsageRecipe = Number(ingredient.qty) * item.qty;
+            const wasteFactor = 1 + (Number(ingredient.waste_pct ?? 0) / 100);
+            const totalUsageRecipe = Number(ingredient.qty) * wasteFactor * item.qty;
             if (totalUsageRecipe <= 0) continue;
 
             // Ambil stok di cabang kasir — prioritaskan yang punya stok tertinggi
@@ -492,9 +543,9 @@ router.patch("/orders/:id/pay", async (req, res) => {
                 (item_id, branch_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
               VALUES
                 (${ingredient.item_id}, ${cashier.branchId}, ${stock.warehouse_id}, ${stock.rack_id},
-                 'out', ${String(-totalUsageRecipe)}, ${String(qtyBefore)}, ${String(qtyAfter)},
-                 'pos_order', ${order.id},
-                 ${`auto:${item.productName}×${item.qty} via resep (${ingredient.item_name})`})
+                 'RECIPE_CONSUMPTION_OUT', ${String(-totalUsageRecipe)}, ${String(qtyBefore)}, ${String(qtyAfter)},
+                 'POS_SALE', ${order.id},
+                 ${`${item.productName}×${item.qty} via resep (${ingredient.item_name})`})
             `);
           }
         }

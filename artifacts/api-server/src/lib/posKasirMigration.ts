@@ -286,6 +286,12 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
+  // pos_recipes: kolom baru (v2)
+  await db.execute(sql`ALTER TABLE pos_recipes ADD COLUMN IF NOT EXISTS recipe_name TEXT`);
+  await db.execute(sql`ALTER TABLE pos_recipes ADD COLUMN IF NOT EXISTS yield_qty NUMERIC(12,3) NOT NULL DEFAULT 1`);
+  await db.execute(sql`ALTER TABLE pos_recipes ADD COLUMN IF NOT EXISTS yield_unit TEXT NOT NULL DEFAULT 'pcs'`);
+  await db.execute(sql`ALTER TABLE pos_recipes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`);
+
   // pos_recipe_items
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS pos_recipe_items (
@@ -295,6 +301,10 @@ export async function runPosKasirMigration(): Promise<void> {
       qty NUMERIC(12,3) NOT NULL DEFAULT 0
     )
   `);
+
+  // pos_recipe_items: kolom baru (v2)
+  await db.execute(sql`ALTER TABLE pos_recipe_items ADD COLUMN IF NOT EXISTS waste_pct NUMERIC(5,2)`);
+  await db.execute(sql`ALTER TABLE pos_recipe_items ADD COLUMN IF NOT EXISTS notes TEXT`);
 
   // pos_stock_transfers
   await db.execute(sql`

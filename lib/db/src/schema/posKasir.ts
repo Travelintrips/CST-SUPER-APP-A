@@ -153,6 +153,10 @@ export const posInventoryStocksTable = pgTable("pos_inventory_stocks", {
 export const posRecipesTable = pgTable("pos_recipes", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull().references(() => posProductsTable.id).unique(),
+  recipeName: text("recipe_name"),
+  yieldQty: numeric("yield_qty", { precision: 12, scale: 3 }).notNull().default("1"),
+  yieldUnit: text("yield_unit").notNull().default("pcs"),
+  isActive: boolean("is_active").notNull().default(true),
   note: text("note"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -163,6 +167,8 @@ export const posRecipeItemsTable = pgTable("pos_recipe_items", {
   recipeId: integer("recipe_id").notNull().references(() => posRecipesTable.id, { onDelete: "cascade" }),
   itemId: integer("item_id").notNull().references(() => posInventoryItemsTable.id),
   qty: numeric("qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  wastePct: numeric("waste_pct", { precision: 5, scale: 2 }),
+  notes: text("notes"),
 });
 
 export const posStockTransfersTable = pgTable("pos_stock_transfers", {

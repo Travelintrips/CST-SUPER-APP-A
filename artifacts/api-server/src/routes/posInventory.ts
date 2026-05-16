@@ -305,6 +305,7 @@ router.get("/recipes", requireClerkUser, async (_req: Request, res: Response) =>
       FROM pos_recipe_items ri
       JOIN pos_inventory_items i ON i.id = ri.item_id
       WHERE ri.recipe_id = ${recipe.id}
+      ORDER BY ri.id ASC
     `);
     result.push({ ...recipe, items: items.rows });
   }
@@ -326,14 +327,20 @@ router.get("/recipes/by-product/:productId", requireClerkUser, async (req: Reque
     FROM pos_recipe_items ri
     JOIN pos_inventory_items i ON i.id = ri.item_id
     WHERE ri.recipe_id = ${r.id}
+    ORDER BY ri.id ASC
   `);
   res.json({ ...r, items: items.rows });
 });
 
 router.post("/recipes", requireClerkUser, async (req: Request, res: Response) => {
-  const { productId, note, items } = req.body as {
-    productId: number; note?: string;
-    items: { itemId: number; qty: number }[];
+  const { productId, recipeName, yieldQty, yieldUnit, isActive, note, items } = req.body as {
+    productId: number;
+    recipeName?: string;
+    yieldQty?: number;
+    yieldUnit?: string;
+    isActive?: boolean;
+    note?: string;
+    items: { itemId: number; qty: number; wastePct?: number | null; notes?: string | null }[];
   };
   if (!productId) { res.status(400).json({ message: "productId wajib diisi" }); return; }
 
@@ -342,18 +349,30 @@ router.post("/recipes", requireClerkUser, async (req: Request, res: Response) =>
 
   if (existing.rows.length > 0) {
     recipeId = (existing.rows[0] as { id: number }).id;
-    await db.execute(sql`UPDATE pos_recipes SET note = ${note ?? null}, updated_at = NOW() WHERE id = ${recipeId}`);
+    await db.execute(sql`
+      UPDATE pos_recipes
+      SET note = ${note ?? null},
+          recipe_name = ${recipeName ?? null},
+          yield_qty = ${yieldQty ?? 1},
+          yield_unit = ${yieldUnit ?? "pcs"},
+          is_active = ${isActive ?? true},
+          updated_at = NOW()
+      WHERE id = ${recipeId}
+    `);
     await db.execute(sql`DELETE FROM pos_recipe_items WHERE recipe_id = ${recipeId}`);
   } else {
     const ins = await db.execute(sql`
-      INSERT INTO pos_recipes (product_id, note) VALUES (${productId}, ${note ?? null}) RETURNING id
+      INSERT INTO pos_recipes (product_id, recipe_name, yield_qty, yield_unit, is_active, note)
+      VALUES (${productId}, ${recipeName ?? null}, ${yieldQty ?? 1}, ${yieldUnit ?? "pcs"}, ${isActive ?? true}, ${note ?? null})
+      RETURNING id
     `);
     recipeId = (ins.rows[0] as { id: number }).id;
   }
 
   for (const item of items ?? []) {
     await db.execute(sql`
-      INSERT INTO pos_recipe_items (recipe_id, item_id, qty) VALUES (${recipeId}, ${item.itemId}, ${item.qty})
+      INSERT INTO pos_recipe_items (recipe_id, item_id, qty, waste_pct, notes)
+      VALUES (${recipeId}, ${item.itemId}, ${item.qty}, ${item.wastePct ?? null}, ${item.notes ?? null})
     `);
   }
 
@@ -361,6 +380,7 @@ router.post("/recipes", requireClerkUser, async (req: Request, res: Response) =>
   const recipeItems = await db.execute(sql`
     SELECT ri.*, i.name as item_name, i.unit FROM pos_recipe_items ri
     JOIN pos_inventory_items i ON i.id = ri.item_id WHERE ri.recipe_id = ${recipeId}
+    ORDER BY ri.id ASC
   `);
   res.json({ ...result.rows[0], items: recipeItems.rows });
 });
