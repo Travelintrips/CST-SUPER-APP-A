@@ -154,12 +154,14 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
-  // Seed default branch "Pusat" if no branches exist
+  // Seed default branches if no branches exist
   const branchCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM pos_branches`);
   const bCnt = Number((branchCount.rows[0] as { cnt: string }).cnt);
   if (bCnt === 0) {
     await db.execute(sql`
-      INSERT INTO pos_branches (name, is_active) VALUES ('Pusat', TRUE)
+      INSERT INTO pos_branches (name, address, is_active) VALUES
+        ('Sport Center Bandara Soekarno Hatta', 'Sport Center, Bandara Soekarno Hatta', TRUE),
+        ('TOD M1 Bandara Soekarno Hatta', 'TOD M1, Bandara Soekarno Hatta', TRUE)
     `);
   }
 
@@ -216,5 +218,187 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
-  logger.info("POS Kasir migration: selesai (+ cabang + settings + shift)");
+  // ── MULTI CABANG + GUDANG + RAK MIGRATION ─────────────────────────────────
+
+  // pos_warehouses
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_warehouses (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      type TEXT NOT NULL DEFAULT 'umum',
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_racks
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_racks (
+      id SERIAL PRIMARY KEY,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      warehouse_id INTEGER NOT NULL REFERENCES pos_warehouses(id),
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_inventory_items (master bahan baku)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_inventory_items (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      sku TEXT NOT NULL UNIQUE,
+      unit TEXT NOT NULL DEFAULT 'pcs',
+      min_stock NUMERIC(12,3) NOT NULL DEFAULT 0,
+      cost_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+      note TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_inventory_stocks
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_inventory_stocks (
+      id SERIAL PRIMARY KEY,
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      warehouse_id INTEGER REFERENCES pos_warehouses(id),
+      rack_id INTEGER REFERENCES pos_racks(id),
+      qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_recipes (resep/BOM per menu)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_recipes (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL UNIQUE REFERENCES pos_products(id),
+      note TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_recipe_items
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_recipe_items (
+      id SERIAL PRIMARY KEY,
+      recipe_id INTEGER NOT NULL REFERENCES pos_recipes(id) ON DELETE CASCADE,
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      qty NUMERIC(12,3) NOT NULL DEFAULT 0
+    )
+  `);
+
+  // pos_stock_transfers
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_transfers (
+      id SERIAL PRIMARY KEY,
+      transfer_number TEXT NOT NULL UNIQUE,
+      from_branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      to_branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      status TEXT NOT NULL DEFAULT 'draft',
+      note TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      sent_at TIMESTAMP,
+      received_at TIMESTAMP
+    )
+  `);
+
+  // pos_stock_transfer_items
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_transfer_items (
+      id SERIAL PRIMARY KEY,
+      transfer_id INTEGER NOT NULL REFERENCES pos_stock_transfers(id) ON DELETE CASCADE,
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+      from_warehouse_id INTEGER REFERENCES pos_warehouses(id),
+      to_warehouse_id INTEGER REFERENCES pos_warehouses(id)
+    )
+  `);
+
+  // pos_stock_mutations (log mutasi stok)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_mutations (
+      id SERIAL PRIMARY KEY,
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      warehouse_id INTEGER REFERENCES pos_warehouses(id),
+      rack_id INTEGER REFERENCES pos_racks(id),
+      type TEXT NOT NULL,
+      qty NUMERIC(12,3) NOT NULL,
+      qty_before NUMERIC(12,3) NOT NULL DEFAULT 0,
+      qty_after NUMERIC(12,3) NOT NULL DEFAULT 0,
+      ref_type TEXT,
+      ref_id INTEGER,
+      note TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // pos_stock_opnames
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_opnames (
+      id SERIAL PRIMARY KEY,
+      opname_number TEXT NOT NULL UNIQUE,
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id),
+      warehouse_id INTEGER REFERENCES pos_warehouses(id),
+      status TEXT NOT NULL DEFAULT 'draft',
+      note TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      confirmed_at TIMESTAMP
+    )
+  `);
+
+  // pos_stock_opname_items
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_stock_opname_items (
+      id SERIAL PRIMARY KEY,
+      opname_id INTEGER NOT NULL REFERENCES pos_stock_opnames(id) ON DELETE CASCADE,
+      item_id INTEGER NOT NULL REFERENCES pos_inventory_items(id),
+      system_qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+      actual_qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+      diff_qty NUMERIC(12,3) NOT NULL DEFAULT 0,
+      note TEXT
+    )
+  `);
+
+  // Seed gudang default untuk setiap cabang
+  const warehouseCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM pos_warehouses`);
+  const wCnt = Number((warehouseCount.rows[0] as { cnt: string }).cnt);
+  if (wCnt === 0) {
+    const branches = await db.execute(sql`SELECT id FROM pos_branches ORDER BY id`);
+    for (const branch of branches.rows as { id: number }[]) {
+      await db.execute(sql`
+        INSERT INTO pos_warehouses (name, branch_id, type, is_active) VALUES
+          ('Gudang Utama', ${branch.id}, 'umum', TRUE),
+          ('Gudang Produksi', ${branch.id}, 'produksi', TRUE)
+      `);
+    }
+  }
+
+  // Seed bahan baku default
+  const invCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM pos_inventory_items`);
+  const iCnt = Number((invCount.rows[0] as { cnt: string }).cnt);
+  if (iCnt === 0) {
+    await db.execute(sql`
+      INSERT INTO pos_inventory_items (name, sku, unit, min_stock, cost_price) VALUES
+        ('Bubuk Thai Tea',  'SKU-001', 'gram',  500,  80000),
+        ('Bubuk Matcha',    'SKU-002', 'gram',  300,  150000),
+        ('Susu',            'SKU-003', 'ml',    2000, 18000),
+        ('Cup 16oz',        'SKU-004', 'pcs',   200,  1500),
+        ('Cheese Cream',    'SKU-005', 'gram',  500,  45000),
+        ('Brown Sugar',     'SKU-006', 'gram',  500,  15000),
+        ('Bubble Boba',     'SKU-007', 'gram',  500,  25000),
+        ('Bubuk Coklat',    'SKU-008', 'gram',  300,  90000),
+        ('Sedotan',         'SKU-009', 'pcs',   500,  200),
+        ('Plastik Seal',    'SKU-010', 'pcs',   500,  300)
+    `);
+  }
+
+  logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory)");
 }

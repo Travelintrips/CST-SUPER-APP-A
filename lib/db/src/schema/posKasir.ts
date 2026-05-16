@@ -106,3 +106,119 @@ export const posShiftsTable = pgTable("pos_shifts", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ── MULTI CABANG + GUDANG + RAK ──────────────────────────────────────────────
+
+export const posWarehousesTable = pgTable("pos_warehouses", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  branchId: integer("branch_id").notNull().references(() => posBranchesTable.id),
+  type: text("type").notNull().default("umum"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const posRacksTable = pgTable("pos_racks", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  warehouseId: integer("warehouse_id").notNull().references(() => posWarehousesTable.id),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const posInventoryItemsTable = pgTable("pos_inventory_items", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  sku: text("sku").notNull().unique(),
+  unit: text("unit").notNull().default("pcs"),
+  minStock: numeric("min_stock", { precision: 12, scale: 3 }).notNull().default("0"),
+  costPrice: numeric("cost_price", { precision: 12, scale: 2 }).notNull().default("0"),
+  note: text("note"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const posInventoryStocksTable = pgTable("pos_inventory_stocks", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => posInventoryItemsTable.id),
+  branchId: integer("branch_id").notNull().references(() => posBranchesTable.id),
+  warehouseId: integer("warehouse_id").references(() => posWarehousesTable.id),
+  rackId: integer("rack_id").references(() => posRacksTable.id),
+  qty: numeric("qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const posRecipesTable = pgTable("pos_recipes", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull().references(() => posProductsTable.id).unique(),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const posRecipeItemsTable = pgTable("pos_recipe_items", {
+  id: serial("id").primaryKey(),
+  recipeId: integer("recipe_id").notNull().references(() => posRecipesTable.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull().references(() => posInventoryItemsTable.id),
+  qty: numeric("qty", { precision: 12, scale: 3 }).notNull().default("0"),
+});
+
+export const posStockTransfersTable = pgTable("pos_stock_transfers", {
+  id: serial("id").primaryKey(),
+  transferNumber: text("transfer_number").notNull().unique(),
+  fromBranchId: integer("from_branch_id").notNull().references(() => posBranchesTable.id),
+  toBranchId: integer("to_branch_id").notNull().references(() => posBranchesTable.id),
+  status: text("status").notNull().default("draft"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  sentAt: timestamp("sent_at"),
+  receivedAt: timestamp("received_at"),
+});
+
+export const posStockTransferItemsTable = pgTable("pos_stock_transfer_items", {
+  id: serial("id").primaryKey(),
+  transferId: integer("transfer_id").notNull().references(() => posStockTransfersTable.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull().references(() => posInventoryItemsTable.id),
+  qty: numeric("qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  fromWarehouseId: integer("from_warehouse_id").references(() => posWarehousesTable.id),
+  toWarehouseId: integer("to_warehouse_id").references(() => posWarehousesTable.id),
+});
+
+export const posStockMutationsTable = pgTable("pos_stock_mutations", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => posInventoryItemsTable.id),
+  branchId: integer("branch_id").notNull().references(() => posBranchesTable.id),
+  warehouseId: integer("warehouse_id").references(() => posWarehousesTable.id),
+  rackId: integer("rack_id").references(() => posRacksTable.id),
+  type: text("type").notNull(),
+  qty: numeric("qty", { precision: 12, scale: 3 }).notNull(),
+  qtyBefore: numeric("qty_before", { precision: 12, scale: 3 }).notNull().default("0"),
+  qtyAfter: numeric("qty_after", { precision: 12, scale: 3 }).notNull().default("0"),
+  refType: text("ref_type"),
+  refId: integer("ref_id"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const posStockOpnamesTable = pgTable("pos_stock_opnames", {
+  id: serial("id").primaryKey(),
+  opnameNumber: text("opname_number").notNull().unique(),
+  branchId: integer("branch_id").notNull().references(() => posBranchesTable.id),
+  warehouseId: integer("warehouse_id").references(() => posWarehousesTable.id),
+  status: text("status").notNull().default("draft"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  confirmedAt: timestamp("confirmed_at"),
+});
+
+export const posStockOpnameItemsTable = pgTable("pos_stock_opname_items", {
+  id: serial("id").primaryKey(),
+  opnameId: integer("opname_id").notNull().references(() => posStockOpnamesTable.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull().references(() => posInventoryItemsTable.id),
+  systemQty: numeric("system_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  actualQty: numeric("actual_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  diffQty: numeric("diff_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  note: text("note"),
+});
