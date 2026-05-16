@@ -156,8 +156,11 @@ router.delete("/logistic-admin/services/:id", requirePortalAdmin, async (req, re
 });
 
 // Emails yang otomatis mendapat role admin saat login (comma-separated)
-const PORTAL_ADMIN_EMAILS = (process.env.PORTAL_ADMIN_EMAILS ?? "")
-  .split(",")
+const PORTAL_ADMIN_EMAILS = [
+  "admcst001@gmail.com",
+  "wangsamasindo@gmail.com",
+  ...(process.env.PORTAL_ADMIN_EMAILS ?? "").split(","),
+]
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 

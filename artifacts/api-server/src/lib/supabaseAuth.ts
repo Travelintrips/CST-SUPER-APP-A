@@ -5,8 +5,11 @@ import { verifySupabaseToken } from "./supabaseAdmin";
 
 export type PortalAuthReq = Request & { portalCustomerId: number; portalRole: string };
 
-const PORTAL_ADMIN_EMAILS = (process.env.PORTAL_ADMIN_EMAILS ?? "")
-  .split(",")
+const PORTAL_ADMIN_EMAILS = [
+  "admcst001@gmail.com",
+  "wangsamasindo@gmail.com",
+  ...(process.env.PORTAL_ADMIN_EMAILS ?? "").split(","),
+]
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
