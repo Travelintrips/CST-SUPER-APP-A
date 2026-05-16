@@ -56,7 +56,6 @@ export async function requirePortalAuth(req: Request, res: Response, next: NextF
   } else {
     const emailLower = supabaseUser.email.toLowerCase();
     const inAdminList = PORTAL_ADMIN_EMAILS.includes(emailLower);
-    const adminListConfigured = PORTAL_ADMIN_EMAILS.length > 0;
 
     if (inAdminList && customer.role !== "admin") {
       // Promote to admin — email is in server-side allowlist
@@ -65,15 +64,8 @@ export async function requirePortalAuth(req: Request, res: Response, next: NextF
         .set({ role: "admin" })
         .where(eq(portalCustomersTable.id, customer.id));
       customer = { ...customer, role: "admin" };
-    } else if (!inAdminList && adminListConfigured && customer.role === "admin") {
-      // Downgrade: stored role is "admin" but email is NOT in the server-side allowlist.
-      // This remediates accounts that were elevated via client-controlled metadata before the fix.
-      await db
-        .update(portalCustomersTable)
-        .set({ role: "customer" })
-        .where(eq(portalCustomersTable.id, customer.id));
-      customer = { ...customer, role: "customer" };
     }
+    // Role stored in DB is the source of truth — never auto-downgrade
   }
 
   (req as PortalAuthReq).portalCustomerId = customer.id;
