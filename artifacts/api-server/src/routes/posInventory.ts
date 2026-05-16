@@ -1,9 +1,13 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 
 const router = Router();
+
+router.use((req: Request, res: Response, next: NextFunction) => {
+  requireClerkUser(req, res).then((ok) => { if (ok) next(); }).catch(next);
+});
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,14 +49,14 @@ function makeLossNumber(): string {
 
 // ── CABANG ───────────────────────────────────────────────────────────────────
 
-router.get("/branches", requireClerkUser, async (_req: Request, res: Response) => {
+router.get("/branches", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT * FROM pos_branches ORDER BY id ASC
   `);
   res.json(rows.rows);
 });
 
-router.post("/branches", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/branches", async (req: Request, res: Response) => {
   const { name, address, phone, isActive } = req.body as { name: string; address?: string; phone?: string; isActive?: boolean };
   if (!name) { res.status(400).json({ message: "name wajib diisi" }); return; }
   const result = await db.execute(sql`
@@ -63,7 +67,7 @@ router.post("/branches", requireClerkUser, async (req: Request, res: Response) =
   res.json(result.rows[0]);
 });
 
-router.put("/branches/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.put("/branches/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { name, address, phone, isActive } = req.body as { name?: string; address?: string; phone?: string; isActive?: boolean };
   await db.execute(sql`
@@ -78,7 +82,7 @@ router.put("/branches/:id", requireClerkUser, async (req: Request, res: Response
   res.json(result.rows[0]);
 });
 
-router.delete("/branches/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.delete("/branches/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   await db.execute(sql`DELETE FROM pos_branches WHERE id = ${id}`);
   res.json({ ok: true });
@@ -86,7 +90,7 @@ router.delete("/branches/:id", requireClerkUser, async (req: Request, res: Respo
 
 // ── GUDANG ───────────────────────────────────────────────────────────────────
 
-router.get("/warehouses", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/warehouses", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   const rows = branchId
     ? await db.execute(sql`
@@ -105,7 +109,7 @@ router.get("/warehouses", requireClerkUser, async (req: Request, res: Response) 
   res.json(rows.rows);
 });
 
-router.post("/warehouses", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/warehouses", async (req: Request, res: Response) => {
   const { name, branchId, type, isActive } = req.body as { name: string; branchId: number; type?: string; isActive?: boolean };
   if (!name || !branchId) { res.status(400).json({ message: "name dan branchId wajib diisi" }); return; }
   const result = await db.execute(sql`
@@ -116,7 +120,7 @@ router.post("/warehouses", requireClerkUser, async (req: Request, res: Response)
   res.json(result.rows[0]);
 });
 
-router.put("/warehouses/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.put("/warehouses/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { name, type, isActive } = req.body as { name?: string; type?: string; isActive?: boolean };
   await db.execute(sql`
@@ -130,7 +134,7 @@ router.put("/warehouses/:id", requireClerkUser, async (req: Request, res: Respon
   res.json(result.rows[0]);
 });
 
-router.delete("/warehouses/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.delete("/warehouses/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   await db.execute(sql`DELETE FROM pos_warehouses WHERE id = ${id}`);
   res.json({ ok: true });
@@ -138,7 +142,7 @@ router.delete("/warehouses/:id", requireClerkUser, async (req: Request, res: Res
 
 // ── RAK ──────────────────────────────────────────────────────────────────────
 
-router.get("/racks", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/racks", async (req: Request, res: Response) => {
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
   const rows = warehouseId
     ? await db.execute(sql`
@@ -159,7 +163,7 @@ router.get("/racks", requireClerkUser, async (req: Request, res: Response) => {
   res.json(rows.rows);
 });
 
-router.post("/racks", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/racks", async (req: Request, res: Response) => {
   const { code, name, warehouseId, isActive } = req.body as { code: string; name: string; warehouseId: number; isActive?: boolean };
   if (!code || !name || !warehouseId) { res.status(400).json({ message: "code, name, warehouseId wajib diisi" }); return; }
   const result = await db.execute(sql`
@@ -170,7 +174,7 @@ router.post("/racks", requireClerkUser, async (req: Request, res: Response) => {
   res.json(result.rows[0]);
 });
 
-router.put("/racks/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.put("/racks/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { code, name, isActive } = req.body as { code?: string; name?: string; isActive?: boolean };
   await db.execute(sql`
@@ -184,7 +188,7 @@ router.put("/racks/:id", requireClerkUser, async (req: Request, res: Response) =
   res.json(result.rows[0]);
 });
 
-router.delete("/racks/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.delete("/racks/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   await db.execute(sql`DELETE FROM pos_racks WHERE id = ${id}`);
   res.json({ ok: true });
@@ -192,14 +196,14 @@ router.delete("/racks/:id", requireClerkUser, async (req: Request, res: Response
 
 // ── INVENTORY ITEMS (BAHAN BAKU) ─────────────────────────────────────────────
 
-router.get("/inventory-items", requireClerkUser, async (_req: Request, res: Response) => {
+router.get("/inventory-items", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT * FROM pos_inventory_items ORDER BY name ASC
   `);
   res.json(rows.rows);
 });
 
-router.post("/inventory-items", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/inventory-items", async (req: Request, res: Response) => {
   const { name, sku, unit, minStock, costPrice, note, isActive } = req.body as {
     name: string; sku: string; unit?: string; minStock?: number; costPrice?: number; note?: string; isActive?: boolean;
   };
@@ -212,7 +216,7 @@ router.post("/inventory-items", requireClerkUser, async (req: Request, res: Resp
   res.json(result.rows[0]);
 });
 
-router.put("/inventory-items/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.put("/inventory-items/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { name, sku, unit, minStock, costPrice, note, isActive } = req.body as {
     name?: string; sku?: string; unit?: string; minStock?: number; costPrice?: number; note?: string; isActive?: boolean;
@@ -233,7 +237,7 @@ router.put("/inventory-items/:id", requireClerkUser, async (req: Request, res: R
   res.json(result.rows[0]);
 });
 
-router.delete("/inventory-items/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.delete("/inventory-items/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   await db.execute(sql`DELETE FROM pos_inventory_items WHERE id = ${id}`);
   res.json({ ok: true });
@@ -241,7 +245,7 @@ router.delete("/inventory-items/:id", requireClerkUser, async (req: Request, res
 
 // ── INVENTORY STOCKS ──────────────────────────────────────────────────────────
 
-router.get("/inventory-stocks", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/inventory-stocks", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
 
@@ -267,7 +271,7 @@ router.get("/inventory-stocks", requireClerkUser, async (req: Request, res: Resp
   res.json(rows.rows);
 });
 
-router.post("/inventory-stocks/adjust", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/inventory-stocks/adjust", async (req: Request, res: Response) => {
   const { itemId, branchId, warehouseId, rackId, qty, note, type } = req.body as {
     itemId: number; branchId: number; warehouseId?: number; rackId?: number; qty: number; note?: string; type?: string;
   };
@@ -308,7 +312,7 @@ router.post("/inventory-stocks/adjust", requireClerkUser, async (req: Request, r
 
 // ── RESEP / BOM ───────────────────────────────────────────────────────────────
 
-router.get("/recipes", requireClerkUser, async (_req: Request, res: Response) => {
+router.get("/recipes", async (_req: Request, res: Response) => {
   const recipes = await db.execute(sql`
     SELECT r.*, p.name as product_name
     FROM pos_recipes r
@@ -330,7 +334,7 @@ router.get("/recipes", requireClerkUser, async (_req: Request, res: Response) =>
   res.json(result);
 });
 
-router.get("/recipes/by-product/:productId", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/recipes/by-product/:productId", async (req: Request, res: Response) => {
   const productId = Number(req.params.productId);
   const recipe = await db.execute(sql`
     SELECT r.*, p.name as product_name
@@ -350,7 +354,7 @@ router.get("/recipes/by-product/:productId", requireClerkUser, async (req: Reque
   res.json({ ...r, items: items.rows });
 });
 
-router.post("/recipes", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/recipes", async (req: Request, res: Response) => {
   const { productId, recipeName, yieldQty, yieldUnit, isActive, note, items } = req.body as {
     productId: number;
     recipeName?: string;
@@ -403,7 +407,7 @@ router.post("/recipes", requireClerkUser, async (req: Request, res: Response) =>
   res.json({ ...result.rows[0], items: recipeItems.rows });
 });
 
-router.delete("/recipes/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.delete("/recipes/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   await db.execute(sql`DELETE FROM pos_recipes WHERE id = ${id}`);
   res.json({ ok: true });
@@ -411,7 +415,7 @@ router.delete("/recipes/:id", requireClerkUser, async (req: Request, res: Respon
 
 // ── TRANSFER STOK ─────────────────────────────────────────────────────────────
 
-router.get("/stock-transfers", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-transfers", async (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
   let q = sql`
     SELECT t.*,
@@ -428,7 +432,7 @@ router.get("/stock-transfers", requireClerkUser, async (req: Request, res: Respo
   res.json(rows.rows);
 });
 
-router.get("/stock-transfers/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-transfers/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const transfer = await db.execute(sql`
     SELECT t.*, fb.name as from_branch_name, tb.name as to_branch_name
@@ -450,7 +454,7 @@ router.get("/stock-transfers/:id", requireClerkUser, async (req: Request, res: R
   res.json({ ...transfer.rows[0], items: items.rows });
 });
 
-router.post("/stock-transfers", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/stock-transfers", async (req: Request, res: Response) => {
   const { fromBranchId, toBranchId, note, items } = req.body as {
     fromBranchId: number; toBranchId: number; note?: string;
     items: { itemId: number; qty: number; fromWarehouseId?: number; toWarehouseId?: number }[];
@@ -477,7 +481,7 @@ router.post("/stock-transfers", requireClerkUser, async (req: Request, res: Resp
 });
 
 // Draft → Pending (tanpa perubahan stok)
-router.patch("/stock-transfers/:id/pending", requireClerkUser, async (req: Request, res: Response) => {
+router.patch("/stock-transfers/:id/pending", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
   if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
@@ -489,7 +493,7 @@ router.patch("/stock-transfers/:id/pending", requireClerkUser, async (req: Reque
 });
 
 // Draft/Pending → In Transit (stok asal berkurang)
-router.patch("/stock-transfers/:id/send", requireClerkUser, async (req: Request, res: Response) => {
+router.patch("/stock-transfers/:id/send", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
   if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
@@ -526,7 +530,7 @@ router.patch("/stock-transfers/:id/send", requireClerkUser, async (req: Request,
   res.json({ ok: true });
 });
 
-router.patch("/stock-transfers/:id/receive", requireClerkUser, async (req: Request, res: Response) => {
+router.patch("/stock-transfers/:id/receive", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
   if (transfer.rows.length === 0) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
@@ -568,7 +572,7 @@ router.patch("/stock-transfers/:id/receive", requireClerkUser, async (req: Reque
 });
 
 // Cancel transfer (draft/pending tanpa reversal; in_transit dengan reversal stok asal)
-router.patch("/stock-transfers/:id/cancel", requireClerkUser, async (req: Request, res: Response) => {
+router.patch("/stock-transfers/:id/cancel", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { reason } = req.body as { reason?: string };
   const transfer = await db.execute(sql`SELECT * FROM pos_stock_transfers WHERE id = ${id}`);
@@ -617,7 +621,7 @@ router.patch("/stock-transfers/:id/cancel", requireClerkUser, async (req: Reques
 
 // ── RETUR BARANG ─────────────────────────────────────────────────────────────
 
-router.get("/stock-returns", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-returns", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   let q = sql`
     SELECT r.*, b.name as branch_name, w.name as warehouse_name
@@ -632,7 +636,7 @@ router.get("/stock-returns", requireClerkUser, async (req: Request, res: Respons
   res.json(rows.rows);
 });
 
-router.get("/stock-returns/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-returns/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const ret = await db.execute(sql`
     SELECT r.*, b.name as branch_name, w.name as warehouse_name
@@ -651,7 +655,7 @@ router.get("/stock-returns/:id", requireClerkUser, async (req: Request, res: Res
   res.json({ ...ret.rows[0], items: items.rows });
 });
 
-router.post("/stock-returns", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/stock-returns", async (req: Request, res: Response) => {
   const { branchId, warehouseId, returnType, note, items } = req.body as {
     branchId: number; warehouseId?: number; returnType?: string; note?: string;
     items: { itemId: number; qty: number; condition: string; note?: string }[];
@@ -676,7 +680,7 @@ router.post("/stock-returns", requireClerkUser, async (req: Request, res: Respon
   res.json(result.rows[0]);
 });
 
-router.patch("/stock-returns/:id/approve", requireClerkUser, async (req: Request, res: Response) => {
+router.patch("/stock-returns/:id/approve", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const ret = await db.execute(sql`SELECT * FROM pos_stock_returns WHERE id = ${id}`);
   if (ret.rows.length === 0) { res.status(404).json({ message: "Retur tidak ditemukan" }); return; }
@@ -734,7 +738,7 @@ router.patch("/stock-returns/:id/approve", requireClerkUser, async (req: Request
   res.json({ ok: true });
 });
 
-router.patch("/stock-returns/:id/cancel", requireClerkUser, async (req: Request, res: Response) => {
+router.patch("/stock-returns/:id/cancel", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const ret = await db.execute(sql`SELECT * FROM pos_stock_returns WHERE id = ${id}`);
   if (ret.rows.length === 0) { res.status(404).json({ message: "Retur tidak ditemukan" }); return; }
@@ -747,7 +751,7 @@ router.patch("/stock-returns/:id/cancel", requireClerkUser, async (req: Request,
 
 // ── BARANG RUSAK / HILANG / KADALUARSA ────────────────────────────────────────
 
-router.get("/stock-losses", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-losses", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   let q = sql`
     SELECT l.*, b.name as branch_name, w.name as warehouse_name, i.name as item_name, i.unit
@@ -763,7 +767,7 @@ router.get("/stock-losses", requireClerkUser, async (req: Request, res: Response
   res.json(rows.rows);
 });
 
-router.post("/stock-losses", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/stock-losses", async (req: Request, res: Response) => {
   const { branchId, warehouseId, itemId, qty, lossType, reason } = req.body as {
     branchId: number; warehouseId?: number; itemId: number;
     qty: number; lossType: string; reason: string;
@@ -804,7 +808,7 @@ router.post("/stock-losses", requireClerkUser, async (req: Request, res: Respons
 
 // ── STOCK OPNAME ─────────────────────────────────────────────────────────────
 
-router.get("/stock-opnames", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-opnames", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   let q = sql`
     SELECT o.*, b.name as branch_name, w.name as warehouse_name
@@ -819,7 +823,7 @@ router.get("/stock-opnames", requireClerkUser, async (req: Request, res: Respons
   res.json(rows.rows);
 });
 
-router.get("/stock-opnames/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-opnames/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const opname = await db.execute(sql`
     SELECT o.*, b.name as branch_name, w.name as warehouse_name
@@ -838,7 +842,7 @@ router.get("/stock-opnames/:id", requireClerkUser, async (req: Request, res: Res
   res.json({ ...opname.rows[0], items: items.rows });
 });
 
-router.post("/stock-opnames", requireClerkUser, async (req: Request, res: Response) => {
+router.post("/stock-opnames", async (req: Request, res: Response) => {
   const { branchId, warehouseId, note } = req.body as { branchId: number; warehouseId?: number; note?: string };
   if (!branchId) { res.status(400).json({ message: "branchId wajib diisi" }); return; }
 
@@ -869,7 +873,7 @@ router.post("/stock-opnames", requireClerkUser, async (req: Request, res: Respon
   res.json(result.rows[0]);
 });
 
-router.put("/stock-opnames/:id/items", requireClerkUser, async (req: Request, res: Response) => {
+router.put("/stock-opnames/:id/items", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { items } = req.body as { items: { itemId: number; actualQty: number; note?: string }[] };
 
@@ -888,7 +892,7 @@ router.put("/stock-opnames/:id/items", requireClerkUser, async (req: Request, re
   res.json({ ok: true });
 });
 
-router.patch("/stock-opnames/:id/confirm", requireClerkUser, async (req: Request, res: Response) => {
+router.patch("/stock-opnames/:id/confirm", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const opname = await db.execute(sql`SELECT * FROM pos_stock_opnames WHERE id = ${id}`);
   if (opname.rows.length === 0) { res.status(404).json({ message: "Opname tidak ditemukan" }); return; }
@@ -933,7 +937,7 @@ router.patch("/stock-opnames/:id/confirm", requireClerkUser, async (req: Request
 
 // ── MUTASI STOK (LOG) ─────────────────────────────────────────────────────────
 
-router.get("/stock-mutations", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/stock-mutations", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   const itemId = req.query.itemId ? Number(req.query.itemId) : null;
   const type = req.query.type as string | undefined;
@@ -964,7 +968,7 @@ router.get("/stock-mutations", requireClerkUser, async (req: Request, res: Respo
 
 // ── LAPORAN STOK ──────────────────────────────────────────────────────────────
 
-router.get("/reports/stock-per-branch", requireClerkUser, async (_req: Request, res: Response) => {
+router.get("/reports/stock-per-branch", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT b.name as branch_name,
            i.name as item_name, i.sku, i.unit, i.min_stock,
@@ -980,7 +984,7 @@ router.get("/reports/stock-per-branch", requireClerkUser, async (_req: Request, 
   res.json(rows.rows);
 });
 
-router.get("/reports/low-stock", requireClerkUser, async (_req: Request, res: Response) => {
+router.get("/reports/low-stock", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT b.name as branch_name,
            i.name as item_name, i.sku, i.unit, i.min_stock,
@@ -998,7 +1002,7 @@ router.get("/reports/low-stock", requireClerkUser, async (_req: Request, res: Re
 
 // ── SCAN RESULT ENDPOINTS ────────────────────────────────────────────────────
 
-router.get("/scan-result/product/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/scan-result/product/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const item = await db.execute(sql`SELECT * FROM pos_inventory_items WHERE id = ${id}`);
   if (item.rows.length === 0) { res.status(404).json({ message: "Item tidak ditemukan" }); return; }
@@ -1014,7 +1018,7 @@ router.get("/scan-result/product/:id", requireClerkUser, async (req: Request, re
   res.json({ item: item.rows[0], stocks: stocks.rows });
 });
 
-router.get("/scan-result/rack/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/scan-result/rack/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const rack = await db.execute(sql`
     SELECT r.*, w.name as warehouse_name, b.name as branch_name
@@ -1034,7 +1038,7 @@ router.get("/scan-result/rack/:id", requireClerkUser, async (req: Request, res: 
   res.json({ rack: rack.rows[0], stocks: stocks.rows });
 });
 
-router.get("/scan-result/warehouse/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/scan-result/warehouse/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const wh = await db.execute(sql`
     SELECT w.*, b.name as branch_name FROM pos_warehouses w
@@ -1051,7 +1055,7 @@ router.get("/scan-result/warehouse/:id", requireClerkUser, async (req: Request, 
   res.json({ warehouse: wh.rows[0], stocks: stocks.rows });
 });
 
-router.get("/scan-result/transfer/:id", requireClerkUser, async (req: Request, res: Response) => {
+router.get("/scan-result/transfer/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const transfer = await db.execute(sql`
     SELECT t.*, fb.name as from_branch_name, tb.name as to_branch_name
@@ -1072,7 +1076,7 @@ router.get("/scan-result/transfer/:id", requireClerkUser, async (req: Request, r
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 
-router.get("/dashboard", requireClerkUser, async (_req: Request, res: Response) => {
+router.get("/dashboard", async (_req: Request, res: Response) => {
   const [
     stockByWarehouse,
     lowStockItems,

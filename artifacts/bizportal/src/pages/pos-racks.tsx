@@ -17,7 +17,7 @@ interface Wh { id: number; name: string; branch_name: string; }
 interface Rack { id: number; code: string; name: string; warehouse_id: number; warehouse_name: string; branch_name: string; is_active: boolean; }
 
 async function apiFetch(path: string, opts?: RequestInit) {
-  const res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...opts });
+  const res = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

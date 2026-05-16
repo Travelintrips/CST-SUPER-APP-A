@@ -35,8 +35,13 @@ export const posProductsTable = pgTable("pos_products", {
   imageUrl: text("image_url"),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  productType: text("product_type").notNull().default("STOCK"),
+  linkedProductId: integer("linked_product_id"),
+  // legacy columns — kept for backward compat, not used for stock logic
   stock: numeric("stock", { precision: 12, scale: 3 }),
   stockUnit: text("stock_unit").notNull().default("pcs"),
+  stockItemId: integer("stock_item_id"),
+  stockUsagePerUnit: numeric("stock_usage_per_unit", { precision: 12, scale: 3 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
