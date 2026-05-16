@@ -20,6 +20,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
+import { postStockOut } from "../lib/inventoryStock.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -465,35 +466,69 @@ router.post("/documents/:id/action", async (req, res) => {
 
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
 
-  // T005: When SO is delivered, deduct stock from default warehouse (fire-and-forget)
+  // T005: When SO is delivered, deduct stock (fire-and-forget)
   if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
     void (async () => {
       try {
         const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
         const productLines = lines.filter((l) => l.productId != null);
         if (productLines.length === 0) return;
+
+        // ── Legacy wh_stock deduction (backward compat) ─────────────────────
         const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
         const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
-        const warehouseId: number | undefined = wh?.id;
-        if (!warehouseId) return;
+        const legacyWhId: number | undefined = wh?.id;
+        if (legacyWhId) {
+          for (const line of productLines) {
+            const qty = Number(line.quantity);
+            const cur = await db.execute(sql`
+              SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${legacyWhId} AND rack_id IS NULL
+            `);
+            const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+            const qtyAfter = Math.max(0, qtyBefore - qty);
+            await db.execute(sql`
+              INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, ${qtyAfter}, NOW())
+              ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+              DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
+            `);
+            await db.execute(sql`
+              INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, 'so_delivery', ${qty}, ${qtyBefore}, ${qtyAfter},
+                      'sales_order', ${id}, ${`SO Terkirim: ${doc.docNumber}`})
+            `);
+          }
+        }
+
+        // ── New inventory_stock deduction ────────────────────────────────────
+        const invWh = (await db.execute(sql`
+          SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+        `)).rows[0] as { id: number } | undefined;
+        if (!invWh) return;
+        const invWhId = invWh.id;
+
         for (const line of productLines) {
           const qty = Number(line.quantity);
-          const cur = await db.execute(sql`
-            SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${warehouseId} AND rack_id IS NULL
-          `);
-          const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
-          const qtyAfter = Math.max(0, qtyBefore - qty);
-          await db.execute(sql`
-            INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
-            VALUES (${line.productId}, ${warehouseId}, NULL, ${qtyAfter}, NOW())
-            ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
-            DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
-          `);
-          await db.execute(sql`
-            INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
-            VALUES (${line.productId}, ${warehouseId}, NULL, 'so_delivery', ${qty}, ${qtyBefore}, ${qtyAfter},
-                    'sales_order', ${id}, ${`SO Terkirim: ${doc.docNumber}`})
-          `);
+          // Check available stock — warn but still proceed
+          const stockRow = (await db.execute(sql`
+            SELECT stock_available::float FROM inventory_stock
+            WHERE product_id = ${line.productId} AND warehouse_id = ${invWhId}
+            ORDER BY id LIMIT 1
+          `)).rows[0] as { stock_available: number } | undefined;
+          if (stockRow && Number(stockRow.stock_available) < qty) {
+            console.warn(
+              `[inventory] SO ${doc.docNumber} — produk ${line.productId} stok tersedia ${stockRow.stock_available}, diminta ${qty}`
+            );
+          }
+          await postStockOut({
+            productId: line.productId!,
+            warehouseId: invWhId,
+            qty,
+            movementType: "SALES_DELIVERY",
+            referenceType: "SALES_ORDER",
+            referenceId: id,
+            notes: `SO Terkirim: ${doc.docNumber}`,
+          });
         }
       } catch (e) {
         console.error("[wh] mark_delivered stock-out error:", e);
