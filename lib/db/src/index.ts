@@ -37,6 +37,13 @@ export const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// Wajib: tangkap error dari idle pool client agar tidak menjadi uncaught exception
+// yang menyebabkan process crash di Node.js v15+. Supabase dapat memutus koneksi
+// idle setelah ~45 detik, yang men-trigger error event ini.
+pool.on("error", (err) => {
+  console.error("[pg pool] Idle client error (non-fatal):", err.message);
+});
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
