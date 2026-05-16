@@ -1,8 +1,9 @@
-import { pgTable, serial, text, integer, numeric, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { suppliersTable } from "./suppliers";
 import { productsTable } from "./products";
+import { companiesTable } from "./companies";
 
 export const purchaseDocKindEnum = pgEnum("purchase_doc_kind", ["rfq", "order"]);
 export const purchaseDocStatusEnum = pgEnum("purchase_doc_status", [
@@ -30,6 +31,7 @@ export const purchasePaymentStatusEnum = pgEnum("purchase_payment_status", [
 
 export const purchaseDocumentsTable = pgTable("purchase_documents", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   docNumber: text("doc_number").notNull().unique(),
   kind: purchaseDocKindEnum("kind").notNull().default("rfq"),
   status: purchaseDocStatusEnum("status").notNull().default("draft"),
@@ -56,7 +58,11 @@ export const purchaseDocumentsTable = pgTable("purchase_documents", {
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("purchase_docs_company_idx").on(t.companyId),
+  index("purchase_docs_supplier_idx").on(t.supplierId),
+  index("purchase_docs_status_idx").on(t.status, t.kind),
+]);
 
 export const purchaseDocumentLinesTable = pgTable("purchase_document_lines", {
   id: serial("id").primaryKey(),
@@ -69,7 +75,10 @@ export const purchaseDocumentLinesTable = pgTable("purchase_document_lines", {
   quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("1"),
   unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
-});
+}, (t) => [
+  index("purchase_doc_lines_doc_idx").on(t.documentId),
+  index("purchase_doc_lines_product_idx").on(t.productId),
+]);
 
 export const insertPurchaseDocumentSchema = createInsertSchema(purchaseDocumentsTable).omit({
   id: true,

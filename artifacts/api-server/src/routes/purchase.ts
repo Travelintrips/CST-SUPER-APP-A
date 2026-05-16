@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill } from "../lib/accounting.js";
@@ -78,8 +78,16 @@ async function nextDocNumber(kind: PurchaseKind): Promise<string> {
   return `${prefix}/${year}/${seq}`;
 }
 
-router.get("/summary", async (_req, res) => {
-  const docs = await db.select().from(purchaseDocumentsTable);
+function resolveCompanyId(req: Request): number {
+  const raw = (req.query["company"] ?? req.query["companyId"] ?? (req.body as Record<string, unknown>)?.["companyId"]) as string | undefined;
+  const n = raw ? parseInt(String(raw), 10) : NaN;
+  return Number.isNaN(n) ? 1 : n;
+}
+
+router.get("/summary", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const docs = await db.select().from(purchaseDocumentsTable)
+    .where(eq(purchaseDocumentsTable.companyId, companyId));
   const rfqCount = docs.filter((d) => d.kind === "rfq").length;
   const ordersCount = docs.filter((d) => d.kind === "order").length;
   const toBillCount = docs.filter((d) => d.kind === "order" && d.billStatus === "to_bill").length;
@@ -105,23 +113,21 @@ router.get("/summary", async (_req, res) => {
 });
 
 router.get("/documents", async (req, res) => {
+  const companyId = resolveCompanyId(req);
   const kind = req.query["kind"] as PurchaseKind | undefined;
   const billStatus = req.query["billStatus"] as PurchaseBillStatus | undefined;
   const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
-  const conds: SQL[] = [];
+  const conds: SQL[] = [eq(purchaseDocumentsTable.companyId, companyId)];
   if (kind === "rfq" || kind === "order") conds.push(eq(purchaseDocumentsTable.kind, kind));
   if (billStatus === "none" || billStatus === "to_bill" || billStatus === "billed")
     conds.push(eq(purchaseDocumentsTable.billStatus, billStatus));
   if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "paid")
     conds.push(eq(purchaseDocumentsTable.paymentStatus, paymentStatus));
-  const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
-  const rows = where
-    ? await db
-        .select()
-        .from(purchaseDocumentsTable)
-        .where(where)
-        .orderBy(desc(purchaseDocumentsTable.createdAt))
-    : await db.select().from(purchaseDocumentsTable).orderBy(desc(purchaseDocumentsTable.createdAt));
+  const rows = await db
+    .select()
+    .from(purchaseDocumentsTable)
+    .where(and(...conds))
+    .orderBy(desc(purchaseDocumentsTable.createdAt));
   return res.json(rows.map(serializeDoc));
 });
 
@@ -148,6 +154,7 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
+  const companyId = resolveCompanyId(req);
   const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
@@ -171,6 +178,7 @@ router.post("/documents", async (req, res) => {
   const [doc] = await db
     .insert(purchaseDocumentsTable)
     .values({
+      companyId,
       docNumber,
       kind: docKind,
       status: "draft",

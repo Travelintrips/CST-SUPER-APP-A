@@ -392,7 +392,6 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
 logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request, res: Response) => {
-logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.query.orderId ?? ""), 10);
   const token = String(req.query.token ?? "").trim();
   if (isNaN(orderId) || !token) return res.status(400).json({ message: "orderId dan token wajib diisi" });
@@ -425,8 +424,6 @@ logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Reque
 
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
 logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res: Response) => {
-  const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
-logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, res: Response) => {
   const { orderId, token, action, vendorPrice: submittedVendorPrice } = req.body as {
     orderId: number; token: string; action: "accept" | "reject"; vendorPrice?: number;
   };

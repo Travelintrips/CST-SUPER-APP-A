@@ -1,5 +1,5 @@
 import {
-  pgTable, serial, text, integer, numeric, boolean, timestamp, pgEnum, uniqueIndex,
+  pgTable, serial, text, integer, numeric, boolean, timestamp, pgEnum, uniqueIndex, index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -81,12 +81,17 @@ export const whMovementsTable = pgTable("wh_movements", {
   qtyBefore: numeric("qty_before", { precision: 14, scale: 3 }).notNull().default("0"),
   qtyAfter: numeric("qty_after", { precision: 14, scale: 3 }).notNull().default("0"),
   costPrice: numeric("cost_price", { precision: 14, scale: 2 }).notNull().default("0"),
-  refType: text("ref_type"),   // "purchase_document" | "sales_document" | "wh_transfer" | "wh_damage" | "wh_return"
+  refType: text("ref_type"),
   refId: integer("ref_id"),
   note: text("note"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("wh_movements_product_idx").on(t.productId),
+  index("wh_movements_warehouse_idx").on(t.warehouseId),
+  index("wh_movements_type_idx").on(t.type),
+  index("wh_movements_created_idx").on(t.createdAt),
+]);
 
 // ── WH_TRANSFERS — transfer stok antar gudang ─────────────────────────────────
 
@@ -102,7 +107,11 @@ export const whTransfersTable = pgTable("wh_transfers", {
   sentAt: timestamp("sent_at"),
   receivedAt: timestamp("received_at"),
   cancelledAt: timestamp("cancelled_at"),
-});
+}, (t) => [
+  index("wh_transfers_from_idx").on(t.fromWarehouseId),
+  index("wh_transfers_to_idx").on(t.toWarehouseId),
+  index("wh_transfers_status_idx").on(t.status),
+]);
 
 export const whTransferLinesTable = pgTable("wh_transfer_lines", {
   id: serial("id").primaryKey(),
