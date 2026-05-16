@@ -193,7 +193,7 @@ router.get("/summary", async (req, res) => {
   const companyBreakdownWithPct = companyBreakdown.map((c) => ({
     ...c,
     contributionPct: totalThisMonth > 0 ? Math.round((c.revenueThisMonth / totalThisMonth) * 100) : 0,
-  }));
+  }))
 
   let perCompany: Array<{
     companyId: number; companyName: string; companyCode: string;
@@ -250,7 +250,6 @@ router.get("/summary", async (req, res) => {
     monthlyRevenueTrend: trend,
 
     companyBreakdown: companyBreakdownWithPct,
-    perCompany,
   });
 });
 
