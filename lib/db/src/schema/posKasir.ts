@@ -11,6 +11,7 @@ export const posBranchesTable = pgTable("pos_branches", {
   address: text("address"),
   phone: text("phone"),
   isActive: boolean("is_active").notNull().default(true),
+  businessUnit: text("business_unit"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
