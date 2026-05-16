@@ -15,6 +15,7 @@ import { runKnowledgeBaseMigration } from "./lib/knowledgeBaseMigration";
 import { runCompaniesMigration } from "./lib/companiesMigration";
 import { runHoldingMigration } from "./lib/holdingMigration";
 import { runPosKasirMigration } from "./lib/posKasirMigration";
+import { runSessionsMigration } from "./lib/sessionsMigration";
 
 const rawPort = process.env["PORT"] ?? "8080";
 
@@ -70,6 +71,11 @@ const server = app.listen(port, (err) => {
   // Jalankan accounting schema migration (idempotent — tambah kolom automation)
   runAccountingMigration().catch((err) => {
     logger.error({ err }, "Accounting migration error");
+  });
+
+  // Buat tabel sessions untuk auth session management (idempotent)
+  runSessionsMigration().catch((err) => {
+    logger.error({ err }, "Sessions migration error");
   });
 
   // Buat tabel oauth_states untuk Google OAuth state management
