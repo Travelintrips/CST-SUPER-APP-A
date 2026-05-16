@@ -476,5 +476,25 @@ export async function runPosKasirMigration(): Promise<void> {
     )
   `);
 
-  logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory)");
+  // ── THAI TEA MIGRATION ────────────────────────────────────────────────────
+
+  // business_unit column di pos_branches (untuk filter per unit bisnis)
+  await db.execute(sql`
+    ALTER TABLE pos_branches
+      ADD COLUMN IF NOT EXISTS business_unit TEXT
+  `);
+
+  // thai_tea_warehouse_links: mapping pos_warehouse ↔ erp_warehouse untuk dual-stock sync
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS thai_tea_warehouse_links (
+      id SERIAL PRIMARY KEY,
+      pos_warehouse_id INTEGER NOT NULL REFERENCES pos_warehouses(id) ON DELETE CASCADE,
+      erp_warehouse_id INTEGER NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      note TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory + thai-tea)");
 }
