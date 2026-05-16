@@ -16,6 +16,8 @@ router.use(async (req, res, next) => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// ?companyId=N  → single company mode
+// ?companyId=all or omitted → consolidated mode
 function parseCompanyParam(raw: unknown): { isConsolidated: boolean; companyId: number | null } {
   if (raw === "all" || raw === undefined || raw === "") {
     return { isConsolidated: true, companyId: null };
@@ -35,6 +37,10 @@ router.get("/summary", async (req, res) => {
   const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfPrevMonth = startOfThisMonth;
 
+<<<<<<< HEAD
+=======
+  // Raw SQL company filter fragments
+>>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
   const companyFilter = (!isConsolidated && companyId !== null)
     ? sql` AND (sd.company_id = ${companyId} OR sd.company_id IS NULL)`
     : sql``;
@@ -43,6 +49,10 @@ router.get("/summary", async (req, res) => {
     ? sql` AND (company_id = ${companyId} OR company_id IS NULL)`
     : sql``;
 
+<<<<<<< HEAD
+=======
+  // ORM filters for freight shipments
+>>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
   const freightCompanyFilter = (!isConsolidated && companyId !== null)
     ? eq(freightShipmentsTable.companyId, companyId)
     : undefined;
@@ -85,6 +95,10 @@ router.get("/summary", async (req, res) => {
     db.select({ count: sql<number>`count(*)` }).from(freightShipmentsTable)
       .where(and(eq(freightShipmentsTable.status, "in_transit"), freightCompanyFilter)),
 
+<<<<<<< HEAD
+=======
+    // Revenue dari sales orders bulan ini — pure raw SQL
+>>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
     db.execute<{ total: string }>(sql`
       SELECT coalesce(sum(grand_total), 0)::text AS total
       FROM sales_documents
@@ -189,6 +203,7 @@ router.get("/summary", async (req, res) => {
     ...c,
     contributionPct: totalThisMonth > 0 ? Math.round((c.revenueThisMonth / totalThisMonth) * 100) : 0,
   }));
+<<<<<<< HEAD
 
   let perCompany: Array<{
     companyId: number; companyName: string; companyCode: string;
@@ -220,6 +235,8 @@ router.get("/summary", async (req, res) => {
       contribution: totalRev > 0 ? Math.round((Number(r.revenue) / totalRev) * 100) : 0,
     }));
   }
+=======
+>>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
 
   return res.json({
     isConsolidated,
@@ -235,6 +252,10 @@ router.get("/summary", async (req, res) => {
     awaitingQuoteCount: Number(awaitingQuote?.count ?? 0),
     inTransitCount: Number(inTransit?.count ?? 0),
 
+<<<<<<< HEAD
+=======
+    // Sales metrics (company-scoped)
+>>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
     salesRevenueThisMonth: Number(salesRevenueThisMonthResult.rows[0]?.total ?? 0),
     salesRevenuePrevMonth: Number(salesRevenuePrevMonthResult.rows[0]?.total ?? 0),
     salesOrdersThisMonth: Number(salesOrdersThisMonthResult.rows[0]?.count ?? 0),
@@ -244,7 +265,10 @@ router.get("/summary", async (req, res) => {
     monthlyRevenueTrend: trend,
 
     companyBreakdown: companyBreakdownWithPct,
+<<<<<<< HEAD
     perCompany,
+=======
+>>>>>>> 9b0a849 (Update dashboard data retrieval and company filtering logic)
   });
 });
 

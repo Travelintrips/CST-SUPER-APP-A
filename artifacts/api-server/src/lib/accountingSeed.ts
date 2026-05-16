@@ -187,18 +187,39 @@ async function applyRuntimeMigrations(): Promise<void> {
 /** Ensure the default holding company exists and return its id */
 export async function ensureDefaultCompany(): Promise<number> {
   await applyRuntimeMigrations();
-  const [existing] = await db.select().from(companiesTable).where(eq(companiesTable.code, "CST")).limit(1);
+  const [existing] = await db.select().from(companiesTable).where(eq(companiesTable.companyCode, "CST")).limit(1);
   if (existing) return existing.id;
   const [created] = await db.insert(companiesTable).values({
     companyName: "PT CST Logistics",
     companyCode: "CST",
     isHolding: true,
-  }).returning();
-  return created!.id;
+  }).onConflictDoNothing().returning();
+  if (created) return created.id;
+  // Row was inserted by concurrent call — fetch it
+  const [row] = await db.select().from(companiesTable).where(eq(companiesTable.companyCode, "CST")).limit(1);
+  return row!.id;
 }
 
 export async function seedAccountingDefaults(companyId?: number): Promise<void> {
   const cid = companyId ?? (await ensureDefaultCompany());
+
+  // ── Fast-path: skip heavy seed if COA already fully populated ────────────
+  // Count leaf accounts that have a company_id (per-company accounts).
+  // Expected: COA_LEAF_TEMPLATES.length (38) × ALL_COMPANY_IDS.length (4) = 152
+  try {
+    const [{ leafCount }] = await db
+      .select({ leafCount: sql<number>`count(*)::int` })
+      .from(chartOfAccountsTable)
+      .where(sql`company_id IS NOT NULL`);
+    const expectedLeaves = COA_LEAF_TEMPLATES.length * ALL_COMPANY_IDS.length;
+    if (Number(leafCount) >= expectedLeaves) {
+      logger.info("Accounting seed: COA already fully seeded — skipping (fast path).");
+      return;
+    }
+  } catch {
+    // column may not exist yet — fall through to full seed
+  }
+
   logger.info({ companyId: cid }, "Accounting seed: starting COA hierarchy build...");
 
   // ── Ensure company_id column exists before any insert ────────────────────

@@ -16,13 +16,7 @@ import { runCompaniesMigration } from "./lib/companiesMigration";
 import { runHoldingMigration } from "./lib/holdingMigration";
 import { runPosKasirMigration } from "./lib/posKasirMigration";
 
-const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+const rawPort = process.env["PORT"] ?? "8080";
 
 // Security: PORTAL_ADMIN_EMAILS must be set in production.
 // Without it, requirePortalAdmin falls back to DB role-only check,

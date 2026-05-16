@@ -352,9 +352,25 @@ router.get("/callback/google", async (req: Request, res: Response) => {
 
     const sid = await createSession(sessionData);
     setSessionCookie(res, sid);
+    // If returnTo is the sentinel value "popup", render a page that signals
+    // the parent window via postMessage then closes itself.
+    if (returnTo === "popup") {
+      res.send(`<!DOCTYPE html><html><body><script>
+        try { window.opener && window.opener.postMessage("auth:done", "*"); } catch(e){}
+        window.close();
+      </script><p>Login berhasil. Tutup tab ini jika tidak tertutup otomatis.</p></body></html>`);
+      return;
+    }
     res.redirect(returnTo);
   } catch (err) {
     req.log.error({ err }, "[Google OAuth] callback token exchange error");
+    if (returnTo === "popup") {
+      res.send(`<!DOCTYPE html><html><body><script>
+        try { window.opener && window.opener.postMessage("auth:error", "*"); } catch(e){}
+        window.close();
+      </script><p>Login gagal. Tutup tab ini dan coba lagi.</p></body></html>`);
+      return;
+    }
     res.redirect(returnTo);
   }
 });
