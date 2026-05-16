@@ -611,10 +611,12 @@ function ItemEditCard({
   item,
   onSave,
   type,
+  allCategories,
 }: {
   item: Service | Product;
-  onSave: (id: number, data: Partial<Service & Product & { mediaItems: MediaItem[] }>) => Promise<void>;
+  onSave: (id: number, data: Partial<Service & Product & { mediaItems: MediaItem[]; categories: string[] }>) => Promise<void>;
   type: "services" | "products";
+  allCategories?: string[];
 }) {
   const { toast } = useToast();
   const [name, setName] = useState(item.name);
@@ -633,14 +635,23 @@ function ItemEditCard({
     type === "products" ? ((item as Product).unitOptions ?? []).join(", ") : ""
   );
   const [stock, setStock] = useState(type === "products" ? String((item as Product).stock ?? 0) : "0");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    type === "products" ? ((item as Product).categories ?? []) : []
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  function toggleCategory(name: string) {
+    setSelectedCategories((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+    );
+  }
 
   async function handleSave() {
     setSaving(true);
     try {
       const coverImage = mediaItems.find((m) => m.type === "image")?.url ?? imageUrl;
-      const payload: Partial<Service & Product & { mediaItems: MediaItem[] }> = {
+      const payload: Partial<Service & Product & { mediaItems: MediaItem[]; categories: string[] }> = {
         name,
         description: description || null,
         price: parseFloat(price) || 0,
@@ -654,6 +665,7 @@ function ItemEditCard({
           .map((s) => s.trim())
           .filter(Boolean);
         payload.stock = Math.max(0, parseInt(stock, 10) || 0);
+        payload.categories = selectedCategories;
       }
       await onSave(item.id, payload);
       setSaved(true);
@@ -723,6 +735,28 @@ function ItemEditCard({
                     placeholder="cth: pcs, dus, karton"
                   />
                 </div>
+                {allCategories && allCategories.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Kategori</Label>
+                    <div className="border rounded-md p-3 max-h-36 overflow-y-auto space-y-2">
+                      {allCategories.map((cat) => (
+                        <div key={cat} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id={`cat-edit-${item.id}-${cat}`}
+                            checked={selectedCategories.includes(cat)}
+                            onChange={() => toggleCategory(cat)}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <label htmlFor={`cat-edit-${item.id}-${cat}`} className="text-sm cursor-pointer">{cat}</label>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedCategories.length === 0 && (
+                      <p className="text-xs text-amber-600">Pilih minimal 1 kategori agar produk muncul di filter BizPortal</p>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -945,6 +979,7 @@ function ServicesTab() {
 function ProductsTab() {
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
+  const [allCategories, setAllCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -954,14 +989,19 @@ function ProductsTab() {
   const [newUnit, setNewUnit] = useState("pcs");
   const [newUnitOptions, setNewUnitOptions] = useState("");
   const [newImageUrl, setNewImageUrl] = useState<string | null>(null);
+  const [newCategories, setNewCategories] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     void (async () => {
       try {
-        const data = await apiGet<Product[]>("/api/portal/admin/products");
+        const [data, cats] = await Promise.all([
+          apiGet<Product[]>("/api/portal/admin/products"),
+          apiGet<{ id: number; name: string }[]>("/api/portal/admin/product-categories"),
+        ]);
         setProducts(data);
+        setAllCategories(cats.map((c) => c.name));
       } catch {
         toast({ title: "Gagal memuat produk", variant: "destructive" });
       } finally {
@@ -970,9 +1010,15 @@ function ProductsTab() {
     })();
   }, []);
 
-  async function handleSave(id: number, data: Partial<Service & Product & { mediaItems: MediaItem[] }>) {
-    await apiPut(`/api/portal/admin/products/${id}`, data);
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)));
+  async function handleSave(id: number, data: Partial<Service & Product & { mediaItems: MediaItem[]; categories: string[] }>) {
+    const result = await apiPut<Product & { categories?: string[] }>(`/api/portal/admin/products/${id}`, data);
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data, categories: result.categories ?? data.categories ?? p.categories } : p)));
+  }
+
+  function toggleNewCategory(name: string) {
+    setNewCategories((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+    );
   }
 
   async function handleAdd() {
@@ -993,6 +1039,7 @@ function ProductsTab() {
         imageUrl: newImageUrl,
         unit: newUnit.trim() || "pcs",
         unitOptions: parsedUnitOptions,
+        categories: newCategories,
       });
       setProducts((prev) => [created, ...prev]);
       setShowAdd(false);
@@ -1002,6 +1049,7 @@ function ProductsTab() {
       setNewUnit("pcs");
       setNewUnitOptions("");
       setNewImageUrl(null);
+      setNewCategories([]);
       toast({ title: "Produk berhasil ditambahkan" });
     } catch (err) {
       toast({ title: "Gagal menambahkan produk", description: String(err), variant: "destructive" });
@@ -1050,7 +1098,7 @@ function ProductsTab() {
 
       {products.map((p) => (
         <div key={p.id} className="relative">
-          <ItemEditCard item={p} onSave={handleSave} type="products" />
+          <ItemEditCard item={p} onSave={handleSave} type="products" allCategories={allCategories} />
           <Button
             size="icon"
             variant="ghost"
@@ -1117,6 +1165,28 @@ function ProductsTab() {
                 <Input value={newUnitOptions} onChange={(e) => setNewUnitOptions(e.target.value)} placeholder="pcs, dus, karton" />
               </div>
             </div>
+            {allCategories.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Kategori</Label>
+                <div className="border rounded-md p-3 max-h-36 overflow-y-auto space-y-2">
+                  {allCategories.map((cat) => (
+                    <div key={cat} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`new-cat-${cat}`}
+                        checked={newCategories.includes(cat)}
+                        onChange={() => toggleNewCategory(cat)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <label htmlFor={`new-cat-${cat}`} className="text-sm cursor-pointer">{cat}</label>
+                    </div>
+                  ))}
+                </div>
+                {newCategories.length === 0 && (
+                  <p className="text-xs text-amber-600">Pilih minimal 1 kategori agar produk muncul di filter BizPortal</p>
+                )}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Gambar Produk</Label>
               <ImageUploader currentUrl={newImageUrl} onUpload={(url) => setNewImageUrl(url)} />
