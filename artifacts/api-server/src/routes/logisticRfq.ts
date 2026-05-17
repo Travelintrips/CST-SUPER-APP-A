@@ -425,7 +425,6 @@ logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request,
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
 logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res: Response) => {
 
-  const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
   const { orderId, token, action, vendorPrice: submittedVendorPrice } = req.body as {
     orderId: number; token: string; action: "accept" | "reject"; vendorPrice?: number;
   };
