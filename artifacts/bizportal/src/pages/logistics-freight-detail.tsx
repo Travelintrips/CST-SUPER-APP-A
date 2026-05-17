@@ -1,7 +1,8 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import {
   Select,
   SelectContent,
@@ -98,6 +99,9 @@ export default function LogisticsFreightDetailPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { lastFreightEventAt, notifications } = useOrderNotificationsContext();
+  const [liveRefreshFlash, setLiveRefreshFlash] = useState(false);
+  const lastSeenNotifIdRef = useRef<string | null>(null);
 
   const { data: shipment, isLoading } = useGetFreightShipment(id);
   const typedShipment = shipment as FreightShipmentDetail | undefined;
@@ -185,6 +189,21 @@ export default function LogisticsFreightDetailPage() {
   }, [shipment, stagesInitialized]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(id) });
+
+  useEffect(() => {
+    if (!lastFreightEventAt || notifications.length === 0) return;
+    const latest = notifications[0];
+    if (latest.id === lastSeenNotifIdRef.current) return;
+    const isFreight = latest.type === "freight_new" || latest.type === "freight_status" || latest.type === "freight_stage";
+    if (!isFreight) return;
+    if (latest.orderId !== id) return;
+    lastSeenNotifIdRef.current = latest.id;
+    queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(id) });
+    queryClient.invalidateQueries({ queryKey: getGetFreightShipmentProfitabilityQueryKey(id) });
+    setLiveRefreshFlash(true);
+    const timer = setTimeout(() => setLiveRefreshFlash(false), 2500);
+    return () => clearTimeout(timer);
+  }, [lastFreightEventAt, notifications]);
 
   const handleSaveStage = (stageType: StageType) => {
     const f = stageForms[stageType];
@@ -414,8 +433,14 @@ export default function LogisticsFreightDetailPage() {
                   {STATUS_LABELS[shipment.status] ?? shipment.status}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Dibuat {new Date(shipment.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+              <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+                <span>Dibuat {new Date(shipment.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
+                {liveRefreshFlash && (
+                  <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium text-xs animate-pulse">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    Diperbarui otomatis
+                  </span>
+                )}
               </p>
             </div>
           </div>

@@ -57,9 +57,12 @@ function generateId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const FREIGHT_TYPES: OrderNotification["type"][] = ["freight_new", "freight_status", "freight_stage"];
+
 export function useOrderNotifications() {
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
+  const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const onNewOrderRef = useRef<((n: OrderNotification) => void) | null>(null);
 
@@ -83,6 +86,9 @@ export function useOrderNotifications() {
     setNotifications((prev) =>
       [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
     );
+    if (FREIGHT_TYPES.includes(notification.type)) {
+      setLastFreightEventAt(Date.now());
+    }
     playNotificationChime();
     onNewOrderRef.current?.(notification);
   }
@@ -274,5 +280,5 @@ export function useOrderNotifications() {
     };
   }, []);
 
-  return { notifications, unreadCount, connected, markAllRead, clearAll, setOnNewOrder };
+  return { notifications, unreadCount, connected, markAllRead, clearAll, setOnNewOrder, lastFreightEventAt };
 }
