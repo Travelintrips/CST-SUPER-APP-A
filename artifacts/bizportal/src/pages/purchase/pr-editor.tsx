@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, ArrowRight, CheckCircle, XCircle, ChevronLeft } from "lucide-react";
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 
 interface PRLine { id?: number; name: string; quantity: string; unit: string; estimatedCost: string; notes: string; }
 interface PR { id: number; prNumber: string; status: string; requestedBy: string; department: string; requiredDate: string; notes: string; lines: PRLine[]; approvals: Record<string, unknown>[]; rfqId?: number; }
+interface UserOption { id: string; name: string; email: string; division?: string | null; }
 
 const apiFetch = (path: string, opts?: RequestInit) => fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
 
@@ -31,6 +33,11 @@ export default function PurchaseRequestEditorPage() {
     queryKey: ["/api/purchase-workflow/pr", id],
     queryFn: () => apiFetch(`/purchase-workflow/pr/${id}`).then(r => r.json()),
     enabled: !isNew,
+  });
+
+  const { data: users = [] } = useQuery<UserOption[]>({
+    queryKey: ["/api/users"],
+    queryFn: () => apiFetch("/users").then(r => r.json()),
   });
 
   const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: "", notes: "" });
@@ -75,6 +82,15 @@ export default function PurchaseRequestEditorPage() {
     onError: () => toast.error("Gagal melakukan aksi"),
   });
 
+  const handlePemohonChange = (userName: string) => {
+    const selected = users.find(u => u.name === userName);
+    setForm(f => ({
+      ...f,
+      requestedBy: userName,
+      department: selected?.division ?? f.department,
+    }));
+  };
+
   const addLine = () => setLines(prev => [...prev, { name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
   const updateLine = (i: number, key: keyof PRLine, value: string) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
@@ -100,8 +116,33 @@ export default function PurchaseRequestEditorPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">Informasi PR</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div><Label>Pemohon</Label><Input value={form.requestedBy} onChange={e => setForm(f => ({ ...f, requestedBy: e.target.value }))} disabled={!isDraft} /></div>
-              <div><Label>Departemen</Label><Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} disabled={!isDraft} /></div>
+              <div>
+                <Label>Pemohon</Label>
+                {isDraft ? (
+                  <Select value={form.requestedBy} onValueChange={handlePemohonChange}>
+                    <SelectTrigger><SelectValue placeholder="Pilih pemohon..." /></SelectTrigger>
+                    <SelectContent>
+                      {users.map(u => (
+                        <SelectItem key={u.id} value={u.name}>
+                          <span>{u.name}</span>
+                          {u.division && <span className="ml-2 text-xs text-muted-foreground">({u.division})</span>}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input value={form.requestedBy} disabled />
+                )}
+              </div>
+              <div>
+                <Label>Departemen</Label>
+                <Input
+                  value={form.department}
+                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+                  disabled={!isDraft}
+                  placeholder="Otomatis dari divisi pemohon"
+                />
+              </div>
               <div><Label>Tanggal Diperlukan</Label><Input type="date" value={form.requiredDate} onChange={e => setForm(f => ({ ...f, requiredDate: e.target.value }))} disabled={!isDraft} /></div>
               <div><Label>Catatan</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} disabled={!isDraft} rows={3} /></div>
             </CardContent>
