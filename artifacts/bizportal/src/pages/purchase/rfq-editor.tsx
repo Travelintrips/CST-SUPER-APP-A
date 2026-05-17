@@ -58,7 +58,7 @@ import {
   type Supplier,
 } from "@workspace/api-client-react";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Send, Check, X, FileText, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, ScanLine, Mail, MessageSquare } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 
@@ -192,6 +192,12 @@ export default function PurchaseDocumentEditorPage() {
     }
   };
 
+  const { data: warehouses = [] } = useQuery<{ id: number; name: string; branch_name: string }[]>({
+    queryKey: ["warehouse/warehouses"],
+    queryFn: () => fetch("/api/warehouse/warehouses").then((r) => r.json()),
+  });
+
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [supplierId, setSupplierId] = useState<number | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [supplierAddress, setSupplierAddress] = useState("");
@@ -215,6 +221,7 @@ export default function PurchaseDocumentEditorPage() {
       setSupplierId(doc.supplierId ?? null);
       setSupplierName(doc.supplierName);
       setSupplierAddress(doc.supplierAddress ?? "");
+      setWarehouseId((doc as any).warehouseId ?? null);
       if (doc.supplierId) {
         const v = (vendors ?? []).find((x) => x.id === doc.supplierId);
         setSupplierCatalogAddress(v?.address ?? null);
@@ -372,6 +379,7 @@ export default function PurchaseDocumentEditorPage() {
       supplierId,
       supplierName,
       supplierAddress: supplierAddress || null,
+      warehouseId: warehouseId ?? null,
       taxRateId: taxRateId ?? null,
       expectedDate: expectedDate ? new Date(expectedDate).toISOString() : null,
       notes: notes || null,
@@ -636,6 +644,29 @@ export default function PurchaseDocumentEditorPage() {
                 rows={2}
                 data-testid="textarea-supplier-address"
               />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Gudang Tujuan</Label>
+              <Select
+                value={warehouseId !== null ? String(warehouseId) : "__none"}
+                onValueChange={(v) => setWarehouseId(v === "__none" ? null : Number(v))}
+                disabled={!isEditable}
+              >
+                <SelectTrigger data-testid="select-warehouse">
+                  <SelectValue placeholder="Pilih gudang (opsional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Tidak ditentukan —</SelectItem>
+                  {warehouses.map((w) => (
+                    <SelectItem key={w.id} value={String(w.id)}>
+                      {w.name}
+                      {w.branch_name && w.branch_name !== w.name && (
+                        <span className="ml-1 text-xs text-muted-foreground">({w.branch_name})</span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-1.5">
               <Label>Tanggal Diharapkan</Label>
