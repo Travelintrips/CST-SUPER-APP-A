@@ -1,4 +1,11 @@
 {
   "$schema": "https://schema.railpack.com",
-  "provider": "node"
+  "provider": "node",
+  "steps": {
+    "install": {
+      "commands": [
+        "pnpm install --prefer-offline"
+      ]
+    }
+  }
 }
