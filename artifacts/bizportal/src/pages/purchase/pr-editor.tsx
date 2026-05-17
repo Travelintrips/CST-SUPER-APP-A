@@ -48,6 +48,7 @@ export default function PurchaseRequestEditorPage() {
   const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: "", notes: "" });
   const [lines, setLines] = useState<PRLine[]>([{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const [actionNotes, setActionNotes] = useState("");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (pr) {
@@ -106,6 +107,15 @@ export default function PurchaseRequestEditorPage() {
     }));
   };
 
+  const handleSubmit = () => {
+    setSubmitAttempted(true);
+    if (!form.department.trim()) {
+      toast.error("Departemen wajib diisi sebelum submit.");
+      return;
+    }
+    actionMut.mutate("submit");
+  };
+
   const addLine = () => setLines(prev => [...prev, { name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
   const updateLine = (i: number, key: keyof PRLine, value: string) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
@@ -150,13 +160,19 @@ export default function PurchaseRequestEditorPage() {
                 )}
               </div>
               <div>
-                <Label>Departemen</Label>
+                <Label>
+                  Departemen <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   value={form.department}
                   onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
                   disabled={!isDraft}
                   placeholder="Otomatis dari divisi pemohon"
+                  className={submitAttempted && !form.department.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
+                {submitAttempted && !form.department.trim() && (
+                  <p className="text-xs text-destructive mt-1">Departemen wajib diisi.</p>
+                )}
               </div>
               <div><Label>Tanggal Diperlukan</Label><Input type="date" value={form.requiredDate} onChange={e => setForm(f => ({ ...f, requiredDate: e.target.value }))} disabled={!isDraft} /></div>
               <div><Label>Catatan</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} disabled={!isDraft} rows={3} /></div>
@@ -169,7 +185,7 @@ export default function PurchaseRequestEditorPage() {
               <CardContent className="space-y-3">
                 <div><Label>Catatan Approval</Label><Textarea value={actionNotes} onChange={e => setActionNotes(e.target.value)} rows={2} placeholder="Opsional..." /></div>
                 <div className="flex flex-wrap gap-2">
-                  {isDraft && <Button size="sm" onClick={() => actionMut.mutate("submit")} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Submit</Button>}
+                  {isDraft && <Button size="sm" onClick={handleSubmit} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Submit</Button>}
                   {isSubmitted && <Button size="sm" variant="default" onClick={() => actionMut.mutate("approve")} disabled={actionMut.isPending}><CheckCircle className="mr-1 h-4 w-4" />Approve</Button>}
                   {isSubmitted && <Button size="sm" variant="destructive" onClick={() => actionMut.mutate("reject")} disabled={actionMut.isPending}><XCircle className="mr-1 h-4 w-4" />Reject</Button>}
                   {pr.status === "approved" && <Button size="sm" onClick={() => actionMut.mutate("convert_rfq")} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Konversi ke RFQ</Button>}
