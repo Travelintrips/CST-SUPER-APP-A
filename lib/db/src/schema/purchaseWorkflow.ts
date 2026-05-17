@@ -7,7 +7,8 @@ import { z } from "zod/v4";
 import { suppliersTable } from "./suppliers";
 import { productsTable } from "./products";
 import { companiesTable } from "./companies";
-import { purchaseDocumentsTable } from "./purchaseDocuments";
+import { purchaseDocumentsTable, purchaseDocumentLinesTable } from "./purchaseDocuments";
+import { posWarehousesTable, posRacksTable } from "./posKasir";
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ export const purchaseRequestsTable = pgTable("purchase_requests", {
   id: serial("id").primaryKey(),
   prNumber: text("pr_number").notNull().unique(),
   companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
-  warehouseId: integer("warehouse_id"),
+  warehouseId: integer("warehouse_id").references(() => posWarehousesTable.id, { onDelete: "set null" }),
   status: prStatusEnum("status").notNull().default("draft"),
   requestedBy: text("requested_by"),
   department: text("department"),
@@ -164,7 +165,7 @@ export const goodsReceiptsTable = pgTable("goods_receipts", {
   grNumber: text("gr_number").notNull().unique(),
   companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   poId: integer("po_id").notNull().references(() => purchaseDocumentsTable.id, { onDelete: "restrict" }),
-  warehouseId: integer("warehouse_id"),
+  warehouseId: integer("warehouse_id").references(() => posWarehousesTable.id, { onDelete: "set null" }),
   supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   status: grStatusEnum("status").notNull().default("draft"),
   receiveDate: timestamp("receive_date").defaultNow().notNull(),
@@ -194,7 +195,7 @@ export const goodsReceiptLinesTable = pgTable("goods_receipt_lines", {
   unit: text("unit").notNull().default("pcs"),
   unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
-  rackId: integer("rack_id"),
+  rackId: integer("rack_id").references(() => posRacksTable.id, { onDelete: "set null" }),
   notes: text("notes"),
 }, (t) => [
   index("gr_lines_gr_idx").on(t.grId),
@@ -243,7 +244,7 @@ export const purchaseReturnsTable = pgTable("purchase_returns", {
   grId: integer("gr_id").references(() => goodsReceiptsTable.id, { onDelete: "set null" }),
   supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   supplierName: text("supplier_name").notNull(),
-  warehouseId: integer("warehouse_id"),
+  warehouseId: integer("warehouse_id").references(() => posWarehousesTable.id, { onDelete: "set null" }),
   status: prReturnStatusEnum("status").notNull().default("draft"),
   returnDate: timestamp("return_date").defaultNow().notNull(),
   reason: text("reason"),
@@ -401,6 +402,44 @@ export const landedCostAllocationsTable = pgTable("landed_cost_allocations", {
   index("lc_alloc_lc_idx").on(t.lcId),
 ]);
 
+// ── Purchase Receipts (Simple GRN — managed by inventoryReceive route) ────────
+
+export const purchaseReceiptsTable = pgTable("purchase_receipts", {
+  id: serial("id").primaryKey(),
+  receiptNo: text("receipt_no").notNull().unique(),
+  poId: integer("po_id").notNull()
+    .references(() => purchaseDocumentsTable.id, { onDelete: "restrict" }),
+  warehouseId: integer("warehouse_id").notNull()
+    .references(() => posWarehousesTable.id, { onDelete: "restrict" }),
+  status: text("status").notNull().default("posted"),
+  notes: text("notes"),
+  receivedBy: text("received_by"),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("purchase_receipts_po_idx").on(t.poId),
+  index("purchase_receipts_wh_idx").on(t.warehouseId),
+]);
+
+export const purchaseReceiptLinesTable = pgTable("purchase_receipt_lines", {
+  id: serial("id").primaryKey(),
+  receiptId: integer("receipt_id").notNull()
+    .references(() => purchaseReceiptsTable.id, { onDelete: "cascade" }),
+  poLineId: integer("po_line_id")
+    .references(() => purchaseDocumentLinesTable.id, { onDelete: "set null" }),
+  productId: integer("product_id")
+    .references(() => productsTable.id, { onDelete: "set null" }),
+  rackId: integer("rack_id")
+    .references(() => posRacksTable.id, { onDelete: "set null" }),
+  qtyOrdered: numeric("qty_ordered", { precision: 12, scale: 3 }).notNull().default("0"),
+  qtyReceived: numeric("qty_received", { precision: 12, scale: 3 }).notNull().default("0"),
+  unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
+  totalCost: numeric("total_cost", { precision: 14, scale: 2 }).notNull().default("0"),
+}, (t) => [
+  index("purchase_receipt_lines_receipt_idx").on(t.receiptId),
+]);
+
 // ── Zod Insert Schemas ─────────────────────────────────────────────────────────
 
 export const insertUomSchema = createInsertSchema(uomMasterTable).omit({ id: true, createdAt: true });
@@ -432,6 +471,9 @@ export const insertLandedCostSchema = createInsertSchema(landedCostsTable).omit(
 export const insertLandedCostLineSchema = createInsertSchema(landedCostLinesTable).omit({ id: true });
 export const insertLandedCostAllocationSchema = createInsertSchema(landedCostAllocationsTable).omit({ id: true });
 
+export const insertPurchaseReceiptSchema = createInsertSchema(purchaseReceiptsTable).omit({ id: true, createdAt: true, updatedAt: true, receiptNo: true });
+export const insertPurchaseReceiptLineSchema = createInsertSchema(purchaseReceiptLinesTable).omit({ id: true });
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export type UomMaster = typeof uomMasterTable.$inferSelect;
@@ -454,3 +496,5 @@ export type PaymentRequestItem = typeof paymentRequestItemsTable.$inferSelect;
 export type LandedCost = typeof landedCostsTable.$inferSelect;
 export type LandedCostLine = typeof landedCostLinesTable.$inferSelect;
 export type LandedCostAllocation = typeof landedCostAllocationsTable.$inferSelect;
+export type PurchaseReceipt = typeof purchaseReceiptsTable.$inferSelect;
+export type PurchaseReceiptLine = typeof purchaseReceiptLinesTable.$inferSelect;

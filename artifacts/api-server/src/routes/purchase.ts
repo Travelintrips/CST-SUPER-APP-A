@@ -155,7 +155,7 @@ router.get("/documents/:id", async (req, res) => {
 
 router.post("/documents", async (req, res) => {
   const companyId = resolveCompanyId(req);
-  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId } = req.body ?? {};
+  const { kind, supplierId, supplierName, supplierAddress, expectedDate, notes, lines, taxRateId, warehouseId } = req.body ?? {};
   if (typeof supplierName !== "string" || !supplierName.trim())
     return res.status(400).json({ message: "supplierName required" });
   if (!Array.isArray(lines) || lines.length === 0)
@@ -182,6 +182,7 @@ router.post("/documents", async (req, res) => {
       docNumber,
       kind: docKind,
       status: "draft",
+      warehouseId: warehouseId ? Number(warehouseId) : null,
       supplierId: supplierId ?? null,
       supplierName,
       supplierAddress: supplierAddress ?? null,
@@ -216,11 +217,12 @@ router.put("/documents/:id", async (req, res) => {
   const existing = await loadDocWithLines(id);
   if (!existing) return res.status(404).json({ message: "Document not found" });
 
-  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId } = req.body ?? {};
+  const { supplierId, supplierName, supplierAddress, expectedDate, notes, lines, kind, taxRateId, warehouseId } = req.body ?? {};
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof supplierName === "string") patch["supplierName"] = supplierName;
   if (supplierAddress !== undefined) patch["supplierAddress"] = supplierAddress ?? null;
   if (supplierId !== undefined) patch["supplierId"] = supplierId;
+  if (warehouseId !== undefined) patch["warehouseId"] = warehouseId ? Number(warehouseId) : null;
   if (expectedDate !== undefined) patch["expectedDate"] = expectedDate ? new Date(expectedDate) : null;
   if (notes !== undefined) patch["notes"] = notes;
   if (kind === "rfq" || kind === "order") patch["kind"] = kind;
@@ -346,17 +348,21 @@ router.post("/documents/:id/action", async (req, res) => {
 
   await db.update(purchaseDocumentsTable).set(patch).where(eq(purchaseDocumentsTable.id, id));
 
-  // T004: When PO is received, post stock-in movements to default warehouse (fire-and-forget)
+  // T004: When PO is received, post stock-in movements to warehouse (fire-and-forget)
   if (action === "mark_received" && doc.receiveStatus !== "received") {
     void (async () => {
       try {
         const lines = await db.select().from(purchaseDocumentLinesTable).where(eq(purchaseDocumentLinesTable.documentId, id));
         const productLines = lines.filter((l) => l.productId != null);
         if (productLines.length === 0) return;
-        // Get default warehouse (first active)
-        const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
-        const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
-        const warehouseId: number | undefined = wh?.id;
+        // C3: Use warehouse from PO, fallback to first active pos_warehouse
+        const docWarehouseId = (doc as any).warehouseId ?? null;
+        let warehouseId: number | undefined = docWarehouseId ? Number(docWarehouseId) : undefined;
+        if (!warehouseId) {
+          const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+          const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+          warehouseId = wh?.id;
+        }
         if (!warehouseId) return;
         for (const line of productLines) {
           const qty = Number(line.quantity);
