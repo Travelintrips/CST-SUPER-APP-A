@@ -38,6 +38,7 @@ import customRolesRouter from "./customRoles";
 import thaiTeaSuppliesRouter from "./thaiTeaSupplies";
 import purchaseWorkflowRouter from "./purchaseWorkflow";
 import uomRouter from "./uom";
+import orgRouter from "./org";
 
 const router: IRouter = Router();
 
@@ -82,4 +83,5 @@ router.use("/custom-roles", customRolesRouter);
 router.use("/thai-tea", thaiTeaSuppliesRouter);
 router.use("/purchase-workflow", purchaseWorkflowRouter);
 router.use("/uom", uomRouter);
+router.use("/org", orgRouter);
 export default router;

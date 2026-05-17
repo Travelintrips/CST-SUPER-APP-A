@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { invalidateUserCtxCache } from "../middlewares/authMiddleware.js";
 
 const router = Router();
 
@@ -71,13 +72,26 @@ router.get("/me", async (req, res) => {
   const fullName = [authUser.firstName, authUser.lastName].filter(Boolean).join(" ") || null;
   await ensureUserRecord(authUser.id, authUser.email, fullName);
 
-  // Use raw SQL to join custom_roles (not in Drizzle schema)
-  const { sql } = await import("drizzle-orm");
   const rows = await db.execute(sql`
-    SELECT u.id, u.email, u.name, u.role, u.division,
-           cr.id AS custom_role_id, cr.name AS custom_role_name, cr.permissions AS custom_role_permissions
+    SELECT
+      u.id, u.email, u.name, u.role, u.division, u.department,
+      u.company_id, u.branch_id, u.division_id, u.department_id, u.section_id,
+      cr.id   AS custom_role_id,
+      cr.name AS custom_role_name,
+      cr.permissions AS custom_role_permissions,
+      c.company_name,
+      c.company_code,
+      b.name AS branch_name,
+      dv.name AS division_name,
+      dep.name AS department_name,
+      sec.name AS section_name
     FROM users u
-    LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id
+    LEFT JOIN custom_roles cr  ON cr.id  = u.custom_role_id
+    LEFT JOIN companies    c   ON c.id   = u.company_id
+    LEFT JOIN branches     b   ON b.id   = u.branch_id
+    LEFT JOIN divisions    dv  ON dv.id  = u.division_id
+    LEFT JOIN departments  dep ON dep.id = u.department_id
+    LEFT JOIN sections     sec ON sec.id = u.section_id
     WHERE u.id = ${authUser.id}
   `);
   const u = rows.rows[0] as any;
@@ -96,6 +110,18 @@ router.get("/me", async (req, res) => {
     name: u.name,
     role: u.role,
     division: u.division,
+    department: u.department,
+    companyId: u.company_id ?? null,
+    companyName: u.company_name ?? null,
+    companyCode: u.company_code ?? null,
+    branchId: u.branch_id ?? null,
+    branchName: u.branch_name ?? null,
+    divisionId: u.division_id ?? null,
+    divisionName: u.division_name ?? null,
+    departmentId: u.department_id ?? null,
+    departmentName: u.department_name ?? null,
+    sectionId: u.section_id ?? null,
+    sectionName: u.section_name ?? null,
     customRoleId: u.custom_role_id ?? null,
     customRoleName: u.custom_role_name ?? null,
     customRolePermissions,
@@ -105,14 +131,26 @@ router.get("/me", async (req, res) => {
 // GET /api/users — admin only
 router.get("/", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
-  const { sql: rawSql } = await import("drizzle-orm");
-  const rows = await db.execute(rawSql`
-    SELECT u.id, u.email, u.name, u.role, u.division,
-           cr.id   AS custom_role_id,
-           cr.name AS custom_role_name,
-           cr.color AS custom_role_color
+  const rows = await db.execute(sql`
+    SELECT
+      u.id, u.email, u.name, u.role, u.division, u.department,
+      u.company_id, u.branch_id, u.division_id, u.department_id, u.section_id,
+      cr.id    AS custom_role_id,
+      cr.name  AS custom_role_name,
+      cr.color AS custom_role_color,
+      c.company_name,
+      c.company_code,
+      b.name  AS branch_name,
+      dv.name AS division_name,
+      dep.name AS department_name,
+      sec.name AS section_name
     FROM users u
-    LEFT JOIN custom_roles cr ON cr.id = u.custom_role_id
+    LEFT JOIN custom_roles cr  ON cr.id  = u.custom_role_id
+    LEFT JOIN companies    c   ON c.id   = u.company_id
+    LEFT JOIN branches     b   ON b.id   = u.branch_id
+    LEFT JOIN divisions    dv  ON dv.id  = u.division_id
+    LEFT JOIN departments  dep ON dep.id = u.department_id
+    LEFT JOIN sections     sec ON sec.id = u.section_id
     ORDER BY u.name
   `);
   return res.json(rows.rows.map((u: any) => ({
@@ -121,6 +159,18 @@ router.get("/", async (req, res) => {
     name: u.name,
     role: u.role,
     division: u.division,
+    department: u.department,
+    companyId: u.company_id ?? null,
+    companyName: u.company_name ?? null,
+    companyCode: u.company_code ?? null,
+    branchId: u.branch_id ?? null,
+    branchName: u.branch_name ?? null,
+    divisionId: u.division_id ?? null,
+    divisionName: u.division_name ?? null,
+    departmentId: u.department_id ?? null,
+    departmentName: u.department_name ?? null,
+    sectionId: u.section_id ?? null,
+    sectionName: u.section_name ?? null,
     customRoleId: u.custom_role_id ?? null,
     customRoleName: u.custom_role_name ?? null,
     customRoleColor: u.custom_role_color ?? null,
@@ -131,7 +181,21 @@ router.get("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { id } = req.params;
-  const { role, division, name } = req.body as { role: AllowedRole; division?: string | null; name?: string };
+  const {
+    role, division, name,
+    companyId, branchId, divisionId, departmentId, sectionId,
+    customRoleId,
+  } = req.body as {
+    role: AllowedRole;
+    division?: string | null;
+    name?: string;
+    companyId?: number | null;
+    branchId?: number | null;
+    divisionId?: number | null;
+    departmentId?: number | null;
+    sectionId?: number | null;
+    customRoleId?: number | null;
+  };
 
   if (!role || !ALLOWED_ROLES.includes(role)) {
     return res.status(400).json({ message: "Invalid role" });
@@ -140,9 +204,18 @@ router.put("/:id", async (req, res) => {
   const patch: Record<string, unknown> = { role };
   if (division !== undefined) patch["division"] = division;
   if (typeof name === "string" && name.trim()) patch["name"] = name.trim();
+  if (companyId !== undefined) patch["companyId"] = companyId ?? null;
+  if (branchId !== undefined) patch["branchId"] = branchId ?? null;
+  if (divisionId !== undefined) patch["divisionId"] = divisionId ?? null;
+  if (departmentId !== undefined) patch["departmentId"] = departmentId ?? null;
+  if (sectionId !== undefined) patch["sectionId"] = sectionId ?? null;
+  if (customRoleId !== undefined) patch["customRoleId"] = customRoleId ?? null;
 
   const [updated] = await db.update(usersTable).set(patch).where(eq(usersTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "User not found" });
+
+  // Bust the in-memory auth cache so next request picks up new company/role
+  invalidateUserCtxCache(id);
 
   return res.json({
     id: updated.id,
@@ -150,6 +223,12 @@ router.put("/:id", async (req, res) => {
     name: updated.name,
     role: updated.role,
     division: updated.division,
+    companyId: updated.companyId ?? null,
+    branchId: updated.branchId ?? null,
+    divisionId: updated.divisionId ?? null,
+    departmentId: updated.departmentId ?? null,
+    sectionId: updated.sectionId ?? null,
+    customRoleId: updated.customRoleId ?? null,
   });
 });
 

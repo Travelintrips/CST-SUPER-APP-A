@@ -1,11 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
-import {
-  useUpdateUser,
-  getListUsersQueryKey,
-  getGetCurrentUserQueryKey,
-  UpdateUserBodyRole,
-} from "@workspace/api-client-react";
-import { useState, useEffect } from "react";
+import { getListUsersQueryKey, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,21 +30,17 @@ const roleColor = (role: string) => {
 };
 
 interface UserRow {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  division: string | null;
-  customRoleId: number | null;
-  customRoleName: string | null;
-  customRoleColor: string | null;
+  id: string; email: string; name: string; role: string; division: string | null;
+  customRoleId: number | null; customRoleName: string | null; customRoleColor: string | null;
+  companyId: number | null; companyName: string | null; companyCode: string | null;
+  branchId: number | null; branchName: string | null;
+  divisionId: number | null; divisionName: string | null;
+  departmentId: number | null; departmentName: string | null;
+  sectionId: number | null; sectionName: string | null;
 }
 
-interface CustomRole {
-  id: number;
-  name: string;
-  color: string;
-}
+interface CustomRole { id: number; name: string; color: string }
+interface OrgItem    { id: number; name: string; code?: string; companyId: number }
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api${path}`, {
@@ -78,14 +69,48 @@ export default function UsersPage() {
     retry: false,
   });
 
-  const updateUser = useUpdateUser();
+  const { data: companies = [] } = useQuery<{ id: number; companyName: string; companyCode: string }[]>({
+    queryKey: ["companies"],
+    queryFn: () => apiFetch("/companies"),
+  });
 
-  const [editing, setEditing] = useState<UserRow | null>(null);
+  const { data: branches = [] } = useQuery<OrgItem[]>({
+    queryKey: ["org/branches", "all"],
+    queryFn: () => apiFetch("/org/branches?companyId=all"),
+  });
+
+  const { data: divisions = [] } = useQuery<OrgItem[]>({
+    queryKey: ["org/divisions", "all"],
+    queryFn: () => apiFetch("/org/divisions?companyId=all"),
+  });
+
+  const { data: departments = [] } = useQuery<OrgItem[]>({
+    queryKey: ["org/departments", "all"],
+    queryFn: () => apiFetch("/org/departments?companyId=all"),
+  });
+
+  const { data: sections = [] } = useQuery<OrgItem[]>({
+    queryKey: ["org/sections", "all"],
+    queryFn: () => apiFetch("/org/sections?companyId=all"),
+  });
+
+  const [editing, setEditing]           = useState<UserRow | null>(null);
   const [editRole, setEditRole]         = useState<Role>("ecommerce");
   const [editDivision, setEditDivision] = useState<string>("");
   const [editName, setEditName]         = useState<string>("");
   const [editCustomRoleId, setEditCustomRoleId] = useState<string>("");
-  const [customRoleSaving, setCustomRoleSaving] = useState(false);
+  const [editCompanyId, setEditCompanyId]     = useState<string>("");
+  const [editBranchId, setEditBranchId]       = useState<string>("");
+  const [editDivisionId, setEditDivisionId]   = useState<string>("");
+  const [editDepartmentId, setEditDepartmentId] = useState<string>("");
+  const [editSectionId, setEditSectionId]     = useState<string>("");
+  const [saving, setSaving]                   = useState(false);
+
+  const selectedCompanyId = editCompanyId && editCompanyId !== "none" ? Number(editCompanyId) : null;
+  const filteredBranches    = branches.filter(b => !selectedCompanyId || (b as any).company_id === selectedCompanyId);
+  const filteredDivisions   = divisions.filter(d => !selectedCompanyId || (d as any).company_id === selectedCompanyId);
+  const filteredDepartments = departments.filter(d => !selectedCompanyId || (d as any).company_id === selectedCompanyId);
+  const filteredSections    = sections.filter(s => !selectedCompanyId || (s as any).company_id === selectedCompanyId);
 
   const openEdit = (u: UserRow) => {
     setEditing(u);
@@ -93,35 +118,40 @@ export default function UsersPage() {
     setEditDivision(u.division ?? "");
     setEditName(u.name ?? "");
     setEditCustomRoleId(u.customRoleId != null ? String(u.customRoleId) : "none");
+    setEditCompanyId(u.companyId != null ? String(u.companyId) : "none");
+    setEditBranchId(u.branchId != null ? String(u.branchId) : "none");
+    setEditDivisionId(u.divisionId != null ? String(u.divisionId) : "none");
+    setEditDepartmentId(u.departmentId != null ? String(u.departmentId) : "none");
+    setEditSectionId(u.sectionId != null ? String(u.sectionId) : "none");
   };
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editing) return;
-
-    setCustomRoleSaving(true);
+    setSaving(true);
     try {
-      // 1. Update base role / name / division
-      await new Promise<void>((resolve, reject) => {
-        updateUser.mutate({
-          id: editing.id,
-          data: {
-            role: editRole as UpdateUserBodyRole,
-            division: editDivision.trim() || null,
-            name: editName.trim() || editing.name,
-          }
-        }, { onSuccess: () => resolve(), onError: (e) => reject(e) });
+      await apiFetch(`/users/${editing.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          role: editRole,
+          name: editName.trim() || editing.name,
+          division: editDivision.trim() || null,
+          companyId:    editCompanyId    !== "none" && editCompanyId    ? Number(editCompanyId)    : null,
+          branchId:     editBranchId     !== "none" && editBranchId     ? Number(editBranchId)     : null,
+          divisionId:   editDivisionId   !== "none" && editDivisionId   ? Number(editDivisionId)   : null,
+          departmentId: editDepartmentId !== "none" && editDepartmentId ? Number(editDepartmentId) : null,
+          sectionId:    editSectionId    !== "none" && editSectionId    ? Number(editSectionId)    : null,
+          customRoleId: editCustomRoleId !== "none" && editCustomRoleId ? Number(editCustomRoleId) : null,
+        }),
       });
 
-      // 2. Update custom role if changed
+      // Handle custom role assignment via separate endpoint if changed
       const prevCrId = editing.customRoleId != null ? String(editing.customRoleId) : "none";
       if (editCustomRoleId !== prevCrId) {
         if (prevCrId !== "none") {
-          // unassign from old role
           await apiFetch(`/custom-roles/${prevCrId}/assign/${editing.id}`, { method: "DELETE" });
         }
         if (editCustomRoleId !== "none") {
-          // assign to new role
           await apiFetch(`/custom-roles/${editCustomRoleId}/assign`, {
             method: "POST",
             body: JSON.stringify({ userId: editing.id }),
@@ -133,11 +163,11 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
       queryClient.invalidateQueries({ queryKey: ["custom-roles"] });
       setEditing(null);
-      toast({ title: t.users.title + " — " + t.common.saved });
+      toast({ title: "Berhasil disimpan" });
     } catch {
       toast({ title: t.common.error, variant: "destructive" });
     } finally {
-      setCustomRoleSaving(false);
+      setSaving(false);
     }
   };
 
@@ -169,25 +199,23 @@ export default function UsersPage() {
                       <TableHead>{t.common.email}</TableHead>
                       <TableHead>{t.users.role}</TableHead>
                       <TableHead>Custom Role</TableHead>
-                      <TableHead>{t.common.division}</TableHead>
-                      <TableHead className="text-right w-[100px]">{t.common.actions}</TableHead>
+                      <TableHead>Perusahaan</TableHead>
+                      <TableHead>Divisi / Dept</TableHead>
+                      <TableHead className="text-right w-[80px]">{t.common.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoading ? (
                       Array.from({ length: 4 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell><Skeleton className="h-4 w-[140px]" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-[180px]" /></TableCell>
-                          <TableCell><Skeleton className="h-6 w-[80px] rounded-full" /></TableCell>
-                          <TableCell><Skeleton className="h-6 w-[80px] rounded-full" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
-                          <TableCell className="text-right"><Skeleton className="h-8 w-[60px] ml-auto" /></TableCell>
+                          {Array.from({ length: 7 }).map((__, j) => (
+                            <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                          ))}
                         </TableRow>
                       ))
                     ) : users?.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center">
+                        <TableCell colSpan={7} className="h-24 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground">
                             <Users className="h-8 w-8 mb-2 opacity-50" />
                             <p>{t.users.noUsers}</p>
@@ -198,25 +226,29 @@ export default function UsersPage() {
                       users?.map((u) => (
                         <TableRow key={u.id}>
                           <TableCell className="font-medium">{u.name}</TableCell>
-                          <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={`capitalize ${roleColor(u.role)}`}>{u.role}</Badge>
                           </TableCell>
                           <TableCell>
                             {u.customRoleName ? (
-                              <Badge
-                                variant="outline"
-                                className="gap-1 border"
-                                style={{ borderColor: u.customRoleColor ?? "#6366f1", color: u.customRoleColor ?? "#6366f1" }}
-                              >
-                                <ShieldCheck className="h-3 w-3" />
-                                {u.customRoleName}
+                              <Badge variant="outline" className="gap-1 border" style={{ borderColor: u.customRoleColor ?? "#6366f1", color: u.customRoleColor ?? "#6366f1" }}>
+                                <ShieldCheck className="h-3 w-3" />{u.customRoleName}
                               </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
+                            ) : <span className="text-xs text-muted-foreground">—</span>}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">{u.division || "—"}</TableCell>
+                          <TableCell className="text-sm">
+                            {u.companyCode
+                              ? <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>
+                              : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            <div className="text-xs">
+                              {u.divisionName && <div>{u.divisionName}</div>}
+                              {u.departmentName && <div className="text-muted-foreground/70">{u.departmentName}</div>}
+                              {!u.divisionName && !u.departmentName && (u.division || "—")}
+                            </div>
+                          </TableCell>
                           <TableCell className="text-right">
                             <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={t.common.edit}>
                               <Pencil className="h-4 w-4" />
@@ -235,45 +267,28 @@ export default function UsersPage() {
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <Card key={i}><CardContent className="p-4 space-y-2">
-                    <Skeleton className="h-5 w-2/3" />
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/3" />
                   </CardContent></Card>
                 ))
-              ) : users?.length === 0 ? (
-                <Card><CardContent className="p-8 text-center">
-                  <Users className="h-8 w-8 mb-2 opacity-50 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">{t.users.noUsers}</p>
-                </CardContent></Card>
-              ) : (
-                users?.map((u) => (
-                  <Card key={u.id}><CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{u.name}</p>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
-                      </div>
-                      <Badge variant="outline" className={`capitalize shrink-0 ${roleColor(u.role)}`}>{u.role}</Badge>
+              ) : users?.map((u) => (
+                <Card key={u.id}><CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{u.name}</p>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
                     </div>
-                    {u.customRoleName && (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 border text-xs"
-                        style={{ borderColor: u.customRoleColor ?? "#6366f1", color: u.customRoleColor ?? "#6366f1" }}
-                      >
-                        <ShieldCheck className="h-3 w-3" />
-                        {u.customRoleName}
-                      </Badge>
-                    )}
-                    {u.division && (
-                      <p className="text-xs text-muted-foreground">{t.common.division}: <span className="text-foreground">{u.division}</span></p>
-                    )}
-                    <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)}>
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
-                    </Button>
-                  </CardContent></Card>
-                ))
-              )}
+                    <Badge variant="outline" className={`capitalize shrink-0 ${roleColor(u.role)}`}>{u.role}</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {u.companyCode && <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>}
+                    {u.divisionName && <span className="text-xs text-muted-foreground">{u.divisionName}</span>}
+                    {u.departmentName && <span className="text-xs text-muted-foreground">/ {u.departmentName}</span>}
+                  </div>
+                  <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)}>
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
+                  </Button>
+                </CardContent></Card>
+              ))}
             </div>
           </>
         )}
@@ -281,69 +296,121 @@ export default function UsersPage() {
 
       {/* Edit dialog */}
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           {editing && (
             <form onSubmit={handleSave}>
               <DialogHeader>
                 <DialogTitle>{t.users.editTitle}</DialogTitle>
                 <DialogDescription>{t.users.editDesc}</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label>{t.common.email}</Label>
-                  <Input value={editing.email} disabled />
+              <div className="grid gap-3 py-4">
+                {/* Basic info */}
+                <div className="grid gap-1.5">
+                  <Label className="text-xs text-muted-foreground">{t.common.email}</Label>
+                  <Input value={editing.email} disabled className="text-sm" />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="user-name">{t.common.name}</Label>
-                  <Input id="user-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                <div className="grid gap-1.5">
+                  <Label htmlFor="user-name" className="text-xs">{t.common.name}</Label>
+                  <Input id="user-name" value={editName} onChange={(e) => setEditName(e.target.value)} className="text-sm" />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="user-role">{t.users.role} (sistem)</Label>
-                  <Select value={editRole} onValueChange={(v) => setEditRole(v as Role)}>
-                    <SelectTrigger id="user-role"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {ROLES.map((r) => (
-                        <SelectItem key={r} value={r} className="capitalize">{r}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="user-role" className="text-xs">Role Sistem</Label>
+                    <Select value={editRole} onValueChange={(v) => setEditRole(v as Role)}>
+                      <SelectTrigger id="user-role" className="text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize">{r}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="user-custom-role" className="text-xs">Custom Role</Label>
+                    <Select value={editCustomRoleId} onValueChange={setEditCustomRoleId}>
+                      <SelectTrigger id="user-custom-role" className="text-sm"><SelectValue placeholder="Tidak ada" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none"><span className="flex items-center gap-2 text-muted-foreground"><X className="h-3.5 w-3.5" />Tidak ada</span></SelectItem>
+                        {customRoles.map((cr) => (
+                          <SelectItem key={cr.id} value={String(cr.id)}>
+                            <span className="flex items-center gap-2">
+                              <span className="h-3 w-3 rounded-full inline-block" style={{ backgroundColor: cr.color }} />{cr.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="user-custom-role">Custom Role</Label>
-                  <Select value={editCustomRoleId} onValueChange={setEditCustomRoleId}>
-                    <SelectTrigger id="user-custom-role">
-                      <SelectValue placeholder="Tidak ada custom role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        <span className="flex items-center gap-2 text-muted-foreground">
-                          <X className="h-3.5 w-3.5" /> Tidak ada custom role
-                        </span>
-                      </SelectItem>
-                      {customRoles.map((cr) => (
-                        <SelectItem key={cr.id} value={String(cr.id)}>
-                          <span className="flex items-center gap-2">
-                            <span className="h-3 w-3 rounded-full inline-block" style={{ backgroundColor: cr.color }} />
-                            {cr.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {customRoles.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Belum ada custom role. Buat dulu di menu Manajemen Role.</p>
-                  )}
+
+                <div className="border-t pt-3 mt-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Penugasan Organisasi</p>
+                  {/* Company */}
+                  <div className="grid gap-1.5 mb-2">
+                    <Label className="text-xs">Perusahaan</Label>
+                    <Select value={editCompanyId} onValueChange={v => { setEditCompanyId(v); setEditBranchId("none"); setEditDivisionId("none"); setEditDepartmentId("none"); setEditSectionId("none"); }}>
+                      <SelectTrigger className="text-sm"><SelectValue placeholder="— Tidak ditugaskan —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— Tidak ditugaskan —</SelectItem>
+                        {companies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.companyCode} — {c.companyName}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Branch */}
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Cabang</Label>
+                      <Select value={editBranchId} onValueChange={setEditBranchId}>
+                        <SelectTrigger className="text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">—</SelectItem>
+                          {filteredBranches.map((b: any) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Division */}
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Divisi</Label>
+                      <Select value={editDivisionId} onValueChange={v => { setEditDivisionId(v); setEditDepartmentId("none"); setEditSectionId("none"); }}>
+                        <SelectTrigger className="text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">—</SelectItem>
+                          {filteredDivisions.map((d: any) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Department */}
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Departemen</Label>
+                      <Select value={editDepartmentId} onValueChange={v => { setEditDepartmentId(v); setEditSectionId("none"); }}>
+                        <SelectTrigger className="text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">—</SelectItem>
+                          {filteredDepartments.map((d: any) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Section */}
+                    <div className="grid gap-1.5">
+                      <Label className="text-xs">Seksi/Tim</Label>
+                      <Select value={editSectionId} onValueChange={setEditSectionId}>
+                        <SelectTrigger className="text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">—</SelectItem>
+                          {filteredSections.map((s: any) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="user-division">{t.users.divisionOptional}</Label>
-                  <Input id="user-division" value={editDivision} onChange={(e) => setEditDivision(e.target.value)} placeholder="cth. Jakarta Pusat" />
+
+                {/* Legacy text division field */}
+                <div className="grid gap-1.5">
+                  <Label htmlFor="user-division" className="text-xs">{t.users.divisionOptional} <span className="text-muted-foreground">(teks bebas, opsional)</span></Label>
+                  <Input id="user-division" value={editDivision} onChange={(e) => setEditDivision(e.target.value)} placeholder="cth. Jakarta Pusat" className="text-sm" />
                 </div>
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditing(null)}>{t.common.cancel}</Button>
-                <Button type="submit" disabled={updateUser.isPending || customRoleSaving}>
-                  {updateUser.isPending || customRoleSaving ? t.common.saving : t.common.save}
-                </Button>
+                <Button type="submit" disabled={saving}>{saving ? t.common.saving : t.common.save}</Button>
               </DialogFooter>
             </form>
           )}

@@ -35,6 +35,7 @@ import {
   ScanLine,
   MessageCircle,
   Layers,
+  Network,
   ImageIcon,
   Warehouse,
   LayoutGrid,
@@ -308,6 +309,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
         { titleKey: "holdingCoa", href: "/accounting/accounts", icon: Landmark },
         { titleKey: "holdingJournals", href: "/accounting/journals", icon: BookOpen },
+        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
       ],
     },
   ];

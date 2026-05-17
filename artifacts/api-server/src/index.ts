@@ -21,6 +21,7 @@ import { runUomMigration } from "./lib/uomMigration";
 import { runFreightAuditMigration } from "./lib/freightAuditMigration";
 import { runAuditFixMigration } from "./lib/auditFixMigration";
 import { seedUom } from "./lib/uomSeed";
+import { runOrgFullMigration } from "./lib/orgFullMigration";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
@@ -109,6 +110,7 @@ const server = app.listen(port, (err) => {
     .then(() => runWithRetry("UOM migration", runUomMigration))
     .then(() => runWithRetry("Freight audit log migration", runFreightAuditMigration))
     .then(() => runWithRetry("Audit fix migration", runAuditFixMigration))
+    .then(() => runWithRetry("Org full migration", runOrgFullMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

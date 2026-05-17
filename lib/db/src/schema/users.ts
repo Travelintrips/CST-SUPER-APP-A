@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, pgEnum, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { companiesTable } from "./companies";
-import { branchesTable } from "./orgStructure";
+import { branchesTable, divisionsTable, departmentsTable, sectionsTable } from "./orgStructure";
 import { customRolesTable } from "./customRoles";
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "ecommerce", "trading", "logistics", "pos"]);
@@ -19,6 +19,9 @@ export const usersTable = pgTable("users", {
   department: text("department"),
   companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   branchId: integer("branch_id").references(() => branchesTable.id, { onDelete: "set null" }),
+  divisionId: integer("division_id").references(() => divisionsTable.id, { onDelete: "set null" }),
+  departmentId: integer("department_id").references(() => departmentsTable.id, { onDelete: "set null" }),
+  sectionId: integer("section_id").references(() => sectionsTable.id, { onDelete: "set null" }),
   customRoleId: integer("custom_role_id").references(() => customRolesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
