@@ -9,6 +9,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { convertQty } from "../lib/uomEngine.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -139,6 +140,77 @@ router.get("/", async (req: Request, res: Response) => {
     ORDER BY p.name, w.warehouse_name
   `);
   res.json(rows.rows);
+});
+
+// ── Stock Check (untuk validasi real-time di quotation editor) ───────────────
+
+router.get("/check", async (req: Request, res: Response) => {
+  const productId = req.query.productId ? Number(req.query.productId) : null;
+  const salesUomId = req.query.salesUomId ? Number(req.query.salesUomId) : null;
+
+  if (!productId || !Number.isInteger(productId) || productId <= 0) {
+    res.status(400).json({ message: "productId wajib diisi" }); return;
+  }
+
+  const stockRow = (await db.execute(sql`
+    SELECT
+      p.id AS product_id,
+      p.name,
+      p.unit AS base_unit,
+      p.base_uom_id,
+      p.item_type,
+      COALESCE(SUM(ist.stock_available), 0)::float AS total_available,
+      u.symbol AS base_uom_symbol
+    FROM products p
+    LEFT JOIN inventory_stock ist ON ist.product_id = p.id
+    LEFT JOIN uom u ON u.id = p.base_uom_id
+    WHERE p.id = ${productId}
+    GROUP BY p.id, p.name, p.unit, p.base_uom_id, p.item_type, u.symbol
+  `)).rows[0] as {
+    product_id: number; name: string; base_unit: string;
+    base_uom_id: number | null; item_type: string;
+    total_available: number; base_uom_symbol: string | null;
+  } | undefined;
+
+  if (!stockRow) { res.status(404).json({ message: "Produk tidak ditemukan" }); return; }
+
+  const baseAvailable = Number(stockRow.total_available ?? 0);
+  const baseUomId = stockRow.base_uom_id ? Number(stockRow.base_uom_id) : null;
+  const baseUomSymbol = stockRow.base_uom_symbol ?? stockRow.base_unit;
+
+  let salesUomSymbol: string | null = null;
+  if (salesUomId) {
+    const uomRow = (await db.execute(sql`
+      SELECT symbol FROM uom WHERE id = ${salesUomId} LIMIT 1
+    `)).rows[0] as { symbol: string } | undefined;
+    salesUomSymbol = uomRow?.symbol ?? null;
+  }
+
+  let available = baseAvailable;
+  let conversionAvailable = true;
+
+  if (salesUomId && baseUomId && salesUomId !== baseUomId) {
+    try {
+      available = await convertQty(baseAvailable, baseUomId, salesUomId);
+    } catch {
+      conversionAvailable = false;
+    }
+  } else if (!salesUomId || !baseUomId) {
+    conversionAvailable = salesUomId ? false : true;
+  }
+
+  res.json({
+    productId,
+    itemType: stockRow.item_type,
+    baseUnit: stockRow.base_unit,
+    baseUomId,
+    baseUomSymbol,
+    baseAvailable,
+    salesUomId: salesUomId ?? null,
+    salesUomSymbol: salesUomSymbol ?? baseUomSymbol,
+    available,
+    conversionAvailable,
+  });
 });
 
 // ── Stock Summary (per produk, all warehouses) ────────────────────────────────
