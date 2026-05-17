@@ -1,8 +1,13 @@
 import { Router } from "express";
-import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable } from "@workspace/db";
+import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable, freightShipmentAuditLogsTable } from "@workspace/db";
 import { eq, desc, inArray, sum, and } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
+
+function resolveUserDisplay(user: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }): { name: string; id: string } {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || user.id;
+  return { name, id: user.id };
+}
 
 const router = Router();
 
@@ -217,6 +222,15 @@ router.put("/freight-shipments/:id", async (req, res) => {
   }
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
   if (status !== undefined && status !== existing.status) {
+    const actor = req.user ? resolveUserDisplay(req.user as { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }) : { name: "System", id: "system" };
+    await db.insert(freightShipmentAuditLogsTable).values({
+      shipmentId: updated!.id,
+      shipmentNumber: updated!.shipmentNumber,
+      fromStatus: existing.status,
+      toStatus: updated!.status,
+      changedBy: actor.name,
+      changedById: actor.id,
+    });
     broadcastToAdmins("freight_shipment_status", {
       shipmentId: updated!.id,
       shipmentNumber: updated!.shipmentNumber,
@@ -229,6 +243,18 @@ router.put("/freight-shipments/:id", async (req, res) => {
     });
   }
   return res.json(serializeShipment(updated!));
+});
+
+// GET /api/logistics/freight-shipments/:id/audit-log
+router.get("/freight-shipments/:id/audit-log", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid id" });
+  const logs = await db
+    .select()
+    .from(freightShipmentAuditLogsTable)
+    .where(eq(freightShipmentAuditLogsTable.shipmentId, id))
+    .orderBy(desc(freightShipmentAuditLogsTable.createdAt));
+  return res.json(logs.map((l) => ({ ...l, createdAt: l.createdAt.toISOString() })));
 });
 
 // DELETE /api/logistics/freight-shipments/:id

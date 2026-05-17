@@ -2,6 +2,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import {
   Select,
@@ -22,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import {
   ArrowLeft, Pencil, Printer, Plus, CheckCircle, Loader2, Ship, FileText, FileDown, Paperclip,
   TrendingDown, TrendingUp, Receipt, ExternalLink, MessageSquare, ShoppingCart, Package, Truck,
+  History, User, ArrowRight,
 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import {
@@ -111,6 +113,18 @@ export default function LogisticsFreightDetailPage() {
   const { data: linkedPurchaseDoc } = useGetPurchaseDocument(purchaseDocId ?? 0, { query: { queryKey: getGetPurchaseDocumentQueryKey(purchaseDocId ?? 0), enabled: !!purchaseDocId } });
   const { data: expenses = [], isLoading: expensesLoading } = useListExpenses({ shipmentId: id });
   const { data: profitability } = useGetFreightShipmentProfitability(id, { query: { queryKey: getGetFreightShipmentProfitabilityQueryKey(id), enabled: !!id } });
+
+  interface AuditLog { id: number; shipmentId: number; shipmentNumber: string; fromStatus: string | null; toStatus: string; changedBy: string; changedById: string | null; notes: string | null; createdAt: string; }
+  const auditLogQueryKey = ["freight-audit-log", id];
+  const { data: auditLogs = [], refetch: refetchAuditLog } = useQuery<AuditLog[]>({
+    queryKey: auditLogQueryKey,
+    queryFn: async () => {
+      const res = await fetch(`/api/logistics/freight-shipments/${id}/audit-log`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch audit log");
+      return res.json() as Promise<AuditLog[]>;
+    },
+    enabled: !!id,
+  });
   const idr = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
   const createRfq = useCreateFreightRfq();
@@ -200,6 +214,7 @@ export default function LogisticsFreightDetailPage() {
     lastSeenNotifIdRef.current = latest.id;
     queryClient.invalidateQueries({ queryKey: getGetFreightShipmentQueryKey(id) });
     queryClient.invalidateQueries({ queryKey: getGetFreightShipmentProfitabilityQueryKey(id) });
+    refetchAuditLog();
     setLiveRefreshFlash(true);
     const timer = setTimeout(() => setLiveRefreshFlash(false), 2500);
     return () => clearTimeout(timer);
@@ -1200,6 +1215,65 @@ export default function LogisticsFreightDetailPage() {
           </CardHeader>
           <CardContent>
             <FreightCustomsPanel shipmentId={id} />
+          </CardContent>
+        </Card>
+
+        {/* Audit Trail Section */}
+        <Card className="print:hidden">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-primary" />
+              Riwayat Perubahan Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {auditLogs.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                <History className="h-8 w-8 opacity-25" />
+                <p className="text-sm">Belum ada riwayat perubahan status.</p>
+              </div>
+            ) : (
+              <ol className="relative border-l border-border ml-3 space-y-0">
+                {auditLogs.map((log, idx) => (
+                  <li key={log.id} className="ml-6 pb-6 last:pb-0">
+                    <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-background ${idx === 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      <History className="h-3 w-3" />
+                    </span>
+                    <div className="flex flex-col gap-1 pt-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {log.fromStatus ? (
+                          <>
+                            <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${STATUS_COLORS[log.fromStatus] ?? "bg-muted text-muted-foreground"}`}>
+                              {STATUS_LABELS[log.fromStatus] ?? log.fromStatus}
+                            </Badge>
+                            <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic mr-1">Dibuat</span>
+                        )}
+                        <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${STATUS_COLORS[log.toStatus] ?? "bg-muted text-muted-foreground"}`}>
+                          {STATUS_LABELS[log.toStatus] ?? log.toStatus}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="font-medium text-foreground">{log.changedBy}</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span>
+                          {new Date(log.createdAt).toLocaleString("id-ID", {
+                            day: "numeric", month: "short", year: "numeric",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      {log.notes && (
+                        <p className="text-xs text-muted-foreground italic mt-0.5">{log.notes}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
           </CardContent>
         </Card>
 
