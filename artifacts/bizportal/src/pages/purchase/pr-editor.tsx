@@ -269,7 +269,7 @@ export default function PurchaseRequestEditorPage() {
                         <SelectValue placeholder="Pilih pemohon..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {users.map(u => (
+                        {users.filter(u => u.name?.trim()).map(u => (
                           <SelectItem key={u.id} value={u.name}>
                             <span>{u.name}</span>
                             {u.division && <span className="ml-2 text-xs text-muted-foreground">({u.division})</span>}
