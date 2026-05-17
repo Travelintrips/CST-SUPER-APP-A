@@ -200,23 +200,6 @@ export default function PurchaseRequestEditorPage() {
     }));
   };
 
-  const handleSubmit = () => {
-    setSubmitAttempted(true);
-    if (!form.requestedBy.trim() && !form.department.trim()) {
-      toast.error("Pemohon dan Departemen wajib diisi sebelum submit.");
-      return;
-    }
-    if (!form.requestedBy.trim()) {
-      toast.error("Pemohon wajib dipilih sebelum submit.");
-      return;
-    }
-    if (!form.department.trim()) {
-      toast.error("Departemen wajib diisi sebelum submit.");
-      return;
-    }
-    actionMut.mutate("submit");
-  };
-
   const addLine = () => setLines(prev => [...prev, { name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
   const updateLine = (i: number, key: keyof PRLine, value: string) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
@@ -232,6 +215,15 @@ export default function PurchaseRequestEditorPage() {
   };
 
   const handleSubmit = () => {
+    setSubmitAttempted(true);
+    if (!form.requestedBy.trim()) {
+      toast.error("Pemohon wajib diisi sebelum submit.");
+      return;
+    }
+    if (!form.department.trim()) {
+      toast.error("Departemen wajib diisi sebelum submit.");
+      return;
+    }
     if (!hasValidLines) {
       toast.error("Minimal harus ada satu item yang diisi sebelum PR bisa di-submit.");
       return;
