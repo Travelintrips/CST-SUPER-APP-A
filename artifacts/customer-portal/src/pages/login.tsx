@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
-import { fetchAndStoreProfile } from "@/lib/auth";
+import { fetchAndStoreProfile, setDevToken, setPortalProfile } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -13,6 +13,8 @@ import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { assetUrl } from "@/lib/utils";
 import { useLanguage } from "@/i18n/LanguageContext";
+
+const IS_DEV = import.meta.env.DEV;
 
 function GoogleIcon() {
   return (
@@ -48,6 +50,30 @@ export default function Login() {
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
+
+  const [devLoading, setDevLoading] = useState<string | null>(null);
+
+  async function handleDevLogin(role: "customer" | "admin" | "vendor") {
+    setDevLoading(role);
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/portal/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      if (!res.ok) { setErrorMsg("Dev login gagal."); return; }
+      const data = await res.json() as { token: string; profile: { id: number; name: string; email: string; role: string } };
+      setDevToken(data.token);
+      setPortalProfile({ customerId: data.profile.id, role: data.profile.role, name: data.profile.name, email: data.profile.email });
+      const rt = new URLSearchParams(window.location.search).get("returnTo");
+      if (rt) { setLocation(rt); return; }
+      if (data.profile.role === "admin") setLocation("/admin");
+      else if (data.profile.role === "vendor") setLocation("/vendor-dashboard");
+      else setLocation("/dashboard");
+    } catch { setErrorMsg("Dev login gagal."); }
+    finally { setDevLoading(null); }
+  }
 
   const onSubmit = async (data: LoginFormValues) => {
     setErrorMsg("");
@@ -344,6 +370,36 @@ export default function Login() {
                 {t("login.createAccount")}
               </Link>
             </div>
+
+            {IS_DEV && (
+              <div className="mt-8 rounded-lg border border-dashed border-amber-400 bg-amber-50 p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  Dev Login — hanya tampil di mode development
+                </p>
+                <div className="flex flex-col gap-2">
+                  {(["customer", "admin", "vendor"] as const).map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      disabled={devLoading !== null}
+                      onClick={() => handleDevLogin(role)}
+                      className="flex items-center justify-between rounded-md border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                    >
+                      <span>
+                        {role === "customer" && "👤 Customer"}
+                        {role === "admin" && "🛡️ Admin"}
+                        {role === "vendor" && "🏭 Vendor"}
+                      </span>
+                      {devLoading === role ? (
+                        <span className="text-xs text-amber-600">Loading…</span>
+                      ) : (
+                        <span className="text-xs text-amber-500">dev-{role}@dev.local</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

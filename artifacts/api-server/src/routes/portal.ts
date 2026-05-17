@@ -169,6 +169,58 @@ router.post("/auth/login", (_req, res) => {
   res.status(410).json({ message: "Login sekarang menggunakan Supabase Auth. Gunakan /api/portal/auth/me setelah login via Supabase." });
 });
 
+// POST /api/portal/auth/dev-login — hanya tersedia di non-production (dev & staging)
+// Membuat/menemukan dev user dan mengembalikan signed dev token untuk testing tanpa Supabase.
+router.post("/auth/dev-login", async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ message: "Not found" });
+    return;
+  }
+  const { signDevToken } = await import("../lib/supabaseAuth.js");
+  const { role } = req.body ?? {};
+  const allowedRoles = ["customer", "admin", "vendor"] as const;
+  type DevRole = typeof allowedRoles[number];
+  const safeRole: DevRole = allowedRoles.includes(role) ? role : "customer";
+
+  const devEmail = `dev-${safeRole}@dev.local`;
+  const devName = `Dev ${safeRole.charAt(0).toUpperCase() + safeRole.slice(1)}`;
+
+  let [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, devEmail));
+
+  if (!customer) {
+    [customer] = await db
+      .insert(portalCustomersTable)
+      .values({ name: devName, email: devEmail, passwordHash: "", role: safeRole })
+      .returning();
+  } else if (customer.role !== safeRole) {
+    [customer] = await db
+      .update(portalCustomersTable)
+      .set({ role: safeRole })
+      .where(eq(portalCustomersTable.id, customer.id))
+      .returning();
+  }
+
+  const token = signDevToken({
+    id: customer.id,
+    email: customer.email,
+    role: customer.role,
+    exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 hari
+  });
+
+  return res.json({
+    token,
+    profile: {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      role: customer.role,
+    },
+  });
+});
+
 // POST /api/portal/auth/register — sync profil ke DB setelah supabase.auth.signUp
 router.post("/auth/register", requirePortalAuth, async (req, res) => {
   const customerId = (req as PortalAuthReq).portalCustomerId;

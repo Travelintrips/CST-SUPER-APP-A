@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 
 export const TOKEN_KEY = "portal_token";
 const PROFILE_KEY = "portal_profile";
+const DEV_TOKEN_KEY = "portal_dev_token";
 
 interface PortalProfile {
   customerId: number;
@@ -24,8 +25,16 @@ function getSupabaseSessionSync(): { access_token: string } | null {
   }
 }
 
+export function getDevToken(): string | null {
+  try { return localStorage.getItem(DEV_TOKEN_KEY); } catch { return null; }
+}
+
+export function setDevToken(token: string): void {
+  localStorage.setItem(DEV_TOKEN_KEY, token);
+}
+
 export function getAuthToken(): string | null {
-  return getSupabaseSessionSync()?.access_token ?? null;
+  return getDevToken() ?? getSupabaseSessionSync()?.access_token ?? null;
 }
 
 export async function getAuthTokenAsync(): Promise<string | null> {
@@ -40,6 +49,7 @@ export function setAuthToken(_token: string): void {
 export function removeAuthToken(): void {
   if (supabase) supabase.auth.signOut();
   localStorage.removeItem(PROFILE_KEY);
+  localStorage.removeItem(DEV_TOKEN_KEY);
 }
 
 export function getAuthHeaders(): { Authorization?: string } {
