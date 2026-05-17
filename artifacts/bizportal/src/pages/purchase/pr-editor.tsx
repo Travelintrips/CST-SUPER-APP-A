@@ -109,6 +109,14 @@ export default function PurchaseRequestEditorPage() {
 
   const handleSubmit = () => {
     setSubmitAttempted(true);
+    if (!form.requestedBy.trim() && !form.department.trim()) {
+      toast.error("Pemohon dan Departemen wajib diisi sebelum submit.");
+      return;
+    }
+    if (!form.requestedBy.trim()) {
+      toast.error("Pemohon wajib dipilih sebelum submit.");
+      return;
+    }
     if (!form.department.trim()) {
       toast.error("Departemen wajib diisi sebelum submit.");
       return;
@@ -142,19 +150,28 @@ export default function PurchaseRequestEditorPage() {
             <CardHeader><CardTitle className="text-base">Informasi PR</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label>Pemohon</Label>
+                <Label>
+                  Pemohon <span className="text-destructive">*</span>
+                </Label>
                 {isDraft ? (
-                  <Select value={form.requestedBy} onValueChange={handlePemohonChange}>
-                    <SelectTrigger><SelectValue placeholder="Pilih pemohon..." /></SelectTrigger>
-                    <SelectContent>
-                      {users.map(u => (
-                        <SelectItem key={u.id} value={u.name}>
-                          <span>{u.name}</span>
-                          {u.division && <span className="ml-2 text-xs text-muted-foreground">({u.division})</span>}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <>
+                    <Select value={form.requestedBy} onValueChange={handlePemohonChange}>
+                      <SelectTrigger className={submitAttempted && !form.requestedBy.trim() ? "border-destructive focus:ring-destructive" : ""}>
+                        <SelectValue placeholder="Pilih pemohon..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map(u => (
+                          <SelectItem key={u.id} value={u.name}>
+                            <span>{u.name}</span>
+                            {u.division && <span className="ml-2 text-xs text-muted-foreground">({u.division})</span>}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {submitAttempted && !form.requestedBy.trim() && (
+                      <p className="text-xs text-destructive mt-1">Pemohon wajib dipilih.</p>
+                    )}
+                  </>
                 ) : (
                   <Input value={form.requestedBy} disabled />
                 )}
