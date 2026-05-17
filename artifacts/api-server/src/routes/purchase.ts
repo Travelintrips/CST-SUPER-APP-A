@@ -4,6 +4,7 @@ import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
+import { postStockIn } from "../lib/inventoryStock.js";
 import {
   db,
   suppliersTable,
@@ -348,41 +349,62 @@ router.post("/documents/:id/action", async (req, res) => {
 
   await db.update(purchaseDocumentsTable).set(patch).where(eq(purchaseDocumentsTable.id, id));
 
-  // T004: When PO is received, post stock-in movements to warehouse (fire-and-forget)
-  if (action === "mark_received" && doc.receiveStatus !== "received") {
+  // T004: When PO is received, post stock-in movements to wh_stock AND inventory_stock (fire-and-forget)
+  if ((action === "mark_received" || action === "receive_to_warehouse") && doc.receiveStatus !== "received") {
     void (async () => {
       try {
         const lines = await db.select().from(purchaseDocumentLinesTable).where(eq(purchaseDocumentLinesTable.documentId, id));
         const productLines = lines.filter((l) => l.productId != null);
         if (productLines.length === 0) return;
-        // C3: Use warehouse from PO, fallback to first active pos_warehouse
+        // POS warehouse (wh_stock)
         const docWarehouseId = (doc as any).warehouseId ?? null;
-        let warehouseId: number | undefined = docWarehouseId ? Number(docWarehouseId) : undefined;
-        if (!warehouseId) {
+        let posWhId: number | undefined = docWarehouseId ? Number(docWarehouseId) : undefined;
+        if (!posWhId) {
           const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
           const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
-          warehouseId = wh?.id;
+          posWhId = wh?.id;
         }
-        if (!warehouseId) return;
+        // ERP warehouse (inventory_stock)
+        const erpWhRow = (await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`)).rows[0] as { id: number } | undefined;
+        const erpWhId: number | undefined = erpWhRow?.id;
+
         for (const line of productLines) {
           const qty = Number(line.quantity);
           const costPrice = Number(line.unitCost);
-          const cur = await db.execute(sql`
-            SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${warehouseId} AND rack_id IS NULL
-          `);
-          const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
-          const qtyAfter = qtyBefore + qty;
-          await db.execute(sql`
-            INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, cost_price, updated_at)
-            VALUES (${line.productId}, ${warehouseId}, NULL, ${qtyAfter}, ${costPrice}, NOW())
-            ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
-            DO UPDATE SET qty = ${qtyAfter}, cost_price = ${costPrice}, updated_at = NOW()
-          `);
-          await db.execute(sql`
-            INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
-            VALUES (${line.productId}, ${warehouseId}, NULL, 'po_receipt', ${qty}, ${qtyBefore}, ${qtyAfter}, ${costPrice},
-                    'purchase_order', ${id}, ${`PO Diterima: ${doc.docNumber}`})
-          `);
+
+          // ── wh_stock (POS/legacy) ──────────────────────────────────────────
+          if (posWhId) {
+            const cur = await db.execute(sql`
+              SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${posWhId} AND rack_id IS NULL
+            `);
+            const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+            const qtyAfter = qtyBefore + qty;
+            await db.execute(sql`
+              INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, cost_price, updated_at)
+              VALUES (${line.productId}, ${posWhId}, NULL, ${qtyAfter}, ${costPrice}, NOW())
+              ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+              DO UPDATE SET qty = ${qtyAfter}, cost_price = ${costPrice}, updated_at = NOW()
+            `);
+            await db.execute(sql`
+              INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
+              VALUES (${line.productId}, ${posWhId}, NULL, 'po_receipt', ${qty}, ${qtyBefore}, ${qtyAfter}, ${costPrice},
+                      'purchase_order', ${id}, ${`PO Diterima: ${doc.docNumber}`})
+            `);
+          }
+
+          // ── inventory_stock (ERP — enables SO pre-flight check) ───────────
+          if (erpWhId) {
+            await postStockIn({
+              productId: line.productId!,
+              warehouseId: erpWhId,
+              qty,
+              unitCost: costPrice,
+              movementType: "PO_RECEIPT",
+              referenceType: "PURCHASE_ORDER",
+              referenceId: id,
+              notes: `PO Diterima: ${doc.docNumber}`,
+            }).catch((e) => console.error("[inventory] postStockIn PO error:", e));
+          }
         }
       } catch (e) {
         console.error("[wh] mark_received stock-in error:", e);

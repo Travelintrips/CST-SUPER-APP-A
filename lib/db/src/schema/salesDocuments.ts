@@ -68,6 +68,7 @@ export const salesDocumentsTable = pgTable("sales_documents", {
   aiSourceWaPhone: text("ai_source_wa_phone"),
   logisticOrderId: integer("logistic_order_id").references(() => logisticOrdersTable.id, { onDelete: "set null" }),
   companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
+  warehouseId: integer("warehouse_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

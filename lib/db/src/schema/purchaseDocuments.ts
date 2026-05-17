@@ -75,6 +75,8 @@ export const purchaseDocumentLinesTable = pgTable("purchase_document_lines", {
   name: text("name").notNull(),
   description: text("description"),
   quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("1"),
+  unit: text("unit"),
+  uomId: integer("uom_id"),
   unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
 }, (t) => [

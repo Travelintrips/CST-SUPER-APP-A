@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
-import { postEntry } from "../lib/accounting.js";
+import { postEntry, postPurchaseReturn } from "../lib/accounting.js";
 import {
   db,
   purchaseRequestsTable,
@@ -762,6 +762,23 @@ router.post("/returns/:id/confirm", async (req, res) => {
       }
     }
   }
+
+  // Auto-post accounting journal for purchase return
+  if (ret.supplierId) {
+    const [supplier] = await db.select({ name: suppliersTable.name }).from(suppliersTable).where(eq(suppliersTable.id, ret.supplierId));
+    postPurchaseReturn({
+      returnId: id,
+      returnNumber: ret.returnNumber,
+      supplierName: supplier?.name ?? "Vendor",
+      lines: lines.map((l) => ({
+        productId: l.productId ?? null,
+        qty: num(l.quantity),
+        unitCost: num(l.unitCost),
+      })),
+      createdById: confirmedBy ?? null,
+    }).catch((e) => console.error("[accounting] postPurchaseReturn error:", e));
+  }
+
   res.json({ ok: true });
 });
 

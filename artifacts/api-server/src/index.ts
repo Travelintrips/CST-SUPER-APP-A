@@ -19,6 +19,8 @@ import { runSessionsMigration } from "./lib/sessionsMigration";
 import { runCustomRolesMigration } from "./lib/customRolesMigration";
 import { runUomMigration } from "./lib/uomMigration";
 import { runFreightAuditMigration } from "./lib/freightAuditMigration";
+import { runAuditFixMigration } from "./lib/auditFixMigration";
+import { seedUom } from "./lib/uomSeed";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
@@ -106,11 +108,15 @@ const server = app.listen(port, (err) => {
     .then(() => runWithRetry("Custom roles migration", runCustomRolesMigration))
     .then(() => runWithRetry("UOM migration", runUomMigration))
     .then(() => runWithRetry("Freight audit log migration", runFreightAuditMigration))
+    .then(() => runWithRetry("Audit fix migration", runAuditFixMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
     .then(() => seedAccountingDefaults().catch((err) => {
       logger.error({ err }, "Accounting seed failed");
+    }))
+    .then(() => seedUom().catch((err) => {
+      logger.warn({ err }, "UOM seed failed (non-fatal)");
     }))
     .then(() =>
       seedLogisticsServiceItems()

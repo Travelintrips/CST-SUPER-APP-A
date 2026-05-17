@@ -30,7 +30,10 @@ export interface PostingInput {
     | "ecommerce_order"
     | "stock_received"
     | "manual_payment"
-    | "cogs_delivery";
+    | "cogs_delivery"
+    | "purchase_return"
+    | "sales_return"
+    | "opname_adjust";
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;
@@ -585,5 +588,176 @@ export async function postPaymentReceived(args: {
     );
   } catch (err) {
     logger.error({ err, paymentId: args.paymentId }, "Auto-post payment failed");
+  }
+}
+
+/** Auto-post when a Purchase Return is confirmed (DR Hutang Usaha / CR Persediaan / CR Beban). */
+export async function postPurchaseReturn(args: {
+  returnId: number;
+  returnNumber: string;
+  supplierName: string;
+  lines: Array<{ productId: number | null; qty: number; unitCost: number }>;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings();
+    if (!settings.apAccountId || !settings.purchaseJournalId) {
+      logger.warn({ returnId: args.returnId }, "Skipping purchase return post: settings incomplete");
+      return;
+    }
+
+    let inventoryTotal = 0;
+    let expenseTotal = 0;
+    for (const line of args.lines) {
+      const lineAmt = round2(line.qty * line.unitCost);
+      if (line.productId != null) {
+        inventoryTotal = round2(inventoryTotal + lineAmt);
+      } else {
+        expenseTotal = round2(expenseTotal + lineAmt);
+      }
+    }
+
+    const grand = round2(inventoryTotal + expenseTotal);
+    if (grand <= 0) return;
+
+    const lines: PostingLine[] = [];
+    lines.push({
+      accountId: settings.apAccountId,
+      debit: grand,
+      credit: 0,
+      description: `Pelunasan hutang retur ${args.returnNumber} - ${args.supplierName}`,
+    });
+    if (inventoryTotal > 0 && settings.inventoryAccountId) {
+      lines.push({
+        accountId: settings.inventoryAccountId,
+        debit: 0,
+        credit: inventoryTotal,
+        description: `Persediaan keluar retur ${args.returnNumber}`,
+      });
+    } else if (inventoryTotal > 0) {
+      expenseTotal = round2(expenseTotal + inventoryTotal);
+    }
+    if (expenseTotal > 0 && settings.purchaseExpenseAccountId) {
+      lines.push({
+        accountId: settings.purchaseExpenseAccountId,
+        debit: 0,
+        credit: expenseTotal,
+        description: `Beban/jasa retur ${args.returnNumber}`,
+      });
+    }
+
+    if (lines.length < 2) return;
+
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: args.returnNumber,
+        description: `Retur pembelian ${args.returnNumber} - ${args.supplierName}`,
+        source: "purchase_return",
+        sourceId: args.returnId,
+        createdById: args.createdById ?? null,
+        lines,
+      },
+      "PRR",
+    );
+    logger.info({ returnId: args.returnId, grand }, "Purchase return journal entry posted");
+  } catch (err) {
+    logger.error({ err, returnId: args.returnId }, "Auto-post purchase return failed");
+  }
+}
+
+/** Auto-post when a Sales Return is confirmed (DR Pendapatan / CR Piutang). */
+export async function postSalesReturn(args: {
+  returnId: number;
+  returnNumber: string;
+  customerName: string;
+  amount: number;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings();
+    if (!settings.salesIncomeAccountId || !settings.arAccountId || !settings.salesJournalId) {
+      logger.warn({ returnId: args.returnId }, "Skipping sales return post: settings incomplete");
+      return;
+    }
+    const amt = round2(args.amount);
+    if (amt <= 0) return;
+
+    await postEntry(
+      {
+        journalId: settings.salesJournalId,
+        date: new Date(),
+        ref: args.returnNumber,
+        description: `Retur penjualan ${args.returnNumber} - ${args.customerName}`,
+        source: "sales_return",
+        sourceId: args.returnId,
+        createdById: args.createdById ?? null,
+        lines: [
+          {
+            accountId: settings.salesIncomeAccountId,
+            debit: amt,
+            credit: 0,
+            description: `Retur pendapatan ${args.returnNumber}`,
+          },
+          {
+            accountId: settings.arAccountId,
+            debit: 0,
+            credit: amt,
+            description: `Pengurangan piutang retur ${args.returnNumber} - ${args.customerName}`,
+          },
+        ],
+      },
+      "SRR",
+    );
+    logger.info({ returnId: args.returnId, amt }, "Sales return journal entry posted");
+  } catch (err) {
+    logger.error({ err, returnId: args.returnId }, "Auto-post sales return failed");
+  }
+}
+
+/** Auto-post opname/stock adjustment (DR or CR Persediaan vs HPP/Variance). */
+export async function postOpnameAdjust(args: {
+  opnameId: number;
+  opnameNumber: string;
+  /** Positive = surplus (physical > system), Negative = shortage */
+  diffAmount: number;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    if (args.diffAmount === 0) return;
+    const settings = await ensureAccountingSettings();
+    if (!settings.inventoryAccountId || !settings.cogsAccountId || !settings.purchaseJournalId) {
+      logger.warn({ opnameId: args.opnameId }, "Skipping opname adjust post: settings incomplete");
+      return;
+    }
+
+    const amt = round2(Math.abs(args.diffAmount));
+    const isSurplus = args.diffAmount > 0;
+
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: args.opnameNumber,
+        description: `Penyesuaian stok opname ${args.opnameNumber} (${isSurplus ? "surplus" : "susut"})`,
+        source: "opname_adjust",
+        sourceId: args.opnameId,
+        createdById: args.createdById ?? null,
+        lines: isSurplus
+          ? [
+              { accountId: settings.inventoryAccountId, debit: amt, credit: 0, description: `Tambah persediaan opname ${args.opnameNumber}` },
+              { accountId: settings.cogsAccountId, debit: 0, credit: amt, description: `Selisih stok opname ${args.opnameNumber}` },
+            ]
+          : [
+              { accountId: settings.cogsAccountId, debit: amt, credit: 0, description: `Selisih stok opname ${args.opnameNumber}` },
+              { accountId: settings.inventoryAccountId, debit: 0, credit: amt, description: `Kurang persediaan opname ${args.opnameNumber}` },
+            ],
+      },
+      "OPN",
+    );
+    logger.info({ opnameId: args.opnameId, diffAmount: args.diffAmount }, "Opname adjust journal entry posted");
+  } catch (err) {
+    logger.error({ err, opnameId: args.opnameId }, "Auto-post opname adjust failed");
   }
 }

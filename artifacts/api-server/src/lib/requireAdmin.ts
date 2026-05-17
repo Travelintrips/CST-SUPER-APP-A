@@ -1,11 +1,37 @@
 import type { Request, Response } from "express";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+
+/**
+ * Check if a user (by userId) has a given permission string, either via their
+ * system role or via a custom_role with the permission in its JSONB array.
+ */
+export async function hasPermission(userId: string, permission: string): Promise<boolean> {
+  const rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const u = rows[0];
+  if (!u) return false;
+
+  if (u.role === "admin") return true;
+
+  if (u.customRoleId != null) {
+    const result = await db.execute(sql`
+      SELECT permissions FROM custom_roles WHERE id = ${u.customRoleId}
+    `);
+    const crRow = result.rows[0] as { permissions: unknown } | undefined;
+    const perms = crRow?.permissions;
+    if (Array.isArray(perms)) {
+      if ((perms as string[]).includes(permission) || (perms as string[]).includes("admin")) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 /**
  * Authenticated internal BizPortal user with one of the specified roles.
- *
- * Same session-only restriction as requireAdmin().
+ * Also grants access if the user's custom_role has any of the roles (or "admin") in permissions.
  */
 export async function requireRole(req: Request, res: Response, roles: string[]): Promise<boolean> {
   if (!req.isAuthenticated() || !req.isInternalSession) {
@@ -16,24 +42,34 @@ export async function requireRole(req: Request, res: Response, roles: string[]):
   const userId = (req.user as { id: string }).id;
   const rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   const u = rows[0];
-  if (!u || !roles.includes(u.role ?? "")) {
-    res.status(403).json({ message: "Forbidden: insufficient role" });
+  if (!u) {
+    res.status(403).json({ message: "Forbidden: user not found" });
     return false;
   }
-  return true;
+
+  if (roles.includes(u.role ?? "")) return true;
+
+  if (u.customRoleId != null) {
+    const result = await db.execute(sql`
+      SELECT permissions FROM custom_roles WHERE id = ${u.customRoleId}
+    `);
+    const crRow = result.rows[0] as { permissions: unknown } | undefined;
+    const perms = crRow?.permissions;
+    if (Array.isArray(perms)) {
+      const hasMatch = roles.some(
+        (r) => (perms as string[]).includes(r) || (perms as string[]).includes("admin"),
+      );
+      if (hasMatch) return true;
+    }
+  }
+
+  res.status(403).json({ message: "Forbidden: insufficient role" });
+  return false;
 }
 
 /**
  * Any authenticated **internal** BizPortal staff user.
- *
- * "Internal" means the request was authenticated via a BizPortal session
- * cookie (Google OAuth / Replit OIDC).  Customer-portal and mobile bearer
- * tokens set req.isInternalSession = false and are explicitly rejected here,
- * even though authMiddleware may have resolved req.user for them.
- *
- * NOTE: x-admin-key / PORTAL_ADMIN_KEY is intentionally NOT accepted here.
- * That secret is scoped to the customer-portal bootstrap workflow only and
- * must not be used as a universal bypass for internal staff routes.
+ * Rejects customer-portal and mobile bearer tokens (req.isInternalSession = false).
  */
 export async function requireClerkUser(req: Request, res: Response): Promise<boolean> {
   if (!req.isAuthenticated() || !req.isInternalSession) {
@@ -48,10 +84,8 @@ export async function requireClerkUser(req: Request, res: Response): Promise<boo
 }
 
 /**
- * Authenticated internal BizPortal user with role = "admin".
- *
- * Same session-only restriction as requireClerkUser().
- * x-admin-key is NOT accepted — see note above.
+ * Authenticated internal BizPortal user with role = "admin",
+ * OR a user whose custom_role includes "admin" in its JSONB permissions array.
  */
 export async function requireAdmin(req: Request, res: Response): Promise<boolean> {
   if (!req.isAuthenticated() || !req.isInternalSession) {
@@ -60,9 +94,8 @@ export async function requireAdmin(req: Request, res: Response): Promise<boolean
   }
 
   const userId = (req.user as { id: string }).id;
-  const rows = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  const u = rows[0];
-  if (!u || u.role !== "admin") {
+  const allowed = await hasPermission(userId, "admin");
+  if (!allowed) {
     res.status(403).json({ message: "Forbidden: admin only" });
     return false;
   }

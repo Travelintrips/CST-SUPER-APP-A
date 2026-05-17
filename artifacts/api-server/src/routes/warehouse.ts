@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
+import { postOpnameAdjust } from "../lib/accounting.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -557,6 +558,29 @@ router.post("/opnames/:id/confirm", async (req: Request, res: Response) => {
     `);
   }
   await db.execute(sql`UPDATE wh_opnames SET status = 'confirmed', confirmed_at = NOW() WHERE id = ${id}`);
+
+  // Auto-post accounting journal for opname adjustment
+  try {
+    const costRows = await db.execute(sql`
+      SELECT ol.diff_qty::float, COALESCE(ws.cost_price::float, p.cost_price::float, 0) AS cost_price
+      FROM wh_opname_lines ol
+      LEFT JOIN wh_stock ws ON ws.product_id = ol.product_id AND ws.warehouse_id = ${opname.warehouse_id} AND ws.rack_id IS NOT DISTINCT FROM ol.rack_id
+      LEFT JOIN products p ON p.id = ol.product_id
+      WHERE ol.opname_id = ${id} AND ol.diff_qty != 0
+    `);
+    const totalDiffAmount = (costRows.rows as Array<{ diff_qty: number; cost_price: number }>)
+      .reduce((sum, r) => sum + r.diff_qty * (r.cost_price ?? 0), 0);
+    if (Math.abs(totalDiffAmount) > 0.01) {
+      postOpnameAdjust({
+        opnameId: id,
+        opnameNumber: String(opname.opname_number),
+        diffAmount: totalDiffAmount,
+      }).catch((e) => console.error("[accounting] postOpnameAdjust error:", e));
+    }
+  } catch (e) {
+    console.error("[accounting] opname adjust calc error:", e);
+  }
+
   const updated = await db.execute(sql`SELECT * FROM wh_opnames WHERE id = ${id}`);
   res.json(updated.rows[0]);
 });
