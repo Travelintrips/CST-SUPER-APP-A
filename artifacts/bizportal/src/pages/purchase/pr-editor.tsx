@@ -135,8 +135,6 @@ export default function PurchaseRequestEditorPage() {
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: today, notes: "" });
 
-  const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: "", notes: "" });
-
   const [lines, setLines] = useState<PRLine[]>([{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const [actionNotes, setActionNotes] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
