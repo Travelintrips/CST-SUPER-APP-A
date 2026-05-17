@@ -105,6 +105,7 @@ import PosRacksPage from "@/pages/pos-racks";
 import PosRecipesPage from "@/pages/pos-recipes";
 import PosQrGeneratorPage from "@/pages/pos-qr-generator";
 import PosQrScannerPage from "@/pages/pos-qr-scanner";
+import SettingsRolesPage from "@/pages/settings-roles";
 import PurchaseRequestListPage from "@/pages/purchase/pr-list";
 import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import GoodsReceiptListPage from "@/pages/purchase/gr-list";
@@ -398,6 +399,7 @@ function Router() {
         <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
+        <Route path="/settings/roles" component={() => <ProtectedRoute component={SettingsRolesPage} />} />
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
         <Route path="/media" component={() => <ProtectedRoute component={MediaManagerPage} />} />
         {/* Holding */}

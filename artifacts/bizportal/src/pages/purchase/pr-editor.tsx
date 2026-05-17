@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCompany } from "@/contexts/CompanyContext";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 interface PRLine { id?: number; name: string; quantity: string; unit: string; estimatedCost: string; notes: string; }
 interface PR { id: number; prNumber: string; status: string; requestedBy: string; department: string; requiredDate: string; notes: string; lines: PRLine[]; approvals: Record<string, unknown>[]; rfqId?: number; }
 interface Product { id: number; name: string; sku: string; unit?: string; price?: number; }
+interface UserOption { id: string; name: string; email: string; division?: string | null; }
 
 const apiFetch = (path: string, opts?: RequestInit) => fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
 
@@ -119,9 +121,20 @@ export default function PurchaseRequestEditorPage() {
     enabled: !isNew,
   });
 
+  const { data: users = [] } = useQuery<UserOption[]>({
+    queryKey: ["/api/users"],
+    queryFn: () => apiFetch("/users").then(r => r.json()),
+  });
+
+  const { data: currentUser } = useQuery<UserOption>({
+    queryKey: ["/api/users/me"],
+    queryFn: () => apiFetch("/users/me").then(r => r.json()),
+  });
+
   const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: "", notes: "" });
   const [lines, setLines] = useState<PRLine[]>([{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const [actionNotes, setActionNotes] = useState("");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (isNew && user) {
@@ -136,6 +149,16 @@ export default function PurchaseRequestEditorPage() {
       setLines(pr.lines?.length ? pr.lines.map(l => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, estimatedCost: String(l.estimatedCost), notes: l.notes ?? "" })) : [{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
     }
   }, [pr]);
+
+  useEffect(() => {
+    if (isNew && currentUser?.name) {
+      setForm(f => ({
+        ...f,
+        requestedBy: f.requestedBy || currentUser.name,
+        department: f.department || currentUser.division || "",
+      }));
+    }
+  }, [isNew, currentUser]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -168,9 +191,53 @@ export default function PurchaseRequestEditorPage() {
     onError: () => toast.error("Gagal melakukan aksi"),
   });
 
+  const handlePemohonChange = (userName: string) => {
+    const selected = users.find(u => u.name === userName);
+    setForm(f => ({
+      ...f,
+      requestedBy: userName,
+      department: selected?.division ?? f.department,
+    }));
+  };
+
+  const handleSubmit = () => {
+    setSubmitAttempted(true);
+    if (!form.requestedBy.trim() && !form.department.trim()) {
+      toast.error("Pemohon dan Departemen wajib diisi sebelum submit.");
+      return;
+    }
+    if (!form.requestedBy.trim()) {
+      toast.error("Pemohon wajib dipilih sebelum submit.");
+      return;
+    }
+    if (!form.department.trim()) {
+      toast.error("Departemen wajib diisi sebelum submit.");
+      return;
+    }
+    actionMut.mutate("submit");
+  };
+
   const addLine = () => setLines(prev => [...prev, { name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
   const updateLine = (i: number, key: keyof PRLine, value: string) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
+
+  const hasValidLines = lines.some(l => l.name.trim() !== "");
+
+  const handleSave = () => {
+    if (!hasValidLines) {
+      toast.error("Minimal harus ada satu item yang diisi sebelum menyimpan.");
+      return;
+    }
+    saveMut.mutate();
+  };
+
+  const handleSubmit = () => {
+    if (!hasValidLines) {
+      toast.error("Minimal harus ada satu item yang diisi sebelum PR bisa di-submit.");
+      return;
+    }
+    actionMut.mutate("submit");
+  };
 
   const isDraft = !pr || pr.status === "draft";
   const isSubmitted = pr?.status === "submitted";
@@ -186,7 +253,7 @@ export default function PurchaseRequestEditorPage() {
             <h1 className="text-2xl font-bold">{isNew ? "Buat Purchase Request" : `PR: ${pr?.prNumber}`}</h1>
             {pr && <Badge variant={statusColor[pr.status] as "default" | "secondary" | "destructive" | "outline"}>{statusLabel[pr.status]}</Badge>}
           </div>
-          {isDraft && <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>Simpan</Button>}
+          {isDraft && <Button onClick={handleSave} disabled={saveMut.isPending}>Simpan</Button>}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -203,6 +270,47 @@ export default function PurchaseRequestEditorPage() {
                 />
               </div>
               <div><Label>Departemen</Label><Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} disabled={!isDraft} /></div>
+                <Label>
+                  Pemohon <span className="text-destructive">*</span>
+                </Label>
+                {isDraft ? (
+                  <>
+                    <Select value={form.requestedBy} onValueChange={handlePemohonChange}>
+                      <SelectTrigger className={submitAttempted && !form.requestedBy.trim() ? "border-destructive focus:ring-destructive" : ""}>
+                        <SelectValue placeholder="Pilih pemohon..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map(u => (
+                          <SelectItem key={u.id} value={u.name}>
+                            <span>{u.name}</span>
+                            {u.division && <span className="ml-2 text-xs text-muted-foreground">({u.division})</span>}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {submitAttempted && !form.requestedBy.trim() && (
+                      <p className="text-xs text-destructive mt-1">Pemohon wajib dipilih.</p>
+                    )}
+                  </>
+                ) : (
+                  <Input value={form.requestedBy} disabled />
+                )}
+              </div>
+              <div>
+                <Label>
+                  Departemen <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={form.department}
+                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+                  disabled={!isDraft}
+                  placeholder="Otomatis dari divisi pemohon"
+                  className={submitAttempted && !form.department.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {submitAttempted && !form.department.trim() && (
+                  <p className="text-xs text-destructive mt-1">Departemen wajib diisi.</p>
+                )}
+              </div>
               <div><Label>Tanggal Diperlukan</Label><Input type="date" value={form.requiredDate} onChange={e => setForm(f => ({ ...f, requiredDate: e.target.value }))} disabled={!isDraft} /></div>
               <div><Label>Catatan</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} disabled={!isDraft} rows={3} /></div>
             </CardContent>
@@ -214,7 +322,7 @@ export default function PurchaseRequestEditorPage() {
               <CardContent className="space-y-3">
                 <div><Label>Catatan Approval</Label><Textarea value={actionNotes} onChange={e => setActionNotes(e.target.value)} rows={2} placeholder="Opsional..." /></div>
                 <div className="flex flex-wrap gap-2">
-                  {isDraft && <Button size="sm" onClick={() => actionMut.mutate("submit")} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Submit</Button>}
+                  {isDraft && <Button size="sm" onClick={handleSubmit} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Submit</Button>}
                   {isSubmitted && <Button size="sm" variant="default" onClick={() => actionMut.mutate("approve")} disabled={actionMut.isPending}><CheckCircle className="mr-1 h-4 w-4" />Approve</Button>}
                   {isSubmitted && <Button size="sm" variant="destructive" onClick={() => actionMut.mutate("reject")} disabled={actionMut.isPending}><XCircle className="mr-1 h-4 w-4" />Reject</Button>}
                   {pr.status === "approved" && <Button size="sm" onClick={() => actionMut.mutate("convert_rfq")} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Konversi ke RFQ</Button>}
@@ -226,9 +334,14 @@ export default function PurchaseRequestEditorPage() {
           )}
         </div>
 
-        <Card>
+        <Card className={isDraft && !hasValidLines ? "border-destructive" : ""}>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Item yang Dibutuhkan</CardTitle>
+            <div>
+              <CardTitle className="text-base">Item yang Dibutuhkan</CardTitle>
+              {isDraft && !hasValidLines && (
+                <p className="text-xs text-destructive mt-1">Minimal harus ada satu item yang diisi.</p>
+              )}
+            </div>
             {isDraft && <Button size="sm" variant="outline" onClick={addLine}><Plus className="mr-1 h-4 w-4" />Tambah Item</Button>}
           </CardHeader>
           <CardContent>
