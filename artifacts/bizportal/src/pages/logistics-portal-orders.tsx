@@ -29,6 +29,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
@@ -137,9 +138,10 @@ export default function LogisticsPortalOrdersPage() {
     return Array.isArray(urls) ? (urls as string[]) : [];
   })();
 
+  const { activeCompanyId } = useCompany();
   const { data: orders = [], isLoading, refetch } = useListLogisticOrders(
-    statusFilter !== "all" ? { status: statusFilter } : undefined,
-    { query: { queryKey: [...getListLogisticOrdersQueryKey(), statusFilter] } },
+    { ...(statusFilter !== "all" ? { status: statusFilter } : {}), company: activeCompanyId },
+    { query: { queryKey: [...getListLogisticOrdersQueryKey(), statusFilter, activeCompanyId] } },
   );
 
   const updateStatus = useUpdateLogisticOrderStatus();

@@ -32,6 +32,7 @@ import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
 import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
+import UomPage from "@/pages/settings/uom";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
@@ -44,6 +45,8 @@ import SalesItemsPage from "@/pages/sales/items";
 import PurchaseDashboardPage from "@/pages/purchase/dashboard";
 import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
+import PurchaseRequestListPage from "@/pages/purchase/pr-list";
+import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import VendorsPage from "@/pages/purchase/vendors";
 import VendorDetailPage from "@/pages/purchase/vendor-detail";
 import PurchaseBillsPage from "@/pages/purchase/bills";
@@ -122,6 +125,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sales/invoices" component={PR(SalesInvoicesPage)} />
       <Route path="/sales/items" component={PR(SalesItemsPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
+      <Route path="/purchase/pr" component={PR(PurchaseRequestListPage)} />
+      <Route path="/purchase/pr/new" component={PR(PurchaseRequestEditorPage)} />
+      <Route path="/purchase/pr/:id" component={PR(PurchaseRequestEditorPage)} />
       <Route path="/purchase/documents" component={PR(PurchaseDocumentsListPage)} />
       <Route path="/purchase/documents/new" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/documents/:id" component={PR(PurchaseDocumentEditorPage)} />
@@ -158,6 +164,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
       <Route path="/expense" component={PR(ExpenseListPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
+      <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />

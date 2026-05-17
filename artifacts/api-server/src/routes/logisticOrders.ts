@@ -42,6 +42,7 @@ function toOrder(row: typeof logisticOrdersTable.$inferSelect, approvedVendorNam
   return {
     id: row.id,
     orderNumber: row.orderNumber,
+    companyId: row.companyId ?? null,
     companyName: row.companyName,
     customerName: row.customerName,
     email: row.email,
@@ -427,7 +428,12 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
   const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
   const q = parsed.success ? parsed.data : {};
 
+  const rawCompany = req.query["company"] ?? req.query["companyId"];
+  const companyId = rawCompany ? parseInt(String(rawCompany), 10) : null;
+
   const conditions = [];
+  if (companyId && !Number.isNaN(companyId))
+    conditions.push(eq(logisticOrdersTable.companyId, companyId));
   if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
   if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
   if (q.search) {

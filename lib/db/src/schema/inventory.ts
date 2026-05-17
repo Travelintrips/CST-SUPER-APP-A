@@ -1,8 +1,9 @@
 import {
   pgTable, pgEnum, serial, text, integer, numeric, boolean,
-  timestamp, unique,
+  timestamp, unique, index,
 } from "drizzle-orm/pg-core";
 import { productsTable } from "./products";
+import { companiesTable } from "./companies";
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ export const referenceTypeEnum = pgEnum("inv_reference_type", [
 
 export const warehousesTable = pgTable("warehouses", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   warehouseCode: text("warehouse_code").notNull().unique(),
   warehouseName: text("warehouse_name").notNull(),
   warehouseType: warehouseTypeEnum("warehouse_type").notNull().default("BRANCH"),
@@ -44,7 +46,9 @@ export const warehousesTable = pgTable("warehouses", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("warehouses_company_idx").on(t.companyId),
+]);
 
 export const warehouseRacksTable = pgTable("warehouse_racks", {
   id: serial("id").primaryKey(),
@@ -91,7 +95,12 @@ export const stockMovementsTable = pgTable("stock_movements", {
   notes: text("notes"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("stock_movements_product_idx").on(t.productId),
+  index("stock_movements_warehouse_idx").on(t.warehouseId),
+  index("stock_movements_type_idx").on(t.movementType),
+  index("stock_movements_created_idx").on(t.createdAt),
+]);
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

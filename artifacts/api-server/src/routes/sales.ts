@@ -20,7 +20,8 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
-import { postStockOut } from "../lib/inventoryStock.js";
+import { postStockOut, StockShortageError } from "../lib/inventoryStock.js";
+import { convertQty } from "../lib/uomEngine.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -47,6 +48,22 @@ interface LineInput {
   description?: string | null;
   quantity: number;
   unitPrice: number;
+  salesUomId?: number | null;
+}
+
+/** Compute base_qty by converting quantity from salesUomId → product's base_uom_id. */
+async function resolveBaseQty(line: LineInput): Promise<number | null> {
+  if (!line.salesUomId || !line.productId) return null;
+  try {
+    const prodRow = (await db.execute(sql`
+      SELECT base_uom_id FROM products WHERE id = ${line.productId} LIMIT 1
+    `)).rows[0] as { base_uom_id: number | null } | undefined;
+    const baseUomId = prodRow?.base_uom_id ?? null;
+    if (!baseUomId || baseUomId === line.salesUomId) return Number(line.quantity);
+    return await convertQty(Number(line.quantity), line.salesUomId, baseUomId);
+  } catch {
+    return null;
+  }
 }
 
 function serializeCustomer(c: typeof customersTable.$inferSelect) {
@@ -72,6 +89,7 @@ function serializeLine(l: typeof salesDocumentLinesTable.$inferSelect) {
   return {
     ...l,
     quantity: Number(l.quantity),
+    baseQty: l.baseQty != null ? Number(l.baseQty) : null,
     unitPrice: Number(l.unitPrice),
     subtotal: Number(l.subtotal),
   };
@@ -304,17 +322,20 @@ router.post("/documents", async (req, res) => {
   }
   if (!doc) throw new Error("Failed to create sales document after retries");
 
-  await db.insert(salesDocumentLinesTable).values(
-    (lines as LineInput[]).map((l) => ({
-      documentId: doc.id,
+  const lineValues = await Promise.all(
+    (lines as LineInput[]).map(async (l) => ({
+      documentId: doc!.id,
       productId: l.productId ?? null,
       name: l.name,
       description: l.description ?? null,
       quantity: String(l.quantity),
       unitPrice: String(l.unitPrice),
       subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-    })),
+      salesUomId: l.salesUomId ?? null,
+      baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+    }))
   );
+  await db.insert(salesDocumentLinesTable).values(lineValues);
 
   const detail = await loadDocWithLines(doc.id);
 
@@ -369,8 +390,8 @@ router.put("/documents/:id", async (req, res) => {
     patch["grandTotal"] = String(grandTotal);
     await db.delete(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
     if (lines.length > 0) {
-      await db.insert(salesDocumentLinesTable).values(
-        (lines as LineInput[]).map((l) => ({
+      const putLineValues = await Promise.all(
+        (lines as LineInput[]).map(async (l) => ({
           documentId: id,
           productId: l.productId ?? null,
           name: l.name,
@@ -378,8 +399,11 @@ router.put("/documents/:id", async (req, res) => {
           quantity: String(l.quantity),
           unitPrice: String(l.unitPrice),
           subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-        })),
+          salesUomId: l.salesUomId ?? null,
+          baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+        }))
       );
+      await db.insert(salesDocumentLinesTable).values(putLineValues);
     }
   } else if (taxRateId !== undefined) {
     const total = Number(existing.totalAmount);
@@ -464,16 +488,55 @@ router.post("/documents/:id/action", async (req, res) => {
       return res.status(400).json({ message: "Invalid action" });
   }
 
+  // T005: Pre-flight stock check BEFORE updating delivery status
+  if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+    const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+    const productLines = lines.filter((l) => l.productId != null);
+
+    if (productLines.length > 0) {
+      const invWh = (await db.execute(sql`
+        SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+      `)).rows[0] as { id: number } | undefined;
+
+      if (invWh) {
+        const shortages: Array<{ productId: number; name: string; requested: number; available: number }> = [];
+        for (const line of productLines) {
+          // Use base_qty (converted to product's base UOM) if available, else fall back to quantity
+          const qty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
+          const stockRow = (await db.execute(sql`
+            SELECT COALESCE(stock_available::float, 0) AS stock_available
+            FROM inventory_stock
+            WHERE product_id = ${line.productId} AND warehouse_id = ${invWh.id}
+            ORDER BY id LIMIT 1
+          `)).rows[0] as { stock_available: number } | undefined;
+          const available = Number(stockRow?.stock_available ?? 0);
+          if (available < qty) {
+            shortages.push({ productId: line.productId!, name: line.name, requested: qty, available });
+          }
+        }
+        if (shortages.length > 0) {
+          const detail = shortages
+            .map((s) => `${s.name}: tersedia ${s.available}, diminta ${s.requested}`)
+            .join("; ");
+          return res.status(422).json({
+            message: `Stok tidak cukup untuk pengiriman: ${detail}`,
+            shortages,
+          });
+        }
+      }
+    }
+  }
+
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
 
-  // T005: When SO is delivered, deduct stock (fire-and-forget)
+  // T005: When SO is delivered, deduct stock (awaited — pre-flight already passed)
   if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
-    void (async () => {
-      try {
-        const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
-        const productLines = lines.filter((l) => l.productId != null);
-        if (productLines.length === 0) return;
-
+    try {
+      const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+      const productLines = lines.filter((l) => l.productId != null);
+      if (productLines.length === 0) {
+        // nothing to deduct, fall through
+      } else {
         // ── Legacy wh_stock deduction (backward compat) ─────────────────────
         const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
         const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
@@ -513,40 +576,37 @@ router.post("/documents/:id/action", async (req, res) => {
           }).catch((e) => console.error("[accounting] postSalesCogs error:", e));
         }
 
-        // ── New inventory_stock deduction ────────────────────────────────────
+        // ── New inventory_stock deduction (strict=true already guaranteed by pre-flight) ───
         const invWh = (await db.execute(sql`
           SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
         `)).rows[0] as { id: number } | undefined;
-        if (!invWh) return;
-        const invWhId = invWh.id;
-
-        for (const line of productLines) {
-          const qty = Number(line.quantity);
-          // Check available stock — warn but still proceed
-          const stockRow = (await db.execute(sql`
-            SELECT stock_available::float FROM inventory_stock
-            WHERE product_id = ${line.productId} AND warehouse_id = ${invWhId}
-            ORDER BY id LIMIT 1
-          `)).rows[0] as { stock_available: number } | undefined;
-          if (stockRow && Number(stockRow.stock_available) < qty) {
-            console.warn(
-              `[inventory] SO ${doc.docNumber} — produk ${line.productId} stok tersedia ${stockRow.stock_available}, diminta ${qty}`
-            );
+        if (invWh) {
+          for (const line of productLines) {
+            // Use base_qty when set (converted to product's base UOM); fallback to quantity
+            const deductQty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
+            await postStockOut({
+              productId: line.productId!,
+              warehouseId: invWh.id,
+              qty: deductQty,
+              movementType: "SALES_DELIVERY",
+              referenceType: "SALES_ORDER",
+              referenceId: id,
+              notes: `SO Terkirim: ${doc.docNumber}`,
+              strict: false, // pre-flight already validated; skip double-check here
+            });
           }
-          await postStockOut({
-            productId: line.productId!,
-            warehouseId: invWhId,
-            qty,
-            movementType: "SALES_DELIVERY",
-            referenceType: "SALES_ORDER",
-            referenceId: id,
-            notes: `SO Terkirim: ${doc.docNumber}`,
-          });
         }
-      } catch (e) {
-        console.error("[wh] mark_delivered stock-out error:", e);
       }
-    })();
+    } catch (e) {
+      if (e instanceof StockShortageError) {
+        // Rollback delivery status
+        await db.update(salesDocumentsTable)
+          .set({ deliveryStatus: doc.deliveryStatus, status: doc.status })
+          .where(eq(salesDocumentsTable.id, id));
+        return res.status(422).json({ message: e.message });
+      }
+      console.error("[wh] mark_delivered stock-out error:", e);
+    }
   }
 
   // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)

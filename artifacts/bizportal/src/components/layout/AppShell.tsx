@@ -42,6 +42,7 @@ import {
   ArrowLeftRight,
   ClipboardCheck,
   Activity,
+  FlaskConical,
   ChefHat,
   GitBranch,
   RotateCcw,
@@ -49,6 +50,7 @@ import {
   PackageCheck,
   QrCode,
   FileBarChart2,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -152,9 +154,16 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin"],
       children: [
         { titleKey: "purchaseDashboard", href: "/purchase", icon: LayoutDashboard },
+        { titleKey: "Purchase Request (PR)", href: "/purchase/pr", icon: ClipboardList },
         { titleKey: "rfq", href: "/purchase/rfq", icon: ClipboardList },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
-        { titleKey: "Terima Barang (GRN)", href: "/purchase/receive", icon: PackageCheck },
+        { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
+        { titleKey: "QC Inspection", href: "/purchase/qc", icon: ClipboardCheck },
+        { titleKey: "Purchase Return", href: "/purchase/returns", icon: RotateCcw },
+        { titleKey: "Vendor Invoice (AP)", href: "/purchase/vendor-invoices", icon: FileText },
+        { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
+        { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
+        { titleKey: "Bahan Thai Tea", href: "/purchase/thai-tea", icon: ChefHat },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
         { titleKey: "vendorService", href: "/logistics/vendors", icon: Truck },
         { titleKey: "bills", href: "/purchase/bills", icon: FileText },
@@ -210,7 +219,22 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
     { type: "flat", titleKey: "pos", href: "/pos", icon: Calculator, roles: ["admin", "pos"] },
-    { type: "flat", titleKey: "Thai Tea CST", href: "/pos-kasir", icon: ShoppingBag, roles: ["admin"] },
+    {
+      type: "group",
+      titleKey: "Thai Tea CST",
+      basePath: "/thai-tea",
+      icon: ShoppingBag,
+      roles: ["admin"],
+      children: [
+        { titleKey: "Dashboard", href: "/thai-tea/dashboard", icon: LayoutDashboard },
+        { titleKey: "Recipe / BOM", href: "/thai-tea/recipes", icon: ChefHat },
+        { titleKey: "Stok Bahan Baku", href: "/thai-tea/stock", icon: Boxes },
+        { titleKey: "Monitoring Cabang", href: "/thai-tea/branches", icon: GitBranch },
+        { titleKey: "Produksi / Racikan", href: "/thai-tea/production", icon: FlaskConical },
+        { titleKey: "Laporan", href: "/thai-tea/reports", icon: BarChart2 },
+        { titleKey: "POS Kasir", href: "/pos-kasir", icon: ShoppingBag },
+      ],
+    },
     {
       type: "group",
       titleKey: "Inventory CST",
@@ -265,7 +289,9 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", titleKey: "correspondences", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "emailInbox", href: "/email-inbox", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "users", href: "/users", icon: Users, roles: ["admin"] },
+    { type: "flat", titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck, roles: ["admin"] },
     { type: "flat", titleKey: "Image Manager", href: "/media", icon: ImageIcon, roles: ["admin"] },
+    { type: "flat", titleKey: "uomSettings", href: "/settings/uom", icon: Settings, roles: ["admin"] },
     { type: "flat", titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin"] },
     { type: "flat", titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen, roles: ["admin"] },
     { type: "flat", titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine, roles: ["admin"] },
@@ -299,7 +325,19 @@ export function AppShell({ children }: AppShellProps) {
   });
   const aiDraftCount = aiDrafts.length;
 
-  const filteredNav = navItems.filter((item) => dbUser?.role && item.roles.includes(dbUser.role));
+  const customRolePermissions = (dbUser as any)?.customRolePermissions as string[] | null | undefined;
+
+  const filteredNav = navItems.filter((item) => {
+    if (!dbUser?.role) return false;
+    if (dbUser.role === "admin") return true;
+    if (customRolePermissions != null) {
+      const path = item.type === "group" ? item.basePath : item.href;
+      const seg = path.replace(/^\//, "").split("/")[0] ?? "";
+      const full = path.replace(/^\//, "");
+      return customRolePermissions.includes(seg) || customRolePermissions.includes(full);
+    }
+    return item.roles.includes(dbUser.role);
+  });
 
   const DASHBOARD_CHILD_PATHS = ["/portal-product-orders"];
   const isGroupActive = (g: GroupItem) => {

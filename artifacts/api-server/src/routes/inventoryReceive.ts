@@ -233,8 +233,12 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
 router.get("/meta/warehouses", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
-    SELECT id, warehouse_code, warehouse_name, warehouse_type
-    FROM warehouses WHERE is_active = TRUE ORDER BY warehouse_name
+    SELECT pw.id, pw.name AS warehouse_name, pw.type AS warehouse_type,
+           b.name AS branch_name
+    FROM pos_warehouses pw
+    JOIN pos_branches b ON b.id = pw.branch_id
+    WHERE pw.is_active = TRUE
+    ORDER BY pw.name
   `);
   res.json(rows.rows);
 });

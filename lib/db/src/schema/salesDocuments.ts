@@ -5,6 +5,7 @@ import { customersTable } from "./customers";
 import { productsTable } from "./products";
 import { logisticOrdersTable } from "./logisticOrders";
 import { companiesTable } from "./companies";
+import { uomTable } from "./uom";
 
 export const salesDocKindEnum = pgEnum("sales_doc_kind", ["quote", "order"]);
 export const salesDocStatusEnum = pgEnum("sales_doc_status", [
@@ -80,6 +81,8 @@ export const salesDocumentLinesTable = pgTable("sales_document_lines", {
   name: text("name").notNull(),
   description: text("description"),
   quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull().default("1"),
+  salesUomId: integer("sales_uom_id").references(() => uomTable.id, { onDelete: "set null" }),
+  baseQty: numeric("base_qty", { precision: 12, scale: 4 }),
   unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull().default("0"),
   subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
 });

@@ -84,6 +84,13 @@ import WarehouseReturnsPage from "@/pages/warehouse/returns";
 import WarehouseRecipesPage from "@/pages/warehouse/recipes";
 import WarehouseOpnamePage from "@/pages/warehouse/opname";
 import PurchaseReceivePage from "@/pages/purchase/receive";
+import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
+import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
+import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
+import ThaiTeaStockPage from "@/pages/thai-tea/stock";
+import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
+import ThaiTeaProductionPage from "@/pages/thai-tea/production";
+import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
 import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
 import PosInventoryItemsPage from "@/pages/pos-inventory-items";
 import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
@@ -98,6 +105,18 @@ import PosRacksPage from "@/pages/pos-racks";
 import PosRecipesPage from "@/pages/pos-recipes";
 import PosQrGeneratorPage from "@/pages/pos-qr-generator";
 import PosQrScannerPage from "@/pages/pos-qr-scanner";
+import SettingsRolesPage from "@/pages/settings-roles";
+import PurchaseRequestListPage from "@/pages/purchase/pr-list";
+import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
+import GoodsReceiptListPage from "@/pages/purchase/gr-list";
+import GoodsReceiptEditorPage from "@/pages/purchase/gr-editor";
+import QcListPage from "@/pages/purchase/qc-list";
+import QcEditorPage from "@/pages/purchase/qc-editor";
+import { VendorInvoicesListPage, VendorInvoiceEditorPage } from "@/pages/purchase/vendor-invoices";
+import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purchase/payment-requests";
+import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
+import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
+import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -319,6 +338,29 @@ function Router() {
         <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
         <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
         <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
+        {/* Purchase Workflow */}
+        <Route path="/purchase/pr" component={() => <ProtectedRoute component={PurchaseRequestListPage} />} />
+        <Route path="/purchase/pr/new" component={() => <ProtectedRoute component={PurchaseRequestEditorPage} />} />
+        <Route path="/purchase/pr/:id" component={() => <ProtectedRoute component={PurchaseRequestEditorPage} />} />
+        <Route path="/purchase/gr" component={() => <ProtectedRoute component={GoodsReceiptListPage} />} />
+        <Route path="/purchase/gr/new" component={() => <ProtectedRoute component={GoodsReceiptEditorPage} />} />
+        <Route path="/purchase/gr/:id" component={() => <ProtectedRoute component={GoodsReceiptEditorPage} />} />
+        <Route path="/purchase/qc" component={() => <ProtectedRoute component={QcListPage} />} />
+        <Route path="/purchase/qc/new" component={() => <ProtectedRoute component={QcEditorPage} />} />
+        <Route path="/purchase/qc/:id" component={() => <ProtectedRoute component={QcEditorPage} />} />
+        <Route path="/purchase/vendor-invoices" component={() => <ProtectedRoute component={VendorInvoicesListPage} />} />
+        <Route path="/purchase/vendor-invoices/new" component={() => <ProtectedRoute component={VendorInvoiceEditorPage} />} />
+        <Route path="/purchase/vendor-invoices/:id" component={() => <ProtectedRoute component={VendorInvoiceEditorPage} />} />
+        <Route path="/purchase/payment-requests" component={() => <ProtectedRoute component={PaymentRequestsListPage} />} />
+        <Route path="/purchase/payment-requests/new" component={() => <ProtectedRoute component={PaymentRequestEditorPage} />} />
+        <Route path="/purchase/payment-requests/:id" component={() => <ProtectedRoute component={PaymentRequestEditorPage} />} />
+        <Route path="/purchase/returns" component={() => <ProtectedRoute component={PurchaseReturnsListPage} />} />
+        <Route path="/purchase/returns/new" component={() => <ProtectedRoute component={PurchaseReturnEditorPage} />} />
+        <Route path="/purchase/returns/:id" component={() => <ProtectedRoute component={PurchaseReturnEditorPage} />} />
+        <Route path="/purchase/landed-costs" component={() => <ProtectedRoute component={LandedCostsListPage} />} />
+        <Route path="/purchase/landed-costs/new" component={() => <ProtectedRoute component={LandedCostEditorPage} />} />
+        <Route path="/purchase/landed-costs/:id" component={() => <ProtectedRoute component={LandedCostEditorPage} />} />
+        <Route path="/purchase/rfq/:rfqId/compare" component={() => <ProtectedRoute component={VendorComparisonPage} />} />
         {/* Reports */}
         <Route path="/reports/sales" component={() => <ProtectedRoute component={ReportsSalesPage} />} />
         <Route path="/reports/purchase" component={() => <ProtectedRoute component={ReportsPurchasePage} />} />
@@ -357,6 +399,7 @@ function Router() {
         <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
+        <Route path="/settings/roles" component={() => <ProtectedRoute component={SettingsRolesPage} />} />
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
         <Route path="/media" component={() => <ProtectedRoute component={MediaManagerPage} />} />
         {/* Holding */}
@@ -367,6 +410,15 @@ function Router() {
         <Route path="/pos-kasir" component={() => <ProtectedRoute component={PosKasirAdminPage} />} />
         {/* Purchase Receive */}
         <Route path="/purchase/receive" component={() => <ProtectedRoute component={PurchaseReceivePage} />} />
+        {/* Thai Tea Purchase */}
+        <Route path="/purchase/thai-tea" component={() => <ProtectedRoute component={ThaiTeaPurchasePage} />} />
+        {/* Thai Tea CST */}
+        <Route path="/thai-tea/dashboard" component={() => <ProtectedRoute component={ThaiTeaDashboardPage} />} />
+        <Route path="/thai-tea/recipes" component={() => <ProtectedRoute component={ThaiTeaRecipesPage} />} />
+        <Route path="/thai-tea/stock" component={() => <ProtectedRoute component={ThaiTeaStockPage} />} />
+        <Route path="/thai-tea/branches" component={() => <ProtectedRoute component={ThaiTeaBranchesPage} />} />
+        <Route path="/thai-tea/production" component={() => <ProtectedRoute component={ThaiTeaProductionPage} />} />
+        <Route path="/thai-tea/reports" component={() => <ProtectedRoute component={ThaiTeaReportsPage} />} />
         {/* POS Inventory */}
         <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
         <Route path="/pos-inventory/branches" component={() => <ProtectedRoute component={PosBranchesPage} />} />

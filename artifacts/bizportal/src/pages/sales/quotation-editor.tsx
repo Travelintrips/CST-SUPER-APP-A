@@ -67,7 +67,7 @@ import {
   type Product,
   type Customer,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Send, Check, CheckCircle, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal, Pencil, Loader2 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
@@ -217,6 +217,67 @@ interface LineDraft {
   description?: string | null;
   quantity: number;
   unitPrice: number;
+  salesUomId?: number | null;
+}
+
+interface UomRow {
+  id: number;
+  name: string;
+  symbol: string;
+  category: string;
+  is_active: boolean;
+}
+
+interface StockCheckResult {
+  productId: number;
+  itemType: string;
+  baseUnit: string;
+  baseUomId: number | null;
+  baseUomSymbol: string;
+  baseAvailable: number;
+  salesUomId: number | null;
+  salesUomSymbol: string;
+  available: number;
+  conversionAvailable: boolean;
+}
+
+function StockBadge({ productId, salesUomId, qty }: { productId: number; salesUomId: number | null; qty: number }) {
+  const { data, isLoading, isError } = useQuery<StockCheckResult>({
+    queryKey: ["/api/inventory/stock/check", productId, salesUomId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ productId: String(productId) });
+      if (salesUomId) params.set("salesUomId", String(salesUomId));
+      const res = await fetch(`/api/inventory/stock/check?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("stock check failed");
+      return res.json();
+    },
+    staleTime: 30_000,
+    gcTime: 60_000,
+  });
+
+  if (isLoading) return <span className="text-[10px] text-muted-foreground animate-pulse mt-1 block">memuat stok…</span>;
+  if (isError || !data) return null;
+  if (data.itemType !== "barang") return null;
+
+  const avail = data.available;
+  const symbol = data.salesUomSymbol;
+
+  const colorClass =
+    avail <= 0 ? "text-red-500 bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800"
+    : avail < qty ? "text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800"
+    : "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800";
+
+  const label = avail <= 0 ? "Stok habis" : `Stok: ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(avail)} ${symbol}`;
+
+  return (
+    <span className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded border text-[10px] font-medium leading-none ${colorClass}`}>
+      {avail < qty && avail > 0 && <span title="Stok kurang dari qty yang diinput">⚠</span>}
+      {label}
+      {!data.conversionAvailable && salesUomId && (
+        <span className="text-muted-foreground ml-0.5" title="Tidak ada konversi UOM — stok ditampilkan dalam satuan dasar">({data.baseUomSymbol})</span>
+      )}
+    </span>
+  );
 }
 
 interface EditorProps { kind?: "quote" | "order" }
@@ -397,6 +458,10 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
   const { data: products } = useListProducts();
   const { data: taxes } = useListTaxes();
   const { data: acctSettings } = useGetAccountingSettings();
+  const { data: uomList = [] } = useQuery<UomRow[]>({
+    queryKey: ["/api/uom"],
+    queryFn: () => fetch("/api/uom", { credentials: "include" }).then((r) => r.json()),
+  });
   const createMut = useCreateSalesDocument();
   const updateMut = useUpdateSalesDocument();
   const actionMut = useSalesDocumentAction();
@@ -447,6 +512,7 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
               description: l.description ?? null,
               quantity: Number(l.quantity),
               unitPrice: Number(l.unitPrice),
+              salesUomId: (l as any).salesUomId ?? null,
             }))
           : [{ name: "", quantity: 1, unitPrice: 0 }],
       );
@@ -639,6 +705,7 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
         description: l.description ?? null,
         quantity: Number(l.quantity),
         unitPrice: Number(l.unitPrice),
+        salesUomId: l.salesUomId ?? null,
       })),
     };
     try {
@@ -1000,7 +1067,8 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
                 <TableRow>
                   <TableHead className="w-[200px]">Produk</TableHead>
                   <TableHead>Deskripsi</TableHead>
-                  <TableHead className="w-[100px] text-right">Qty</TableHead>
+                  <TableHead className="w-[80px] text-right">Qty</TableHead>
+                  <TableHead className="w-[110px]">UOM</TableHead>
                   <TableHead className="w-[150px] text-right">Harga Satuan</TableHead>
                   <TableHead className="w-[150px] text-right">Subtotal</TableHead>
                   {isEditable && <TableHead className="w-[40px]"></TableHead>}
@@ -1045,6 +1113,32 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
                         disabled={!isEditable}
                         data-testid={`input-line-qty-${idx}`}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={l.salesUomId ? String(l.salesUomId) : "__none"}
+                        onValueChange={(v) => setLine(idx, { salesUomId: v === "__none" ? null : Number(v) })}
+                        disabled={!isEditable}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">—</SelectItem>
+                          {uomList.filter((u) => u.is_active).map((u) => (
+                            <SelectItem key={u.id} value={String(u.id)}>
+                              {u.name} ({u.symbol})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {l.productId && (
+                        <StockBadge
+                          productId={l.productId}
+                          salesUomId={l.salesUomId ?? null}
+                          qty={l.quantity}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <Input
