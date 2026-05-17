@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, freightShipmentsTable, freightRfqsTable, freightQuotesTable, freightAttachmentsTable, shipmentStagesTable, salesDocumentsTable, purchaseDocumentsTable, expensesTable, freightCustomsDocsTable } from "@workspace/db";
 import { eq, desc, inArray, sum, and } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { broadcastToAdmins } from "../lib/sseManager.js";
 
 const router = Router();
 
@@ -150,6 +151,17 @@ router.post("/freight-shipments", async (req, res) => {
     salesDocId: salesDocId ? Number(salesDocId) : null,
     purchaseDocId: purchaseDocId ? Number(purchaseDocId) : null,
   }).returning();
+  broadcastToAdmins("freight_shipment_created", {
+    shipmentId: shipment!.id,
+    shipmentNumber: shipment!.shipmentNumber,
+    shipperName: shipment!.shipperName,
+    consigneeName: shipment!.consigneeName,
+    origin: shipment!.origin,
+    destination: shipment!.destination,
+    commodity: shipment!.commodity,
+    transportMode: shipment!.transportMode,
+    createdAt: shipment!.createdAt.toISOString(),
+  });
   return res.status(201).json(serializeShipment(shipment!));
 });
 
@@ -204,6 +216,18 @@ router.put("/freight-shipments/:id", async (req, res) => {
     patch.purchaseDocId = purchaseDocId ? Number(purchaseDocId) : null;
   }
   const [updated] = await db.update(freightShipmentsTable).set(patch).where(eq(freightShipmentsTable.id, id)).returning();
+  if (status !== undefined && status !== existing.status) {
+    broadcastToAdmins("freight_shipment_status", {
+      shipmentId: updated!.id,
+      shipmentNumber: updated!.shipmentNumber,
+      shipperName: updated!.shipperName,
+      consigneeName: updated!.consigneeName,
+      origin: updated!.origin,
+      destination: updated!.destination,
+      status: updated!.status,
+      updatedAt: new Date().toISOString(),
+    });
+  }
   return res.json(serializeShipment(updated!));
 });
 
@@ -258,6 +282,20 @@ router.post("/freight-shipments/:shipmentId/stages", async (req, res) => {
         notes: notes ?? null,
       })
       .returning();
+  }
+  if (status !== undefined && status !== (existing?.status)) {
+    const [parentShipment] = await db.select({ shipmentNumber: freightShipmentsTable.shipmentNumber, shipperName: freightShipmentsTable.shipperName, consigneeName: freightShipmentsTable.consigneeName })
+      .from(freightShipmentsTable).where(eq(freightShipmentsTable.id, shipmentId)).limit(1);
+    broadcastToAdmins("freight_stage_update", {
+      shipmentId,
+      shipmentNumber: parentShipment?.shipmentNumber ?? null,
+      shipperName: parentShipment?.shipperName ?? null,
+      consigneeName: parentShipment?.consigneeName ?? null,
+      stageType: stage!.stageType,
+      stageStatus: stage!.status,
+      vendorName: stage!.vendorName ?? null,
+      updatedAt: new Date().toISOString(),
+    });
   }
   return res.json(serializeStage(stage!));
 });

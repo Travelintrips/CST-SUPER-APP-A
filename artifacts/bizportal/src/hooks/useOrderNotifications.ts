@@ -30,7 +30,7 @@ function playNotificationChime() {
 
 export interface OrderNotification {
   id: string;
-  type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status";
+  type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status" | "freight_new" | "freight_status" | "freight_stage";
   orderId: number;
   orderNumber: string;
   customerName: string;
@@ -42,6 +42,11 @@ export interface OrderNotification {
   itemCount?: number;
   status?: string;
   actionLabel?: string;
+  stageType?: string;
+  stageStatus?: string;
+  vendorName?: string;
+  commodity?: string;
+  transportMode?: string;
   createdAt: string;
   readAt: number | null;
 }
@@ -176,6 +181,73 @@ export function useOrderNotifications() {
             companyName: null,
             actionLabel: data.actionLabel,
             grandTotal: data.totalAmount,
+            createdAt: data.updatedAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch {
+        }
+      });
+
+      // New freight shipment created
+      es.addEventListener("freight_shipment_created", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            type: "freight_new",
+            orderId: data.shipmentId,
+            orderNumber: data.shipmentNumber,
+            customerName: data.shipperName,
+            companyName: data.consigneeName ?? null,
+            origin: data.origin,
+            destination: data.destination,
+            commodity: data.commodity,
+            transportMode: data.transportMode,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch {
+        }
+      });
+
+      // Freight shipment status changed
+      es.addEventListener("freight_shipment_status", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            type: "freight_status",
+            orderId: data.shipmentId,
+            orderNumber: data.shipmentNumber,
+            customerName: data.shipperName,
+            companyName: data.consigneeName ?? null,
+            origin: data.origin,
+            destination: data.destination,
+            status: data.status,
+            createdAt: data.updatedAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch {
+        }
+      });
+
+      // Freight shipment stage updated
+      es.addEventListener("freight_stage_update", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            type: "freight_stage",
+            orderId: data.shipmentId,
+            orderNumber: data.shipmentNumber ?? `#${data.shipmentId}`,
+            customerName: data.shipperName ?? "—",
+            companyName: data.consigneeName ?? null,
+            stageType: data.stageType,
+            stageStatus: data.stageStatus,
+            vendorName: data.vendorName,
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
