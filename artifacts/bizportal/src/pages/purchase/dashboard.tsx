@@ -9,14 +9,16 @@ import {
 } from "@workspace/api-client-react";
 import { ClipboardList, ShoppingBag, FileText, TrendingDown, Plus } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 
 export default function PurchaseDashboardPage() {
   const { t } = useLanguage();
-  const { data: summary } = useGetPurchaseSummary();
-  const { data: recentDocs } = useListPurchaseDocuments();
+  const { activeCompanyId } = useCompany();
+  const { data: summary } = useGetPurchaseSummary({ company: activeCompanyId });
+  const { data: recentDocs } = useListPurchaseDocuments({ company: activeCompanyId });
   const recent = (recentDocs ?? []).slice(0, 8);
 
   return (

@@ -1,6 +1,7 @@
 import { pgTable, serial, text, numeric, integer, timestamp, boolean, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { uomTable } from "./uom";
 
 export const productCategoriesTable = pgTable("product_categories", {
   id: serial("id").primaryKey(),
@@ -26,6 +27,7 @@ export const productsTable = pgTable("products", {
   itemType: text("item_type").notNull().default("barang"),
   unit: text("unit").notNull().default("pcs"),
   unitOptions: text("unit_options").notNull().default("[]"),
+  baseUomId: integer("base_uom_id").references(() => uomTable.id, { onDelete: "set null" }),
   subcategory: text("subcategory"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

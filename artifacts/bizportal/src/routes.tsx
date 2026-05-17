@@ -15,9 +15,24 @@ import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
+import PosBranchesPage from "@/pages/pos-branches";
+import PosWarehousesPage from "@/pages/pos-warehouses";
+import PosRacksPage from "@/pages/pos-racks";
+import PosInventoryItemsPage from "@/pages/pos-inventory-items";
+import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
+import PosRecipesPage from "@/pages/pos-recipes";
+import PosStockTransfersPage from "@/pages/pos-stock-transfers";
+import PosStockReturnsPage from "@/pages/pos-stock-returns";
+import PosStockLossesPage from "@/pages/pos-stock-losses";
+import PosStockOpnamePage from "@/pages/pos-stock-opname";
+import PosStockMutationsPage from "@/pages/pos-stock-mutations";
+import PosQrGeneratorPage from "@/pages/pos-qr-generator";
+import PosQrScannerPage from "@/pages/pos-qr-scanner";
+import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
 import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
+import UomPage from "@/pages/settings/uom";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
@@ -30,6 +45,8 @@ import SalesItemsPage from "@/pages/sales/items";
 import PurchaseDashboardPage from "@/pages/purchase/dashboard";
 import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
+import PurchaseRequestListPage from "@/pages/purchase/pr-list";
+import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import VendorsPage from "@/pages/purchase/vendors";
 import VendorDetailPage from "@/pages/purchase/vendor-detail";
 import PurchaseBillsPage from "@/pages/purchase/bills";
@@ -72,6 +89,20 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/ecommerce" component={PR(EcommercePage)} />
       <Route path="/trading" component={PR(TradingPage)} />
       <Route path="/pos" component={PR(PosPage)} />
+      <Route path="/pos-inventory/branches" component={PR(PosBranchesPage)} />
+      <Route path="/pos-inventory/warehouses" component={PR(PosWarehousesPage)} />
+      <Route path="/pos-inventory/racks" component={PR(PosRacksPage)} />
+      <Route path="/pos-inventory/items" component={PR(PosInventoryItemsPage)} />
+      <Route path="/pos-inventory/stocks" component={PR(PosInventoryStocksPage)} />
+      <Route path="/pos-inventory/recipes" component={PR(PosRecipesPage)} />
+      <Route path="/pos-inventory/transfers" component={PR(PosStockTransfersPage)} />
+      <Route path="/pos-inventory/returns" component={PR(PosStockReturnsPage)} />
+      <Route path="/pos-inventory/losses" component={PR(PosStockLossesPage)} />
+      <Route path="/pos-inventory/opname" component={PR(PosStockOpnamePage)} />
+      <Route path="/pos-inventory/mutations" component={PR(PosStockMutationsPage)} />
+      <Route path="/pos-inventory/dashboard" component={PR(PosInventoryDashboardPage)} />
+      <Route path="/pos-inventory/qr-generator" component={PR(PosQrGeneratorPage)} />
+      <Route path="/pos-inventory/qr-scanner" component={PR(PosQrScannerPage)} />
       <Route path="/logistics" component={PR(LogisticsPage)} />
       <Route path="/logistics/freight" component={PR(LogisticsFreightPage)} />
       <Route path="/logistics/freight/new" component={PR(LogisticsFreightEditorPage)} />
@@ -94,9 +125,17 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sales/invoices" component={PR(SalesInvoicesPage)} />
       <Route path="/sales/items" component={PR(SalesItemsPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
+      <Route path="/purchase/pr" component={PR(PurchaseRequestListPage)} />
+      <Route path="/purchase/pr/new" component={PR(PurchaseRequestEditorPage)} />
+      <Route path="/purchase/pr/:id" component={PR(PurchaseRequestEditorPage)} />
       <Route path="/purchase/documents" component={PR(PurchaseDocumentsListPage)} />
       <Route path="/purchase/documents/new" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/documents/:id" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
+      <Route path="/purchase/rfq/new" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/rfq/:id" component={PR(PurchaseDocumentEditorPage)} />
+      <Route path="/purchase/orders" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
+      <Route path="/purchase/orders/:id" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
@@ -125,6 +164,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
       <Route path="/expense" component={PR(ExpenseListPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
+      <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />

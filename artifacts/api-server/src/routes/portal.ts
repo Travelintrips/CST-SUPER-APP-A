@@ -11,6 +11,8 @@ import { broadcastToAdmins } from "../lib/sseManager";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { compressImageBuffer } from "../lib/imageCompress.js";
+import bcrypt from "bcryptjs";
+import { signPortalJwt } from "../lib/portalJwt.js";
 
 const router = Router();
 
@@ -156,14 +158,145 @@ router.delete("/logistic-admin/services/:id", requirePortalAdmin, async (req, re
 });
 
 // Emails yang otomatis mendapat role admin saat login (comma-separated)
-const PORTAL_ADMIN_EMAILS = (process.env.PORTAL_ADMIN_EMAILS ?? "")
-  .split(",")
+const PORTAL_ADMIN_EMAILS = [
+  "admcst001@gmail.com",
+  "wangsamasindo@gmail.com",
+  ...(process.env.PORTAL_ADMIN_EMAILS ?? "").split(","),
+]
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-// POST /api/portal/auth/login — deprecated, login sekarang via Supabase Auth langsung
-router.post("/auth/login", (_req, res) => {
-  res.status(410).json({ message: "Login sekarang menggunakan Supabase Auth. Gunakan /api/portal/auth/me setelah login via Supabase." });
+// POST /api/portal/auth/login — email/password login (non-Supabase)
+router.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body ?? {};
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email dan password diperlukan." });
+  }
+  const [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, String(email).toLowerCase().trim()));
+  if (!customer || !customer.passwordHash) {
+    return res.status(401).json({ message: "Email atau password salah." });
+  }
+  const valid = await bcrypt.compare(String(password), customer.passwordHash);
+  if (!valid) {
+    return res.status(401).json({ message: "Email atau password salah." });
+  }
+  const token = await signPortalJwt({
+    sub: String(customer.id),
+    email: customer.email,
+    customerId: customer.id,
+    role: customer.role,
+  });
+  return res.json({
+    token,
+    user: {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      company: customer.company,
+      role: customer.role,
+    },
+  });
+});
+
+// POST /api/portal/auth/signup — standalone register (non-Supabase)
+router.post("/auth/signup", async (req, res) => {
+  const { name, email, password, phone, company, role: requestedRole, serviceIds } = req.body ?? {};
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: "Nama, email, dan password diperlukan." });
+  }
+  const emailLower = String(email).toLowerCase().trim();
+  const [existing] = await db
+    .select({ id: portalCustomersTable.id })
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, emailLower));
+  if (existing) {
+    return res.status(409).json({ message: "Email sudah terdaftar." });
+  }
+  const ALLOWED_ROLES = ["customer", "vendor"];
+  const role = ALLOWED_ROLES.includes(String(requestedRole)) ? String(requestedRole) : "customer";
+  const passwordHash = await bcrypt.hash(String(password), 12);
+  const [created] = await db
+    .insert(portalCustomersTable)
+    .values({ name: String(name), email: emailLower, passwordHash, phone: phone ? String(phone) : null, company: company ? String(company) : null, role })
+    .returning();
+  if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+    await db.insert(portalCustomerServicesTable).values(
+      (serviceIds as number[]).map((sid) => ({ customerId: created.id, serviceId: Number(sid) }))
+    ).onConflictDoNothing();
+  }
+  const token = await signPortalJwt({
+    sub: String(created.id),
+    email: created.email,
+    customerId: created.id,
+    role: created.role,
+  });
+  return res.status(201).json({
+    token,
+    user: {
+      id: created.id,
+      name: created.name,
+      email: created.email,
+      phone: created.phone,
+      company: created.company,
+      role: created.role,
+    },
+  });
+});
+
+// POST /api/portal/auth/dev-login — hanya tersedia di non-production (dev & staging)
+// Membuat/menemukan dev user dan mengembalikan signed dev token untuk testing tanpa Supabase.
+router.post("/auth/dev-login", async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ message: "Not found" });
+    return;
+  }
+  const { signDevToken } = await import("../lib/supabaseAuth.js");
+  const { role } = req.body ?? {};
+  const allowedRoles = ["customer", "admin", "vendor"] as const;
+  type DevRole = typeof allowedRoles[number];
+  const safeRole: DevRole = allowedRoles.includes(role) ? role : "customer";
+
+  const devEmail = `dev-${safeRole}@dev.local`;
+  const devName = `Dev ${safeRole.charAt(0).toUpperCase() + safeRole.slice(1)}`;
+
+  let [customer] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.email, devEmail));
+
+  if (!customer) {
+    [customer] = await db
+      .insert(portalCustomersTable)
+      .values({ name: devName, email: devEmail, passwordHash: "", role: safeRole })
+      .returning();
+  } else if (customer.role !== safeRole) {
+    [customer] = await db
+      .update(portalCustomersTable)
+      .set({ role: safeRole })
+      .where(eq(portalCustomersTable.id, customer.id))
+      .returning();
+  }
+
+  const token = signDevToken({
+    id: customer.id,
+    email: customer.email,
+    role: customer.role,
+    exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 hari
+  });
+
+  return res.json({
+    token,
+    profile: {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      role: customer.role,
+    },
+  });
 });
 
 // POST /api/portal/auth/register — sync profil ke DB setelah supabase.auth.signUp
@@ -175,7 +308,8 @@ router.post("/auth/register", requirePortalAuth, async (req, res) => {
   if (name) patch.name = String(name);
   if (phone !== undefined) patch.phone = phone ? String(phone) : null;
   if (company !== undefined) patch.company = company ? String(company) : null;
-  if (requestedRole && requestedRole !== "admin") patch.role = String(requestedRole);
+  const ALLOWED_ROLES = ["customer", "vendor"];
+  if (requestedRole && ALLOWED_ROLES.includes(String(requestedRole))) patch.role = String(requestedRole);
 
   if (Object.keys(patch).length > 0) {
     await db.update(portalCustomersTable).set(patch).where(eq(portalCustomersTable.id, customerId));
@@ -200,6 +334,80 @@ router.post("/auth/register", requirePortalAuth, async (req, res) => {
     company: customer!.company,
     role: customer!.role,
     serviceIds: finalServiceIds,
+  });
+});
+
+// POST /api/portal/auth/otp/request — kirim kode OTP ke email (passwordless login)
+router.post("/auth/otp/request", async (req, res) => {
+  const { email } = req.body ?? {};
+  if (!email) return res.status(400).json({ message: "Email diperlukan." });
+  const emailLower = String(email).toLowerCase().trim();
+
+  let [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, emailLower));
+  if (!customer) {
+    const [created] = await db.insert(portalCustomersTable).values({
+      name: emailLower.split("@")[0],
+      email: emailLower,
+      passwordHash: "",
+      role: "customer",
+    }).returning();
+    customer = created;
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiry = new Date(Date.now() + 10 * 60 * 1000);
+  await db.update(portalCustomersTable)
+    .set({ resetPasswordToken: `otp:${code}`, resetPasswordExpiry: expiry })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  const smtpOk = isSmtpConfigured();
+  if (smtpOk) {
+    try {
+      await sendMail({
+        to: emailLower,
+        subject: "Kode Login CST Portal",
+        html: `<p>Kode login Anda: <strong style="font-size:24px;letter-spacing:4px">${code}</strong></p><p>Berlaku 10 menit.</p>`,
+        text: `Kode login Anda: ${code}\nBerlaku 10 menit.`,
+      });
+    } catch (err) {
+      req.log?.warn({ err }, "OTP email failed");
+    }
+  }
+
+  const isDev = process.env.NODE_ENV !== "production";
+  return res.json({
+    sent: smtpOk,
+    ...(isDev ? { _dev_code: code } : {}),
+    message: smtpOk ? "Kode OTP telah dikirim ke email Anda." : `Kode OTP: ${code} (SMTP tidak dikonfigurasi)`,
+  });
+});
+
+// POST /api/portal/auth/otp/verify — verifikasi kode OTP dan login
+router.post("/auth/otp/verify", async (req, res) => {
+  const { email, code } = req.body ?? {};
+  if (!email || !code) return res.status(400).json({ message: "Email dan kode diperlukan." });
+  const emailLower = String(email).toLowerCase().trim();
+
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, emailLower));
+  if (!customer) return res.status(401).json({ message: "Email tidak terdaftar." });
+
+  const stored = customer.resetPasswordToken;
+  const expiry = customer.resetPasswordExpiry;
+  if (!stored?.startsWith("otp:") || stored.slice(4) !== String(code).trim()) {
+    return res.status(401).json({ message: "Kode OTP salah." });
+  }
+  if (!expiry || expiry < new Date()) {
+    return res.status(401).json({ message: "Kode OTP sudah kadaluarsa." });
+  }
+
+  await db.update(portalCustomersTable)
+    .set({ resetPasswordToken: null, resetPasswordExpiry: null })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  const token = await signPortalJwt({ sub: String(customer.id), email: customer.email, customerId: customer.id, role: customer.role });
+  return res.json({
+    token,
+    user: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, company: customer.company, role: customer.role },
   });
 });
 
@@ -536,9 +744,18 @@ router.get("/admin/products", requirePortalAdmin, async (_req, res) => {
   }));
 });
 
+// GET /api/portal/admin/product-categories
+router.get("/admin/product-categories", requirePortalAdmin, async (_req, res) => {
+  const cats = await db
+    .select({ id: productCategoriesTable.id, name: productCategoriesTable.name })
+    .from(productCategoriesTable)
+    .orderBy(productCategoriesTable.name);
+  return res.json(cats);
+});
+
 // POST /api/portal/admin/products  — create a new product (admin only)
 router.post("/admin/products", requirePortalAdmin, async (req, res) => {
-  const { name, description, price, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
+  const { name, description, price, imageUrl, mediaItems, unit, unitOptions, categories } = req.body ?? {};
   if (!name || typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Nama produk harus diisi" });
   }
@@ -549,21 +766,31 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
     .from(productsTable);
   const nextId = (Number(maxRow?.maxId ?? 0) + 1);
   const autoSku = `PRD-${year}-${String(nextId).padStart(4, "0")}`;
-  const [created] = await db
-    .insert(productsTable)
-    .values({
-      name: name.trim(),
-      sku: autoSku,
-      description: description ? String(description).trim() : null,
-      price: parsedPrice.toFixed(2),
-      imageUrl: imageUrl ? String(imageUrl).trim() : null,
-      mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
-      itemType: "barang",
-      unit: unit ? String(unit).trim() : "pcs",
-      unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : (unitOptions ? JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]"),
-      isActive: true,
-    })
-    .returning();
+  const catNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
+  const created = await db.transaction(async (tx) => {
+    const [p] = await tx
+      .insert(productsTable)
+      .values({
+        name: name.trim(),
+        sku: autoSku,
+        description: description ? String(description).trim() : null,
+        price: parsedPrice.toFixed(2),
+        imageUrl: imageUrl ? String(imageUrl).trim() : null,
+        mediaItems: mediaItems ? JSON.stringify(mediaItems) : "[]",
+        itemType: "barang",
+        unit: unit ? String(unit).trim() : "pcs",
+        unitOptions: Array.isArray(unitOptions) ? JSON.stringify(unitOptions) : (unitOptions ? JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean)) : "[]"),
+        isActive: true,
+      })
+      .returning();
+    if (catNames.length > 0) {
+      const validCats = await tx.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, catNames));
+      if (validCats.length > 0) {
+        await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: p.id, categoryId: c.id })));
+      }
+    }
+    return { ...p, categories: catNames };
+  });
   return res.status(201).json(created);
 });
 
@@ -571,7 +798,7 @@ router.post("/admin/products", requirePortalAdmin, async (req, res) => {
 router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
-  const { name, description, price, stock, imageUrl, mediaItems, unit, unitOptions } = req.body ?? {};
+  const { name, description, price, stock, imageUrl, mediaItems, unit, unitOptions, categories } = req.body ?? {};
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = sanitizeText(description);
@@ -585,9 +812,27 @@ router.put("/admin/products/:id", requirePortalAdmin, async (req, res) => {
       ? JSON.stringify(unitOptions)
       : JSON.stringify(String(unitOptions).split(",").map((s: string) => s.trim()).filter(Boolean));
   }
-  if (Object.keys(updates).length === 0) return res.status(400).json({ message: "Tidak ada field yang diubah" });
-  const [updated] = await db.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning();
-  return res.json(updated);
+  const catNames: string[] = Array.isArray(categories) ? categories.map(String).filter(Boolean) : [];
+  const hasProductUpdates = Object.keys(updates).length > 0;
+  const hasCategoryUpdate = categories !== undefined;
+  if (!hasProductUpdates && !hasCategoryUpdate) return res.status(400).json({ message: "Tidak ada field yang diubah" });
+  const result = await db.transaction(async (tx) => {
+    let updated = hasProductUpdates
+      ? (await tx.update(productsTable).set(updates).where(eq(productsTable.id, id)).returning())[0]
+      : (await tx.select().from(productsTable).where(eq(productsTable.id, id)))[0];
+    if (hasCategoryUpdate) {
+      await tx.delete(productCategoryMapTable).where(eq(productCategoryMapTable.productId, id));
+      if (catNames.length > 0) {
+        const validCats = await tx.select().from(productCategoriesTable).where(inArray(productCategoriesTable.name, catNames));
+        if (validCats.length > 0) {
+          await tx.insert(productCategoryMapTable).values(validCats.map((c) => ({ productId: id, categoryId: c.id })));
+        }
+      }
+    }
+    const catMap = await getProductCategories([id]);
+    return { ...updated, categories: catMap[id] ?? [] };
+  });
+  return res.json(result);
 });
 
 // DELETE /api/portal/admin/products/:id — hapus produk (admin only)
@@ -616,21 +861,80 @@ router.post("/admin/upload", requirePortalAdmin, _multerUpload.single("file"), a
   }
 });
 
-// POST /api/portal/order-upload-url  — get presigned URL for order document uploads (customer-attachments)
-router.post("/order-upload-url", requirePortalAuth, async (req, res) => {
-  const { contentType } = req.body ?? {};
-  if (!contentType) return res.status(400).json({ message: "contentType wajib diisi" });
-  const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-  if (!allowed.includes(contentType) && !contentType.startsWith("image/"))
-    return res.status(415).json({ message: "Tipe file tidak diizinkan" });
-  try {
-    const uploadURL = await _objectStorage.getObjectEntityUploadURL();
-    const objectPath = _objectStorage.normalizeObjectEntityPath(uploadURL);
-    return res.json({ uploadURL, objectPath });
-  } catch (_err) {
-    return res.status(500).json({ message: "Gagal membuat URL upload" });
+// Per-customer rate limit for portal order uploads: 20 per customer per hour.
+// Portal customers are self-registered (public sign-up); keying by customer ID
+// (not IP) prevents bypass via proxy / shared NAT.
+interface _RateEntry { count: number; resetAt: number }
+const _PORTAL_UPLOAD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const _PORTAL_UPLOAD_LIMIT = 20;
+const _portalUploadCustomerMap = new Map<number, _RateEntry>();
+
+function _checkPortalUploadLimit(customerId: number): boolean {
+  const now = Date.now();
+  let entry = _portalUploadCustomerMap.get(customerId);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + _PORTAL_UPLOAD_WINDOW_MS };
   }
+  if (entry.count >= _PORTAL_UPLOAD_LIMIT) return false;
+  entry.count += 1;
+  _portalUploadCustomerMap.set(customerId, entry);
+  return true;
+}
+
+const _portalUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB hard cap enforced by multer/server
+});
+
+const _PORTAL_ALLOWED_MIME = new Set([
+  "application/pdf",
+  "image/jpeg", "image/png", "image/webp", "image/gif",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+// POST /api/portal/order-upload
+// Server-side proxy upload: file goes through the API server so multer enforces
+// the 20 MB size limit before any byte reaches object storage.  This replaces
+// the old presigned-URL flow (/order-upload-url) which issued unconstrained GCS
+// PUT URLs that bypassed all server-side size limits.
+router.post("/order-upload", requirePortalAuth, (req, res, next) => {
+  _portalUpload.single("file")(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ message: "Ukuran file melebihi batas 20 MB." }); return;
+      }
+      res.status(400).json({ message: "Upload gagal: " + (err as Error).message }); return;
+    }
+    next();
+  });
+}, async (req, res) => {
+  const portalReq = req as unknown as PortalAuthReq;
+  const customerId = portalReq.portalCustomerId;
+
+  if (!_checkPortalUploadLimit(customerId)) {
+    return res.status(429).json({ message: "Terlalu banyak upload. Coba lagi dalam 1 jam." });
+  }
+
+  if (!req.file) return res.status(400).json({ message: "File wajib diunggah" });
+
+  const mime = req.file.mimetype;
+  if (!_PORTAL_ALLOWED_MIME.has(mime) && !mime.startsWith("image/")) {
+    return res.status(415).json({ message: "Tipe file tidak diizinkan" });
+  }
+
+  try {
+    const objectPath = await _objectStorage.uploadPrivateEntity(req.file.buffer, mime);
+    return res.json({ objectPath });
+  } catch (_err) {
+    return res.status(500).json({ message: "Gagal mengunggah file" });
+  }
+});
+
+// POST /api/portal/order-upload-url  — DEPRECATED, kept for backward compat.
+// Returns 410 Gone so old clients fail visibly rather than silently.
+router.post("/order-upload-url", requirePortalAuth, (_req, res) => {
+  return res.status(410).json({ message: "Endpoint ini sudah tidak aktif. Gunakan /api/portal/order-upload (multipart/form-data)." });
 });
 
 // Shared helper: find or create CRM customer by email
@@ -1300,10 +1604,10 @@ router.get("/quote-requests", async (req, res) => {
 });
 
 // PATCH /api/portal/quote-requests/:id — update status/notes/handledBy (BizPortal admin)
-router.patch("/quote-requests/:id", async (req, res) => {
+router.patch("/quote-requests/:id", async (req, res): Promise<void> => {
   if (!(await requireClerkUser(req, res))) return;
   const id = Number(req.params.id);
-  if (!id) return res.status(400).json({ error: "invalid id" });
+  if (!id) { res.status(400).json({ error: "invalid id" }); return; }
   const { status, notes, handledBy } = req.body ?? {};
   await db
     .update(quoteRequestsTable)

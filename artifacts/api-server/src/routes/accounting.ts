@@ -133,8 +133,8 @@ router.post("/companies", async (req, res) => {
     const [created] = await db
       .insert(companiesTable)
       .values({
-        name,
-        code,
+        companyName: name,
+        companyCode: code,
         isHolding: isHolding ?? false,
         parentCompanyId: parentCompanyId ?? null,
         address,
@@ -1880,6 +1880,72 @@ router.get("/holding/entries", async (req, res) => {
   `);
 
   return res.json(result.rows);
+});
+
+/** GET /accounting/holding/pl-monthly — P&L breakdown per bulan per perusahaan */
+router.get("/holding/pl-monthly", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${holdingId}
+    ORDER BY c.company_code
+  `);
+  if (members.rows.length === 0) return res.json({ companies: [], months: [] });
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const companyIdsArr = sql`ARRAY[${sql.join(companyIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter =
+    dateRange.from && dateRange.to
+      ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+      : dateRange.from
+        ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+        : dateRange.to
+          ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+          : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
+      ael.company_id,
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue' THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN coa.type = 'expense' THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS expense
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      AND ael.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+    GROUP BY month, ael.company_id
+    ORDER BY month, ael.company_id
+  `);
+
+  type Row = { month: string; company_id: number; revenue: string; expense: string };
+  const rows = result.rows as Row[];
+
+  const companiesMeta = (members.rows as { company_id: number; company_name: string; company_code: string }[]);
+  const allMonths = [...new Set(rows.map((r) => r.month))].sort();
+
+  const monthData = allMonths.map((month) => {
+    const byCompany: Record<number, { revenue: number; expense: number; netPL: number }> = {};
+    companiesMeta.forEach((c) => {
+      const row = rows.find((r) => r.month === month && r.company_id === c.company_id);
+      const revenue = Number(row?.revenue ?? 0);
+      const expense = Number(row?.expense ?? 0);
+      byCompany[c.company_id] = { revenue, expense, netPL: revenue - expense };
+    });
+    return { month, byCompany };
+  });
+
+  return res.json({
+    companies: companiesMeta.map((c) => ({ companyId: c.company_id, companyName: c.company_name, companyCode: c.company_code })),
+    months: monthData,
+  });
 });
 
 export default router;

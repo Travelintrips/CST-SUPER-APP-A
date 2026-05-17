@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import type { IncomingMessage, ServerResponse } from "http";
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
@@ -9,6 +10,7 @@ import router from "./routes";
 import authRouter from "./routes/auth";
 import companiesRouter from "./routes/companies";
 import { authMiddleware } from "./middlewares/authMiddleware";
+import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
 import { logger } from "./lib/logger";
 import { recordResponseTime } from "./lib/responseTimeLog";
 
@@ -94,11 +96,31 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(cookieParser());
 
+// Rate-limit bearer-token requests before any auth processing.
+// Applies only to requests carrying "Authorization: Bearer ..." headers
+// (portal/mobile Supabase tokens). Internal BizPortal session-cookie
+// requests carry no Authorization header and are not affected.
+app.use(bearerRateLimiter);
+
 // Replit Auth middleware — populates req.user and req.isAuthenticated()
 app.use(authMiddleware);
 
 // Auth routes (login/callback/logout/mobile-auth) — mounted under /api
 app.use("/api", authRouter);
+
+// ─── Base directory resolved from this file's location ───────────────────────
+// process.cwd() varies based on where node is invoked from; using import.meta.url
+// gives us a stable path relative to this source file regardless of cwd.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// In prod (compiled dist): artifacts/api-server/dist → artifacts/ needs ../..
+const ARTIFACTS_DIR = path.resolve(__dirname, "../..");
+
+// ─── POS Images Static Serving ───────────────────────────────────────────────
+// Gambar produk POS kasir disimpan di folder ini dan diakses secara publik.
+const POS_IMAGES_DIR = path.resolve(ARTIFACTS_DIR, "api-server/public/pos-images");
+if (!fs.existsSync(POS_IMAGES_DIR)) fs.mkdirSync(POS_IMAGES_DIR, { recursive: true });
+app.use("/pos-images", express.static(POS_IMAGES_DIR, { maxAge: "7d" }));
 
 // ─── Customer Portal Static Serving ──────────────────────────────────────────
 // Customer portal is built with base="/" so assets are at /assets/...
@@ -106,8 +128,8 @@ app.use("/api", authRouter);
 // Must come BEFORE /api routes for static assets, but SPA fallback is AFTER.
 
 const CUSTOMER_PORTAL_DIST = path.resolve(
-  process.cwd(),
-  "../customer-portal/dist/public",
+  ARTIFACTS_DIR,
+  "customer-portal/dist/public",
 );
 
 if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
@@ -123,8 +145,8 @@ if (fs.existsSync(CUSTOMER_PORTAL_DIST)) {
 //   3. bizportal.cstlogistic.co.id/ works (custom domain root — served below)
 
 const BIZPORTAL_DIST = path.resolve(
-  process.cwd(),
-  "../bizportal/dist/public",
+  ARTIFACTS_DIR,
+  "bizportal/dist/public",
 );
 
 // Serve static assets at /bizportal/* (strips /bizportal prefix internally)

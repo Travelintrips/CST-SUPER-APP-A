@@ -8,6 +8,7 @@ interface OrderNotificationsContextValue {
   markAllRead: () => void;
   clearAll: () => void;
   setOnNewOrder: (fn: (n: OrderNotification) => void) => void;
+  lastFreightEventAt: number | null;
 }
 
 const OrderNotificationsContext = createContext<OrderNotificationsContextValue | null>(null);

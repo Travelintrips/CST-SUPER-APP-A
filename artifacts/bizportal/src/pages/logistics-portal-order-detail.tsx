@@ -816,16 +816,16 @@ export default function LogisticsPortalOrderDetailPage() {
               </CardContent>
             </Card>
 
-            {(order as Record<string, unknown>).optionsToken && (
+            {order.optionsToken && (
               <Card className="border-blue-200 bg-blue-50/50">
                 <CardContent className="p-4 text-sm space-y-1">
                   <p className="font-medium text-blue-800">Link opsi sudah dikirim ke customer:</p>
                   <a
-                    href={`/choose-option/${(order as Record<string, unknown>).optionsToken as string}`}
+                    href={`/choose-option/${order.optionsToken}`}
                     target="_blank" rel="noopener noreferrer"
                     className="text-blue-600 underline text-xs break-all"
                   >
-                    /choose-option/{(order as Record<string, unknown>).optionsToken as string}
+                    /choose-option/{order.optionsToken}
                   </a>
                 </CardContent>
               </Card>

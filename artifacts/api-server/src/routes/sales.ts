@@ -13,13 +13,15 @@ import {
 import { eq, sql, desc, and, count, inArray, or, ilike, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
-import { postSalesInvoice } from "../lib/accounting.js";
+import { postSalesInvoice, postSalesCogs } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
+import { postStockOut, StockShortageError } from "../lib/inventoryStock.js";
+import { convertQty } from "../lib/uomEngine.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -46,6 +48,22 @@ interface LineInput {
   description?: string | null;
   quantity: number;
   unitPrice: number;
+  salesUomId?: number | null;
+}
+
+/** Compute base_qty by converting quantity from salesUomId → product's base_uom_id. */
+async function resolveBaseQty(line: LineInput): Promise<number | null> {
+  if (!line.salesUomId || !line.productId) return null;
+  try {
+    const prodRow = (await db.execute(sql`
+      SELECT base_uom_id FROM products WHERE id = ${line.productId} LIMIT 1
+    `)).rows[0] as { base_uom_id: number | null } | undefined;
+    const baseUomId = prodRow?.base_uom_id ?? null;
+    if (!baseUomId || baseUomId === line.salesUomId) return Number(line.quantity);
+    return await convertQty(Number(line.quantity), line.salesUomId, baseUomId);
+  } catch {
+    return null;
+  }
 }
 
 function serializeCustomer(c: typeof customersTable.$inferSelect) {
@@ -71,6 +89,7 @@ function serializeLine(l: typeof salesDocumentLinesTable.$inferSelect) {
   return {
     ...l,
     quantity: Number(l.quantity),
+    baseQty: l.baseQty != null ? Number(l.baseQty) : null,
     unitPrice: Number(l.unitPrice),
     subtotal: Number(l.subtotal),
   };
@@ -233,11 +252,30 @@ router.get("/documents/:id", async (req, res) => {
 
 router.post("/documents", async (req, res) => {
   const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId,
-    origin, destination, transportMode, etd, eta } = req.body ?? {};
+    origin, destination, transportMode, etd, eta, logisticOrderId } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())
     return res.status(400).json({ message: "customerName required" });
   if (!Array.isArray(lines) || lines.length === 0)
     return res.status(400).json({ message: "At least one line required" });
+
+  // Idempotency: prevent duplicate SO for same logistic order
+  if (logisticOrderId != null) {
+    const logOrderId = Number(logisticOrderId);
+    if (!Number.isNaN(logOrderId)) {
+      const [existing] = await db
+        .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+        .from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.logisticOrderId, logOrderId))
+        .limit(1);
+      if (existing) {
+        return res.status(409).json({
+          message: "Sales Order sudah pernah dibuat untuk logistic order ini",
+          existingId: existing.id,
+          existingDocNumber: existing.docNumber,
+        });
+      }
+    }
+  }
 
   const docKind: SalesDocKind = kind === "order" ? "order" : "quote";
   const total = (lines as LineInput[]).reduce(
@@ -271,6 +309,7 @@ router.post("/documents", async (req, res) => {
           transportMode: transportMode ?? null,
           etd: etd ?? null,
           eta: eta ?? null,
+          logisticOrderId: (logisticOrderId != null && !Number.isNaN(Number(logisticOrderId))) ? Number(logisticOrderId) : null,
         })
         .returning();
       doc = inserted;
@@ -283,17 +322,20 @@ router.post("/documents", async (req, res) => {
   }
   if (!doc) throw new Error("Failed to create sales document after retries");
 
-  await db.insert(salesDocumentLinesTable).values(
-    (lines as LineInput[]).map((l) => ({
-      documentId: doc.id,
+  const lineValues = await Promise.all(
+    (lines as LineInput[]).map(async (l) => ({
+      documentId: doc!.id,
       productId: l.productId ?? null,
       name: l.name,
       description: l.description ?? null,
       quantity: String(l.quantity),
       unitPrice: String(l.unitPrice),
       subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-    })),
+      salesUomId: l.salesUomId ?? null,
+      baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+    }))
   );
+  await db.insert(salesDocumentLinesTable).values(lineValues);
 
   const detail = await loadDocWithLines(doc.id);
 
@@ -348,8 +390,8 @@ router.put("/documents/:id", async (req, res) => {
     patch["grandTotal"] = String(grandTotal);
     await db.delete(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
     if (lines.length > 0) {
-      await db.insert(salesDocumentLinesTable).values(
-        (lines as LineInput[]).map((l) => ({
+      const putLineValues = await Promise.all(
+        (lines as LineInput[]).map(async (l) => ({
           documentId: id,
           productId: l.productId ?? null,
           name: l.name,
@@ -357,8 +399,11 @@ router.put("/documents/:id", async (req, res) => {
           quantity: String(l.quantity),
           unitPrice: String(l.unitPrice),
           subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-        })),
+          salesUomId: l.salesUomId ?? null,
+          baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+        }))
       );
+      await db.insert(salesDocumentLinesTable).values(putLineValues);
     }
   } else if (taxRateId !== undefined) {
     const total = Number(existing.totalAmount);
@@ -443,7 +488,126 @@ router.post("/documents/:id/action", async (req, res) => {
       return res.status(400).json({ message: "Invalid action" });
   }
 
+  // T005: Pre-flight stock check BEFORE updating delivery status
+  if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+    const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+    const productLines = lines.filter((l) => l.productId != null);
+
+    if (productLines.length > 0) {
+      const invWh = (await db.execute(sql`
+        SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+      `)).rows[0] as { id: number } | undefined;
+
+      if (invWh) {
+        const shortages: Array<{ productId: number; name: string; requested: number; available: number }> = [];
+        for (const line of productLines) {
+          // Use base_qty (converted to product's base UOM) if available, else fall back to quantity
+          const qty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
+          const stockRow = (await db.execute(sql`
+            SELECT COALESCE(stock_available::float, 0) AS stock_available
+            FROM inventory_stock
+            WHERE product_id = ${line.productId} AND warehouse_id = ${invWh.id}
+            ORDER BY id LIMIT 1
+          `)).rows[0] as { stock_available: number } | undefined;
+          const available = Number(stockRow?.stock_available ?? 0);
+          if (available < qty) {
+            shortages.push({ productId: line.productId!, name: line.name, requested: qty, available });
+          }
+        }
+        if (shortages.length > 0) {
+          const detail = shortages
+            .map((s) => `${s.name}: tersedia ${s.available}, diminta ${s.requested}`)
+            .join("; ");
+          return res.status(422).json({
+            message: `Stok tidak cukup untuk pengiriman: ${detail}`,
+            shortages,
+          });
+        }
+      }
+    }
+  }
+
   await db.update(salesDocumentsTable).set(patch).where(eq(salesDocumentsTable.id, id));
+
+  // T005: When SO is delivered, deduct stock (awaited — pre-flight already passed)
+  if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
+    try {
+      const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
+      const productLines = lines.filter((l) => l.productId != null);
+      if (productLines.length === 0) {
+        // nothing to deduct, fall through
+      } else {
+        // ── Legacy wh_stock deduction (backward compat) ─────────────────────
+        const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+        const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
+        const legacyWhId: number | undefined = wh?.id;
+        const cogsLines: Array<{ name: string; qty: number; costPrice: number }> = [];
+        if (legacyWhId) {
+          for (const line of productLines) {
+            const qty = Number(line.quantity);
+            const cur = await db.execute(sql`
+              SELECT qty::float, COALESCE(cost_price::float, 0) AS cost_price
+              FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${legacyWhId} AND rack_id IS NULL
+            `);
+            const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
+            const costPrice = Number((cur.rows[0] as any)?.cost_price ?? 0);
+            const qtyAfter = Math.max(0, qtyBefore - qty);
+            cogsLines.push({ name: line.name, qty, costPrice });
+            await db.execute(sql`
+              INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, updated_at)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, ${qtyAfter}, NOW())
+              ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+              DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
+            `);
+            await db.execute(sql`
+              INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, ref_type, ref_id, note)
+              VALUES (${line.productId}, ${legacyWhId}, NULL, 'so_delivery', ${qty}, ${qtyBefore}, ${qtyAfter},
+                      'sales_order', ${id}, ${`SO Terkirim: ${doc.docNumber}`})
+            `);
+          }
+        }
+
+        // ── COGS journal entry (DR HPP / CR Persediaan) ──────────────────────
+        if (cogsLines.length > 0) {
+          void postSalesCogs({
+            salesDocId: id,
+            docNumber: doc.docNumber,
+            lines: cogsLines,
+          }).catch((e) => console.error("[accounting] postSalesCogs error:", e));
+        }
+
+        // ── New inventory_stock deduction (strict=true already guaranteed by pre-flight) ───
+        const invWh = (await db.execute(sql`
+          SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+        `)).rows[0] as { id: number } | undefined;
+        if (invWh) {
+          for (const line of productLines) {
+            // Use base_qty when set (converted to product's base UOM); fallback to quantity
+            const deductQty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
+            await postStockOut({
+              productId: line.productId!,
+              warehouseId: invWh.id,
+              qty: deductQty,
+              movementType: "SALES_DELIVERY",
+              referenceType: "SALES_ORDER",
+              referenceId: id,
+              notes: `SO Terkirim: ${doc.docNumber}`,
+              strict: false, // pre-flight already validated; skip double-check here
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (e instanceof StockShortageError) {
+        // Rollback delivery status
+        await db.update(salesDocumentsTable)
+          .set({ deliveryStatus: doc.deliveryStatus, status: doc.status })
+          .where(eq(salesDocumentsTable.id, id));
+        return res.status(422).json({ message: e.message });
+      }
+      console.error("[wh] mark_delivered stock-out error:", e);
+    }
+  }
 
   // Notify admin via WhatsApp when quotation is confirmed as Sales Order (fire-and-forget)
   // Guard: only send if status was not already "confirmed" to prevent duplicate notifications on retries

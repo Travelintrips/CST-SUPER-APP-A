@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw } from "lucide-react";
+import { Bell, Package, Ship, ShoppingBag, CheckCheck, Trash2, FileText, RefreshCw, Container, Layers } from "lucide-react";
 import { toast } from "sonner";
 import {
   Popover,
@@ -8,13 +8,17 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useOrderNotificationsContext, type OrderNotification } from "@/contexts/OrderNotificationsContext";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
+import type { OrderNotification } from "@/hooks/useOrderNotifications";
 
 function typeLabel(type: OrderNotification["type"]) {
   if (type === "logistic") return "Order Logistik Baru";
   if (type === "logistic_status") return "Update Status Logistik";
   if (type === "portal_sales") return "Order Portal";
   if (type === "sales_update") return "Update Sales Order";
+  if (type === "freight_new") return "Freight Shipment Baru";
+  if (type === "freight_status") return "Update Status Shipment";
+  if (type === "freight_stage") return "Update Stage Shipment";
   return "Order Produk";
 }
 
@@ -23,6 +27,9 @@ function typeIcon(type: OrderNotification["type"]) {
   if (type === "logistic_status") return <RefreshCw size={14} className="text-cyan-500 shrink-0" />;
   if (type === "portal_sales") return <ShoppingBag size={14} className="text-purple-500 shrink-0" />;
   if (type === "sales_update") return <FileText size={14} className="text-orange-500 shrink-0" />;
+  if (type === "freight_new") return <Container size={14} className="text-indigo-500 shrink-0" />;
+  if (type === "freight_status") return <RefreshCw size={14} className="text-violet-500 shrink-0" />;
+  if (type === "freight_stage") return <Layers size={14} className="text-teal-500 shrink-0" />;
   return <Package size={14} className="text-green-500 shrink-0" />;
 }
 
@@ -30,6 +37,7 @@ function orderHref(n: OrderNotification) {
   if (n.type === "logistic" || n.type === "logistic_status") return `/logistics/portal-orders/${n.orderId}`;
   if (n.type === "portal_sales") return `/logistics/portal-orders`;
   if (n.type === "sales_update") return `/sales/documents/${n.orderId}`;
+  if (n.type === "freight_new" || n.type === "freight_status" || n.type === "freight_stage") return `/logistics/freight/${n.orderId}`;
   return `/portal-product-orders`;
 }
 
@@ -57,6 +65,18 @@ function notifDescription(n: OrderNotification): string {
   if (n.type === "sales_update") {
     const total = n.grandTotal != null ? ` · ${formatRupiah(n.grandTotal)}` : "";
     return `${n.actionLabel ?? ""}${total}`;
+  }
+  if (n.type === "freight_new") {
+    const route = n.origin && n.destination ? ` · ${n.origin} → ${n.destination}` : "";
+    return `${n.commodity ?? ""}${route}`;
+  }
+  if (n.type === "freight_status") {
+    const route = n.origin && n.destination ? ` · ${n.origin} → ${n.destination}` : "";
+    return `Status: ${n.status ?? ""}${route}`;
+  }
+  if (n.type === "freight_stage") {
+    const vendor = n.vendorName ? ` · ${n.vendorName}` : "";
+    return `${n.stageType ?? ""}: ${n.stageStatus ?? ""}${vendor}`;
   }
   return `${n.itemCount ?? 1} item · ${formatRupiah(n.grandTotal ?? 0)}`;
 }

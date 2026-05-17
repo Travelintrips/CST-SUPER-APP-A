@@ -15,12 +15,20 @@ import { runKnowledgeBaseMigration } from "./lib/knowledgeBaseMigration";
 import { runCompaniesMigration } from "./lib/companiesMigration";
 import { runHoldingMigration } from "./lib/holdingMigration";
 import { runPosKasirMigration } from "./lib/posKasirMigration";
+import { runSessionsMigration } from "./lib/sessionsMigration";
+import { runCustomRolesMigration } from "./lib/customRolesMigration";
+import { runUomMigration } from "./lib/uomMigration";
+import { runFreightAuditMigration } from "./lib/freightAuditMigration";
 
-const rawPort = process.env["PORT"];
+const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
-if (!rawPort) {
+// Security: PORTAL_ADMIN_EMAILS must be set in production.
+// Without it, requirePortalAdmin falls back to DB role-only check,
+// allowing pre-existing forged admin rows to pass.
+if (process.env["NODE_ENV"] === "production" && !process.env["PORTAL_ADMIN_EMAILS"]?.trim()) {
   throw new Error(
-    "PORT environment variable is required but was not provided.",
+    "PORTAL_ADMIN_EMAILS environment variable is required in production. " +
+    "Set it to a comma-separated list of allowed portal admin emails."
   );
 }
 
@@ -30,7 +38,36 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function runWithRetry<T>(
+  name: string,
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  delayMs = 10_000
+): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await fn();
+      return;
+    } catch (err: unknown) {
+      const isCircuitBreaker =
+        err instanceof Error && err.message.includes("ECIRCUITBREAKER");
+      if (isCircuitBreaker && attempt < maxAttempts) {
+        logger.warn(
+          { attempt, maxAttempts, delayMs },
+          `${name}: circuit breaker tripped, retrying after ${delayMs}ms...`
+        );
+        await sleep(delayMs);
+      } else {
+        logger.error({ err }, `${name} failed`);
+        return;
+      }
+    }
+  }
+}
+
+const server = app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
@@ -38,60 +75,15 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
-  // Buat tabel companies + company_id columns (idempotent)
-  runCompaniesMigration().catch((err) => {
-    logger.error({ err }, "Companies migration error");
-  });
-
-  // Buat tabel holding_groups + company_holding_members + seed CST-GROUP (idempotent)
-  runHoldingMigration().catch((err) => {
-    logger.error({ err }, "Holding migration error");
-  });
-
-  // Jalankan portal schema migration (idempotent — aman untuk prod)
-  runPortalMigration().catch((err) => {
-    logger.error({ err }, "Portal migration error");
-  });
-
-  // Jalankan accounting schema migration (idempotent — tambah kolom automation)
-  runAccountingMigration().catch((err) => {
-    logger.error({ err }, "Accounting migration error");
-  });
-
-  // Buat tabel oauth_states untuk Google OAuth state management
-  runOauthStateMigration().catch((err) => {
-    logger.error({ err }, "OAuth state migration error");
-  });
-
-  // Buat tabel chatbot_knowledge_base (idempotent)
-  runKnowledgeBaseMigration().catch((err) => {
-    logger.error({ err }, "Knowledge base migration error");
-  });
-
-  // Enable Supabase Realtime on driver tables (idempotent)
-  enableRealtimeTables().catch((err) => {
-    logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
-  });
-
-  // Run idempotent accounting seed (no-op if accounts already exist)
-  seedAccountingDefaults().catch((seedErr) => {
-    logger.error({ err: seedErr }, "Accounting seed failed");
-  });
-
-  // Seed logistics service items, catalog products, then demo data, then remediate any remaining orphan products
-  seedLogisticsServiceItems()
-    .then(() => seedCatalogProducts())
-    .then(() => seedDemoData())
-    .then(() => seedDemoDrivers())
-    .then(() => remediateOrphanProducts())
-    .catch((seedErr) => {
-      logger.error({ err: seedErr }, "Logistics/demo seed failed");
-    });
-
-  // Buat tabel POS Kasir Thai Tea (idempotent)
-  runPosKasirMigration().catch((err) => {
-    logger.error({ err }, "POS Kasir migration error");
-  });
+  // Graceful shutdown on SIGTERM / SIGINT — release port immediately so the
+  // next process can bind without waiting for OS TIME_WAIT.
+  const shutdown = () => {
+    server.close(() => process.exit(0));
+    // Force-exit after 5 s if connections are still draining.
+    setTimeout(() => process.exit(0), 5_000).unref();
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
 
   // Start IMAP email poller (polls every 3 minutes when IMAP credentials are configured)
   startImapPoller(3 * 60 * 1000);
@@ -99,4 +91,38 @@ app.listen(port, (err) => {
   // Auto-delete OCR temp files older than 24 hours (runs every 6 hours)
   startOcrTempCleanup();
 
+  // Jalankan semua migration BERURUTAN dengan jeda 5 detik di awal.
+  // Ini mencegah connection storm ke Supabase yang men-trigger circuit breaker
+  // (ECIRCUITBREAKER) akibat banyak koneksi DB dibuka serentak saat startup.
+  sleep(5_000)
+    .then(() => runWithRetry("Sessions migration", runSessionsMigration))
+    .then(() => runWithRetry("Companies migration", runCompaniesMigration))
+    .then(() => runWithRetry("Holding migration", runHoldingMigration))
+    .then(() => runWithRetry("Portal migration", runPortalMigration))
+    .then(() => runWithRetry("Accounting migration", runAccountingMigration))
+    .then(() => runWithRetry("OAuth state migration", runOauthStateMigration))
+    .then(() => runWithRetry("Knowledge base migration", runKnowledgeBaseMigration))
+    .then(() => runWithRetry("POS Kasir migration", runPosKasirMigration))
+    .then(() => runWithRetry("Custom roles migration", runCustomRolesMigration))
+    .then(() => runWithRetry("UOM migration", runUomMigration))
+    .then(() => runWithRetry("Freight audit log migration", runFreightAuditMigration))
+    .then(() => enableRealtimeTables().catch((err) => {
+      logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
+    }))
+    .then(() => seedAccountingDefaults().catch((err) => {
+      logger.error({ err }, "Accounting seed failed");
+    }))
+    .then(() =>
+      seedLogisticsServiceItems()
+        .then(() => seedCatalogProducts())
+        .then(() => seedDemoData())
+        .then(() => seedDemoDrivers())
+        .then(() => remediateOrphanProducts())
+        .catch((seedErr) => {
+          logger.error({ err: seedErr }, "Logistics/demo seed failed");
+        })
+    )
+    .catch((err) => {
+      logger.error({ err }, "Startup migration/seed chain failed");
+    });
 });

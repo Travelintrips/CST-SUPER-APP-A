@@ -122,7 +122,7 @@ const IMPORT_HEADERS = ["Nama Produk*", "SKU*", "Jenis (barang/jasa)*", "Kategor
 const emptyForm = (): ItemForm => ({
   name: "",
   sku: "",
-  itemType: "jasa",
+  itemType: "barang",
   categories: [],
   subcategory: "",
   unit: "pcs",

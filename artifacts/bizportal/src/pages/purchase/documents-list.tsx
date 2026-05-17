@@ -23,6 +23,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, X } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 const idr = (n: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
@@ -77,12 +78,14 @@ export default function PurchaseDocumentsListPage({ kind }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { activeCompanyId } = useCompany();
   const deleteMut = useDeletePurchaseDocument();
   const actionMut = usePurchaseDocumentAction();
 
   const { data: docs } = useListPurchaseDocuments({
     kind,
     ...(!isRfq && paymentFilter !== "all" ? { paymentStatus: paymentFilter } : {}),
+    company: activeCompanyId,
   });
 
   const allDocs = docs ?? [];

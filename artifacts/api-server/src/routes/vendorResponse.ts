@@ -12,17 +12,13 @@ import {
 } from "@workspace/db";
 import { sendWhatsApp } from "../lib/fonnte";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { verifyVendorResponseToken } from "../lib/vendorResponseToken";
+import { getAdminGroupWa } from "../lib/adminWa";
+import { getPreferredDomain } from "../lib/domain";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
-
-const ADMIN_GROUP_WA = "120363409932084202@g.us";
-
-function getPortalDomain(): string {
-  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").map((d) => d.trim()).filter(Boolean);
-  return domains[0] ?? "cstlogistic.co.id";
-}
 
 function nowWIB(): string {
   const now = new Date();
@@ -52,7 +48,7 @@ function formatWaAdminNotification(response: {
 }): string {
   const statusEmoji = response.status === "READY" ? "✅" : "❌";
   const statusLabel = response.status === "READY" ? "READY" : "NOT READY";
-  const domain = getPortalDomain();
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
   const adminUrl = `https://${domain}/logistic-admin/orders/${response.orderId ?? ""}`;
 
   const lines = [
@@ -80,6 +76,11 @@ function formatWaAdminNotification(response: {
 
 router.get("/:orderNumber", async (req: Request, res: Response) => {
   const orderNumber = req.params["orderNumber"] as string;
+  const token = String(req.query.t ?? "").trim();
+  if (!verifyVendorResponseToken(orderNumber, token)) {
+    res.status(403).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+    return;
+  }
   const vendorId = req.query.v ? parseInt(String(req.query.v), 10) : null;
 
   try {
@@ -147,7 +148,7 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
       shipmentType: order.shipmentType,
       vendorBasePrice,
       vendorNameFromDb,
-      existingResponse: existing ?? null,
+      alreadySubmitted: !!existing,
     });
   } catch (err) {
     req.log?.error({ err }, "vendor-response GET error");
@@ -156,6 +157,12 @@ router.get("/:orderNumber", async (req: Request, res: Response) => {
 });
 
 router.post("/:orderNumber/photo", upload.single("photo") as any, async (req: Request, res: Response) => {
+  const orderNumberPhoto = req.params["orderNumber"] as string;
+  const tokenPhoto = String(req.query.t ?? req.body?.t ?? "").trim();
+  if (!verifyVendorResponseToken(orderNumberPhoto, tokenPhoto)) {
+    res.status(403).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+    return;
+  }
   if (!req.file) {
     res.status(400).json({ error: "Tidak ada foto yang diupload" });
     return;
@@ -174,6 +181,11 @@ router.post("/:orderNumber/photo", upload.single("photo") as any, async (req: Re
 
 router.post("/:orderNumber", async (req: Request, res: Response) => {
   const orderNumber = req.params["orderNumber"] as string;
+  const token = String((req.query.t ?? (req.body as Record<string, unknown>)?.token ?? "")).trim();
+  if (!verifyVendorResponseToken(orderNumber, token)) {
+    res.status(403).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+    return;
+  }
   const {
     vendorName,
     status,
@@ -232,9 +244,14 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
     }
 
     const waMsg = formatWaAdminNotification({ ...payload });
-    await sendWhatsApp(ADMIN_GROUP_WA, waMsg).catch((err) =>
-      req.log?.error({ err }, "vendor-response admin WA send failed")
-    );
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa) {
+      await sendWhatsApp(adminGroupWa, waMsg).catch((err) =>
+        req.log?.error({ err }, "vendor-response admin group WA send failed")
+      );
+    } else {
+      req.log?.warn("Admin WA group not configured — skipping vendor response notification");
+    }
 
     res.json({ success: true, message: "Response berhasil dikirim" });
   } catch (err) {
@@ -243,17 +260,5 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/", async (req: Request, res: Response) => {
-  try {
-    const responses = await db
-      .select()
-      .from(vendorResponsesTable)
-      .orderBy(vendorResponsesTable.submittedAt);
-    res.json(responses);
-  } catch (err) {
-    req.log?.error({ err }, "vendor-responses list error");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 export { router as vendorResponseRouter };
