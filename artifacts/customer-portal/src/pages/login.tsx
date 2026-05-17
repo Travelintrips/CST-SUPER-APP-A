@@ -75,7 +75,7 @@ export default function Login() {
       });
       if (!res.ok) { setErrorMsg("Dev login gagal."); return; }
       const data = await res.json() as { token: string; profile: { id: number; name: string; email: string; role: string } };
-      setDevToken(data.token);
+      setAuthToken(data.token);
       setPortalProfile({ customerId: data.profile.id, role: data.profile.role, name: data.profile.name, email: data.profile.email });
       const rt = new URLSearchParams(window.location.search).get("returnTo");
       if (rt) { setLocation(rt); return; }

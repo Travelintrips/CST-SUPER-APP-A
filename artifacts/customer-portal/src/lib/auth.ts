@@ -34,9 +34,10 @@ export function setDevToken(token: string): void {
 }
 
 export function getAuthToken(): string | null {
-  return getDevToken() ?? getSupabaseSessionSync()?.access_token ?? null;
   const ours = localStorage.getItem(TOKEN_KEY);
   if (ours) return ours;
+  const dev = getDevToken();
+  if (dev) return dev;
   return getSupabaseSessionSync()?.access_token ?? null;
 }
 
