@@ -7,6 +7,7 @@ import { productsTable } from "./products";
 import { posBranchesTable, posWarehousesTable, posRacksTable } from "./posKasir";
 import { purchaseDocumentsTable } from "./purchaseDocuments";
 import { salesDocumentsTable } from "./salesDocuments";
+import { companiesTable } from "./companies";
 
 // ── ENUMS ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ export const whDamageTypeEnum = pgEnum("wh_damage_type", [
 
 export const whStockTable = pgTable("wh_stock", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
   warehouseId: integer("warehouse_id").notNull().references(() => posWarehousesTable.id, { onDelete: "cascade" }),
   rackId: integer("rack_id").references(() => posRacksTable.id, { onDelete: "set null" }),
@@ -66,6 +68,7 @@ export const whStockTable = pgTable("wh_stock", {
   costPrice: numeric("cost_price", { precision: 14, scale: 2 }).notNull().default("0"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
+  index("wh_stock_company_idx").on(t.companyId),
   uniqueIndex("wh_stock_product_warehouse_rack_idx").on(t.productId, t.warehouseId, t.rackId),
 ]);
 
@@ -73,6 +76,7 @@ export const whStockTable = pgTable("wh_stock", {
 
 export const whMovementsTable = pgTable("wh_movements", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
   warehouseId: integer("warehouse_id").notNull().references(() => posWarehousesTable.id),
   rackId: integer("rack_id").references(() => posRacksTable.id),
@@ -87,6 +91,7 @@ export const whMovementsTable = pgTable("wh_movements", {
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
+  index("wh_movements_company_idx").on(t.companyId),
   index("wh_movements_product_idx").on(t.productId),
   index("wh_movements_warehouse_idx").on(t.warehouseId),
   index("wh_movements_type_idx").on(t.type),
@@ -97,6 +102,7 @@ export const whMovementsTable = pgTable("wh_movements", {
 
 export const whTransfersTable = pgTable("wh_transfers", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   transferNumber: text("transfer_number").notNull().unique(),
   fromWarehouseId: integer("from_warehouse_id").notNull().references(() => posWarehousesTable.id),
   toWarehouseId: integer("to_warehouse_id").notNull().references(() => posWarehousesTable.id),
@@ -128,6 +134,7 @@ export const whTransferLinesTable = pgTable("wh_transfer_lines", {
 
 export const whDamageReportsTable = pgTable("wh_damage_reports", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   reportNumber: text("report_number").notNull().unique(),
   warehouseId: integer("warehouse_id").notNull().references(() => posWarehousesTable.id),
   status: whDamageStatusEnum("status").notNull().default("draft"),
@@ -202,6 +209,7 @@ export const productRecipeItemsTable = pgTable("product_recipe_items", {
 
 export const whOpnamesTable = pgTable("wh_opnames", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   opnameNumber: text("opname_number").notNull().unique(),
   warehouseId: integer("warehouse_id").notNull().references(() => posWarehousesTable.id),
   status: text("status").notNull().default("draft"),

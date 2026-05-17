@@ -548,8 +548,8 @@ router.post("/gr/:id/confirm", async (req, res) => {
   try {
     const settings = await ensureAccountingSettings(gr.companyId ?? 1);
     const totalCost = lines.reduce((s, l) => s + num(l.qtyReceived) * num(l.unitCost), 0);
-    if (totalCost > 0 && settings.inventoryAccountId && settings.purchaseJournalId) {
-      await postEntry({
+    if (totalCost > 0 && settings.inventoryAccountId && settings.purchaseJournalId && settings.apAccountId) {
+      const entry = await postEntry({
         journalId: settings.purchaseJournalId,
         date: new Date(),
         ref: gr.grNumber,
@@ -558,10 +558,13 @@ router.post("/gr/:id/confirm", async (req, res) => {
         sourceId: id,
         companyId: gr.companyId ?? 1,
         lines: [
-          { accountId: settings.inventoryAccountId!, debit: totalCost, credit: 0, description: "Inventory received" },
-          { accountId: settings.apAccountId!, debit: 0, credit: totalCost, description: "AP accrual" },
+          { accountId: settings.inventoryAccountId, debit: totalCost, credit: 0, description: "Inventory received" },
+          { accountId: settings.apAccountId, debit: 0, credit: totalCost, description: "AP accrual" },
         ],
       }, "PUR");
+      if (entry?.id) {
+        await db.update(goodsReceiptsTable).set({ journalEntryId: entry.id, updatedAt: new Date() }).where(eq(goodsReceiptsTable.id, id));
+      }
     }
   } catch (e) { console.error("[GR confirm accounting]", e); }
 

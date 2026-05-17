@@ -160,6 +160,7 @@ export const goodsReceiptsTable = pgTable("goods_receipts", {
   confirmedAt: timestamp("confirmed_at"),
   cancelledAt: timestamp("cancelled_at"),
   createdBy: text("created_by"),
+  journalEntryId: integer("journal_entry_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

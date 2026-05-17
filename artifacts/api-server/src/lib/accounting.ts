@@ -33,7 +33,10 @@ export interface PostingInput {
     | "cogs_delivery"
     | "purchase_return"
     | "sales_return"
-    | "opname_adjust";
+    | "opname_adjust"
+    | "damage_adjust"
+    | "grn_receipt"
+    | "reversal";
   sourceId?: number | null;
   createdById?: string | null;
   companyId?: number | null;
@@ -713,6 +716,45 @@ export async function postSalesReturn(args: {
     logger.info({ returnId: args.returnId, amt }, "Sales return journal entry posted");
   } catch (err) {
     logger.error({ err, returnId: args.returnId }, "Auto-post sales return failed");
+  }
+}
+
+/** Auto-post when damage/loss is confirmed (DR Beban Kerusakan / CR Persediaan). */
+export async function postDamageJournal(args: {
+  damageReportId: number;
+  reportNumber: string;
+  totalValue: number;
+  companyId?: number | null;
+  createdById?: string | null;
+}): Promise<void> {
+  try {
+    if (args.totalValue <= 0) return;
+    const settings = await ensureAccountingSettings();
+    if (!settings.inventoryAccountId || !settings.cogsAccountId || !settings.purchaseJournalId) {
+      logger.warn({ damageReportId: args.damageReportId }, "Skipping damage post: accounting settings incomplete");
+      return;
+    }
+    const amt = round2(args.totalValue);
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: args.reportNumber,
+        description: `Kerugian barang rusak/hilang: ${args.reportNumber}`,
+        source: "damage_adjust",
+        sourceId: args.damageReportId,
+        companyId: args.companyId ?? 1,
+        createdById: args.createdById ?? null,
+        lines: [
+          { accountId: settings.cogsAccountId, debit: amt, credit: 0, description: `Beban kerusakan ${args.reportNumber}` },
+          { accountId: settings.inventoryAccountId, debit: 0, credit: amt, description: `Persediaan keluar rusak ${args.reportNumber}` },
+        ],
+      },
+      "DMG",
+    );
+    logger.info({ damageReportId: args.damageReportId, amt }, "Damage journal entry posted");
+  } catch (err) {
+    logger.error({ err, damageReportId: args.damageReportId }, "Auto-post damage journal failed");
   }
 }
 

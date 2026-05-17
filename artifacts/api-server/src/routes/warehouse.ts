@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
-import { postOpnameAdjust } from "../lib/accounting.js";
+import { postOpnameAdjust, postDamageJournal } from "../lib/accounting.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -21,10 +21,17 @@ function makeDocNumber(prefix: string): string {
   return `${prefix}/${y}${m}${d}/${ms}`;
 }
 
+function resolveCompanyId(req: { query: Record<string, unknown>; body: Record<string, unknown> }): number {
+  const raw = (req.query["company"] ?? req.query["companyId"] ?? req.body["companyId"]) as string | undefined;
+  const n = raw ? parseInt(String(raw), 10) : NaN;
+  return Number.isNaN(n) ? 1 : n;
+}
+
 // ── STOCK ─────────────────────────────────────────────────────────────────────
 
 router.get("/stock", async (req: Request, res: Response) => {
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const rows = await db.execute(sql`
     SELECT
       ws.id, ws.product_id, ws.warehouse_id, ws.rack_id,
@@ -38,13 +45,15 @@ router.get("/stock", async (req: Request, res: Response) => {
     JOIN pos_warehouses pw ON pw.id = ws.warehouse_id
     JOIN pos_branches pb ON pb.id = pw.branch_id
     LEFT JOIN pos_racks pr ON pr.id = ws.rack_id
-    ${warehouseId ? sql`WHERE ws.warehouse_id = ${warehouseId}` : sql``}
+    WHERE ws.company_id = ${companyId}
+      ${warehouseId ? sql`AND ws.warehouse_id = ${warehouseId}` : sql``}
     ORDER BY pb.name, pw.name, p.name
   `);
   res.json(rows.rows);
 });
 
-router.get("/stock/summary", async (_req: Request, res: Response) => {
+router.get("/stock/summary", async (req: Request, res: Response) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const rows = await db.execute(sql`
     SELECT
       ws.product_id,
@@ -54,6 +63,7 @@ router.get("/stock/summary", async (_req: Request, res: Response) => {
       COUNT(DISTINCT ws.warehouse_id) AS warehouse_count
     FROM wh_stock ws
     JOIN products p ON p.id = ws.product_id
+    WHERE ws.company_id = ${companyId}
     GROUP BY ws.product_id, p.name, p.sku, p.unit
     ORDER BY p.name
   `);
@@ -101,6 +111,7 @@ router.get("/movements", async (req: Request, res: Response) => {
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
   const productId = req.query.productId ? Number(req.query.productId) : null;
   const limit = Math.min(Number(req.query.limit ?? 200), 500);
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const rows = await db.execute(sql`
     SELECT
       wm.*,
@@ -110,7 +121,7 @@ router.get("/movements", async (req: Request, res: Response) => {
     FROM wh_movements wm
     JOIN products p ON p.id = wm.product_id
     JOIN pos_warehouses pw ON pw.id = wm.warehouse_id
-    WHERE TRUE
+    WHERE wm.company_id = ${companyId}
       ${warehouseId ? sql`AND wm.warehouse_id = ${warehouseId}` : sql``}
       ${productId ? sql`AND wm.product_id = ${productId}` : sql``}
     ORDER BY wm.created_at DESC
@@ -121,7 +132,8 @@ router.get("/movements", async (req: Request, res: Response) => {
 
 // ── TRANSFERS ─────────────────────────────────────────────────────────────────
 
-router.get("/transfers", async (_req: Request, res: Response) => {
+router.get("/transfers", async (req: Request, res: Response) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const rows = await db.execute(sql`
     SELECT
       wt.*,
@@ -138,6 +150,7 @@ router.get("/transfers", async (_req: Request, res: Response) => {
     JOIN pos_warehouses tw ON tw.id = wt.to_warehouse_id
     JOIN pos_branches fb ON fb.id = fw.branch_id
     JOIN pos_branches tb ON tb.id = tw.branch_id
+    WHERE wt.company_id = ${companyId}
     ORDER BY wt.created_at DESC
   `);
   res.json(rows.rows);
@@ -151,10 +164,11 @@ router.post("/transfers", async (req: Request, res: Response) => {
   if (!fromWarehouseId || !toWarehouseId || !lines?.length) {
     res.status(400).json({ message: "fromWarehouseId, toWarehouseId, lines wajib diisi" }); return;
   }
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const transferNumber = makeDocNumber("TRF");
   const tr = await db.execute(sql`
-    INSERT INTO wh_transfers (transfer_number, from_warehouse_id, to_warehouse_id, note)
-    VALUES (${transferNumber}, ${fromWarehouseId}, ${toWarehouseId}, ${note ?? null})
+    INSERT INTO wh_transfers (company_id, transfer_number, from_warehouse_id, to_warehouse_id, note)
+    VALUES (${companyId}, ${transferNumber}, ${fromWarehouseId}, ${toWarehouseId}, ${note ?? null})
     RETURNING *
   `);
   const transferId = (tr.rows[0] as any).id;
@@ -316,6 +330,29 @@ router.post("/damage/:id/confirm", async (req: Request, res: Response) => {
     `);
   }
   await db.execute(sql`UPDATE wh_damage_reports SET status = 'confirmed', confirmed_at = NOW() WHERE id = ${id}`);
+
+  // ── Post accounting journal: DR Beban Kerusakan / CR Persediaan ──────────────
+  try {
+    const valuation = await db.execute(sql`
+      SELECT COALESCE(SUM(dl.qty::numeric * COALESCE(ws.cost_price::numeric, 0)), 0) AS total_value
+      FROM wh_damage_lines dl
+      LEFT JOIN wh_stock ws
+        ON ws.product_id = dl.product_id
+        AND ws.warehouse_id = ${report.warehouse_id}
+        AND (ws.rack_id = dl.rack_id OR (ws.rack_id IS NULL AND dl.rack_id IS NULL))
+      WHERE dl.report_id = ${id}
+    `);
+    const totalValue = Number((valuation.rows[0] as any)?.total_value ?? 0);
+    if (totalValue > 0) {
+      await postDamageJournal({
+        damageReportId: id,
+        reportNumber: report.report_number as string,
+        totalValue,
+        createdById: null,
+      });
+    }
+  } catch (e) { console.error("[damage accounting]", e); }
+
   const updated = await db.execute(sql`SELECT * FROM wh_damage_reports WHERE id = ${id}`);
   res.json(updated.rows[0]);
 });

@@ -1,9 +1,11 @@
-import { pgTable, serial, text, boolean, numeric, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, numeric, timestamp, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { companiesTable } from "./companies";
 
 export const driversTable = pgTable("drivers", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
@@ -16,7 +18,9 @@ export const driversTable = pgTable("drivers", {
   currentLng: numeric("current_lng", { precision: 10, scale: 7 }),
   lastLocationAt: timestamp("last_location_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("drivers_company_idx").on(t.companyId),
+]);
 
 export const insertDriverSchema = createInsertSchema(driversTable).omit({
   id: true,

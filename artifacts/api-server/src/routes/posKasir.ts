@@ -11,6 +11,7 @@ import {
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { checkPosStock, deductPosStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
+import { postPosTransaction } from "../lib/accounting.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -106,6 +107,12 @@ function camelizeStockRow(row: Record<string, unknown>) {
     branchId: row.branch_id,
     updatedAt: row.updated_at,
   };
+}
+
+function resolveCompanyId(req: { query: Record<string, unknown>; body: Record<string, unknown> }): number {
+  const raw = (req.query["company"] ?? req.query["companyId"] ?? req.body["companyId"]) as string | undefined;
+  const n = raw ? parseInt(String(raw), 10) : NaN;
+  return Number.isNaN(n) ? 1 : n;
 }
 
 function orderNumber(): string {
@@ -217,17 +224,21 @@ router.get("/me", async (req, res) => {
 // ── Products (public read, admin write) ─────────────────────────────────────
 
 // GET /api/pos-kasir/products
-router.get("/products", async (_req, res) => {
-  const rows = await db.select().from(posProductsTable)
-    .where(eq(posProductsTable.isActive, true))
-    .orderBy(posProductsTable.sortOrder, posProductsTable.name);
-  return res.json(rows);
+router.get("/products", async (req, res) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const rows = await db.execute(sql`
+    SELECT * FROM pos_products
+    WHERE is_active = TRUE AND company_id = ${companyId}
+    ORDER BY sort_order ASC, name ASC
+  `);
+  return res.json(rows.rows);
 });
 
 // GET /api/pos-kasir/products/all  (admin)
 router.get("/products/all", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const result = await db.execute(sql`SELECT * FROM pos_products ORDER BY sort_order ASC, name ASC`);
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const result = await db.execute(sql`SELECT * FROM pos_products WHERE company_id = ${companyId} ORDER BY sort_order ASC, name ASC`);
   return res.json(result.rows.map((r) => {
     const row = r as Record<string, unknown>;
     return {
@@ -248,13 +259,14 @@ router.post("/products", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const { name, description, price, category, imageUrl, isActive, sortOrder, productType, linkedProductId, stockItemId, stockUsagePerUnit, stock, stockUnit } = req.body ?? {};
   if (!name || price == null) return res.status(400).json({ message: "name dan price wajib" });
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const r = await db.execute(sql`
     INSERT INTO pos_products
-      (name, description, price, category, image_url, is_active, sort_order,
+      (company_id, name, description, price, category, image_url, is_active, sort_order,
        product_type, linked_product_id,
        stock_item_id, stock_usage_per_unit, stock, stock_unit)
     VALUES
-      (${String(name)}, ${description ?? null}, ${String(price)}, ${category ?? "minuman"},
+      (${companyId}, ${String(name)}, ${description ?? null}, ${String(price)}, ${category ?? "minuman"},
        ${imageUrl ?? null}, ${isActive ?? true}, ${sortOrder ?? 0},
        ${productType ?? "STOCK"},
        ${linkedProductId ? Number(linkedProductId) : null},
@@ -396,7 +408,9 @@ router.post("/orders", async (req, res) => {
   const discountAmt = Number(discount) || 0;
   const total = subtotal - discountAmt;
 
+  const effectiveCompanyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const [order] = await db.insert(posOrdersTable).values({
+    companyId: effectiveCompanyId,
     orderNumber: orderNumber(),
     cashierId: cashier.id,
     branchId: effectiveBranchId,
@@ -485,6 +499,15 @@ router.patch("/orders/:id/pay", async (req, res) => {
       console.warn("[pos-stock] deduction warnings:", warnings);
     }
   }
+
+  // ── Post accounting journal: DR Kas/Bank / CR Pendapatan POS ─────────────────
+  await postPosTransaction({
+    transactionId: order.id,
+    productName: `POS Order #${order.orderNumber}`,
+    totalPrice: Number(order.total),
+    paymentMethod: paymentMethod as string,
+    createdById: null,
+  });
 
   return res.json({ ...updated, items: orderItems });
 });

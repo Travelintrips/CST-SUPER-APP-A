@@ -35,6 +35,7 @@ export const posCashiersTable = pgTable("pos_cashiers", {
 
 export const posProductsTable = pgTable("pos_products", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   description: text("description"),
   price: numeric("price", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -54,6 +55,7 @@ export const posProductsTable = pgTable("pos_products", {
 
 export const posOrdersTable = pgTable("pos_orders", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   orderNumber: text("order_number").notNull().unique(),
   cashierId: integer("cashier_id").notNull().references(() => posCashiersTable.id),
   branchId: integer("branch_id").references(() => posBranchesTable.id),
@@ -68,6 +70,7 @@ export const posOrdersTable = pgTable("pos_orders", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   paidAt: timestamp("paid_at"),
 }, (t) => [
+  index("pos_orders_company_idx").on(t.companyId),
   index("pos_orders_branch_idx").on(t.branchId),
   index("pos_orders_cashier_idx").on(t.cashierId),
   index("pos_orders_status_idx").on(t.status),
@@ -149,6 +152,7 @@ export const posRacksTable = pgTable("pos_racks", {
 
 export const posInventoryItemsTable = pgTable("pos_inventory_items", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   sku: text("sku").notNull().unique(),
   unit: text("unit").notNull().default("pcs"),

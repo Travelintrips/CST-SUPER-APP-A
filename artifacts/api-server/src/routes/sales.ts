@@ -38,6 +38,12 @@ router.use(async (req, res, next) => {
   next();
 });
 
+function resolveCompanyId(req: { query: Record<string, unknown>; body: Record<string, unknown> }): number {
+  const raw = (req.query["company"] ?? req.query["companyId"] ?? req.body["companyId"]) as string | undefined;
+  const n = raw ? parseInt(String(raw), 10) : NaN;
+  return Number.isNaN(n) ? 1 : n;
+}
+
 type SalesDocKind = "quote" | "order";
 type SalesInvoiceStatus = "none" | "to_invoice" | "invoiced";
 type SalesDocStatus = "draft" | "sent" | "confirmed" | "done" | "cancelled";
@@ -110,9 +116,10 @@ async function nextDocNumber(kind: SalesDocKind, offset = 0): Promise<string> {
 }
 
 // GET /api/sales/summary
-router.get("/summary", async (_req, res) => {
-  const docs = await db.select().from(salesDocumentsTable);
-  const customers = await db.select().from(customersTable);
+router.get("/summary", async (req, res) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const docs = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.companyId, companyId));
+  const customers = await db.select().from(customersTable).where(eq(customersTable.companyId, companyId));
   const quotationsCount = docs.filter((d) => d.kind === "quote").length;
   const ordersCount = docs.filter((d) => d.kind === "order").length;
   const toInvoiceCount = docs.filter(
@@ -141,19 +148,23 @@ router.get("/summary", async (_req, res) => {
 });
 
 // CUSTOMERS
-router.get("/customers", async (_req, res) => {
-  const rows = await db.select().from(customersTable).orderBy(customersTable.name);
+router.get("/customers", async (req, res) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const rows = await db.select().from(customersTable)
+    .where(eq(customersTable.companyId, companyId))
+    .orderBy(customersTable.name);
   return res.json(rows.map(serializeCustomer));
 });
 
 router.post("/customers", async (req, res) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const { name, email, phone, taxId, address, notes, defaultSalesTaxId } = req.body ?? {};
   if (typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "name required" });
   }
   const [created] = await db
     .insert(customersTable)
-    .values({ name, email, phone, taxId, address, notes, defaultSalesTaxId: defaultSalesTaxId ?? null })
+    .values({ companyId, name, email, phone, taxId, address, notes, defaultSalesTaxId: defaultSalesTaxId ?? null })
     .returning();
   return res.status(201).json(serializeCustomer(created));
 });
@@ -192,12 +203,13 @@ router.delete("/customers/:id", async (req, res) => {
 
 // DOCUMENTS
 router.get("/documents", async (req, res) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const kind = req.query["kind"] as SalesDocKind | undefined;
   const invoiceStatus = req.query["invoiceStatus"] as SalesInvoiceStatus | undefined;
   const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
   const statusFilter = req.query["status"] as string | undefined;
   const search = typeof req.query["search"] === "string" ? req.query["search"].trim() : undefined;
-  const conds: SQL[] = [];
+  const conds: SQL[] = [eq(salesDocumentsTable.companyId, companyId)];
   if (kind === "quote" || kind === "order") conds.push(eq(salesDocumentsTable.kind, kind));
   if (["draft", "sent", "confirmed", "done", "cancelled"].includes(statusFilter ?? ""))
     conds.push(eq(salesDocumentsTable.status, statusFilter as "draft" | "sent" | "confirmed" | "done" | "cancelled"));
@@ -211,10 +223,8 @@ router.get("/documents", async (req, res) => {
       ilike(salesDocumentsTable.customerName, `%${search}%`),
     )!);
   }
-  const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
-  const rows = where
-    ? await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt))
-    : await db.select().from(salesDocumentsTable).orderBy(desc(salesDocumentsTable.createdAt));
+  const where = conds.length === 1 ? conds[0] : and(...conds);
+  const rows = await db.select().from(salesDocumentsTable).where(where).orderBy(desc(salesDocumentsTable.createdAt));
 
   const customerIds = [...new Set(rows.map((r) => r.customerId).filter((id): id is number => id != null))];
   const customerMap = new Map<number, string | null>();
@@ -251,6 +261,7 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
+  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
   const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId,
     origin, destination, transportMode, etd, eta, logisticOrderId } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())
@@ -292,6 +303,7 @@ router.post("/documents", async (req, res) => {
       const [inserted] = await db
         .insert(salesDocumentsTable)
         .values({
+          companyId,
           docNumber,
           kind: docKind,
           status: "draft",
