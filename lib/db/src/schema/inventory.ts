@@ -13,6 +13,7 @@ export const movementTypeEnum = pgEnum("inv_movement_type", [
   "PURCHASE_RECEIPT",
   "SALES_DELIVERY",
   "POS_SALE",
+  "RECIPE_CONSUMPTION",
   "TRANSFER_IN",
   "TRANSFER_OUT",
   "RETURN_IN",

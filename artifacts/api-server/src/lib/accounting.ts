@@ -809,3 +809,48 @@ export async function postOpnameAdjust(args: {
     logger.error({ err, opnameId: args.opnameId }, "Auto-post opname adjust failed");
   }
 }
+
+/** Auto-post Sales Return COGS reversal (DR Persediaan / CR HPP). */
+export async function postSalesCogsReturn(args: {
+  salesDocId: number;
+  docNumber: string;
+  lines: Array<{ name: string; qty: number; costPrice: number }>;
+  createdById?: string | null;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const validLines = args.lines.filter((l) => l.costPrice > 0 && l.qty > 0);
+    if (validLines.length === 0) {
+      logger.info({ salesDocId: args.salesDocId }, "postSalesCogsReturn: all cost prices are 0 — skipping reversal entry");
+      return;
+    }
+    const settings = await ensureAccountingSettings();
+    if (!settings.cogsAccountId || !settings.inventoryAccountId || !settings.purchaseJournalId) {
+      logger.warn({ salesDocId: args.salesDocId }, "Skipping sales cogs return post: accounting settings incomplete");
+      return;
+    }
+    const totalCogs = round2(validLines.reduce((s, l) => s + l.costPrice * l.qty, 0));
+    if (totalCogs <= 0) return;
+    const description = validLines.map((l) => `${l.name} ×${l.qty}`).join(", ");
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: args.docNumber,
+        description: `Retur Penjualan HPP: ${args.docNumber}`,
+        source: "sales_return",
+        sourceId: args.salesDocId,
+        createdById: args.createdById ?? null,
+        companyId: args.companyId ?? null,
+        lines: [
+          { accountId: settings.inventoryAccountId, debit: totalCogs, credit: 0, description: `Persediaan masuk kembali: ${description}` },
+          { accountId: settings.cogsAccountId, debit: 0, credit: totalCogs, description: `HPP reversal: ${description}` },
+        ],
+      },
+      "PUR",
+    );
+    logger.info({ salesDocId: args.salesDocId, totalCogs, lineCount: validLines.length }, "Sales COGS return journal entry posted");
+  } catch (err) {
+    logger.error({ err, salesDocId: args.salesDocId }, "Auto-post sales COGS return failed");
+  }
+}

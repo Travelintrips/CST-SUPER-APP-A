@@ -6,14 +6,19 @@
  *   RECIPE  — deduct wh_stock for each ingredient in product_recipes
  *   SERVICE — no stock deduction
  *
- * Thai Tea Rule (business_unit = THAI_TEA):
- *   RECIPE products deduct ingredients from wh_stock (POS).
- *   If a thai_tea_warehouse_links mapping exists for the pos_warehouse,
- *   also syncs deduction to inventory_stock + stock_movements (ERP).
+ * ERP Sync (always):
+ *   Every successful wh_stock deduction is ALSO synced to inventory_stock +
+ *   stock_movements. ERP warehouse is resolved in order:
+ *     1. thai_tea_warehouse_links for the pos_warehouse
+ *     2. warehouses.company_id = pos_branches.company_id (first active)
+ *     3. First active warehouse (global fallback)
+ *
+ *   STOCK items → movement type POS_SALE
+ *   RECIPE ingredients → movement type RECIPE_CONSUMPTION
  */
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { postStockOut } from "./inventoryStock.js";
+import { postStockOut, postStockIn } from "./inventoryStock.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -46,14 +51,40 @@ export async function getWarehouseForBranch(branchId: number): Promise<number | 
   return (rows.rows[0] as { id: number } | undefined)?.id ?? null;
 }
 
-/** Cari ERP warehouse_id yang dilink ke pos_warehouse ini (untuk Thai Tea sync) */
-async function getErpWarehouseForPos(posWarehouseId: number): Promise<number | null> {
-  const rows = await db.execute(sql`
+/** Resolve ERP warehouse_id for sync:
+ *  1. Thai Tea link  2. Branch company  3. Global fallback */
+export async function getErpWarehouseIdForBranch(
+  posWarehouseId: number,
+  branchId: number,
+): Promise<number | null> {
+  // 1. Thai Tea warehouse link
+  const ttRows = await db.execute(sql`
     SELECT erp_warehouse_id FROM thai_tea_warehouse_links
     WHERE pos_warehouse_id = ${posWarehouseId} AND is_active = TRUE
     LIMIT 1
   `);
-  return (rows.rows[0] as { erp_warehouse_id: number } | undefined)?.erp_warehouse_id ?? null;
+  const ttLink = (ttRows.rows[0] as { erp_warehouse_id: number } | undefined)?.erp_warehouse_id ?? null;
+  if (ttLink) return ttLink;
+
+  // 2. ERP warehouse matching branch's companyId
+  const branchRow = (await db.execute(sql`
+    SELECT company_id FROM pos_branches WHERE id = ${branchId} LIMIT 1
+  `)).rows[0] as { company_id: number | null } | undefined;
+
+  if (branchRow?.company_id) {
+    const whRow = (await db.execute(sql`
+      SELECT id FROM warehouses
+      WHERE company_id = ${branchRow.company_id} AND is_active = TRUE
+      ORDER BY id ASC LIMIT 1
+    `)).rows[0] as { id: number } | undefined;
+    if (whRow) return whRow.id;
+  }
+
+  // 3. Global fallback: first active ERP warehouse
+  const fallback = (await db.execute(sql`
+    SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id ASC LIMIT 1
+  `)).rows[0] as { id: number } | undefined;
+  return fallback?.id ?? null;
 }
 
 // ── Stock reader ──────────────────────────────────────────────────────────────
@@ -74,7 +105,7 @@ export async function checkPosStock(
   branchId: number,
 ): Promise<StockShortage[]> {
   const warehouseId = await getWarehouseForBranch(branchId);
-  if (!warehouseId) return []; // no warehouse configured — allow (warn elsewhere)
+  if (!warehouseId) return [];
 
   const shortages: StockShortage[] = [];
 
@@ -158,7 +189,6 @@ async function deductWhStock(
   orderId: number,
   note: string,
 ): Promise<{ qtyBefore: number; qtyAfter: number; costPrice: number }> {
-  // SELECT FOR UPDATE to prevent concurrent double-deduction
   const cur = (await tx.execute(sql`
     SELECT id, qty::float, cost_price::float FROM wh_stock
     WHERE product_id = ${productId} AND warehouse_id = ${warehouseId}
@@ -168,7 +198,6 @@ async function deductWhStock(
   const qtyBefore = Number(cur?.qty ?? 0);
   const qtyAfter = Math.max(0, qtyBefore - qty);
   const costPrice = Number(cur?.cost_price ?? 0);
-  const mNo = movNo();
 
   if (cur) {
     await tx.execute(sql`
@@ -194,6 +223,50 @@ async function deductWhStock(
   return { qtyBefore, qtyAfter, costPrice };
 }
 
+// ── Add stock back (for POS returns) ─────────────────────────────────────────
+
+async function addWhStock(
+  tx: typeof db,
+  productId: number,
+  warehouseId: number,
+  qty: number,
+  orderId: number,
+  note: string,
+): Promise<{ qtyAfter: number; costPrice: number }> {
+  const cur = (await tx.execute(sql`
+    SELECT id, qty::float, cost_price::float FROM wh_stock
+    WHERE product_id = ${productId} AND warehouse_id = ${warehouseId}
+    FOR UPDATE
+  `)).rows[0] as { id: number; qty: number; cost_price: number } | undefined;
+
+  const qtyBefore = Number(cur?.qty ?? 0);
+  const qtyAfter = qtyBefore + qty;
+  const costPrice = Number(cur?.cost_price ?? 0);
+
+  if (cur) {
+    await tx.execute(sql`
+      UPDATE wh_stock SET qty = ${String(qtyAfter)}, updated_at = NOW()
+      WHERE id = ${cur.id}
+    `);
+  } else {
+    await tx.execute(sql`
+      INSERT INTO wh_stock (product_id, warehouse_id, qty, cost_price, updated_at)
+      VALUES (${productId}, ${warehouseId}, ${qty}, 0, NOW())
+    `);
+  }
+
+  await tx.execute(sql`
+    INSERT INTO wh_movements
+      (product_id, warehouse_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note, created_at)
+    VALUES
+      (${productId}, ${warehouseId}, 'return_in', ${String(qty)},
+       ${String(qtyBefore)}, ${String(qtyAfter)}, ${costPrice},
+       'pos_order', ${orderId}, ${note}, NOW())
+  `);
+
+  return { qtyAfter, costPrice };
+}
+
 export async function deductPosStock(
   items: PosProductStock[],
   branchId: number,
@@ -205,13 +278,17 @@ export async function deductPosStock(
     return { warnings: ["Tidak ada gudang aktif untuk cabang ini — stok tidak dikurangi"] };
   }
 
-  // Cek apakah ada link ke ERP warehouse (untuk Thai Tea sync)
-  const erpWarehouseId = await getErpWarehouseForPos(warehouseId);
+  const erpWarehouseId = await getErpWarehouseIdForBranch(warehouseId, branchId);
 
   const warnings: string[] = [];
 
-  // Collect ERP deductions to run OUTSIDE the transaction (postStockOut uses its own connection)
-  const erpDeductions: Array<{ productId: number; qty: number; costPrice: number; note: string }> = [];
+  const erpDeductions: Array<{
+    productId: number;
+    qty: number;
+    costPrice: number;
+    note: string;
+    movementType: "POS_SALE" | "RECIPE_CONSUMPTION";
+  }> = [];
 
   await db.transaction(async (tx) => {
     for (const item of items) {
@@ -230,14 +307,13 @@ export async function deductPosStock(
           orderId,
           `POS ${orderNumber} — ${item.productName}×${item.qty}`,
         );
-        if (erpWarehouseId) {
-          erpDeductions.push({
-            productId: item.linkedProductId,
-            qty: item.qty,
-            costPrice: result.costPrice,
-            note: `POS ${orderNumber} — ${item.productName}×${item.qty}`,
-          });
-        }
+        erpDeductions.push({
+          productId: item.linkedProductId,
+          qty: item.qty,
+          costPrice: result.costPrice,
+          note: `POS ${orderNumber} — ${item.productName}×${item.qty}`,
+          movementType: "POS_SALE",
+        });
         continue;
       }
 
@@ -276,20 +352,19 @@ export async function deductPosStock(
             orderId,
             `POS ${orderNumber} — recipe ${item.productName}×${item.qty}`,
           );
-          if (erpWarehouseId) {
-            erpDeductions.push({
-              productId: ing.ingredient_product_id,
-              qty: required,
-              costPrice: result.costPrice,
-              note: `POS ${orderNumber} — recipe ${item.productName}×${item.qty}`,
-            });
-          }
+          erpDeductions.push({
+            productId: ing.ingredient_product_id,
+            qty: required,
+            costPrice: result.costPrice,
+            note: `POS ${orderNumber} — recipe ${item.productName}×${item.qty}`,
+            movementType: "RECIPE_CONSUMPTION",
+          });
         }
       }
     }
   });
 
-  // Sync deductions to inventory_stock + stock_movements (ERP) jika ada Thai Tea warehouse link
+  // Sync to inventory_stock + stock_movements (ERP)
   if (erpWarehouseId && erpDeductions.length > 0) {
     for (const ded of erpDeductions) {
       try {
@@ -298,14 +373,70 @@ export async function deductPosStock(
           warehouseId: erpWarehouseId,
           qty: ded.qty,
           unitCost: ded.costPrice,
-          movementType: "POS_SALE",
+          movementType: ded.movementType,
           referenceType: "POS_SESSION",
           referenceId: orderId,
           notes: ded.note,
+          strict: false,
         });
       } catch (e) {
-        // Jangan gagalkan transaksi POS karena error sync ERP
         warnings.push(`Sync inventory_stock gagal untuk produk #${ded.productId}: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  return { warnings };
+}
+
+/** Add stock back for POS return — updates wh_stock + inventory_stock */
+export async function returnPosStock(
+  items: Array<{ productId: number; qty: number; note: string }>,
+  branchId: number,
+  orderId: number,
+): Promise<{ warnings: string[] }> {
+  const warehouseId = await getWarehouseForBranch(branchId);
+  if (!warehouseId) {
+    return { warnings: ["Tidak ada gudang aktif untuk cabang ini"] };
+  }
+
+  const erpWarehouseId = await getErpWarehouseIdForBranch(warehouseId, branchId);
+  const warnings: string[] = [];
+
+  await db.transaction(async (tx) => {
+    for (const item of items) {
+      await addWhStock(
+        tx as unknown as typeof db,
+        item.productId,
+        warehouseId,
+        item.qty,
+        orderId,
+        item.note,
+      );
+    }
+  });
+
+  if (erpWarehouseId) {
+    for (const item of items) {
+      try {
+        const costRow = (await db.execute(sql`
+          SELECT average_cost::float FROM inventory_stock
+          WHERE product_id = ${item.productId} AND warehouse_id = ${erpWarehouseId}
+          LIMIT 1
+        `)).rows[0] as { average_cost: number } | undefined;
+        const unitCost = Number(costRow?.average_cost ?? 0);
+
+        await postStockIn({
+          productId: item.productId,
+          warehouseId: erpWarehouseId,
+          qty: item.qty,
+          unitCost,
+          movementType: "RETURN_IN",
+          referenceType: "RETURN",
+          referenceId: orderId,
+          notes: item.note,
+        });
+      } catch (e) {
+        warnings.push(`Sync return inventory_stock gagal untuk produk #${item.productId}: ${(e as Error).message}`);
       }
     }
   }
