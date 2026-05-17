@@ -507,6 +507,7 @@ router.patch("/orders/:id/pay", async (req, res) => {
     totalPrice: Number(order.total),
     paymentMethod: paymentMethod as string,
     createdById: null,
+    companyId: order.companyId ?? null,
   });
 
   return res.json({ ...updated, items: orderItems });

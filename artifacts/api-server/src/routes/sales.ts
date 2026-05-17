@@ -20,7 +20,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
-import { postStockOut, StockShortageError } from "../lib/inventoryStock.js";
+import { StockShortageError } from "../lib/inventoryStock.js";
 import { convertQty } from "../lib/uomEngine.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
@@ -500,28 +500,28 @@ router.post("/documents/:id/action", async (req, res) => {
       return res.status(400).json({ message: "Invalid action" });
   }
 
-  // T005: Pre-flight stock check BEFORE updating delivery status
+  // T005: Pre-flight stock check BEFORE updating delivery status (pakai wh_stock — single source of truth)
   if (action === "mark_delivered" && doc.deliveryStatus !== "delivered") {
     const lines = await db.select().from(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
     const productLines = lines.filter((l) => l.productId != null);
 
     if (productLines.length > 0) {
-      const invWh = (await db.execute(sql`
-        SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+      // Gunakan gudang POS pertama yang aktif (wh_stock FK ke pos_warehouses)
+      const posWh = (await db.execute(sql`
+        SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
       `)).rows[0] as { id: number } | undefined;
 
-      if (invWh) {
+      if (posWh) {
         const shortages: Array<{ productId: number; name: string; requested: number; available: number }> = [];
         for (const line of productLines) {
-          // Use base_qty (converted to product's base UOM) if available, else fall back to quantity
           const qty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
           const stockRow = (await db.execute(sql`
-            SELECT COALESCE(stock_available::float, 0) AS stock_available
-            FROM inventory_stock
-            WHERE product_id = ${line.productId} AND warehouse_id = ${invWh.id}
+            SELECT COALESCE(qty::float, 0) AS qty
+            FROM wh_stock
+            WHERE product_id = ${line.productId} AND warehouse_id = ${posWh.id}
             ORDER BY id LIMIT 1
-          `)).rows[0] as { stock_available: number } | undefined;
-          const available = Number(stockRow?.stock_available ?? 0);
+          `)).rows[0] as { qty: number } | undefined;
+          const available = Number(stockRow?.qty ?? 0);
           if (available < qty) {
             shortages.push({ productId: line.productId!, name: line.name, requested: qty, available });
           }
@@ -585,29 +585,11 @@ router.post("/documents/:id/action", async (req, res) => {
             salesDocId: id,
             docNumber: doc.docNumber,
             lines: cogsLines,
+            companyId: doc.companyId ?? null,
           }).catch((e) => console.error("[accounting] postSalesCogs error:", e));
         }
-
-        // ── New inventory_stock deduction (strict=true already guaranteed by pre-flight) ───
-        const invWh = (await db.execute(sql`
-          SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
-        `)).rows[0] as { id: number } | undefined;
-        if (invWh) {
-          for (const line of productLines) {
-            // Use base_qty when set (converted to product's base UOM); fallback to quantity
-            const deductQty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
-            await postStockOut({
-              productId: line.productId!,
-              warehouseId: invWh.id,
-              qty: deductQty,
-              movementType: "SALES_DELIVERY",
-              referenceType: "SALES_ORDER",
-              referenceId: id,
-              notes: `SO Terkirim: ${doc.docNumber}`,
-              strict: false, // pre-flight already validated; skip double-check here
-            });
-          }
-        }
+        // NOTE: postStockOut ke inventory_stock dihapus — wh_stock sudah menjadi
+        // satu-satunya sumber kebenaran stok. wh_movements sudah direcord di atas.
       }
     } catch (e) {
       if (e instanceof StockShortageError) {
@@ -652,6 +634,7 @@ router.post("/documents/:id/action", async (req, res) => {
       netAmount: net,
       taxAmount,
       taxAccountId: null,
+      companyId: doc.companyId ?? null,
     });
   }
 

@@ -163,6 +163,7 @@ export async function postSalesInvoice(args: {
   taxAmount: number;
   taxAccountId: number | null;
   createdById?: string | null;
+  companyId?: number | null;
 }): Promise<void> {
   try {
     const settings = await ensureAccountingSettings();
@@ -205,6 +206,7 @@ export async function postSalesInvoice(args: {
         source: "sales_invoice",
         sourceId: args.salesDocId,
         createdById: args.createdById ?? null,
+        companyId: args.companyId ?? null,
         lines,
       },
       "SAL",
@@ -351,6 +353,7 @@ export async function postPosTransaction(args: {
   totalPrice: number;
   paymentMethod: string;
   createdById?: string | null;
+  companyId?: number | null;
 }): Promise<void> {
   try {
     const settings = await ensureAccountingSettings();
@@ -383,6 +386,7 @@ export async function postPosTransaction(args: {
         source: "pos_sale",
         sourceId: args.transactionId,
         createdById: args.createdById ?? null,
+        companyId: args.companyId ?? null,
         lines: [
           { accountId: debitAccountId, debit: amt, credit: 0, description: `Penerimaan POS #${args.transactionId}` },
           { accountId: settings.salesIncomeAccountId, debit: 0, credit: amt, description: `Pendapatan POS: ${args.productName}` },
@@ -452,6 +456,7 @@ export async function postSalesCogs(args: {
   docNumber: string;
   lines: Array<{ name: string; qty: number; costPrice: number }>;
   createdById?: string | null;
+  companyId?: number | null;
 }): Promise<void> {
   try {
     const validLines = args.lines.filter((l) => l.costPrice > 0 && l.qty > 0);
@@ -476,6 +481,7 @@ export async function postSalesCogs(args: {
         source: "cogs_delivery",
         sourceId: args.salesDocId,
         createdById: args.createdById ?? null,
+        companyId: args.companyId ?? null,
         lines: [
           { accountId: settings.cogsAccountId, debit: totalCogs, credit: 0, description: `HPP: ${description}` },
           { accountId: settings.inventoryAccountId, debit: 0, credit: totalCogs, description: `Persediaan keluar: ${description}` },

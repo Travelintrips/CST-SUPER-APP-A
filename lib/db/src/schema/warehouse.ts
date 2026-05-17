@@ -160,6 +160,7 @@ export const whDamageLinesTable = pgTable("wh_damage_lines", {
 
 export const whReturnsTable = pgTable("wh_returns", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   returnNumber: text("return_number").notNull().unique(),
   type: whReturnTypeEnum("type").notNull(),
   refDocId: integer("ref_doc_id"),

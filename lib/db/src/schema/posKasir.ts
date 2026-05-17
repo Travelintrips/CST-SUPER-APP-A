@@ -134,6 +134,7 @@ export const posShiftsTable = pgTable("pos_shifts", {
 
 export const posWarehousesTable = pgTable("pos_warehouses", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   branchId: integer("branch_id").notNull().references(() => posBranchesTable.id),
   type: text("type").notNull().default("umum"),
