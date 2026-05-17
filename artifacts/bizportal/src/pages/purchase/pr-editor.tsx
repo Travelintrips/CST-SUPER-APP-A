@@ -16,58 +16,61 @@ import { toast } from "sonner";
 
 interface PRLine { id?: number; name: string; quantity: string; unit: string; estimatedCost: string; notes: string; }
 interface PR { id: number; prNumber: string; status: string; requestedBy: string; department: string; requiredDate: string; notes: string; lines: PRLine[]; approvals: Record<string, unknown>[]; rfqId?: number; }
-interface Product { id: number; name: string; sku: string; unit?: string; price?: number; }
+interface Product { id: number; name: string; sku: string; unit?: string; }
 interface UserOption { id: string; name: string; email: string; division?: string | null; }
 
-const apiFetch = (path: string, opts?: RequestInit) => fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
+const apiFetch = (path: string, opts?: RequestInit) =>
+  fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
 
-const statusColor: Record<string, string> = { draft: "secondary", submitted: "default", approved: "default", rejected: "destructive", converted: "outline", cancelled: "destructive" };
-const statusLabel: Record<string, string> = { draft: "Draft", submitted: "Submitted", approved: "Approved", rejected: "Rejected", converted: "Converted→RFQ", cancelled: "Cancelled" };
+const statusColor: Record<string, string> = {
+  draft: "secondary", submitted: "default", approved: "default",
+  rejected: "destructive", converted: "outline", cancelled: "destructive",
+};
+const statusLabel: Record<string, string> = {
+  draft: "Draft", submitted: "Submitted", approved: "Approved",
+  rejected: "Rejected", converted: "Converted→RFQ", cancelled: "Cancelled",
+};
 
-function ItemCombobox({ value, onChange, disabled }: { value: string; onChange: (val: string, unit?: string) => void; disabled?: boolean }) {
+function ItemCombobox({ value, onChange, disabled }: {
+  value: string;
+  onChange: (val: string, unit?: string) => void;
+  disabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(value);
   const ref = useRef<HTMLDivElement>(null);
 
   const { data: products = [] } = useQuery<Product[]>({
-    queryKey: ["/api/ecommerce/products", search],
+    queryKey: ["/api/ecommerce/products/search", search],
     queryFn: () => apiFetch(`/ecommerce/products?search=${encodeURIComponent(search)}&isActive=true`).then(r => r.json()),
     enabled: open && search.length >= 1,
     staleTime: 10_000,
   });
 
-  useEffect(() => {
-    setSearch(value);
-  }, [value]);
+  useEffect(() => { setSearch(value); }, [value]);
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function onClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  const handleSelect = (product: Product) => {
-    onChange(product.name, product.unit ?? "pcs");
-    setSearch(product.name);
+  const handleSelect = (p: Product) => {
+    onChange(p.name, p.unit ?? "pcs");
+    setSearch(p.name);
     setOpen(false);
-  };
-
-  const handleBlur = () => {
-    setTimeout(() => {
-      if (!open) onChange(search);
-    }, 150);
   };
 
   return (
     <div ref={ref} className="relative">
-      <div className="flex items-center">
+      <div className="relative flex items-center">
         <Input
           value={search}
           onChange={e => { setSearch(e.target.value); onChange(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          onBlur={handleBlur}
+          onBlur={() => setTimeout(() => { onChange(search); }, 150)}
           disabled={disabled}
           className="h-8 pr-7"
           placeholder="Ketik atau pilih produk..."
@@ -86,21 +89,19 @@ function ItemCombobox({ value, onChange, disabled }: { value: string; onChange: 
         <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-popover border rounded-md shadow-md max-h-52 overflow-y-auto">
           {products.length === 0 ? (
             <div className="px-3 py-2 text-sm text-muted-foreground">
-              {search.length < 1 ? "Ketik untuk mencari produk..." : "Tidak ada produk ditemukan. Ketik nama bebas."}
+              {search.length < 1 ? "Ketik untuk mencari produk..." : "Tidak ditemukan. Ketik nama bebas."}
             </div>
-          ) : (
-            products.map(p => (
-              <button
-                key={p.id}
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
-                onMouseDown={e => { e.preventDefault(); handleSelect(p); }}
-              >
-                <span className="font-medium">{p.name}</span>
-                <span className="text-xs text-muted-foreground">{p.sku} {p.unit ? `· ${p.unit}` : ""}</span>
-              </button>
-            ))
-          )}
+          ) : products.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex flex-col"
+              onMouseDown={e => { e.preventDefault(); handleSelect(p); }}
+            >
+              <span className="font-medium">{p.name}</span>
+              <span className="text-xs text-muted-foreground">{p.sku}{p.unit ? ` · ${p.unit}` : ""}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -126,16 +127,12 @@ export default function PurchaseRequestEditorPage() {
     queryFn: () => apiFetch("/users").then(r => r.json()),
   });
 
-  const { data: currentUser } = useQuery<UserOption>({
-    queryKey: ["/api/users/me"],
-    queryFn: () => apiFetch("/users/me").then(r => r.json()),
-  });
-
   const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: "", notes: "" });
   const [lines, setLines] = useState<PRLine[]>([{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const [actionNotes, setActionNotes] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  // Auto-fill pemohon dari user yang sedang login
   useEffect(() => {
     if (isNew && user) {
       const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "";
@@ -143,22 +140,21 @@ export default function PurchaseRequestEditorPage() {
     }
   }, [isNew, user]);
 
+  // Jika ada PR existing, isi form
   useEffect(() => {
     if (pr) {
-      setForm({ requestedBy: pr.requestedBy ?? "", department: pr.department ?? "", requiredDate: pr.requiredDate ? pr.requiredDate.substring(0, 10) : "", notes: pr.notes ?? "" });
-      setLines(pr.lines?.length ? pr.lines.map(l => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, estimatedCost: String(l.estimatedCost), notes: l.notes ?? "" })) : [{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
+      setForm({
+        requestedBy: pr.requestedBy ?? "",
+        department: pr.department ?? "",
+        requiredDate: pr.requiredDate ? pr.requiredDate.substring(0, 10) : "",
+        notes: pr.notes ?? "",
+      });
+      setLines(pr.lines?.length
+        ? pr.lines.map(l => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, estimatedCost: String(l.estimatedCost), notes: l.notes ?? "" }))
+        : [{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]
+      );
     }
   }, [pr]);
-
-  useEffect(() => {
-    if (isNew && currentUser?.name) {
-      setForm(f => ({
-        ...f,
-        requestedBy: f.requestedBy || currentUser.name,
-        department: f.department || currentUser.division || "",
-      }));
-    }
-  }, [isNew, currentUser]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -179,7 +175,10 @@ export default function PurchaseRequestEditorPage() {
 
   const actionMut = useMutation({
     mutationFn: async (action: string) => {
-      const r = await apiFetch(`/purchase-workflow/pr/${pr?.id ?? id}/action`, { method: "POST", body: JSON.stringify({ action, notes: actionNotes }) });
+      const r = await apiFetch(`/purchase-workflow/pr/${pr?.id ?? id}/action`, {
+        method: "POST",
+        body: JSON.stringify({ action, notes: actionNotes }),
+      });
       if (!r.ok) throw new Error("Gagal");
       return r.json();
     },
@@ -202,7 +201,8 @@ export default function PurchaseRequestEditorPage() {
 
   const addLine = () => setLines(prev => [...prev, { name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
-  const updateLine = (i: number, key: keyof PRLine, value: string) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
+  const updateLine = (i: number, key: keyof PRLine, value: string) =>
+    setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
 
   const hasValidLines = lines.some(l => l.name.trim() !== "");
 
@@ -253,22 +253,11 @@ export default function PurchaseRequestEditorPage() {
             <CardHeader><CardTitle className="text-base">Informasi PR</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <Label>Pemohon</Label>
-                <Input
-                  value={form.requestedBy}
-                  onChange={e => setForm(f => ({ ...f, requestedBy: e.target.value }))}
-                  disabled={!isDraft}
-                  placeholder={[user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || "Nama pemohon"}
-                />
-              </div>
-              <div><Label>Departemen</Label><Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} disabled={!isDraft} /></div>
-                <Label>
-                  Pemohon <span className="text-destructive">*</span>
-                </Label>
+                <Label>Pemohon <span className="text-destructive">*</span></Label>
                 {isDraft ? (
                   <>
                     <Select value={form.requestedBy} onValueChange={handlePemohonChange}>
-                      <SelectTrigger className={submitAttempted && !form.requestedBy.trim() ? "border-destructive focus:ring-destructive" : ""}>
+                      <SelectTrigger className={submitAttempted && !form.requestedBy.trim() ? "border-destructive" : ""}>
                         <SelectValue placeholder="Pilih pemohon..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -289,22 +278,26 @@ export default function PurchaseRequestEditorPage() {
                 )}
               </div>
               <div>
-                <Label>
-                  Departemen <span className="text-destructive">*</span>
-                </Label>
+                <Label>Departemen <span className="text-destructive">*</span></Label>
                 <Input
                   value={form.department}
                   onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
                   disabled={!isDraft}
                   placeholder="Otomatis dari divisi pemohon"
-                  className={submitAttempted && !form.department.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
+                  className={submitAttempted && !form.department.trim() ? "border-destructive" : ""}
                 />
                 {submitAttempted && !form.department.trim() && (
                   <p className="text-xs text-destructive mt-1">Departemen wajib diisi.</p>
                 )}
               </div>
-              <div><Label>Tanggal Diperlukan</Label><Input type="date" value={form.requiredDate} onChange={e => setForm(f => ({ ...f, requiredDate: e.target.value }))} disabled={!isDraft} /></div>
-              <div><Label>Catatan</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} disabled={!isDraft} rows={3} /></div>
+              <div>
+                <Label>Tanggal Diperlukan</Label>
+                <Input type="date" value={form.requiredDate} onChange={e => setForm(f => ({ ...f, requiredDate: e.target.value }))} disabled={!isDraft} />
+              </div>
+              <div>
+                <Label>Catatan</Label>
+                <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} disabled={!isDraft} rows={3} />
+              </div>
             </CardContent>
           </Card>
 
@@ -312,10 +305,13 @@ export default function PurchaseRequestEditorPage() {
             <Card>
               <CardHeader><CardTitle className="text-base">Aksi Workflow</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <div><Label>Catatan Approval</Label><Textarea value={actionNotes} onChange={e => setActionNotes(e.target.value)} rows={2} placeholder="Opsional..." /></div>
+                <div>
+                  <Label>Catatan Approval</Label>
+                  <Textarea value={actionNotes} onChange={e => setActionNotes(e.target.value)} rows={2} placeholder="Opsional..." />
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {isDraft && <Button size="sm" onClick={handleSubmit} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Submit</Button>}
-                  {isSubmitted && <Button size="sm" variant="default" onClick={() => actionMut.mutate("approve")} disabled={actionMut.isPending}><CheckCircle className="mr-1 h-4 w-4" />Approve</Button>}
+                  {isSubmitted && <Button size="sm" onClick={() => actionMut.mutate("approve")} disabled={actionMut.isPending}><CheckCircle className="mr-1 h-4 w-4" />Approve</Button>}
                   {isSubmitted && <Button size="sm" variant="destructive" onClick={() => actionMut.mutate("reject")} disabled={actionMut.isPending}><XCircle className="mr-1 h-4 w-4" />Reject</Button>}
                   {pr.status === "approved" && <Button size="sm" onClick={() => actionMut.mutate("convert_rfq")} disabled={actionMut.isPending}><ArrowRight className="mr-1 h-4 w-4" />Konversi ke RFQ</Button>}
                   {(isDraft || isSubmitted) && <Button size="sm" variant="outline" onClick={() => actionMut.mutate("cancel")} disabled={actionMut.isPending}><XCircle className="mr-1 h-4 w-4" />Cancel</Button>}
@@ -326,11 +322,11 @@ export default function PurchaseRequestEditorPage() {
           )}
         </div>
 
-        <Card className={isDraft && !hasValidLines ? "border-destructive" : ""}>
+        <Card className={isDraft && !hasValidLines && submitAttempted ? "border-destructive" : ""}>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base">Item yang Dibutuhkan</CardTitle>
-              {isDraft && !hasValidLines && (
+              {isDraft && !hasValidLines && submitAttempted && (
                 <p className="text-xs text-destructive mt-1">Minimal harus ada satu item yang diisi.</p>
               )}
             </div>
@@ -384,7 +380,9 @@ export default function PurchaseRequestEditorPage() {
             <CardContent>
               {pr.approvals.map((a, i) => (
                 <div key={i} className="flex items-center gap-3 py-2 border-b last:border-0">
-                  <Badge variant={a.status === "approved" ? "default" : a.status === "rejected" ? "destructive" : "secondary"}>Step {String(a.step)}: {String(a.status)}</Badge>
+                  <Badge variant={a.status === "approved" ? "default" : a.status === "rejected" ? "destructive" : "secondary"}>
+                    Step {String(a.step)}: {String(a.status)}
+                  </Badge>
                   <span className="text-sm">{String(a.approverName ?? "-")}</span>
                   {a.notes && <span className="text-sm text-muted-foreground">— {String(a.notes)}</span>}
                 </div>
