@@ -82,6 +82,11 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
       },
     },
   },
+  css: {
+    postcss: {
+      plugins: [],
+    },
+  },
   server: {
     port,
     strictPort: false,
