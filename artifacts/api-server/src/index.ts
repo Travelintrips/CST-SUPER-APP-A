@@ -16,6 +16,7 @@ import { runCompaniesMigration } from "./lib/companiesMigration";
 import { runHoldingMigration } from "./lib/holdingMigration";
 import { runPosKasirMigration } from "./lib/posKasirMigration";
 import { runSessionsMigration } from "./lib/sessionsMigration";
+import { runCustomRolesMigration } from "./lib/customRolesMigration";
 import { runUomMigration } from "./lib/uomMigration";
 import { runFreightAuditMigration } from "./lib/freightAuditMigration";
 
@@ -102,6 +103,7 @@ const server = app.listen(port, (err) => {
     .then(() => runWithRetry("OAuth state migration", runOauthStateMigration))
     .then(() => runWithRetry("Knowledge base migration", runKnowledgeBaseMigration))
     .then(() => runWithRetry("POS Kasir migration", runPosKasirMigration))
+    .then(() => runWithRetry("Custom roles migration", runCustomRolesMigration))
     .then(() => runWithRetry("UOM migration", runUomMigration))
     .then(() => runWithRetry("Freight audit log migration", runFreightAuditMigration))
     .then(() => enableRealtimeTables().catch((err) => {

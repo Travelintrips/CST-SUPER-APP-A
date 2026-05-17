@@ -30,8 +30,8 @@ const server = http.createServer((req, res) => {
   if (
     url.startsWith("/api/") ||
     url === "/api" ||
-    url.startsWith("/bizportal") ||
-    url.startsWith("/logistic-order")
+    url.startsWith("/logistic-order/api") ||
+    url.startsWith("/auth/")
   ) {
     proxyRequest(req, res, API_PORT);
   } else {

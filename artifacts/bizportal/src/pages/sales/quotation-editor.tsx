@@ -228,6 +228,58 @@ interface UomRow {
   is_active: boolean;
 }
 
+interface StockCheckResult {
+  productId: number;
+  itemType: string;
+  baseUnit: string;
+  baseUomId: number | null;
+  baseUomSymbol: string;
+  baseAvailable: number;
+  salesUomId: number | null;
+  salesUomSymbol: string;
+  available: number;
+  conversionAvailable: boolean;
+}
+
+function StockBadge({ productId, salesUomId, qty }: { productId: number; salesUomId: number | null; qty: number }) {
+  const { data, isLoading, isError } = useQuery<StockCheckResult>({
+    queryKey: ["/api/inventory/stock/check", productId, salesUomId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ productId: String(productId) });
+      if (salesUomId) params.set("salesUomId", String(salesUomId));
+      const res = await fetch(`/api/inventory/stock/check?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("stock check failed");
+      return res.json();
+    },
+    staleTime: 30_000,
+    gcTime: 60_000,
+  });
+
+  if (isLoading) return <span className="text-[10px] text-muted-foreground animate-pulse mt-1 block">memuat stok…</span>;
+  if (isError || !data) return null;
+  if (data.itemType !== "barang") return null;
+
+  const avail = data.available;
+  const symbol = data.salesUomSymbol;
+
+  const colorClass =
+    avail <= 0 ? "text-red-500 bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800"
+    : avail < qty ? "text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800"
+    : "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800";
+
+  const label = avail <= 0 ? "Stok habis" : `Stok: ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(avail)} ${symbol}`;
+
+  return (
+    <span className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded border text-[10px] font-medium leading-none ${colorClass}`}>
+      {avail < qty && avail > 0 && <span title="Stok kurang dari qty yang diinput">⚠</span>}
+      {label}
+      {!data.conversionAvailable && salesUomId && (
+        <span className="text-muted-foreground ml-0.5" title="Tidak ada konversi UOM — stok ditampilkan dalam satuan dasar">({data.baseUomSymbol})</span>
+      )}
+    </span>
+  );
+}
+
 interface EditorProps { kind?: "quote" | "order" }
 
 export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps = {}) {
@@ -1080,6 +1132,13 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
                           ))}
                         </SelectContent>
                       </Select>
+                      {l.productId && (
+                        <StockBadge
+                          productId={l.productId}
+                          salesUomId={l.salesUomId ?? null}
+                          qty={l.quantity}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <Input
