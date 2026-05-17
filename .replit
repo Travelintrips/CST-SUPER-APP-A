@@ -18,19 +18,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Start application"
+args = "Customer Portal"
 
 [[workflows.workflow]]
-name = "Start application"
+name = "Customer Portal"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run dev & PORT=3000 pnpm --filter @workspace/customer-portal run dev & PORT=18442 pnpm --filter @workspace/bizportal run dev & node scripts/proxy5000.mjs"
-waitForPort = 5000
+args = "PORT=8080 NODE_ENV=development node --enable-source-maps /home/runner/workspace/artifacts/api-server/dist/index.mjs"
+waitForPort = 8080
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -44,13 +44,15 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,skylogistic00@gmail.com"
-PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,skylogistic00@gmail.com"
+ADMIN_EMAILS = "divatranssoetta@gmail.com,admcst001@gmail.com,almanosetiawan@gmail.com,divarestorxr@gmail.com,wangsamasindo@gmail.com"
+PORTAL_ADMIN_EMAILS = "admcst001@gmail.com,wangsamasindo@gmail.com"
 FONNTE_ADMIN_WA = "6281288195206"
 ADMIN_WA_PHONES = "081382702074,087882639826"
-ADMIN_EMAIL = "admcst001@gmail.com,skylogistic00@gmail.com"
+ADMIN_EMAIL = "admcst001@gmail.com"
 SUPABASE_PG_URL = "postgresql://postgres.nzdweipzckfszczzqtuw:%24%23Admin12345%40%24@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
-CASHIER_TOKEN_SECRET = "2d5096596de9845ac9b7f16f2f35c84c5d734e4df1d3deddbaa4e88143a66098"
+VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZHdlaXB6Y2tmc3pjenpxdHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MDI4NDQsImV4cCI6MjA5Mzk3ODg0NH0.p9k3-qyRjPuXsHLizUrSRMyS-0yJAatUyjQU9NIIu1U"
+VITE_SUPABASE_URL = "https://nzdweipzckfszczzqtuw.supabase.co"
+CASHIER_TOKEN_SECRET = "2ac09480b4c6665e7a0f108922f3e26f76daef2fd01ac13dc9f0aba9af1a7a74"
 
 [userenv.development]
 ADMIN_EMAIL_DOMAINS = "example.com"
