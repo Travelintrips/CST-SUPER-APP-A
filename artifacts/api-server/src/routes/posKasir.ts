@@ -12,7 +12,7 @@ import {
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { checkPosStock, deductPosStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
-import { postPosTransaction } from "../lib/accounting.js";
+import { postPosTransaction, postPosCogs } from "../lib/accounting.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -504,6 +504,40 @@ router.patch("/orders/:id/pay", async (req, res) => {
     createdById: null,
     companyId: order.companyId ?? null,
   });
+
+  // ── Post POS COGS: DR HPP / CR Persediaan (untuk item dengan linked inventory product) ──
+  try {
+    const itemsWithLinked = orderItems.filter((i) => {
+      const meta = prodMeta.get(i.productId);
+      return meta?.linked_product_id != null;
+    });
+    if (itemsWithLinked.length > 0) {
+      const linkedIds = itemsWithLinked.map((i) => prodMeta.get(i.productId)!.linked_product_id!);
+      // Fetch cost prices from wh_stock using linked product IDs
+      const costRows = (await db.execute(sql`
+        SELECT product_id, AVG(cost_price::numeric) as avg_cost
+        FROM wh_stock
+        WHERE product_id = ANY(${sql.raw(`ARRAY[${linkedIds.join(",")}]::int[]`)})
+        GROUP BY product_id
+      `)).rows as Array<{ product_id: number; avg_cost: string }>;
+      const costByProductId = new Map(costRows.map((r) => [r.product_id, Number(r.avg_cost)]));
+
+      const cogsItems = itemsWithLinked.map((i) => {
+        const linkedId = prodMeta.get(i.productId)!.linked_product_id!;
+        const costPrice = costByProductId.get(linkedId) ?? 0;
+        return { name: i.productName, qty: i.qty, costPrice };
+      }).filter((x) => x.costPrice > 0);
+
+      if (cogsItems.length > 0) {
+        await postPosCogs({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          items: cogsItems,
+          companyId: order.companyId ?? null,
+        });
+      }
+    }
+  } catch (e) { console.error("[pos-cogs]", e); }
 
   return res.json({ ...updated, items: orderItems });
 });

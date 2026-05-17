@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
-import { postOpnameAdjust, postDamageJournal } from "../lib/accounting.js";
+import { postOpnameAdjust, postDamageJournal, postWarehouseTransfer } from "../lib/accounting.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -237,6 +237,38 @@ router.post("/transfers/:id/action", async (req: Request, res: Response) => {
       await db.execute(sql`UPDATE wh_transfer_lines SET qty_received = ${qtyToReceive} WHERE id = ${line.id}`);
     }
     await db.execute(sql`UPDATE wh_transfers SET status = 'received', received_at = NOW() WHERE id = ${id}`);
+
+    // ── Post accounting journal: DR Persediaan Tujuan / CR Persediaan Asal ────
+    try {
+      const transferLines = await db.execute(sql`
+        SELECT tl.product_id, tl.qty_sent, p.name AS product_name,
+               ws_from.cost_price AS cost_price
+        FROM wh_transfer_lines tl
+        JOIN products p ON p.id = tl.product_id
+        LEFT JOIN wh_stock ws_from ON ws_from.product_id = tl.product_id
+          AND ws_from.warehouse_id = ${transfer.from_warehouse_id}
+        WHERE tl.transfer_id = ${id}
+      `);
+      const companyResult = await db.execute(sql`
+        SELECT company_id FROM warehouses WHERE id = ${transfer.from_warehouse_id} LIMIT 1
+      `);
+      const companyId = (companyResult.rows[0] as any)?.company_id ?? null;
+      const transferItems = (transferLines.rows as any[]).map((r) => ({
+        productId: r.product_id as number,
+        productName: r.product_name as string,
+        qty: Number(r.qty_sent ?? 0),
+        costPrice: Number(r.cost_price ?? 0),
+      })).filter((i) => i.qty > 0 && i.costPrice > 0);
+      if (transferItems.length > 0) {
+        await postWarehouseTransfer({
+          transferId: id,
+          fromWarehouseId: transfer.from_warehouse_id,
+          toWarehouseId: transfer.to_warehouse_id,
+          items: transferItems,
+          companyId,
+        }).catch((e) => console.error("[transfer accounting]", e));
+      }
+    } catch (e) { console.error("[transfer accounting]", e); }
 
   } else if (action === "cancel") {
     if (transfer.status !== "draft") {

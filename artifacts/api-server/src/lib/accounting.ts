@@ -219,7 +219,9 @@ export async function postSalesInvoice(args: {
 /** Auto-post when a Purchase document gets billed.
  *
  * Debit allocation (per line):
- *  - Lines with productId (barang/inventory)  → DR 1-1040 Persediaan
+ *  - Lines with productId (barang/inventory):
+ *      → if grirAccountId exists: DR 2-1045 GR/IR Clearing (clears the GRN accrual)
+ *      → else fallback: DR 1-1040 Persediaan
  *  - Lines without productId (jasa/beban)     → DR purchaseExpenseAccountId (5-1011)
  *  - Tax                                      → DR 1-1050 PPN Masukan
  *  Credit: 2-1010 Hutang Usaha (grand total)
@@ -235,9 +237,10 @@ export async function postPurchaseBill(args: {
   taxAmount: number;
   taxAccountId: number | null;
   createdById?: string | null;
+  companyId?: number | null;
 }): Promise<void> {
   try {
-    const settings = await ensureAccountingSettings();
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
     if (!settings.apAccountId || !settings.purchaseJournalId) {
       logger.warn({ purchaseDocId: args.purchaseDocId }, "Skipping auto-post purchase bill: accounting settings incomplete");
       return;
@@ -272,18 +275,23 @@ export async function postPurchaseBill(args: {
 
     const lines: PostingLine[] = [];
 
-    // DR Persediaan for product lines
+    // DR GR/IR (clears GRN accrual) or DR Persediaan for product lines
     if (inventoryAmount > 0) {
-      if (!settings.inventoryAccountId) {
-        logger.warn({ purchaseDocId: args.purchaseDocId }, "inventoryAccountId missing — falling back to expense account for product lines");
+      // Prefer GR/IR account — clears the liability posted when GRN was confirmed
+      const productDebitAccountId = settings.grirAccountId ?? settings.inventoryAccountId;
+      if (!productDebitAccountId) {
+        logger.warn({ purchaseDocId: args.purchaseDocId }, "grirAccountId & inventoryAccountId missing — falling back to expense account for product lines");
         expenseAmount = round2(expenseAmount + inventoryAmount);
         inventoryAmount = 0;
       } else {
+        const isGrir = !!settings.grirAccountId;
         lines.push({
-          accountId: settings.inventoryAccountId,
+          accountId: productDebitAccountId,
           debit: inventoryAmount,
           credit: 0,
-          description: `Persediaan barang: ${args.docNumber}`,
+          description: isGrir
+            ? `GR/IR clearing: ${args.docNumber}`
+            : `Persediaan barang: ${args.docNumber}`,
         });
       }
     }
@@ -343,6 +351,48 @@ export async function postPurchaseBill(args: {
     logger.info({ purchaseDocId: args.purchaseDocId, inventoryAmount, expenseAmount, taxAmount }, "Purchase bill journal entry posted");
   } catch (err) {
     logger.error({ err, purchaseDocId: args.purchaseDocId }, "Auto-post purchase bill failed");
+  }
+}
+
+/** Auto-post POS COGS: DR HPP / CR Persediaan for recipe/linked inventory items. */
+export async function postPosCogs(args: {
+  orderId: number;
+  orderNumber: string;
+  items: Array<{ name: string; qty: number; costPrice: number }>;
+  createdById?: string | null;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const validItems = args.items.filter((i) => i.costPrice > 0 && i.qty > 0);
+    if (validItems.length === 0) return;
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
+    if (!settings.cogsAccountId || !settings.inventoryAccountId || !settings.purchaseJournalId) {
+      logger.warn({ orderId: args.orderId }, "Skipping POS COGS post: settings incomplete");
+      return;
+    }
+    const totalCogs = round2(validItems.reduce((s, i) => s + i.costPrice * i.qty, 0));
+    if (totalCogs <= 0) return;
+    const desc = validItems.map((i) => `${i.name} ×${i.qty}`).join(", ");
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: `POSCOGS-${args.orderId}`,
+        description: `HPP POS Order #${args.orderNumber}`,
+        source: "cogs_delivery",
+        sourceId: args.orderId,
+        createdById: args.createdById ?? null,
+        companyId: args.companyId ?? null,
+        lines: [
+          { accountId: settings.cogsAccountId, debit: totalCogs, credit: 0, description: `HPP POS: ${desc}` },
+          { accountId: settings.inventoryAccountId, debit: 0, credit: totalCogs, description: `Persediaan keluar POS: ${desc}` },
+        ],
+      },
+      "PUR",
+    );
+    logger.info({ orderId: args.orderId, totalCogs, itemCount: validItems.length }, "POS COGS journal posted");
+  } catch (err) {
+    logger.error({ err, orderId: args.orderId }, "Auto-post POS COGS failed");
   }
 }
 
@@ -852,5 +902,50 @@ export async function postSalesCogsReturn(args: {
     logger.info({ salesDocId: args.salesDocId, totalCogs, lineCount: validLines.length }, "Sales COGS return journal entry posted");
   } catch (err) {
     logger.error({ err, salesDocId: args.salesDocId }, "Auto-post sales COGS return failed");
+  }
+}
+
+/** Auto-post Warehouse Transfer: DR Persediaan Tujuan / CR Persediaan Asal (in-company transfer). */
+export async function postWarehouseTransfer(args: {
+  transferId: number;
+  fromWarehouseId: number;
+  toWarehouseId: number;
+  items: Array<{ productId: number; productName: string; qty: number; costPrice: number }>;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const validItems = args.items.filter((i) => i.qty > 0 && i.costPrice > 0);
+    if (validItems.length === 0) return;
+
+    const settings = await ensureAccountingSettings(args.companyId ?? undefined);
+    if (!settings.inventoryAccountId || !settings.purchaseJournalId) {
+      logger.warn({ transferId: args.transferId }, "Skipping warehouse transfer post: settings incomplete");
+      return;
+    }
+
+    const totalValue = round2(validItems.reduce((s, i) => s + i.qty * i.costPrice, 0));
+    const description = `Transfer antar gudang #${args.transferId} (gudang ${args.fromWarehouseId} → ${args.toWarehouseId})`;
+    const lineDesc = validItems.map((i) => `${i.productName} ×${i.qty}`).join(", ");
+
+    await postEntry(
+      {
+        journalId: settings.purchaseJournalId,
+        date: new Date(),
+        ref: `WH-TRF-${args.transferId}`,
+        description,
+        source: "wh_transfer",
+        sourceId: args.transferId,
+        createdById: null,
+        companyId: args.companyId ?? null,
+        lines: [
+          { accountId: settings.inventoryAccountId, debit: totalValue, credit: 0, description: `Persediaan masuk gudang tujuan: ${lineDesc}` },
+          { accountId: settings.inventoryAccountId, debit: 0, credit: totalValue, description: `Persediaan keluar gudang asal: ${lineDesc}` },
+        ],
+      },
+      "WHT",
+    );
+    logger.info({ transferId: args.transferId, totalValue, itemCount: validItems.length }, "Warehouse transfer journal entry posted");
+  } catch (err) {
+    logger.error({ err, transferId: args.transferId }, "Auto-post warehouse transfer failed");
   }
 }

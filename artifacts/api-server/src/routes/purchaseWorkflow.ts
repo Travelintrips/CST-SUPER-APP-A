@@ -544,22 +544,25 @@ router.post("/gr/:id/confirm", async (req, res) => {
     }
   }
 
-  // Post accounting journal: Dr Inventory / Cr AP
+  // Post accounting journal: Dr Inventory / Cr GR/IR (proper 3-way match accrual)
+  // GR/IR (2-1045) acts as clearing account; cleared when vendor invoice (bill) is posted.
   try {
     const settings = await ensureAccountingSettings(gr.companyId ?? 1);
     const totalCost = lines.reduce((s, l) => s + num(l.qtyReceived) * num(l.unitCost), 0);
-    if (totalCost > 0 && settings.inventoryAccountId && settings.purchaseJournalId && settings.apAccountId) {
+    const creditAccountId = settings.grirAccountId ?? settings.apAccountId; // fallback to AP if no GR/IR
+    if (totalCost > 0 && settings.inventoryAccountId && settings.purchaseJournalId && creditAccountId) {
+      const isGrir = !!settings.grirAccountId;
       const entry = await postEntry({
         journalId: settings.purchaseJournalId,
         date: new Date(),
         ref: gr.grNumber,
-        description: `Goods Receipt ${gr.grNumber}`,
-        source: "stock_received",
+        description: `Penerimaan Barang ${gr.grNumber}`,
+        source: "grn_receipt",
         sourceId: id,
         companyId: gr.companyId ?? 1,
         lines: [
-          { accountId: settings.inventoryAccountId, debit: totalCost, credit: 0, description: "Inventory received" },
-          { accountId: settings.apAccountId, debit: 0, credit: totalCost, description: "AP accrual" },
+          { accountId: settings.inventoryAccountId, debit: totalCost, credit: 0, description: `Persediaan masuk: ${gr.grNumber}` },
+          { accountId: creditAccountId, debit: 0, credit: totalCost, description: isGrir ? `GR/IR accrual: ${gr.grNumber}` : `AP accrual: ${gr.grNumber}` },
         ],
       }, "PUR");
       if (entry?.id) {

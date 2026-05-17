@@ -433,6 +433,7 @@ router.post("/documents/:id/action", async (req, res) => {
           })),
           taxAmount,
           taxAccountId: null,
+          companyId: doc.companyId ?? null,
         });
       } catch (e) {
         console.error("[accounting] postPurchaseBill error:", e);

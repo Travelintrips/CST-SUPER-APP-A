@@ -222,6 +222,10 @@ export const accountingSettingsTable = pgTable("accounting_settings", {
     () => chartOfAccountsTable.id,
     { onDelete: "set null" },
   ),
+  grirAccountId: integer("grir_account_id").references(
+    () => chartOfAccountsTable.id,
+    { onDelete: "set null" },
+  ),
   companyName: text("company_name"),
   companyAddress: text("company_address"),
   companyNpwp: text("company_npwp"),

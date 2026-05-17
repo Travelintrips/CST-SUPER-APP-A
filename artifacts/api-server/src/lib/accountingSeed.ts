@@ -80,6 +80,7 @@ const COA_LEAF_TEMPLATES: SeedAccount[] = [
   { code: "2-1020", name: "PPN Keluaran",                     type: "liability", parentCode: "2-1000" },
   { code: "2-1030", name: "Hutang Pajak Lainnya",             type: "liability", parentCode: "2-1000" },
   { code: "2-1040", name: "Uang Muka Pelanggan",              type: "liability", parentCode: "2-1000" },
+  { code: "2-1045", name: "GR/IR Clearing (Barang Diterima/Belum Ditagih)", type: "liability", parentCode: "2-1000" },
   // ── Kewajiban Jangka Panjang ──────────────────────────────
   { code: "2-2010", name: "Hutang Jangka Panjang",            type: "liability", parentCode: "2-2000" },
   // ── Modal ─────────────────────────────────────────────────
@@ -144,6 +145,7 @@ async function applyRuntimeMigrations(): Promise<void> {
     `ALTER TABLE accounting_journals ADD COLUMN IF NOT EXISTS company_id INTEGER`,
     `ALTER TABLE accounting_taxes ADD COLUMN IF NOT EXISTS company_id INTEGER`,
     `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS company_id INTEGER`,
+    `ALTER TABLE accounting_settings ADD COLUMN IF NOT EXISTS grir_account_id INTEGER REFERENCES chart_of_accounts(id) ON DELETE SET NULL`,
   ];
   for (const q of [...companyColMigrations, ...accountingColMigrations]) {
     try { await db.execute(sql.raw(q)); } catch { /* column/index already exists or duplicate */ }
@@ -216,6 +218,27 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     const expectedLeaves = COA_LEAF_TEMPLATES.length * ALL_COMPANY_IDS.length;
     if (Number(leafCount) >= expectedLeaves) {
       logger.info("Accounting seed: COA already fully seeded — skipping (fast path).");
+      // Still patch grirAccountId in settings if it's NULL but 2-1045 account exists
+      try {
+        await db.execute(sql`
+          UPDATE accounting_settings AS s
+          SET grir_account_id = coa.id
+          FROM chart_of_accounts coa
+          WHERE coa.code = CONCAT('2-1045-', (
+            SELECT abbr FROM companies c WHERE c.id = s.company_id LIMIT 1
+          ))
+          AND s.grir_account_id IS NULL
+          AND s.company_id IS NOT NULL
+        `);
+        // Also handle global settings row (no company_id)
+        await db.execute(sql`
+          UPDATE accounting_settings AS s
+          SET grir_account_id = (
+            SELECT id FROM chart_of_accounts WHERE code LIKE '2-1045%' ORDER BY id LIMIT 1
+          )
+          WHERE s.grir_account_id IS NULL
+        `);
+      } catch (e) { /* non-fatal */ }
       return;
     }
   } catch {
@@ -514,6 +537,8 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
     const cBankJ  = getJournal("BNK", companyId);
     const cCashJ  = getJournal("CSH", companyId);
 
+    const grir = byCode.get(`2-1045-${abbr}`);
+
     const settingsBase = {
       arAccountId:             ar.id,
       apAccountId:             ap.id,
@@ -531,6 +556,7 @@ export async function seedAccountingDefaults(companyId?: number): Promise<void> 
       defaultPurchaseTaxId:    purchaseTax.id,
       inventoryAccountId:      inventory.id,
       cogsAccountId:           cogs.id,
+      grirAccountId:           grir?.id ?? null,
     };
 
     const existing = existingByCompany.get(companyId);
