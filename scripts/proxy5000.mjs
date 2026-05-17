@@ -5,6 +5,7 @@ try { execSync("fuser -k 5000/tcp", { stdio: "ignore" }); } catch {}
 
 const API_PORT = 8080;
 const BIZPORTAL_PORT = 18442;
+const CUSTOMER_PORTAL_PORT = 3000;
 
 function proxyRequest(req, res, port) {
   const options = {
@@ -34,8 +35,10 @@ const server = http.createServer((req, res) => {
     url.startsWith("/auth/")
   ) {
     proxyRequest(req, res, API_PORT);
-  } else {
+  } else if (url.startsWith("/bizportal") || url.startsWith("/bizportal/")) {
     proxyRequest(req, res, BIZPORTAL_PORT);
+  } else {
+    proxyRequest(req, res, CUSTOMER_PORTAL_PORT);
   }
 });
 

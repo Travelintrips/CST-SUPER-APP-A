@@ -4,10 +4,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // development Supabase project is used instead of production.
 const isDev = import.meta.env.DEV;
 
-const rawUrl = (isDev ? import.meta.env.VITE_SUPABASE_URL_DEV : undefined)
+const rawUrl = (isDev ? (import.meta.env.VITE_SUPABASE_URL_DEV || undefined) : undefined)
   ?? (import.meta.env.VITE_SUPABASE_URL as string | undefined);
 
-const supabaseAnonKey = (isDev ? import.meta.env.VITE_SUPABASE_ANON_KEY_DEV : undefined)
+const supabaseAnonKey = (isDev ? (import.meta.env.VITE_SUPABASE_ANON_KEY_DEV || undefined) : undefined)
   ?? (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
 
 function normalizeSupabaseUrl(url: string | undefined): string | null {
