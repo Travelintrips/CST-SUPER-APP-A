@@ -43,7 +43,7 @@ function ItemCombobox({ value, onChange, disabled }: {
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["/api/ecommerce/products/search", search],
     queryFn: () => apiFetch(`/ecommerce/products?search=${encodeURIComponent(search)}&isActive=true`).then(r => r.json()),
-    enabled: open && search.length >= 1,
+    enabled: open,
     staleTime: 10_000,
   });
 
@@ -113,7 +113,7 @@ export default function PurchaseRequestEditorPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { activeCompanyId } = useCompany();
-  const { user } = useSupabaseAuth();
+
   const isNew = !id || id === "new";
 
   const { data: pr, isLoading } = useQuery<PR>({
@@ -139,13 +139,16 @@ export default function PurchaseRequestEditorPage() {
   const [actionNotes, setActionNotes] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  // Auto-fill pemohon dari user yang sedang login
+  // Auto-fill pemohon + departemen dari currentUser (data DB, punya division)
   useEffect(() => {
-    if (isNew && user) {
-      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "";
-      setForm(f => ({ ...f, requestedBy: f.requestedBy || fullName }));
+    if (isNew && currentUser) {
+      setForm(f => ({
+        ...f,
+        requestedBy: f.requestedBy || currentUser.name || "",
+        department: f.department || currentUser.division || "",
+      }));
     }
-  }, [isNew, user]);
+  }, [isNew, currentUser]);
 
   // Jika ada PR existing, isi form
   useEffect(() => {
