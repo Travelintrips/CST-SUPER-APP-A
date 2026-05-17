@@ -21,6 +21,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { postStockOut, StockShortageError } from "../lib/inventoryStock.js";
+import { convertQty } from "../lib/uomEngine.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -47,6 +48,22 @@ interface LineInput {
   description?: string | null;
   quantity: number;
   unitPrice: number;
+  salesUomId?: number | null;
+}
+
+/** Compute base_qty by converting quantity from salesUomId → product's base_uom_id. */
+async function resolveBaseQty(line: LineInput): Promise<number | null> {
+  if (!line.salesUomId || !line.productId) return null;
+  try {
+    const prodRow = (await db.execute(sql`
+      SELECT base_uom_id FROM products WHERE id = ${line.productId} LIMIT 1
+    `)).rows[0] as { base_uom_id: number | null } | undefined;
+    const baseUomId = prodRow?.base_uom_id ?? null;
+    if (!baseUomId || baseUomId === line.salesUomId) return Number(line.quantity);
+    return await convertQty(Number(line.quantity), line.salesUomId, baseUomId);
+  } catch {
+    return null;
+  }
 }
 
 function serializeCustomer(c: typeof customersTable.$inferSelect) {
@@ -72,6 +89,7 @@ function serializeLine(l: typeof salesDocumentLinesTable.$inferSelect) {
   return {
     ...l,
     quantity: Number(l.quantity),
+    baseQty: l.baseQty != null ? Number(l.baseQty) : null,
     unitPrice: Number(l.unitPrice),
     subtotal: Number(l.subtotal),
   };
@@ -304,17 +322,20 @@ router.post("/documents", async (req, res) => {
   }
   if (!doc) throw new Error("Failed to create sales document after retries");
 
-  await db.insert(salesDocumentLinesTable).values(
-    (lines as LineInput[]).map((l) => ({
-      documentId: doc.id,
+  const lineValues = await Promise.all(
+    (lines as LineInput[]).map(async (l) => ({
+      documentId: doc!.id,
       productId: l.productId ?? null,
       name: l.name,
       description: l.description ?? null,
       quantity: String(l.quantity),
       unitPrice: String(l.unitPrice),
       subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-    })),
+      salesUomId: l.salesUomId ?? null,
+      baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+    }))
   );
+  await db.insert(salesDocumentLinesTable).values(lineValues);
 
   const detail = await loadDocWithLines(doc.id);
 
@@ -369,8 +390,8 @@ router.put("/documents/:id", async (req, res) => {
     patch["grandTotal"] = String(grandTotal);
     await db.delete(salesDocumentLinesTable).where(eq(salesDocumentLinesTable.documentId, id));
     if (lines.length > 0) {
-      await db.insert(salesDocumentLinesTable).values(
-        (lines as LineInput[]).map((l) => ({
+      const putLineValues = await Promise.all(
+        (lines as LineInput[]).map(async (l) => ({
           documentId: id,
           productId: l.productId ?? null,
           name: l.name,
@@ -378,8 +399,11 @@ router.put("/documents/:id", async (req, res) => {
           quantity: String(l.quantity),
           unitPrice: String(l.unitPrice),
           subtotal: String(Number(l.quantity) * Number(l.unitPrice)),
-        })),
+          salesUomId: l.salesUomId ?? null,
+          baseQty: await resolveBaseQty(l).then((v) => (v != null ? String(v) : null)),
+        }))
       );
+      await db.insert(salesDocumentLinesTable).values(putLineValues);
     }
   } else if (taxRateId !== undefined) {
     const total = Number(existing.totalAmount);
@@ -477,7 +501,8 @@ router.post("/documents/:id/action", async (req, res) => {
       if (invWh) {
         const shortages: Array<{ productId: number; name: string; requested: number; available: number }> = [];
         for (const line of productLines) {
-          const qty = Number(line.quantity);
+          // Use base_qty (converted to product's base UOM) if available, else fall back to quantity
+          const qty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
           const stockRow = (await db.execute(sql`
             SELECT COALESCE(stock_available::float, 0) AS stock_available
             FROM inventory_stock
@@ -557,10 +582,12 @@ router.post("/documents/:id/action", async (req, res) => {
         `)).rows[0] as { id: number } | undefined;
         if (invWh) {
           for (const line of productLines) {
+            // Use base_qty when set (converted to product's base UOM); fallback to quantity
+            const deductQty = line.baseQty != null ? Number(line.baseQty) : Number(line.quantity);
             await postStockOut({
               productId: line.productId!,
               warehouseId: invWh.id,
-              qty: Number(line.quantity),
+              qty: deductQty,
               movementType: "SALES_DELIVERY",
               referenceType: "SALES_ORDER",
               referenceId: id,

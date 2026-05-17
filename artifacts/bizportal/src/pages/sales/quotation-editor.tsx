@@ -67,7 +67,7 @@ import {
   type Product,
   type Customer,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Send, Check, CheckCircle, X, Receipt, Truck, Trash2, FileEdit, Save, Printer, CreditCard, Wallet, FileText, ScanLine, Mail, Search, Package, Wrench, ExternalLink, MessageSquare, Bot, SendHorizonal, Pencil, Loader2 } from "lucide-react";
 import { CorrespondenceTab } from "@/components/CorrespondenceTab";
 import { useCreateSalesPaymentLink } from "@workspace/api-client-react";
@@ -217,6 +217,15 @@ interface LineDraft {
   description?: string | null;
   quantity: number;
   unitPrice: number;
+  salesUomId?: number | null;
+}
+
+interface UomRow {
+  id: number;
+  name: string;
+  symbol: string;
+  category: string;
+  is_active: boolean;
 }
 
 interface EditorProps { kind?: "quote" | "order" }
@@ -397,6 +406,10 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
   const { data: products } = useListProducts();
   const { data: taxes } = useListTaxes();
   const { data: acctSettings } = useGetAccountingSettings();
+  const { data: uomList = [] } = useQuery<UomRow[]>({
+    queryKey: ["/api/uom"],
+    queryFn: () => fetch("/api/uom", { credentials: "include" }).then((r) => r.json()),
+  });
   const createMut = useCreateSalesDocument();
   const updateMut = useUpdateSalesDocument();
   const actionMut = useSalesDocumentAction();
@@ -447,6 +460,7 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
               description: l.description ?? null,
               quantity: Number(l.quantity),
               unitPrice: Number(l.unitPrice),
+              salesUomId: (l as any).salesUomId ?? null,
             }))
           : [{ name: "", quantity: 1, unitPrice: 0 }],
       );
@@ -639,6 +653,7 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
         description: l.description ?? null,
         quantity: Number(l.quantity),
         unitPrice: Number(l.unitPrice),
+        salesUomId: l.salesUomId ?? null,
       })),
     };
     try {
@@ -1000,7 +1015,8 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
                 <TableRow>
                   <TableHead className="w-[200px]">Produk</TableHead>
                   <TableHead>Deskripsi</TableHead>
-                  <TableHead className="w-[100px] text-right">Qty</TableHead>
+                  <TableHead className="w-[80px] text-right">Qty</TableHead>
+                  <TableHead className="w-[110px]">UOM</TableHead>
                   <TableHead className="w-[150px] text-right">Harga Satuan</TableHead>
                   <TableHead className="w-[150px] text-right">Subtotal</TableHead>
                   {isEditable && <TableHead className="w-[40px]"></TableHead>}
@@ -1045,6 +1061,25 @@ export default function SalesDocumentEditorPage({ kind: propKind }: EditorProps 
                         disabled={!isEditable}
                         data-testid={`input-line-qty-${idx}`}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={l.salesUomId ? String(l.salesUomId) : "__none"}
+                        onValueChange={(v) => setLine(idx, { salesUomId: v === "__none" ? null : Number(v) })}
+                        disabled={!isEditable}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">—</SelectItem>
+                          {uomList.filter((u) => u.is_active).map((u) => (
+                            <SelectItem key={u.id} value={String(u.id)}>
+                              {u.name} ({u.symbol})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <Input

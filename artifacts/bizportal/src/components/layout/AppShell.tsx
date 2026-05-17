@@ -289,6 +289,7 @@ export function AppShell({ children }: AppShellProps) {
     { type: "flat", titleKey: "emailInbox", href: "/email-inbox", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "users", href: "/users", icon: Users, roles: ["admin"] },
     { type: "flat", titleKey: "Image Manager", href: "/media", icon: ImageIcon, roles: ["admin"] },
+    { type: "flat", titleKey: "uomSettings", href: "/settings/uom", icon: Settings, roles: ["admin"] },
     { type: "flat", titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin"] },
     { type: "flat", titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen, roles: ["admin"] },
     { type: "flat", titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine, roles: ["admin"] },

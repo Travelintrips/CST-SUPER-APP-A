@@ -9,6 +9,10 @@ import { productsTable } from "./products";
 import { companiesTable } from "./companies";
 import { purchaseDocumentsTable, purchaseDocumentLinesTable } from "./purchaseDocuments";
 import { posWarehousesTable, posRacksTable } from "./posKasir";
+import { uomTable, uomConversionsTable } from "./uom";
+
+// Backward-compat aliases so route files using uomMasterTable keep working
+export { uomTable as uomMasterTable, uomConversionsTable };
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
@@ -48,25 +52,6 @@ export const lcMethodEnum = pgEnum("lc_method", [
   "equal", "by_quantity", "by_amount", "by_weight", "by_volume",
 ]);
 
-// ── UOM Master ─────────────────────────────────────────────────────────────────
-
-export const uomMasterTable = pgTable("uom_master", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  symbol: text("symbol").notNull(),
-  category: text("category").notNull().default("unit"),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const uomConversionsTable = pgTable("uom_conversions", {
-  id: serial("id").primaryKey(),
-  fromUomId: integer("from_uom_id").notNull().references(() => uomMasterTable.id, { onDelete: "cascade" }),
-  toUomId: integer("to_uom_id").notNull().references(() => uomMasterTable.id, { onDelete: "cascade" }),
-  factor: numeric("factor", { precision: 14, scale: 6 }).notNull().default("1"),
-}, (t) => [
-  unique("uom_conversions_unique").on(t.fromUomId, t.toUomId),
-]);
 
 // ── Purchase Requests ──────────────────────────────────────────────────────────
 
@@ -442,9 +427,6 @@ export const purchaseReceiptLinesTable = pgTable("purchase_receipt_lines", {
 
 // ── Zod Insert Schemas ─────────────────────────────────────────────────────────
 
-export const insertUomSchema = createInsertSchema(uomMasterTable).omit({ id: true, createdAt: true });
-export const insertUomConversionSchema = createInsertSchema(uomConversionsTable).omit({ id: true });
-
 export const insertPurchaseRequestSchema = createInsertSchema(purchaseRequestsTable).omit({ id: true, createdAt: true, updatedAt: true, prNumber: true });
 export const insertPurchaseRequestLineSchema = createInsertSchema(purchaseRequestLinesTable).omit({ id: true });
 export const insertPurchaseApprovalSchema = createInsertSchema(purchaseApprovalsTable).omit({ id: true, createdAt: true });
@@ -476,7 +458,7 @@ export const insertPurchaseReceiptLineSchema = createInsertSchema(purchaseReceip
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export type UomMaster = typeof uomMasterTable.$inferSelect;
+export type UomMaster = typeof uomTable.$inferSelect;
 export type UomConversion = typeof uomConversionsTable.$inferSelect;
 export type PurchaseRequest = typeof purchaseRequestsTable.$inferSelect;
 export type PurchaseRequestLine = typeof purchaseRequestLinesTable.$inferSelect;
