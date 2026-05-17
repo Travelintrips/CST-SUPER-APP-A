@@ -40,6 +40,11 @@ export default function PurchaseRequestEditorPage() {
     queryFn: () => apiFetch("/users").then(r => r.json()),
   });
 
+  const { data: currentUser } = useQuery<UserOption>({
+    queryKey: ["/api/users/me"],
+    queryFn: () => apiFetch("/users/me").then(r => r.json()),
+  });
+
   const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: "", notes: "" });
   const [lines, setLines] = useState<PRLine[]>([{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const [actionNotes, setActionNotes] = useState("");
@@ -50,6 +55,16 @@ export default function PurchaseRequestEditorPage() {
       setLines(pr.lines?.length ? pr.lines.map(l => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, estimatedCost: String(l.estimatedCost), notes: l.notes ?? "" })) : [{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
     }
   }, [pr]);
+
+  useEffect(() => {
+    if (isNew && currentUser?.name) {
+      setForm(f => ({
+        ...f,
+        requestedBy: f.requestedBy || currentUser.name,
+        department: f.department || currentUser.division || "",
+      }));
+    }
+  }, [isNew, currentUser]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
