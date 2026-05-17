@@ -181,7 +181,7 @@ function LoginScreen() {
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) setDevError(data.error || "Login gagal");
-      else window.location.reload();
+      else window.location.href = "/bizportal/";
     } catch {
       setDevError("Tidak bisa terhubung ke server");
     } finally {
