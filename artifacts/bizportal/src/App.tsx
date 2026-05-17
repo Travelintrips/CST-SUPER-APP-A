@@ -173,7 +173,7 @@ function LoginScreen() {
     setDevError("");
     setDevLoading(true);
     try {
-      const res = await fetch("/api/dev-login", {
+      const res = await fetch("/api/auth/dev-login", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
