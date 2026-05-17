@@ -29,7 +29,6 @@ function GoogleIcon() {
 }
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 type LoginMode = "password" | "otp";
 
 export default function Login() {
@@ -41,16 +40,15 @@ export default function Login() {
   const [mode, setMode] = useState<LoginMode>("otp");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // OTP state
   const [otpEmail, setOtpEmail] = useState("");
   const [otpStep, setOtpStep] = useState<"email" | "code">("email");
   const [otpCode, setOtpCode] = useState("");
   const [otpSending, setOtpSending] = useState(false);
   const [otpMsg, setOtpMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  // Password form
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMsg, setForgotMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [devLoading, setDevLoading] = useState<string | null>(null);
 
   const loginSchema = z.object({
     email: z.string().email({ message: t("login.email") }),
@@ -63,7 +61,13 @@ export default function Login() {
     defaultValues: { email: "", password: "" },
   });
 
-  const [devLoading, setDevLoading] = useState<string | null>(null);
+  function redirectAfterLogin(role: string) {
+    const rt = new URLSearchParams(window.location.search).get("returnTo");
+    if (rt) { setLocation(rt); return; }
+    if (role === "admin") setLocation("/admin");
+    else if (role === "vendor") setLocation("/vendor-dashboard");
+    else setLocation("/dashboard");
+  }
 
   async function handleDevLogin(role: "customer" | "admin" | "vendor") {
     setDevLoading(role);
@@ -78,24 +82,11 @@ export default function Login() {
       const data = await res.json() as { token: string; profile: { id: number; name: string; email: string; role: string } };
       setAuthToken(data.token);
       setPortalProfile({ customerId: data.profile.id, role: data.profile.role, name: data.profile.name, email: data.profile.email });
-      const rt = new URLSearchParams(window.location.search).get("returnTo");
-      if (rt) { setLocation(rt); return; }
-      if (data.profile.role === "admin") setLocation("/admin");
-      else if (data.profile.role === "vendor") setLocation("/vendor-dashboard");
-      else setLocation("/dashboard");
+      redirectAfterLogin(data.profile.role);
     } catch { setErrorMsg("Dev login gagal."); }
     finally { setDevLoading(null); }
   }
 
-  function redirectAfterLogin(role: string) {
-    const rt = new URLSearchParams(window.location.search).get("returnTo");
-    if (rt) { setLocation(rt); return; }
-    if (role === "admin") setLocation("/admin");
-    else if (role === "vendor") setLocation("/vendor-dashboard");
-    else setLocation("/dashboard");
-  }
-
-  // ── OTP ──────────────────────────────────────────────────────────────────
   async function handleOtpRequest() {
     setOtpMsg(null);
     if (!otpEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpEmail.trim())) {
@@ -141,7 +132,6 @@ export default function Login() {
     setIsSubmitting(false);
   }
 
-  // ── Password ──────────────────────────────────────────────────────────────
   const onSubmit = async (data: LoginFormValues) => {
     setErrorMsg("");
     setIsSubmitting(true);
@@ -186,7 +176,6 @@ export default function Login() {
 
   return (
     <div className="min-h-[calc(100vh-80px)] grid md:grid-cols-2 bg-background">
-      {/* ── Left panel ── */}
       <div
         className="hidden md:flex flex-col justify-center p-12 lg:p-16 relative overflow-hidden"
         style={{
@@ -222,7 +211,6 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ── Right panel ── */}
       <div className="flex items-center justify-center p-6 md:p-12">
         <Card className="w-full max-w-md border-none shadow-none md:shadow-xl md:border-solid">
           <CardHeader className="space-y-3">
@@ -237,7 +225,6 @@ export default function Login() {
               </Alert>
             )}
 
-            {/* ── Google ── */}
             <div className="mb-5">
               <button type="button" onClick={handleGoogleLogin} className="flex items-center justify-center gap-3 w-full h-11 rounded-lg border border-border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors shadow-sm">
                 <GoogleIcon />
@@ -245,7 +232,6 @@ export default function Login() {
               </button>
             </div>
 
-            {/* ── Mode tabs ── */}
             <div className="flex rounded-lg bg-muted p-1 mb-5">
               <button type="button" onClick={() => { setMode("otp"); setErrorMsg(""); }} className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${mode === "otp" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                 Kode OTP
@@ -255,7 +241,6 @@ export default function Login() {
               </button>
             </div>
 
-            {/* ── OTP mode ── */}
             {mode === "otp" && (
               <div className="space-y-4">
                 {otpMsg && (
@@ -264,18 +249,11 @@ export default function Login() {
                     <AlertDescription className={otpMsg.type === "ok" ? "text-green-800" : ""}>{otpMsg.text}</AlertDescription>
                   </Alert>
                 )}
-
                 {otpStep === "email" ? (
                   <>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Email</label>
-                      <Input
-                        type="email"
-                        placeholder="you@company.com"
-                        value={otpEmail}
-                        onChange={(e) => setOtpEmail(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleOtpRequest()}
-                      />
+                      <Input type="email" placeholder="you@company.com" value={otpEmail} onChange={(e) => setOtpEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleOtpRequest()} />
                     </div>
                     <Button className="w-full h-11" onClick={handleOtpRequest} disabled={otpSending}>
                       <Mail className="h-4 w-4 mr-2" />
@@ -287,16 +265,7 @@ export default function Login() {
                     <p className="text-sm text-muted-foreground">Kode dikirim ke <strong>{otpEmail}</strong></p>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Kode OTP (6 digit)</label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        placeholder="______"
-                        className="text-center text-2xl tracking-[0.5em] font-mono"
-                        value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        onKeyDown={(e) => e.key === "Enter" && handleOtpVerify()}
-                      />
+                      <Input type="text" inputMode="numeric" maxLength={6} placeholder="______" className="text-center text-2xl tracking-[0.5em] font-mono" value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => e.key === "Enter" && handleOtpVerify()} />
                     </div>
                     <Button className="w-full h-11" onClick={handleOtpVerify} disabled={isSubmitting}>
                       {isSubmitting ? "Memverifikasi..." : "Masuk"}
@@ -309,7 +278,6 @@ export default function Login() {
               </div>
             )}
 
-            {/* ── Password mode ── */}
             {mode === "password" && (
               <>
                 {errorMsg && (
@@ -379,11 +347,10 @@ export default function Login() {
                         {role === "admin" && "🛡️ Admin"}
                         {role === "vendor" && "🏭 Vendor"}
                       </span>
-                      {devLoading === role ? (
-                        <span className="text-xs text-amber-600">Loading…</span>
-                      ) : (
-                        <span className="text-xs text-amber-500">dev-{role}@dev.local</span>
-                      )}
+                      {devLoading === role
+                        ? <span className="text-xs text-amber-600">Loading…</span>
+                        : <span className="text-xs text-amber-500">dev-{role}@dev.local</span>
+                      }
                     </button>
                   ))}
                 </div>
