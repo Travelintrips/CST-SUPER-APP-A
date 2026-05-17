@@ -17,8 +17,7 @@ import { runHoldingMigration } from "./lib/holdingMigration";
 import { runPosKasirMigration } from "./lib/posKasirMigration";
 import { runSessionsMigration } from "./lib/sessionsMigration";
 
-// Never use port 5000 — reserved for the customer portal webview workflow
-const rawPort = (process.env["PORT"] && process.env["PORT"] !== "5000") ? process.env["PORT"] : (process.env["API_PORT"] ?? "8080");
+const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
 // Security: PORTAL_ADMIN_EMAILS must be set in production.
 // Without it, requirePortalAdmin falls back to DB role-only check,
