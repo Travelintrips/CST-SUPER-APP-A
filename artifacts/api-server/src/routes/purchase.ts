@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { streamInvoicePdf, buildInvoicePdfBuffer } from "../lib/pdfInvoice.js";
 import { postPurchaseBill } from "../lib/accounting.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
@@ -79,11 +80,7 @@ async function nextDocNumber(kind: PurchaseKind): Promise<string> {
   return `${prefix}/${year}/${seq}`;
 }
 
-function resolveCompanyId(req: Request): number {
-  const raw = (req.query["company"] ?? req.query["companyId"] ?? (req.body as Record<string, unknown>)?.["companyId"]) as string | undefined;
-  const n = raw ? parseInt(String(raw), 10) : NaN;
-  return Number.isNaN(n) ? 1 : n;
-}
+
 
 router.get("/summary", async (req, res) => {
   const companyId = resolveCompanyId(req);

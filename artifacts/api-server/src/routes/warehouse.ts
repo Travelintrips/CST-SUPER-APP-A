@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin, requireClerkUser } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { postOpnameAdjust, postDamageJournal } from "../lib/accounting.js";
 
 const router = Router();
@@ -21,17 +22,11 @@ function makeDocNumber(prefix: string): string {
   return `${prefix}/${y}${m}${d}/${ms}`;
 }
 
-function resolveCompanyId(req: { query: Record<string, unknown>; body: Record<string, unknown> }): number {
-  const raw = (req.query["company"] ?? req.query["companyId"] ?? req.body["companyId"]) as string | undefined;
-  const n = raw ? parseInt(String(raw), 10) : NaN;
-  return Number.isNaN(n) ? 1 : n;
-}
-
 // ── STOCK ─────────────────────────────────────────────────────────────────────
 
 router.get("/stock", async (req: Request, res: Response) => {
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const rows = await db.execute(sql`
     SELECT
       ws.id, ws.product_id, ws.warehouse_id, ws.rack_id,
@@ -53,7 +48,7 @@ router.get("/stock", async (req: Request, res: Response) => {
 });
 
 router.get("/stock/summary", async (req: Request, res: Response) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const rows = await db.execute(sql`
     SELECT
       ws.product_id,
@@ -111,7 +106,7 @@ router.get("/movements", async (req: Request, res: Response) => {
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
   const productId = req.query.productId ? Number(req.query.productId) : null;
   const limit = Math.min(Number(req.query.limit ?? 200), 500);
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const rows = await db.execute(sql`
     SELECT
       wm.*,
@@ -133,7 +128,7 @@ router.get("/movements", async (req: Request, res: Response) => {
 // ── TRANSFERS ─────────────────────────────────────────────────────────────────
 
 router.get("/transfers", async (req: Request, res: Response) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const rows = await db.execute(sql`
     SELECT
       wt.*,
@@ -164,7 +159,7 @@ router.post("/transfers", async (req: Request, res: Response) => {
   if (!fromWarehouseId || !toWarehouseId || !lines?.length) {
     res.status(400).json({ message: "fromWarehouseId, toWarehouseId, lines wajib diisi" }); return;
   }
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const transferNumber = makeDocNumber("TRF");
   const tr = await db.execute(sql`
     INSERT INTO wh_transfers (company_id, transfer_number, from_warehouse_id, to_warehouse_id, note)

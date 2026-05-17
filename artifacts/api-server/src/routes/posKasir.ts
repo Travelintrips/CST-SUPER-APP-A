@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { createHmac, timingSafeEqual } from "crypto";
 import multer from "multer";
 import { randomUUID } from "crypto";
@@ -107,12 +108,6 @@ function camelizeStockRow(row: Record<string, unknown>) {
     branchId: row.branch_id,
     updatedAt: row.updated_at,
   };
-}
-
-function resolveCompanyId(req: { query: Record<string, unknown>; body: Record<string, unknown> }): number {
-  const raw = (req.query["company"] ?? req.query["companyId"] ?? req.body["companyId"]) as string | undefined;
-  const n = raw ? parseInt(String(raw), 10) : NaN;
-  return Number.isNaN(n) ? 1 : n;
 }
 
 function orderNumber(): string {
@@ -225,7 +220,7 @@ router.get("/me", async (req, res) => {
 
 // GET /api/pos-kasir/products
 router.get("/products", async (req, res) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const rows = await db.execute(sql`
     SELECT * FROM pos_products
     WHERE is_active = TRUE AND company_id = ${companyId}
@@ -237,7 +232,7 @@ router.get("/products", async (req, res) => {
 // GET /api/pos-kasir/products/all  (admin)
 router.get("/products/all", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const result = await db.execute(sql`SELECT * FROM pos_products WHERE company_id = ${companyId} ORDER BY sort_order ASC, name ASC`);
   return res.json(result.rows.map((r) => {
     const row = r as Record<string, unknown>;
@@ -259,7 +254,7 @@ router.post("/products", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const { name, description, price, category, imageUrl, isActive, sortOrder, productType, linkedProductId, stockItemId, stockUsagePerUnit, stock, stockUnit } = req.body ?? {};
   if (!name || price == null) return res.status(400).json({ message: "name dan price wajib" });
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const r = await db.execute(sql`
     INSERT INTO pos_products
       (company_id, name, description, price, category, image_url, is_active, sort_order,
@@ -408,7 +403,7 @@ router.post("/orders", async (req, res) => {
   const discountAmt = Number(discount) || 0;
   const total = subtotal - discountAmt;
 
-  const effectiveCompanyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const effectiveCompanyId = resolveCompanyId(req);
   const [order] = await db.insert(posOrdersTable).values({
     companyId: effectiveCompanyId,
     orderNumber: orderNumber(),

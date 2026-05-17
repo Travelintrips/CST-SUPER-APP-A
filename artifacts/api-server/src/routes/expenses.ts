@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { eq, desc, and, gte, lte, like, or, sql, count } from "drizzle-orm";
 import {
   db,
@@ -241,14 +242,8 @@ router.get("/summary", async (req, res) => {
 
 // ===================== Expenses CRUD =====================
 
-function getExpenseCompanyId(req: { query: Record<string, unknown> }): number {
-  const raw = req.query["company"];
-  const id = Number(raw);
-  return !raw || Number.isNaN(id) || id <= 0 ? 1 : id;
-}
-
-router.get("/", async (req, res) => {
-  const companyId = getExpenseCompanyId(req);
+router.get("/", async (req: Request, res) => {
+  const companyId = resolveCompanyId(req);
   const conditions: ReturnType<typeof eq>[] = [eq(expensesTable.companyId, companyId)];
   const { status, categoryId, expenseType, salesDocId, shipmentId, search, from, to } = req.query as Record<string, string>;
 
@@ -320,7 +315,7 @@ router.post("/", async (req, res) => {
   }
   const total = Math.round((subtotal + taxAmountN) * 100) / 100;
 
-  const companyIdForInsert = getExpenseCompanyId(req);
+  const companyIdForInsert = resolveCompanyId(req as Request);
   const expenseNumber = await nextExpenseNumber();
 
   const [created] = await db

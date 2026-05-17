@@ -21,6 +21,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { broadcastToAdmins } from "../lib/sseManager.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError } from "../lib/inventoryStock.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { convertQty } from "../lib/uomEngine.js";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
@@ -37,12 +38,6 @@ router.use(async (req, res, next) => {
   if (!(await requireAdmin(req, res))) return;
   next();
 });
-
-function resolveCompanyId(req: { query: Record<string, unknown>; body: Record<string, unknown> }): number {
-  const raw = (req.query["company"] ?? req.query["companyId"] ?? req.body["companyId"]) as string | undefined;
-  const n = raw ? parseInt(String(raw), 10) : NaN;
-  return Number.isNaN(n) ? 1 : n;
-}
 
 type SalesDocKind = "quote" | "order";
 type SalesInvoiceStatus = "none" | "to_invoice" | "invoiced";
@@ -117,7 +112,7 @@ async function nextDocNumber(kind: SalesDocKind, offset = 0): Promise<string> {
 
 // GET /api/sales/summary
 router.get("/summary", async (req, res) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const docs = await db.select().from(salesDocumentsTable).where(eq(salesDocumentsTable.companyId, companyId));
   const customers = await db.select().from(customersTable).where(eq(customersTable.companyId, companyId));
   const quotationsCount = docs.filter((d) => d.kind === "quote").length;
@@ -149,7 +144,7 @@ router.get("/summary", async (req, res) => {
 
 // CUSTOMERS
 router.get("/customers", async (req, res) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const rows = await db.select().from(customersTable)
     .where(eq(customersTable.companyId, companyId))
     .orderBy(customersTable.name);
@@ -157,7 +152,7 @@ router.get("/customers", async (req, res) => {
 });
 
 router.post("/customers", async (req, res) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const { name, email, phone, taxId, address, notes, defaultSalesTaxId } = req.body ?? {};
   if (typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "name required" });
@@ -203,7 +198,7 @@ router.delete("/customers/:id", async (req, res) => {
 
 // DOCUMENTS
 router.get("/documents", async (req, res) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const kind = req.query["kind"] as SalesDocKind | undefined;
   const invoiceStatus = req.query["invoiceStatus"] as SalesInvoiceStatus | undefined;
   const paymentStatus = req.query["paymentStatus"] as "unpaid" | "partial" | "paid" | undefined;
@@ -261,7 +256,7 @@ router.get("/documents/:id", async (req, res) => {
 });
 
 router.post("/documents", async (req, res) => {
-  const companyId = resolveCompanyId(req as Parameters<typeof resolveCompanyId>[0]);
+  const companyId = resolveCompanyId(req);
   const { kind, customerId, customerName, validUntil, expectedDate, notes, lines, taxRateId,
     origin, destination, transportMode, etd, eta, logisticOrderId } = req.body ?? {};
   if (typeof customerName !== "string" || !customerName.trim())

@@ -26,19 +26,13 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import {
   ensureAccountingSettings,
   seedAccountingDefaults,
 } from "../lib/accountingSeed.js";
 import { logger } from "../lib/logger.js";
 import { postEntry, type PostingLine } from "../lib/accounting.js";
-
-/** Parse companyId from query param or body; defaults to 1 (first/default company) */
-function resolveCompanyId(req: Request): number {
-  const raw = req.query["companyId"] ?? req.body?.companyId;
-  const parsed = raw !== undefined ? Number(raw) : NaN;
-  return Number.isNaN(parsed) ? 1 : parsed;
-}
 
 function serializeCompany(c: typeof companiesTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -75,11 +69,6 @@ function serializeSettings(s: typeof accountingSettingsTable.$inferSelect) {
   return { ...s, updatedAt: s.updatedAt.toISOString() };
 }
 
-function getCompanyId(req: { query: Record<string, unknown> }): number {
-  const raw = req.query["company"];
-  const id = Number(raw);
-  return !raw || Number.isNaN(id) || id <= 0 ? 1 : id;
-}
 
 function parseDateRange(req: {
   query: Record<string, unknown>;
@@ -187,7 +176,7 @@ router.delete("/companies/:id", async (req, res) => {
 
 // ============ Chart of Accounts ============
 router.get("/accounts", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const rows = await db
     .select()
     .from(chartOfAccountsTable)
@@ -276,7 +265,7 @@ router.delete("/accounts/:id", async (req, res) => {
 
 // ============ Journals ============
 router.get("/journals", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const rows = await db
     .select()
     .from(accountingJournalsTable)
@@ -286,7 +275,7 @@ router.get("/journals", async (req, res) => {
 });
 
 router.post("/journals", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const {
     code,
     name,
@@ -410,7 +399,7 @@ router.patch("/taxes/:id", async (req, res) => {
 
 // ============ Journal Entries ============
 router.get("/entries", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const conds: SQL<unknown>[] = [
@@ -457,7 +446,7 @@ router.get("/entries/:id", async (req, res) => {
 });
 
 router.post("/entries", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const { journalId, date: dateStr, ref, description, lines } = req.body ?? {};
   if (!journalId || !dateStr || !Array.isArray(lines))
     return res
@@ -517,7 +506,7 @@ router.post("/entries", async (req, res) => {
 
 // GET /accounting/entry-lines — list journal line items with joined entry info
 router.get("/entry-lines", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const conds: SQL<unknown>[] = [
@@ -592,7 +581,7 @@ function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
 }
 
 router.get("/payments", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const conds: SQL<unknown>[] = [
@@ -667,7 +656,7 @@ router.get("/payments/:id", async (req, res) => {
 });
 
 router.post("/payments", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const {
     paymentType,
     amount,
@@ -1280,13 +1269,13 @@ router.patch("/entries/:id/status", async (req, res) => {
 
 // ============ Settings ============
 router.get("/settings", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const s = await ensureAccountingSettings(companyId);
   return res.json(serializeSettings(s));
 });
 
 router.patch("/settings", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const s = await ensureAccountingSettings(companyId);
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const k of [
@@ -1363,7 +1352,7 @@ async function buildLedgerWindow(
 }
 
 router.get("/reports/trial-balance", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db
@@ -1404,7 +1393,7 @@ router.get("/reports/trial-balance", async (req, res) => {
 });
 
 router.get("/reports/general-ledger", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accountId = req.query["accountId"]
@@ -1496,7 +1485,7 @@ router.get("/reports/general-ledger", async (req, res) => {
 });
 
 router.get("/reports/profit-loss", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db
@@ -1545,7 +1534,7 @@ router.get("/reports/profit-loss", async (req, res) => {
 });
 
 router.get("/reports/balance-sheet", async (req, res) => {
-  const companyId = getCompanyId(req);
+  const companyId = resolveCompanyId(req);
   // Balance sheet is "as of" date — use 'to' as cutoff, ignore 'from'
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });

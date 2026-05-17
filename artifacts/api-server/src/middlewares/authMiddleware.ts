@@ -5,6 +5,30 @@ import { eq } from "drizzle-orm";
 import { verifySupabaseToken } from "../lib/supabaseAdmin";
 import { getSessionId, getSession } from "../lib/auth";
 
+// ── In-memory cache: userId → { companyId, role } — TTL 5 min ────────────────
+const _userCtxCache = new Map<string, { companyId: number | null; role: string | null; cachedAt: number }>();
+const _USER_CTX_TTL = 5 * 60 * 1000;
+
+async function _loadUserCtx(userId: string): Promise<{ companyId: number | null; role: string | null }> {
+  const now = Date.now();
+  const cached = _userCtxCache.get(userId);
+  if (cached && now - cached.cachedAt < _USER_CTX_TTL) {
+    return { companyId: cached.companyId, role: cached.role };
+  }
+  const [u] = await db
+    .select({ companyId: usersTable.companyId, role: usersTable.role })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+  const result = { companyId: u?.companyId ?? null, role: u?.role ?? null };
+  _userCtxCache.set(userId, { ...result, cachedAt: now });
+  return result;
+}
+
+/** Call after updating a user's company or role in the DB to force a cache refresh. */
+export function invalidateUserCtxCache(userId: string): void {
+  _userCtxCache.delete(userId);
+}
+
 declare global {
   namespace Express {
     interface User extends AuthUser {}
@@ -46,12 +70,15 @@ export async function authMiddleware(
     try {
       const session = await getSession(sid);
       if (session?.user) {
+        const ctx = await _loadUserCtx(session.user.id);
         req.user = {
           id: session.user.id,
           email: session.user.email ?? null,
           firstName: session.user.firstName ?? null,
           lastName: session.user.lastName ?? null,
           profileImageUrl: session.user.profileImageUrl ?? null,
+          role: ctx.role,
+          companyId: ctx.companyId,
         };
         req.isInternalSession = true;
         next();
@@ -127,6 +154,7 @@ export async function authMiddleware(
           lastName: dbUser.lastName ?? null,
           profileImageUrl: dbUser.profileImageUrl ?? null,
           role: dbUser.role ?? null,
+          companyId: dbUser.companyId ?? null,
         };
         // isInternalSession remains false — bearer token users are portal/mobile
       }

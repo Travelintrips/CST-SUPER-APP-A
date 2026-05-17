@@ -13,6 +13,7 @@ import {
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
+import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
@@ -428,12 +429,9 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
   const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
   const q = parsed.success ? parsed.data : {};
 
-  const rawCompany = req.query["company"] ?? req.query["companyId"];
-  const companyId = rawCompany ? parseInt(String(rawCompany), 10) : null;
+  const companyId = resolveCompanyId(req);
 
-  const conditions = [];
-  if (companyId && !Number.isNaN(companyId))
-    conditions.push(eq(logisticOrdersTable.companyId, companyId));
+  const conditions = [eq(logisticOrdersTable.companyId, companyId)];
   if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
   if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
   if (q.search) {
