@@ -418,6 +418,12 @@ router.post("/dev-login", async (req: Request, res: Response) => {
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
   req.log.info({ email }, "[Dev Login] session created");
+
+  const redirectTo = typeof req.query.redirect === "string" ? req.query.redirect : null;
+  if (redirectTo) {
+    res.redirect(302, redirectTo);
+    return;
+  }
   res.json({ ok: true, email: dbUser.email, role: dbUser.role });
 });
 

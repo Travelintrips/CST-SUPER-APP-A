@@ -165,29 +165,6 @@ const IS_DEV = import.meta.env.DEV;
 function LoginScreen() {
   const { signInWithGoogle } = useSupabaseAuth();
   const [devEmail, setDevEmail] = React.useState("elmiraratuabadi@gmail.com");
-  const [devError, setDevError] = React.useState("");
-  const [devLoading, setDevLoading] = React.useState(false);
-
-  async function handleDevLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setDevError("");
-    setDevLoading(true);
-    try {
-      const res = await fetch("/api/auth/dev-login", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: devEmail }),
-      });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) setDevError(data.error || "Login gagal");
-      else window.location.href = "/bizportal/";
-    } catch {
-      setDevError("Tidak bisa terhubung ke server");
-    } finally {
-      setDevLoading(false);
-    }
-  }
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 bg-slate-950 text-white">
@@ -232,22 +209,25 @@ function LoginScreen() {
               <span className="text-xs text-amber-400 font-mono">DEV ONLY</span>
               <div className="flex-1 h-px bg-slate-700" />
             </div>
-            <form onSubmit={handleDevLogin} className="flex flex-col gap-2">
+            <form
+              method="post"
+              action={`/api/auth/dev-login?redirect=/bizportal/`}
+              className="flex flex-col gap-2"
+            >
               <input
                 type="email"
+                name="email"
                 placeholder="Email (dev bypass)"
                 value={devEmail}
                 onChange={(e) => setDevEmail(e.target.value)}
                 required
                 className="rounded-lg bg-slate-800 border border-amber-600/40 px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
-              {devError && <p className="text-xs text-red-400">{devError}</p>}
               <button
                 type="submit"
-                disabled={devLoading}
-                className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all disabled:opacity-60"
+                className="rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-amber-500 active:scale-95 transition-all"
               >
-                {devLoading ? "Masuk..." : "Dev Login (tanpa Google)"}
+                Dev Login (tanpa Google)
               </button>
             </form>
           </>
