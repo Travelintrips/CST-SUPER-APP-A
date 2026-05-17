@@ -4,8 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useListPortalServices } from "@workspace/api-client-react";
-import { supabase } from "@/lib/supabase";
-import { setPortalProfile } from "@/lib/auth";
+import { setAuthToken, setPortalProfile } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
@@ -88,72 +87,38 @@ export default function Register() {
   const onSubmit = async (data: RegisterFormValues) => {
     setErrorMsg("");
     setIsSubmitting(true);
-
-    if (!supabase) {
-      setErrorMsg("Layanan autentikasi tidak tersedia.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: {
-        data: {
-          name: data.name,
-          phone: data.phone ?? null,
-          company: data.company ?? null,
-        },
-      },
-    });
-
-    if (signUpError) {
-      setErrorMsg(signUpError.message);
-      setIsSubmitting(false);
-      return;
-    }
-
-    const session = signUpData.session;
-    if (!session) {
-      setErrorMsg("Pendaftaran berhasil! Silakan cek email untuk konfirmasi, lalu login.");
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
-      const res = await fetch(`${BASE}/api/portal/auth/register`, {
+      const res = await fetch(`${BASE}/api/portal/auth/signup`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: data.name,
+          email: data.email,
+          password: data.password,
           phone: data.phone ?? null,
           company: data.company ?? null,
           role,
           serviceIds: data.serviceIds,
         }),
       });
-
-      const profile = await res.json() as { id: number; role: string; name: string; email: string };
-      setPortalProfile({
-        customerId: profile.id,
-        role: profile.role,
-        name: profile.name,
-        email: profile.email,
-      });
-
+      const json = await res.json() as { token?: string; message?: string; user?: { id: number; role: string; name: string; email: string } };
+      if (!res.ok || !json.token) {
+        setErrorMsg(json.message ?? "Pendaftaran gagal.");
+        setIsSubmitting(false);
+        return;
+      }
+      setAuthToken(json.token);
+      setPortalProfile({ customerId: json.user!.id, role: json.user!.role, name: json.user!.name, email: json.user!.email });
       const rt = new URLSearchParams(window.location.search).get("returnTo");
       if (rt) {
         setLocation(rt);
-      } else if (profile.role === "vendor") {
+      } else if (json.user!.role === "vendor") {
         setLocation("/vendor-dashboard");
       } else {
         setLocation("/dashboard");
       }
     } catch {
-      setErrorMsg("Akun dibuat, tapi gagal sinkronisasi profil. Silakan login kembali.");
+      setErrorMsg("Gagal menghubungi server. Coba lagi.");
     }
     setIsSubmitting(false);
   };

@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
-import { fetchAndStoreProfile } from "@/lib/auth";
+import { setAuthToken, setPortalProfile } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -52,32 +52,32 @@ export default function Login() {
   const onSubmit = async (data: LoginFormValues) => {
     setErrorMsg("");
     setIsSubmitting(true);
-    if (!supabase) {
-      setErrorMsg("Layanan autentikasi tidak tersedia.");
-      setIsSubmitting(false);
-      return;
-    }
-    const { error } = await supabase.auth.signInWithPassword({
-      email: data.email,
-      password: data.password,
-    });
-    if (error) {
-      setErrorMsg(error.message);
-      setIsSubmitting(false);
-      return;
-    }
-    const profile = await fetchAndStoreProfile();
-    if (profile) {
+    try {
+      const res = await fetch(`${BASE}/api/portal/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.email, password: data.password }),
+      });
+      const json = await res.json() as { token?: string; message?: string; user?: { id: number; role: string; name: string; email: string } };
+      if (!res.ok || !json.token) {
+        setErrorMsg(json.message ?? "Email atau password salah.");
+        setIsSubmitting(false);
+        return;
+      }
+      setAuthToken(json.token);
+      setPortalProfile({ customerId: json.user!.id, role: json.user!.role, name: json.user!.name, email: json.user!.email });
       const rt = new URLSearchParams(window.location.search).get("returnTo");
       if (rt) {
         setLocation(rt);
-      } else if (profile.role === "admin") {
+      } else if (json.user!.role === "admin") {
         setLocation("/admin");
-      } else if (profile.role === "vendor") {
+      } else if (json.user!.role === "vendor") {
         setLocation("/vendor-dashboard");
       } else {
         setLocation("/dashboard");
       }
+    } catch {
+      setErrorMsg("Gagal menghubungi server. Coba lagi.");
     }
     setIsSubmitting(false);
   };

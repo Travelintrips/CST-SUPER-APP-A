@@ -25,19 +25,25 @@ function getSupabaseSessionSync(): { access_token: string } | null {
 }
 
 export function getAuthToken(): string | null {
+  const ours = localStorage.getItem(TOKEN_KEY);
+  if (ours) return ours;
   return getSupabaseSessionSync()?.access_token ?? null;
 }
 
 export async function getAuthTokenAsync(): Promise<string | null> {
+  const ours = localStorage.getItem(TOKEN_KEY);
+  if (ours) return ours;
   if (!supabase) return null;
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token ?? null;
 }
 
-export function setAuthToken(_token: string): void {
+export function setAuthToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function removeAuthToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
   if (supabase) supabase.auth.signOut();
   localStorage.removeItem(PROFILE_KEY);
 }
