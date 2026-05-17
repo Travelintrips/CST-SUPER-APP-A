@@ -93,6 +93,25 @@ export async function requirePortalAdmin(req: Request, res: Response, next: Next
   }
 
   const token = auth.slice(7);
+
+  // Try our own JWT first
+  const portalPayload = await verifyPortalJwt(token);
+  if (portalPayload) {
+    const [customer] = await db
+      .select()
+      .from(portalCustomersTable)
+      .where(eq(portalCustomersTable.id, portalPayload.customerId));
+    if (!customer || customer.role !== "admin") {
+      res.status(403).json({ message: "Akses admin diperlukan" });
+      return;
+    }
+    (req as PortalAuthReq).portalCustomerId = customer.id;
+    (req as PortalAuthReq).portalRole = customer.role;
+    next();
+    return;
+  }
+
+  // Fall back to Supabase token
   const supabaseUser = await verifySupabaseToken(token);
   if (!supabaseUser?.email) {
     res.status(401).json({ message: "Invalid or expired token" });
@@ -100,9 +119,6 @@ export async function requirePortalAdmin(req: Request, res: Response, next: Next
   }
 
   const emailLower = supabaseUser.email.toLowerCase();
-
-  // Enforce server-side allowlist when configured.
-  // A pre-existing forged "admin" row cannot bypass this check.
   const adminListConfigured = PORTAL_ADMIN_EMAILS.length > 0;
   if (adminListConfigured && !PORTAL_ADMIN_EMAILS.includes(emailLower)) {
     res.status(403).json({ message: "Akses admin diperlukan" });
