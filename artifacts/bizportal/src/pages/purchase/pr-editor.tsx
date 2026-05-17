@@ -128,6 +128,24 @@ export default function PurchaseRequestEditorPage() {
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
   const updateLine = (i: number, key: keyof PRLine, value: string) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
 
+  const hasValidLines = lines.some(l => l.name.trim() !== "");
+
+  const handleSave = () => {
+    if (!hasValidLines) {
+      toast.error("Minimal harus ada satu item yang diisi sebelum menyimpan.");
+      return;
+    }
+    saveMut.mutate();
+  };
+
+  const handleSubmit = () => {
+    if (!hasValidLines) {
+      toast.error("Minimal harus ada satu item yang diisi sebelum PR bisa di-submit.");
+      return;
+    }
+    actionMut.mutate("submit");
+  };
+
   const isDraft = !pr || pr.status === "draft";
   const isSubmitted = pr?.status === "submitted";
 
@@ -142,7 +160,7 @@ export default function PurchaseRequestEditorPage() {
             <h1 className="text-2xl font-bold">{isNew ? "Buat Purchase Request" : `PR: ${pr?.prNumber}`}</h1>
             {pr && <Badge variant={statusColor[pr.status] as "default" | "secondary" | "destructive" | "outline"}>{statusLabel[pr.status]}</Badge>}
           </div>
-          {isDraft && <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>Simpan</Button>}
+          {isDraft && <Button onClick={handleSave} disabled={saveMut.isPending}>Simpan</Button>}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -214,9 +232,14 @@ export default function PurchaseRequestEditorPage() {
           )}
         </div>
 
-        <Card>
+        <Card className={isDraft && !hasValidLines ? "border-destructive" : ""}>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Item yang Dibutuhkan</CardTitle>
+            <div>
+              <CardTitle className="text-base">Item yang Dibutuhkan</CardTitle>
+              {isDraft && !hasValidLines && (
+                <p className="text-xs text-destructive mt-1">Minimal harus ada satu item yang diisi.</p>
+              )}
+            </div>
             {isDraft && <Button size="sm" variant="outline" onClick={addLine}><Plus className="mr-1 h-4 w-4" />Tambah Item</Button>}
           </CardHeader>
           <CardContent>
