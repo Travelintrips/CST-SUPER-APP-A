@@ -405,7 +405,6 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
 logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request, res: Response) => {
-logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.query.orderId ?? ""), 10);
   const token = String(req.query.token ?? "").trim();
   if (isNaN(orderId) || !token) return res.status(400).json({ message: "orderId dan token wajib diisi" });
@@ -438,7 +437,6 @@ logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Reque
 
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
 logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res: Response) => {
-logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, res: Response) => {
   const { orderId, token, action } = req.body as { orderId: number; token: string; action: "accept" | "reject" };
   if (!orderId || !token || !action) return res.status(400).json({ message: "orderId, token, dan action wajib diisi" });
   if (action !== "accept" && action !== "reject") return res.status(400).json({ message: "action harus 'accept' atau 'reject'" });
@@ -637,17 +635,6 @@ logisticRfqRouter.post("/vendor-quote", rfqRateLimit, async (req: Request, res: 
 
   const [vendor] = await db.select().from(suppliersTable)
     .where(eq(suppliersTable.id, Number(vendorId)));
-
-  // Duplicate quote guard — 409 if this vendor already submitted for this RFQ
-  const [existingQuote] = await db.select({ id: logisticOrderQuotesTable.id })
-    .from(logisticOrderQuotesTable)
-    .where(and(
-      eq(logisticOrderQuotesTable.rfqId, rfq.id),
-      eq(logisticOrderQuotesTable.vendorId, Number(vendorId)),
-    ));
-  if (existingQuote) {
-    return res.status(409).json({ message: "Penawaran untuk RFQ ini sudah pernah dikirimkan" });
-  }
 
   const vp = Number(vendorPrice);
 
