@@ -285,6 +285,80 @@ router.post("/auth/register", requirePortalAuth, async (req, res) => {
   });
 });
 
+// POST /api/portal/auth/otp/request — kirim kode OTP ke email (passwordless login)
+router.post("/auth/otp/request", async (req, res) => {
+  const { email } = req.body ?? {};
+  if (!email) return res.status(400).json({ message: "Email diperlukan." });
+  const emailLower = String(email).toLowerCase().trim();
+
+  let [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, emailLower));
+  if (!customer) {
+    const [created] = await db.insert(portalCustomersTable).values({
+      name: emailLower.split("@")[0],
+      email: emailLower,
+      passwordHash: "",
+      role: "customer",
+    }).returning();
+    customer = created;
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiry = new Date(Date.now() + 10 * 60 * 1000);
+  await db.update(portalCustomersTable)
+    .set({ resetPasswordToken: `otp:${code}`, resetPasswordExpiry: expiry })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  const smtpOk = isSmtpConfigured();
+  if (smtpOk) {
+    try {
+      await sendMail({
+        to: emailLower,
+        subject: "Kode Login CST Portal",
+        html: `<p>Kode login Anda: <strong style="font-size:24px;letter-spacing:4px">${code}</strong></p><p>Berlaku 10 menit.</p>`,
+        text: `Kode login Anda: ${code}\nBerlaku 10 menit.`,
+      });
+    } catch (err) {
+      req.log?.warn({ err }, "OTP email failed");
+    }
+  }
+
+  const isDev = process.env.NODE_ENV !== "production";
+  return res.json({
+    sent: smtpOk,
+    ...(isDev ? { _dev_code: code } : {}),
+    message: smtpOk ? "Kode OTP telah dikirim ke email Anda." : `Kode OTP: ${code} (SMTP tidak dikonfigurasi)`,
+  });
+});
+
+// POST /api/portal/auth/otp/verify — verifikasi kode OTP dan login
+router.post("/auth/otp/verify", async (req, res) => {
+  const { email, code } = req.body ?? {};
+  if (!email || !code) return res.status(400).json({ message: "Email dan kode diperlukan." });
+  const emailLower = String(email).toLowerCase().trim();
+
+  const [customer] = await db.select().from(portalCustomersTable).where(eq(portalCustomersTable.email, emailLower));
+  if (!customer) return res.status(401).json({ message: "Email tidak terdaftar." });
+
+  const stored = customer.resetPasswordToken;
+  const expiry = customer.resetPasswordExpiry;
+  if (!stored?.startsWith("otp:") || stored.slice(4) !== String(code).trim()) {
+    return res.status(401).json({ message: "Kode OTP salah." });
+  }
+  if (!expiry || expiry < new Date()) {
+    return res.status(401).json({ message: "Kode OTP sudah kadaluarsa." });
+  }
+
+  await db.update(portalCustomersTable)
+    .set({ resetPasswordToken: null, resetPasswordExpiry: null })
+    .where(eq(portalCustomersTable.id, customer.id));
+
+  const token = await signPortalJwt({ sub: String(customer.id), email: customer.email, customerId: customer.id, role: customer.role });
+  return res.json({
+    token,
+    user: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, company: customer.company, role: customer.role },
+  });
+});
+
 // POST /api/portal/auth/forgot-password — deprecated, gunakan Supabase resetPasswordForEmail
 router.post("/auth/forgot-password", (_req, res) => {
   res.status(410).json({ message: "Gunakan Supabase Auth resetPasswordForEmail dari frontend." });
