@@ -362,7 +362,7 @@ async function notifyAdmin(order: LogisticOrderData): Promise<void> {
         "Order Logistik Baru Masuk",
         `Order baru telah diterima dari <strong>${order.customerName}</strong>. Silakan login ke sistem untuk memproses.`,
         rows,
-        'Login ke sistem: <a href="https://cstlogistic.co.id/logistic-order">https://cstlogistic.co.id/logistic-order</a>'
+        (() => { const d = getPreferredDomain() || "cstlogistic.co.id"; return `Login ke sistem: <a href="https://${d}/logistic-order">https://${d}/logistic-order</a>`; })()
       ),
       text:
         `ORDER BARU: ${order.orderNumber}\n` +

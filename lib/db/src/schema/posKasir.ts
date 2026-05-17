@@ -1,4 +1,5 @@
-import { pgTable, serial, text, integer, numeric, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, numeric, boolean, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
+import { companiesTable } from "./companies";
 
 export const kasirStatusEnum = pgEnum("kasir_status", ["pending", "approved", "rejected"]);
 export const posOrderStatusEnum = pgEnum("pos_order_status", ["open", "paid", "cancelled"]);
@@ -7,12 +8,16 @@ export const posShiftStatusEnum = pgEnum("pos_shift_status", ["open", "closed"])
 
 export const posBranchesTable = pgTable("pos_branches", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   address: text("address"),
   phone: text("phone"),
   isActive: boolean("is_active").notNull().default(true),
+  businessUnit: text("business_unit"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("pos_branches_company_idx").on(t.companyId),
+]);
 
 export const posCashiersTable = pgTable("pos_cashiers", {
   id: serial("id").primaryKey(),
@@ -24,7 +29,9 @@ export const posCashiersTable = pgTable("pos_cashiers", {
   branchId: integer("branch_id").references(() => posBranchesTable.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("pos_cashiers_branch_idx").on(t.branchId),
+]);
 
 export const posProductsTable = pgTable("pos_products", {
   id: serial("id").primaryKey(),
@@ -60,7 +67,12 @@ export const posOrdersTable = pgTable("pos_orders", {
   note: text("note"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   paidAt: timestamp("paid_at"),
-});
+}, (t) => [
+  index("pos_orders_branch_idx").on(t.branchId),
+  index("pos_orders_cashier_idx").on(t.cashierId),
+  index("pos_orders_status_idx").on(t.status),
+  index("pos_orders_created_idx").on(t.createdAt),
+]);
 
 export const posOrderItemsTable = pgTable("pos_order_items", {
   id: serial("id").primaryKey(),
@@ -70,7 +82,10 @@ export const posOrderItemsTable = pgTable("pos_order_items", {
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
   qty: integer("qty").notNull().default(1),
   subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
-});
+}, (t) => [
+  index("pos_order_items_order_idx").on(t.orderId),
+  index("pos_order_items_product_idx").on(t.productId),
+]);
 
 export const posStockItemsTable = pgTable("pos_stock_items", {
   id: serial("id").primaryKey(),

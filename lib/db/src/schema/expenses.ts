@@ -7,6 +7,7 @@ import {
   boolean,
   timestamp,
   date,
+  index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -51,7 +52,12 @@ export const expensesTable = pgTable("expenses", {
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("expenses_company_idx").on(t.companyId),
+  index("expenses_category_idx").on(t.categoryId),
+  index("expenses_status_idx").on(t.status),
+  index("expenses_date_idx").on(t.date),
+]);
 
 export const expenseAttachmentsTable = pgTable("expense_attachments", {
   id: serial("id").primaryKey(),

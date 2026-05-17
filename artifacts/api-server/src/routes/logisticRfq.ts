@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
 import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable } from "@workspace/db";
@@ -8,28 +8,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-
-// ── Public Vendor Endpoint Rate Limiter ──────────────────────────────────────
-// 10 requests per minute per IP for all public vendor-facing endpoints.
-const VENDOR_RATE_WINDOW_MS = 60_000;
-const VENDOR_RATE_LIMIT = 10;
-const vendorRateMap = new Map<string, { count: number; resetAt: number }>();
-
-function vendorRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const ip = (req.ip ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim();
-  const now = Date.now();
-  const entry = vendorRateMap.get(ip);
-  if (!entry || now >= entry.resetAt) {
-    vendorRateMap.set(ip, { count: 1, resetAt: now + VENDOR_RATE_WINDOW_MS });
-    return next();
-  }
-  entry.count += 1;
-  if (entry.count > VENDOR_RATE_LIMIT) {
-    res.status(429).json({ message: "Terlalu banyak permintaan. Coba lagi dalam 1 menit." });
-    return;
-  }
-  return next();
-}
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
 function getConfirmFormUrl(token: string): string {
   const domain = getPreferredDomain();
@@ -412,7 +391,7 @@ const toQuote = (q: typeof logisticOrderQuotesTable.$inferSelect, vendorName: st
 };
 
 // [TRUCKING-FIX] GET /api/logistic/orders/vendor-confirm-page?orderId=&token= — data for YES/NO vendor confirm page
-logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Request, res: Response) => {
+logisticRfqRouter.get("/vendor-confirm-page", rfqRateLimit, async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.query.orderId ?? ""), 10);
   const token = String(req.query.token ?? "").trim();
   if (isNaN(orderId) || !token) return res.status(400).json({ message: "orderId dan token wajib diisi" });
@@ -444,7 +423,7 @@ logisticRfqRouter.get("/vendor-confirm-page", vendorRateLimit, async (req: Reque
 });
 
 // [TRUCKING-FIX] POST /api/logistic/orders/vendor-confirm — vendor confirms YES/NO
-logisticRfqRouter.post("/vendor-confirm", vendorRateLimit, async (req: Request, res: Response) => {
+logisticRfqRouter.post("/vendor-confirm", rfqRateLimit, async (req: Request, res: Response) => {
   const { orderId, token, action, vendorPrice: submittedVendorPrice } = req.body as {
     orderId: number; token: string; action: "accept" | "reject"; vendorPrice?: number;
   };
@@ -1236,7 +1215,52 @@ logisticRfqRouter.post("/:id/approve", async (req: Request, res: Response) => {
     );
   }
 
-  logger.info({ orderId, quoteId, sellingPrice, vendorId: quote.vendorId }, "Quote approved, quotation sent to customer");
+  // Email ke customer saat quote diapprove
+  if (isSmtpConfigured() && updatedOrder.email) {
+    const fmtRpEmail = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+    const emailHtmlRows = [
+      `<tr><td style="padding:6px 12px;color:#555;font-weight:600">No. Order</td><td style="padding:6px 12px;color:#222"><strong>${updatedOrder.orderNumber}</strong></td></tr>`,
+      `<tr><td style="padding:6px 12px;color:#555;font-weight:600">Jenis</td><td style="padding:6px 12px;color:#222">${updatedOrder.shipmentType}</td></tr>`,
+      `<tr><td style="padding:6px 12px;color:#555;font-weight:600">Rute</td><td style="padding:6px 12px;color:#222">${updatedOrder.origin} → ${updatedOrder.destination}</td></tr>`,
+      updatedOrder.commodity ? `<tr><td style="padding:6px 12px;color:#555;font-weight:600">Komoditi</td><td style="padding:6px 12px;color:#222">${updatedOrder.commodity}</td></tr>` : "",
+      quote.estimatedPickup ? `<tr><td style="padding:6px 12px;color:#555;font-weight:600">ETA Pickup</td><td style="padding:6px 12px;color:#222">${quote.estimatedPickup}</td></tr>` : "",
+      quote.estimatedDelivery ? `<tr><td style="padding:6px 12px;color:#555;font-weight:600">ETA Kirim</td><td style="padding:6px 12px;color:#222">${quote.estimatedDelivery}</td></tr>` : "",
+      `<tr style="background:#f0f9ff"><td style="padding:6px 12px;color:#1e40af;font-weight:700">Total Harga</td><td style="padding:6px 12px;color:#1e40af;font-weight:700">${fmtRpEmail(sellingPrice)}</td></tr>`,
+    ].filter(Boolean).join("");
+    const confirmBtnHtml = confirmUrl
+      ? `<div style="margin-top:24px;text-align:center">
+          <a href="${confirmUrl}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px">✅ Setuju & Konfirmasi</a>
+          <a href="${confirmUrl}?cancel=1" style="display:inline-block;margin-left:12px;background:#ef4444;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px">❌ Tolak</a>
+         </div>`
+      : "";
+    const emailHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+<tr><td style="background:#1e40af;padding:24px 32px">
+  <h1 style="margin:0;color:#fff;font-size:20px">🚢 CST Logistics</h1>
+  <p style="margin:4px 0 0;color:#bfdbfe;font-size:14px">Penawaran Harga Anda Telah Siap</p>
+</td></tr>
+<tr><td style="padding:24px 32px">
+  <p style="margin:0 0 20px;color:#374151;font-size:15px">Halo <strong>${updatedOrder.customerName}</strong>,<br><br>Tim CST Logistics telah menyiapkan penawaran terbaik untuk permintaan Anda. Silakan tinjau detailnya dan konfirmasi persetujuan Anda.</p>
+  <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">${emailHtmlRows}</table>
+  ${confirmBtnHtml}
+  <p style="margin:24px 0 0;color:#6b7280;font-size:13px">Penawaran berlaku selama 3 hari. Hubungi kami jika ada pertanyaan: <strong>(021) 6241234</strong></p>
+</td></tr>
+<tr><td style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb">
+  <p style="margin:0;color:#9ca3af;font-size:12px">CST Logistics — Jln. Ternate No. 10B/C, Jakarta 10150</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`;
+    sendMail({
+      to: updatedOrder.email,
+      subject: `Penawaran Harga Siap — ${updatedOrder.orderNumber}`,
+      html: emailHtml,
+      text: `Halo ${updatedOrder.customerName},\n\nPenawaran harga untuk order ${updatedOrder.orderNumber} telah siap.\nRute: ${updatedOrder.origin} → ${updatedOrder.destination}\nTotal: ${fmtRpEmail(sellingPrice)}\n${confirmUrl ? `\nKonfirmasi: ${confirmUrl}` : ""}`,
+    }).catch((e: unknown) => logger.error({ e }, "Email customer quotation failed"));
+  }
+
+  logger.info({ orderId, quoteId, sellingPrice, vendorId: quote.vendorId }, "Quote approved, quotation sent to customer via WA + email");
 
   return res.json({
     id: updatedOrder.id,

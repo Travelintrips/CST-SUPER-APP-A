@@ -32,6 +32,7 @@ import PosInventoryDashboardPage from "@/pages/pos-inventory-dashboard";
 import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
+import UomPage from "@/pages/settings/uom";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
@@ -158,6 +159,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/expense/:id" component={PR(ExpenseEditorPage)} />
       <Route path="/expense" component={PR(ExpenseListPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
+      <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />

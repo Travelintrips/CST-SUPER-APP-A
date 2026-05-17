@@ -17,8 +17,10 @@ import { runHoldingMigration } from "./lib/holdingMigration";
 import { runPosKasirMigration } from "./lib/posKasirMigration";
 import { runSessionsMigration } from "./lib/sessionsMigration";
 import { runCustomRolesMigration } from "./lib/customRolesMigration";
+import { runUomMigration } from "./lib/uomMigration";
+import { runFreightAuditMigration } from "./lib/freightAuditMigration";
 
-const rawPort = process.env["PORT"] ?? "8080";
+const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
 // Security: PORTAL_ADMIN_EMAILS must be set in production.
 // Without it, requirePortalAdmin falls back to DB role-only check,
@@ -102,6 +104,8 @@ const server = app.listen(port, (err) => {
     .then(() => runWithRetry("Knowledge base migration", runKnowledgeBaseMigration))
     .then(() => runWithRetry("POS Kasir migration", runPosKasirMigration))
     .then(() => runWithRetry("Custom roles migration", runCustomRolesMigration))
+    .then(() => runWithRetry("UOM migration", runUomMigration))
+    .then(() => runWithRetry("Freight audit log migration", runFreightAuditMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

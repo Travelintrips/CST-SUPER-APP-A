@@ -10,6 +10,7 @@ import {
   jsonb,
   date,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql as drizzleSql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -50,6 +51,7 @@ export const accountingEntrySourceEnum = pgEnum("accounting_entry_source", [
   "stock_received",
   "manual_payment",
   "reversal",
+  "cogs_delivery",
 ]);
 
 export const accountingPaymentTypeEnum = pgEnum("accounting_payment_type", [
@@ -129,6 +131,9 @@ export const accountingEntriesTable = pgTable("accounting_entries", {
   uniqAutoSource: uniqueIndex("accounting_entries_source_uniq")
     .on(t.source, t.sourceId)
     .where(drizzleSql`${t.source} <> 'manual' AND ${t.sourceId} IS NOT NULL`),
+  companyIdx: index("accounting_entries_company_idx").on(t.companyId),
+  journalIdx: index("accounting_entries_journal_idx").on(t.journalId),
+  dateIdx: index("accounting_entries_date_idx").on(t.date),
 }));
 
 export const accountingEntryLinesTable = pgTable("accounting_entry_lines", {
@@ -142,7 +147,10 @@ export const accountingEntryLinesTable = pgTable("accounting_entry_lines", {
   description: text("description"),
   debit: numeric("debit", { precision: 14, scale: 2 }).notNull().default("0"),
   credit: numeric("credit", { precision: 14, scale: 2 }).notNull().default("0"),
-});
+}, (t) => ({
+  entryIdx: index("entry_lines_entry_idx").on(t.entryId),
+  accountIdx: index("entry_lines_account_idx").on(t.accountId),
+}));
 
 export const accountingSettingsTable = pgTable("accounting_settings", {
   id: serial("id").primaryKey(),
@@ -242,7 +250,11 @@ export const accountingPaymentsTable = pgTable("accounting_payments", {
   voidReason: text("void_reason"),
   createdById: text("created_by_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  companyIdx: index("accounting_payments_company_idx").on(t.companyId),
+  journalIdx: index("accounting_payments_journal_idx").on(t.journalId),
+  dateIdx: index("accounting_payments_date_idx").on(t.date),
+}));
 
 export const insertCompanySchema = createInsertSchema(companiesTable).omit({
   id: true,

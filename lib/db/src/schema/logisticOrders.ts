@@ -7,13 +7,16 @@ import {
   jsonb,
   timestamp,
   boolean,
+  index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { suppliersTable } from "./suppliers";
+import { companiesTable } from "./companies";
 
 export const logisticOrdersTable = pgTable("logistic_orders", {
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull().unique(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   companyName: text("company_name").notNull(),
   customerName: text("customer_name").notNull(),
   email: text("email").notNull(),
@@ -68,7 +71,11 @@ export const logisticOrdersTable = pgTable("logistic_orders", {
   optionsSentAt: timestamp("options_sent_at", { withTimezone: true }),
   publicRfqToken: text("public_rfq_token").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("logistic_orders_company_idx").on(t.companyId),
+  index("logistic_orders_status_idx").on(t.status),
+  index("logistic_orders_vendor_idx").on(t.approvedVendorId),
+]);
 
 export const logisticOrderItemsTable = pgTable("logistic_order_items", {
   id: serial("id").primaryKey(),

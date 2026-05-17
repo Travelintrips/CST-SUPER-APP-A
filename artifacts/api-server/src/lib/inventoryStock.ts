@@ -38,6 +38,19 @@ export interface StockOutOptions {
   referenceId?: number | null;
   notes?: string | null;
   createdBy?: string | null;
+  /** If true (default), throw StockShortageError when available stock < qty. Set false to allow negative (legacy). */
+  strict?: boolean;
+}
+
+export class StockShortageError extends Error {
+  constructor(
+    public readonly productId: number,
+    public readonly requested: number,
+    public readonly available: number,
+  ) {
+    super(`Stok tidak cukup: produk ${productId} tersedia ${available}, diminta ${requested}`);
+    this.name = "StockShortageError";
+  }
 }
 
 /**
@@ -115,7 +128,7 @@ export async function postStockIn(opts: StockInOptions) {
  * Returns { balanceAfter }.
  */
 export async function postStockOut(opts: StockOutOptions) {
-  const { productId, warehouseId, rackId = null, qty, movementType, referenceType = null, referenceId = null, notes = null, createdBy = null } = opts;
+  const { productId, warehouseId, rackId = null, qty, movementType, referenceType = null, referenceId = null, notes = null, createdBy = null, strict = true } = opts;
 
   // Get current stock row
   const cur = await db.execute(sql`
@@ -129,10 +142,16 @@ export async function postStockOut(opts: StockOutOptions) {
 
   const existing = cur.rows[0] as { id: number; stock_on_hand: number; stock_reserved: number; average_cost: number } | undefined;
   const prevQty = Number(existing?.stock_on_hand ?? 0);
+  const available = Math.max(0, prevQty - Number(existing?.stock_reserved ?? 0));
   const avgCost = Number(existing?.average_cost ?? opts.unitCost ?? 0);
 
+  // Strict mode: block if available stock < requested qty
+  if (strict && available < qty) {
+    throw new StockShortageError(productId, qty, available);
+  }
+
   const newQty = Math.max(0, prevQty - qty);
-  const stockAvailable = newQty - Number(existing?.stock_reserved ?? 0);
+  const stockAvailable = Math.max(0, newQty - Number(existing?.stock_reserved ?? 0));
   const unitCost = opts.unitCost ?? avgCost;
   const totalCost = qty * unitCost;
 
@@ -140,7 +159,7 @@ export async function postStockOut(opts: StockOutOptions) {
     await db.execute(sql`
       UPDATE inventory_stock
       SET stock_on_hand = ${newQty},
-          stock_available = ${Math.max(0, stockAvailable)},
+          stock_available = ${stockAvailable},
           last_updated = NOW()
       WHERE id = ${existing.id}
     `);
