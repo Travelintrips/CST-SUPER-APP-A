@@ -211,7 +211,7 @@ function LoginScreen() {
             </div>
             <form
               method="post"
-              action={`/api/auth/dev-login?redirect=/bizportal/`}
+              action={`/api/dev-login?redirect=/bizportal/`}
               className="flex flex-col gap-2"
             >
               <input
