@@ -45,7 +45,8 @@ export default function PurchaseRequestEditorPage() {
     queryFn: () => apiFetch("/users/me").then(r => r.json()),
   });
 
-  const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: "", notes: "" });
+  const today = new Date().toISOString().split("T")[0];
+  const [form, setForm] = useState({ requestedBy: "", department: "", requiredDate: today, notes: "" });
   const [lines, setLines] = useState<PRLine[]>([{ name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const [actionNotes, setActionNotes] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -107,23 +108,6 @@ export default function PurchaseRequestEditorPage() {
     }));
   };
 
-  const handleSubmit = () => {
-    setSubmitAttempted(true);
-    if (!form.requestedBy.trim() && !form.department.trim()) {
-      toast.error("Pemohon dan Departemen wajib diisi sebelum submit.");
-      return;
-    }
-    if (!form.requestedBy.trim()) {
-      toast.error("Pemohon wajib dipilih sebelum submit.");
-      return;
-    }
-    if (!form.department.trim()) {
-      toast.error("Departemen wajib diisi sebelum submit.");
-      return;
-    }
-    actionMut.mutate("submit");
-  };
-
   const addLine = () => setLines(prev => [...prev, { name: "", quantity: "1", unit: "pcs", estimatedCost: "0", notes: "" }]);
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i));
   const updateLine = (i: number, key: keyof PRLine, value: string) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: value } : l));
@@ -139,6 +123,15 @@ export default function PurchaseRequestEditorPage() {
   };
 
   const handleSubmit = () => {
+    setSubmitAttempted(true);
+    if (!form.requestedBy.trim()) {
+      toast.error("Pemohon wajib dipilih sebelum submit.");
+      return;
+    }
+    if (!form.department.trim()) {
+      toast.error("Departemen wajib diisi sebelum submit.");
+      return;
+    }
     if (!hasValidLines) {
       toast.error("Minimal harus ada satu item yang diisi sebelum PR bisa di-submit.");
       return;

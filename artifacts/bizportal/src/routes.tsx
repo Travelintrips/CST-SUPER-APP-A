@@ -45,6 +45,8 @@ import SalesItemsPage from "@/pages/sales/items";
 import PurchaseDashboardPage from "@/pages/purchase/dashboard";
 import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
+import PurchaseRequestListPage from "@/pages/purchase/pr-list";
+import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import VendorsPage from "@/pages/purchase/vendors";
 import VendorDetailPage from "@/pages/purchase/vendor-detail";
 import PurchaseBillsPage from "@/pages/purchase/bills";
@@ -123,6 +125,9 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/sales/invoices" component={PR(SalesInvoicesPage)} />
       <Route path="/sales/items" component={PR(SalesItemsPage)} />
       <Route path="/purchase" component={PR(PurchaseDashboardPage)} />
+      <Route path="/purchase/pr" component={PR(PurchaseRequestListPage)} />
+      <Route path="/purchase/pr/new" component={PR(PurchaseRequestEditorPage)} />
+      <Route path="/purchase/pr/:id" component={PR(PurchaseRequestEditorPage)} />
       <Route path="/purchase/documents" component={PR(PurchaseDocumentsListPage)} />
       <Route path="/purchase/documents/new" component={PR(PurchaseDocumentEditorPage)} />
       <Route path="/purchase/documents/:id" component={PR(PurchaseDocumentEditorPage)} />
