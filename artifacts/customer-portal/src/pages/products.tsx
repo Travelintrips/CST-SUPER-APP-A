@@ -487,26 +487,6 @@ function ProductModal({ product, onClose }: { product: Product; onClose: () => v
                   Lanjutkan ke Checkout
                   <ArrowRight className="h-4 w-4 ml-auto" />
                 </Button>
-
-                {/* Secondary: Pick more */}
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    className="gap-1.5 text-sm h-10"
-                    onClick={handlePickService}
-                  >
-                    <Truck className="h-3.5 w-3.5" />
-                    Pilih Layanan
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="gap-1.5 text-sm h-10"
-                    onClick={handlePickProduct}
-                  >
-                    <Package className="h-3.5 w-3.5" />
-                    Pilih Produk
-                  </Button>
-                </div>
               </>
             )}
           </div>
