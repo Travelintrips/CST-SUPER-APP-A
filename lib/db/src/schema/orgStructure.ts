@@ -1,7 +1,8 @@
-import { pgTable, serial, text, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { companiesTable } from "./companies";
+import { sql } from "drizzle-orm";
 
 export const branchesTable = pgTable("branches", {
   id: serial("id").primaryKey(),
@@ -14,6 +15,7 @@ export const branchesTable = pgTable("branches", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("branches_company_idx").on(t.companyId),
+  uniqueIndex("branches_company_code_unique").on(t.companyId, t.code).where(sql`${t.code} IS NOT NULL AND ${t.code} <> ''`),
 ]);
 
 export const divisionsTable = pgTable("divisions", {
@@ -54,6 +56,7 @@ export const sectionsTable = pgTable("sections", {
 }, (t) => [
   index("sections_company_idx").on(t.companyId),
   index("sections_department_idx").on(t.departmentId),
+  uniqueIndex("sections_company_code_unique").on(t.companyId, t.code).where(sql`${t.code} IS NOT NULL AND ${t.code} <> ''`),
 ]);
 
 export const insertBranchSchema = createInsertSchema(branchesTable).omit({ id: true, createdAt: true });
