@@ -78,6 +78,7 @@ import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
+import { useCompany } from "@/contexts/CompanyContext";
 
 interface AppShellProps {
   children: ReactNode;
@@ -89,6 +90,7 @@ interface FlatItem {
   href: string;
   icon: LucideIcon;
   roles: string[];
+  companyCodes?: string[];
 }
 
 interface GroupItem {
@@ -98,6 +100,7 @@ interface GroupItem {
   icon: LucideIcon;
   roles: string[];
   children: { titleKey: string; href: string; icon: LucideIcon }[];
+  companyCodes?: string[];
 }
 
 type NavItem = FlatItem | GroupItem;
@@ -105,6 +108,7 @@ type NavItem = FlatItem | GroupItem;
 export function AppShell({ children }: AppShellProps) {
   const [location] = useLocation();
   const { t } = useLanguage();
+  const { activeCompany, isConsolidated } = useCompany();
   const { data: dbUser } = useGetCurrentUser({
     query: {
       queryKey: getGetCurrentUserQueryKey(),
@@ -227,6 +231,7 @@ export function AppShell({ children }: AppShellProps) {
       basePath: "/thai-tea",
       icon: ShoppingBag,
       roles: ["admin"],
+      companyCodes: ["CST"],
       children: [
         { titleKey: "Dashboard", href: "/thai-tea/dashboard", icon: LayoutDashboard },
         { titleKey: "Recipe / BOM", href: "/thai-tea/recipes", icon: ChefHat },
@@ -333,6 +338,11 @@ export function AppShell({ children }: AppShellProps) {
 
   const filteredNav = navItems.filter((item) => {
     if (!dbUser?.role) return false;
+    // Filter berdasarkan company code jika item punya companyCodes
+    if (item.companyCodes && item.companyCodes.length > 0) {
+      if (isConsolidated || !activeCompany) return false;
+      if (!item.companyCodes.includes(activeCompany.companyCode)) return false;
+    }
     if (dbUser.role === "admin") return true;
     if (customRolePermissions != null) {
       const path = item.type === "group" ? item.basePath : item.href;
