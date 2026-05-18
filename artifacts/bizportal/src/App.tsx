@@ -85,6 +85,14 @@ import WarehouseDamagePage from "@/pages/warehouse/damage";
 import WarehouseReturnsPage from "@/pages/warehouse/returns";
 import WarehouseRecipesPage from "@/pages/warehouse/recipes";
 import WarehouseOpnamePage from "@/pages/warehouse/opname";
+import InvWarehousesPage from "@/pages/inventory/warehouses";
+import InvRacksPage from "@/pages/inventory/racks";
+import InvStockPage from "@/pages/inventory/stock";
+import InvTransfersPage from "@/pages/inventory/transfers";
+import InvReturnsPage from "@/pages/inventory/returns";
+import InvDamagePage from "@/pages/inventory/damage";
+import InvOpnamePage from "@/pages/inventory/opname";
+import InvMovementsPage from "@/pages/inventory/movements";
 import PurchaseReceivePage from "@/pages/purchase/receive";
 import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
 import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
@@ -425,7 +433,7 @@ function Router() {
         <Route path="/pos-inventory/transfers" component={() => <ProtectedRoute component={PosStockTransfersPage} />} />
         <Route path="/pos-inventory/qr-generator" component={() => <ProtectedRoute component={PosQrGeneratorPage} />} />
         <Route path="/pos-inventory/qr-scanner" component={() => <ProtectedRoute component={PosQrScannerPage} />} />
-        {/* Warehouse */}
+        {/* Warehouse (legacy) */}
         <Route path="/warehouse/stock" component={() => <ProtectedRoute component={WarehouseStockPage} />} />
         <Route path="/warehouse/movements" component={() => <ProtectedRoute component={WarehouseMovementsPage} />} />
         <Route path="/warehouse/transfers" component={() => <ProtectedRoute component={WarehouseTransfersPage} />} />
@@ -433,6 +441,15 @@ function Router() {
         <Route path="/warehouse/returns" component={() => <ProtectedRoute component={WarehouseReturnsPage} />} />
         <Route path="/warehouse/recipes" component={() => <ProtectedRoute component={WarehouseRecipesPage} />} />
         <Route path="/warehouse/opname" component={() => <ProtectedRoute component={WarehouseOpnamePage} />} />
+        {/* Inventory — modul berbasis cabang & gudang */}
+        <Route path="/inventory/warehouses" component={() => <ProtectedRoute component={InvWarehousesPage} />} />
+        <Route path="/inventory/racks" component={() => <ProtectedRoute component={InvRacksPage} />} />
+        <Route path="/inventory/stock" component={() => <ProtectedRoute component={InvStockPage} />} />
+        <Route path="/inventory/transfers" component={() => <ProtectedRoute component={InvTransfersPage} />} />
+        <Route path="/inventory/returns" component={() => <ProtectedRoute component={InvReturnsPage} />} />
+        <Route path="/inventory/damage" component={() => <ProtectedRoute component={InvDamagePage} />} />
+        <Route path="/inventory/opname" component={() => <ProtectedRoute component={InvOpnamePage} />} />
+        <Route path="/inventory/movements" component={() => <ProtectedRoute component={InvMovementsPage} />} />
         <Route component={NotFound} />
       </Switch>
     </WouterRouter>

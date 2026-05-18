@@ -80,6 +80,7 @@ router.use("/media", mediaRouter);
 router.use("/pos-kasir", posKasirRouter);
 router.use("/pos-inventory", posInventoryRouter);
 router.use("/warehouse", warehouseRouter);
+router.use("/inventory", inventoryMainRouter);
 router.use("/inventory/receive", inventoryReceiveRouter);
 router.use("/inventory/stock", inventoryStockRouter);
 router.use("/inventory/warehouses", inventoryStockRouter);
