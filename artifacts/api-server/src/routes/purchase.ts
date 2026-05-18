@@ -357,7 +357,7 @@ router.post("/documents/:id/action", async (req, res) => {
         const docWarehouseId = (doc as any).warehouseId ?? null;
         let posWhId: number | undefined = docWarehouseId ? Number(docWarehouseId) : undefined;
         if (!posWhId) {
-          const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+          const [defaultWh] = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
           const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
           posWhId = wh?.id;
         }

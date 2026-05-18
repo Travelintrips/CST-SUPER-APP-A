@@ -1,20 +1,13 @@
 /**
- * POS Stock Helper — single source of truth via wh_stock + wh_movements.
+ * POS Stock Helper — single source of truth via inventory_stock + stock_movements.
+ *
+ * Gudang diselesaikan dari warehouses.branch_id = pos_branches.id
+ * Tidak ada lagi sistem dual-stock / thai_tea_warehouse_links.
  *
  * Product types:
- *   STOCK   — deduct wh_stock for linked_product_id
- *   RECIPE  — deduct wh_stock for each ingredient in product_recipes
- *   SERVICE — no stock deduction
- *
- * ERP Sync (always):
- *   Every successful wh_stock deduction is ALSO synced to inventory_stock +
- *   stock_movements. ERP warehouse is resolved in order:
- *     1. thai_tea_warehouse_links for the pos_warehouse
- *     2. warehouses.company_id = pos_branches.company_id (first active)
- *     3. First active warehouse (global fallback)
- *
- *   STOCK items → movement type POS_SALE
- *   RECIPE ingredients → movement type RECIPE_CONSUMPTION
+ *   STOCK   — deduct inventory_stock untuk linked_product_id
+ *   RECIPE  — deduct inventory_stock untuk setiap ingredient
+ *   SERVICE — tidak ada deduction stok
  */
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
@@ -25,10 +18,10 @@ import { postStockOut, postStockIn } from "./inventoryStock.js";
 export type ProductType = "STOCK" | "RECIPE" | "SERVICE";
 
 export interface PosProductStock {
-  productId: number;       // pos_products.id
+  productId: number;
   productName: string;
   productType: ProductType;
-  linkedProductId: number | null; // products.id — for STOCK type
+  linkedProductId: number | null;
   qty: number;
 }
 
@@ -42,60 +35,25 @@ export interface StockShortage {
 
 // ── Warehouse resolution ───────────────────────────────────────────────────────
 
+/** Resolve warehouse_id dari warehouses berdasarkan branch_id POS */
 export async function getWarehouseForBranch(branchId: number): Promise<number | null> {
   const rows = await db.execute(sql`
-    SELECT id FROM pos_warehouses
+    SELECT id FROM warehouses
     WHERE branch_id = ${branchId} AND is_active = TRUE
     ORDER BY id ASC LIMIT 1
   `);
   return (rows.rows[0] as { id: number } | undefined)?.id ?? null;
 }
 
-/** Resolve ERP warehouse_id for sync:
- *  1. Thai Tea link  2. Branch company  3. Global fallback */
-export async function getErpWarehouseIdForBranch(
-  posWarehouseId: number,
-  branchId: number,
-): Promise<number | null> {
-  // 1. Thai Tea warehouse link
-  const ttRows = await db.execute(sql`
-    SELECT erp_warehouse_id FROM thai_tea_warehouse_links
-    WHERE pos_warehouse_id = ${posWarehouseId} AND is_active = TRUE
-    LIMIT 1
-  `);
-  const ttLink = (ttRows.rows[0] as { erp_warehouse_id: number } | undefined)?.erp_warehouse_id ?? null;
-  if (ttLink) return ttLink;
-
-  // 2. ERP warehouse matching branch's companyId
-  const branchRow = (await db.execute(sql`
-    SELECT company_id FROM pos_branches WHERE id = ${branchId} LIMIT 1
-  `)).rows[0] as { company_id: number | null } | undefined;
-
-  if (branchRow?.company_id) {
-    const whRow = (await db.execute(sql`
-      SELECT id FROM warehouses
-      WHERE company_id = ${branchRow.company_id} AND is_active = TRUE
-      ORDER BY id ASC LIMIT 1
-    `)).rows[0] as { id: number } | undefined;
-    if (whRow) return whRow.id;
-  }
-
-  // 3. Global fallback: first active ERP warehouse
-  const fallback = (await db.execute(sql`
-    SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id ASC LIMIT 1
-  `)).rows[0] as { id: number } | undefined;
-  return fallback?.id ?? null;
-}
-
 // ── Stock reader ──────────────────────────────────────────────────────────────
 
-async function getWhStock(productId: number, warehouseId: number): Promise<number> {
+async function getInvStock(productId: number, warehouseId: number): Promise<number> {
   const rows = await db.execute(sql`
-    SELECT qty::float FROM wh_stock
+    SELECT stock_available::float FROM inventory_stock
     WHERE product_id = ${productId} AND warehouse_id = ${warehouseId}
     LIMIT 1
   `);
-  return Number((rows.rows[0] as { qty: number } | undefined)?.qty ?? 0);
+  return Number((rows.rows[0] as { stock_available: number } | undefined)?.stock_available ?? 0);
 }
 
 // ── Check availability (no write) ─────────────────────────────────────────────
@@ -114,7 +72,7 @@ export async function checkPosStock(
 
     if (item.productType === "STOCK") {
       if (!item.linkedProductId) continue;
-      const available = await getWhStock(item.linkedProductId, warehouseId);
+      const available = await getInvStock(item.linkedProductId, warehouseId);
       if (available < item.qty) {
         const prodRow = (await db.execute(sql`
           SELECT name, unit FROM products WHERE id = ${item.linkedProductId}
@@ -154,7 +112,7 @@ export async function checkPosStock(
 
       for (const ing of ingredients) {
         const required = ing.qty * item.qty;
-        const available = await getWhStock(ing.ingredient_product_id, warehouseId);
+        const available = await getInvStock(ing.ingredient_product_id, warehouseId);
         if (available < required) {
           shortages.push({
             productName: item.productName,
@@ -171,101 +129,7 @@ export async function checkPosStock(
   return shortages;
 }
 
-// ── Deduct stock (inside DB transaction) ─────────────────────────────────────
-
-let _seq = 0;
-function movNo(): string {
-  const now = new Date();
-  const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-  _seq = (_seq + 1) % 10000;
-  return `POS/${ymd}/${String(_seq).padStart(4, "0")}`;
-}
-
-async function deductWhStock(
-  tx: typeof db,
-  productId: number,
-  warehouseId: number,
-  qty: number,
-  orderId: number,
-  note: string,
-): Promise<{ qtyBefore: number; qtyAfter: number; costPrice: number }> {
-  const cur = (await tx.execute(sql`
-    SELECT id, qty::float, cost_price::float FROM wh_stock
-    WHERE product_id = ${productId} AND warehouse_id = ${warehouseId}
-    FOR UPDATE
-  `)).rows[0] as { id: number; qty: number; cost_price: number } | undefined;
-
-  const qtyBefore = Number(cur?.qty ?? 0);
-  const qtyAfter = Math.max(0, qtyBefore - qty);
-  const costPrice = Number(cur?.cost_price ?? 0);
-
-  if (cur) {
-    await tx.execute(sql`
-      UPDATE wh_stock SET qty = ${String(qtyAfter)}, updated_at = NOW()
-      WHERE id = ${cur.id}
-    `);
-  } else {
-    await tx.execute(sql`
-      INSERT INTO wh_stock (product_id, warehouse_id, qty, cost_price, updated_at)
-      VALUES (${productId}, ${warehouseId}, 0, 0, NOW())
-    `);
-  }
-
-  await tx.execute(sql`
-    INSERT INTO wh_movements
-      (product_id, warehouse_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note, created_at)
-    VALUES
-      (${productId}, ${warehouseId}, 'pos_sale', ${String(-qty)},
-       ${String(qtyBefore)}, ${String(qtyAfter)}, 0,
-       'pos_order', ${orderId}, ${note}, NOW())
-  `);
-
-  return { qtyBefore, qtyAfter, costPrice };
-}
-
-// ── Add stock back (for POS returns) ─────────────────────────────────────────
-
-async function addWhStock(
-  tx: typeof db,
-  productId: number,
-  warehouseId: number,
-  qty: number,
-  orderId: number,
-  note: string,
-): Promise<{ qtyAfter: number; costPrice: number }> {
-  const cur = (await tx.execute(sql`
-    SELECT id, qty::float, cost_price::float FROM wh_stock
-    WHERE product_id = ${productId} AND warehouse_id = ${warehouseId}
-    FOR UPDATE
-  `)).rows[0] as { id: number; qty: number; cost_price: number } | undefined;
-
-  const qtyBefore = Number(cur?.qty ?? 0);
-  const qtyAfter = qtyBefore + qty;
-  const costPrice = Number(cur?.cost_price ?? 0);
-
-  if (cur) {
-    await tx.execute(sql`
-      UPDATE wh_stock SET qty = ${String(qtyAfter)}, updated_at = NOW()
-      WHERE id = ${cur.id}
-    `);
-  } else {
-    await tx.execute(sql`
-      INSERT INTO wh_stock (product_id, warehouse_id, qty, cost_price, updated_at)
-      VALUES (${productId}, ${warehouseId}, ${qty}, 0, NOW())
-    `);
-  }
-
-  await tx.execute(sql`
-    INSERT INTO wh_movements
-      (product_id, warehouse_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note, created_at)
-    VALUES
-      (${productId}, ${warehouseId}, 'return_in', ${String(qty)},
-       ${String(qtyBefore)}, ${String(qtyAfter)}, ${costPrice},
-       'pos_order', ${orderId}, ${note}, NOW())
-  `);
-
-  return { qtyAfter, costPrice };
-}
+// ── Deduct stock ──────────────────────────────────────────────────────────────
 
 export async function deductPosStock(
   items: PosProductStock[],
@@ -278,109 +142,74 @@ export async function deductPosStock(
     return { warnings: ["Tidak ada gudang aktif untuk cabang ini — stok tidak dikurangi"] };
   }
 
-  const erpWarehouseId = await getErpWarehouseIdForBranch(warehouseId, branchId);
-
   const warnings: string[] = [];
 
-  const erpDeductions: Array<{
-    productId: number;
-    qty: number;
-    costPrice: number;
-    note: string;
-    movementType: "POS_SALE" | "RECIPE_CONSUMPTION";
-  }> = [];
+  for (const item of items) {
+    if (item.productType === "SERVICE") continue;
 
-  await db.transaction(async (tx) => {
-    for (const item of items) {
-      if (item.productType === "SERVICE") continue;
-
-      if (item.productType === "STOCK") {
-        if (!item.linkedProductId) {
-          warnings.push(`${item.productName}: tidak ada linked_product_id, stok tidak dikurangi`);
-          continue;
-        }
-        const result = await deductWhStock(
-          tx as unknown as typeof db,
-          item.linkedProductId,
-          warehouseId,
-          item.qty,
-          orderId,
-          `POS ${orderNumber} — ${item.productName}×${item.qty}`,
-        );
-        erpDeductions.push({
-          productId: item.linkedProductId,
-          qty: item.qty,
-          costPrice: result.costPrice,
-          note: `POS ${orderNumber} — ${item.productName}×${item.qty}`,
-          movementType: "POS_SALE",
-        });
+    if (item.productType === "STOCK") {
+      if (!item.linkedProductId) {
+        warnings.push(`${item.productName}: tidak ada linked_product_id, stok tidak dikurangi`);
         continue;
       }
-
-      if (item.productType === "RECIPE") {
-        const linkedId = item.linkedProductId;
-        if (!linkedId) {
-          warnings.push(`${item.productName}: tidak ada linked_product_id untuk recipe, stok tidak dikurangi`);
-          continue;
-        }
-
-        const recipeRow = (await tx.execute(sql`
-          SELECT id FROM product_recipes
-          WHERE product_id = ${linkedId} AND is_active = TRUE
-          LIMIT 1
-        `)).rows[0] as { id: number } | undefined;
-
-        if (!recipeRow) {
-          warnings.push(`${item.productName}: recipe tidak ditemukan atau tidak aktif`);
-          continue;
-        }
-
-        const ingredients = (await tx.execute(sql`
-          SELECT ingredient_product_id, qty::float
-          FROM product_recipe_items
-          WHERE recipe_id = ${recipeRow.id}
-        `)).rows as Array<{ ingredient_product_id: number; qty: number }>;
-
-        for (const ing of ingredients) {
-          const required = ing.qty * item.qty;
-          if (required <= 0) continue;
-          const result = await deductWhStock(
-            tx as unknown as typeof db,
-            ing.ingredient_product_id,
-            warehouseId,
-            required,
-            orderId,
-            `POS ${orderNumber} — recipe ${item.productName}×${item.qty}`,
-          );
-          erpDeductions.push({
-            productId: ing.ingredient_product_id,
-            qty: required,
-            costPrice: result.costPrice,
-            note: `POS ${orderNumber} — recipe ${item.productName}×${item.qty}`,
-            movementType: "RECIPE_CONSUMPTION",
-          });
-        }
-      }
-    }
-  });
-
-  // Sync to inventory_stock + stock_movements (ERP)
-  if (erpWarehouseId && erpDeductions.length > 0) {
-    for (const ded of erpDeductions) {
       try {
         await postStockOut({
-          productId: ded.productId,
-          warehouseId: erpWarehouseId,
-          qty: ded.qty,
-          unitCost: ded.costPrice,
-          movementType: ded.movementType,
+          productId: item.linkedProductId,
+          warehouseId,
+          qty: item.qty,
+          movementType: "POS_SALE",
           referenceType: "POS_SESSION",
           referenceId: orderId,
-          notes: ded.note,
+          notes: `POS ${orderNumber} — ${item.productName}×${item.qty}`,
           strict: false,
         });
       } catch (e) {
-        warnings.push(`Sync inventory_stock gagal untuk produk #${ded.productId}: ${(e as Error).message}`);
+        warnings.push(`${item.productName}: gagal kurangi stok — ${(e as Error).message}`);
+      }
+      continue;
+    }
+
+    if (item.productType === "RECIPE") {
+      const linkedId = item.linkedProductId;
+      if (!linkedId) {
+        warnings.push(`${item.productName}: tidak ada linked_product_id untuk recipe, stok tidak dikurangi`);
+        continue;
+      }
+
+      const recipeRow = (await db.execute(sql`
+        SELECT id FROM product_recipes
+        WHERE product_id = ${linkedId} AND is_active = TRUE
+        LIMIT 1
+      `)).rows[0] as { id: number } | undefined;
+
+      if (!recipeRow) {
+        warnings.push(`${item.productName}: recipe tidak ditemukan atau tidak aktif`);
+        continue;
+      }
+
+      const ingredients = (await db.execute(sql`
+        SELECT ingredient_product_id, qty::float
+        FROM product_recipe_items
+        WHERE recipe_id = ${recipeRow.id}
+      `)).rows as Array<{ ingredient_product_id: number; qty: number }>;
+
+      for (const ing of ingredients) {
+        const required = ing.qty * item.qty;
+        if (required <= 0) continue;
+        try {
+          await postStockOut({
+            productId: ing.ingredient_product_id,
+            warehouseId,
+            qty: required,
+            movementType: "RECIPE_CONSUMPTION",
+            referenceType: "POS_SESSION",
+            referenceId: orderId,
+            notes: `POS ${orderNumber} — recipe ${item.productName}×${item.qty}`,
+            strict: false,
+          });
+        } catch (e) {
+          warnings.push(`Recipe ${item.productName} bahan #${ing.ingredient_product_id}: ${(e as Error).message}`);
+        }
       }
     }
   }
@@ -388,7 +217,8 @@ export async function deductPosStock(
   return { warnings };
 }
 
-/** Add stock back for POS return — updates wh_stock + inventory_stock */
+// ── Add stock back (for POS returns) ─────────────────────────────────────────
+
 export async function returnPosStock(
   items: Array<{ productId: number; qty: number; note: string }>,
   branchId: number,
@@ -399,45 +229,29 @@ export async function returnPosStock(
     return { warnings: ["Tidak ada gudang aktif untuk cabang ini"] };
   }
 
-  const erpWarehouseId = await getErpWarehouseIdForBranch(warehouseId, branchId);
   const warnings: string[] = [];
 
-  await db.transaction(async (tx) => {
-    for (const item of items) {
-      await addWhStock(
-        tx as unknown as typeof db,
-        item.productId,
+  for (const item of items) {
+    try {
+      const costRow = (await db.execute(sql`
+        SELECT average_cost::float FROM inventory_stock
+        WHERE product_id = ${item.productId} AND warehouse_id = ${warehouseId}
+        LIMIT 1
+      `)).rows[0] as { average_cost: number } | undefined;
+      const unitCost = Number(costRow?.average_cost ?? 0);
+
+      await postStockIn({
+        productId: item.productId,
         warehouseId,
-        item.qty,
-        orderId,
-        item.note,
-      );
-    }
-  });
-
-  if (erpWarehouseId) {
-    for (const item of items) {
-      try {
-        const costRow = (await db.execute(sql`
-          SELECT average_cost::float FROM inventory_stock
-          WHERE product_id = ${item.productId} AND warehouse_id = ${erpWarehouseId}
-          LIMIT 1
-        `)).rows[0] as { average_cost: number } | undefined;
-        const unitCost = Number(costRow?.average_cost ?? 0);
-
-        await postStockIn({
-          productId: item.productId,
-          warehouseId: erpWarehouseId,
-          qty: item.qty,
-          unitCost,
-          movementType: "RETURN_IN",
-          referenceType: "RETURN",
-          referenceId: orderId,
-          notes: item.note,
-        });
-      } catch (e) {
-        warnings.push(`Sync return inventory_stock gagal untuk produk #${item.productId}: ${(e as Error).message}`);
-      }
+        qty: item.qty,
+        unitCost,
+        movementType: "RETURN_IN",
+        referenceType: "RETURN",
+        referenceId: orderId,
+        notes: item.note,
+      });
+    } catch (e) {
+      warnings.push(`Return stok gagal untuk produk #${item.productId}: ${(e as Error).message}`);
     }
   }
 

@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 import { suppliersTable } from "./suppliers";
 import { productsTable } from "./products";
 import { companiesTable } from "./companies";
-import { posWarehousesTable } from "./posKasir";
+import { warehousesTable } from "./inventory";
 
 export const purchaseDocKindEnum = pgEnum("purchase_doc_kind", ["rfq", "order"]);
 export const purchaseDocStatusEnum = pgEnum("purchase_doc_status", [
@@ -40,7 +40,7 @@ export const purchaseDocumentsTable = pgTable("purchase_documents", {
   billStatus: purchaseBillStatusEnum("bill_status").notNull().default("none"),
   paymentStatus: purchasePaymentStatusEnum("payment_status").notNull().default("unpaid"),
   amountPaid: numeric("amount_paid", { precision: 14, scale: 2 }).notNull().default("0"),
-  warehouseId: integer("warehouse_id").references(() => posWarehousesTable.id, { onDelete: "set null" }),
+  warehouseId: integer("warehouse_id").references(() => warehousesTable.id, { onDelete: "set null" }),
   supplierId: integer("supplier_id").references(() => suppliersTable.id, { onDelete: "set null" }),
   supplierName: text("supplier_name").notNull(),
   supplierAddress: text("supplier_address"),

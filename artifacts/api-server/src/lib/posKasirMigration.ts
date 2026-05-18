@@ -484,17 +484,31 @@ export async function runPosKasirMigration(): Promise<void> {
       ADD COLUMN IF NOT EXISTS business_unit TEXT
   `);
 
-  // thai_tea_warehouse_links: mapping pos_warehouse ↔ erp_warehouse untuk dual-stock sync
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS thai_tea_warehouse_links (
-      id SERIAL PRIMARY KEY,
-      pos_warehouse_id INTEGER NOT NULL REFERENCES pos_warehouses(id) ON DELETE CASCADE,
-      erp_warehouse_id INTEGER NOT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      note TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  // ── AUTO-PROVISION WAREHOUSES (ERP) PER POS_BRANCH ───────────────────────
+  // Sistem gudang sudah dimerge: setiap pos_branches harus punya entry di warehouses
+  // agar POS/stock operations bisa resolve warehouse_id secara langsung.
+  const unlinkedBranches = await db.execute(sql`
+    SELECT pb.id, pb.name
+    FROM pos_branches pb
+    WHERE NOT EXISTS (
+      SELECT 1 FROM warehouses w WHERE w.branch_id = pb.id
     )
+    ORDER BY pb.id
   `);
+  for (const branch of unlinkedBranches.rows as { id: number; name: string }[]) {
+    await db.execute(sql`
+      INSERT INTO warehouses (warehouse_code, warehouse_name, warehouse_type, is_active, branch_id)
+      VALUES (
+        'WH-BR-' || ${branch.id},
+        ${branch.name + ' — Gudang Utama'},
+        'BRANCH',
+        TRUE,
+        ${branch.id}
+      )
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info(`Provisioned ERP warehouse for branch #${branch.id}: ${branch.name}`);
+  }
 
-  logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory + thai-tea)");
+  logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory + unified-warehouse)");
 }
