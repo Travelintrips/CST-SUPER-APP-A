@@ -34,22 +34,22 @@ export default function KasirLoginPage() {
       });
       const data = await res.json() as {
         token?: string;
-        cashier?: { id: number; name: string; email: string; branchId?: number | null; branchName?: string | null };
+        cashier?: { id: number; name: string; email: string; branchId?: number | null; branchName?: string | null; companyId?: number | null };
         message?: string;
       };
       if (!res.ok) {
         setMsg({ type: "error", text: data.message ?? "Login gagal" });
       } else {
         setKasirToken(data.token!);
-        // Gunakan branch yang dipilih di form (override branch default akun)
-        const selectedBranchId = form.branchId ? Number(form.branchId) : (data.cashier!.branchId ?? null);
-        const selectedBranch = branches.find((b) => b.id === selectedBranchId);
+        // Branch selalu dari akun kasir (tidak bisa dipilih di form)
+        const c = data.cashier!;
         setKasirProfile({
-          id: data.cashier!.id,
-          name: data.cashier!.name,
-          email: data.cashier!.email,
-          branchId: selectedBranchId,
-          branchName: selectedBranch?.name ?? data.cashier!.branchName ?? null,
+          id: c.id,
+          name: c.name,
+          email: c.email,
+          branchId: c.branchId ?? null,
+          branchName: c.branchName ?? null,
+          companyId: c.companyId ?? null,
         });
         setLocation("/kasir");
       }
@@ -174,20 +174,9 @@ export default function KasirLoginPage() {
                     </button>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
-                    Cabang Kerja Hari Ini
-                  </label>
-                  <select
-                    value={form.branchId} onChange={(e) => update("branchId", e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">— Pilih Cabang —</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}{b.address ? ` — ${b.address}` : ""}</option>
-                    ))}
-                  </select>
-                </div>
+                <p className="text-xs text-gray-400 text-center py-1">
+                  Cabang ditentukan oleh admin — tidak bisa diubah saat login
+                </p>
                 <button
                   type="submit" disabled={loading}
                   className="w-full py-3.5 rounded-2xl font-black text-white text-sm transition-all duration-200 active:scale-95 disabled:opacity-50 mt-2 shadow-lg shadow-orange-200"
@@ -233,7 +222,9 @@ export default function KasirLoginPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Cabang</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">
+                    Cabang <span className="text-gray-300 font-normal normal-case">(opsional — admin bisa ubah)</span>
+                  </label>
                   <select
                     value={form.branchId} onChange={(e) => update("branchId", e.target.value)}
                     className={selectClass}

@@ -7,6 +7,7 @@ export interface KasirProfile {
   email: string;
   branchId?: number | null;
   branchName?: string | null;
+  companyId?: number | null;
 }
 
 export function getKasirToken(): string | null {

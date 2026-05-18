@@ -75,7 +75,16 @@ function parseCashierToken(token: string): { id: number; email: string; exp: num
   }
 }
 
-async function requireCashierAuth(req: Request, res: Response): Promise<{ id: number; name: string; email: string; branchId?: number | null } | null> {
+interface CashierContext {
+  id: number;
+  name: string;
+  email: string;
+  branchId: number | null;
+  companyId: number | null;
+  posRole: string;
+}
+
+async function requireCashierAuth(req: Request, res: Response): Promise<CashierContext | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     res.status(401).json({ message: "Unauthorized" });
@@ -93,7 +102,14 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     res.status(403).json({ message: "Akun kasir belum disetujui atau tidak ditemukan" });
     return null;
   }
-  return { id: cashier.id, name: cashier.name, email: cashier.email, branchId: cashier.branchId };
+  return {
+    id: cashier.id,
+    name: cashier.name,
+    email: cashier.email,
+    branchId: cashier.branchId ?? null,
+    companyId: cashier.companyId ?? null,
+    posRole: cashier.posRole ?? "kasir",
+  };
 }
 
 // Helper: ubah snake_case row dari raw SQL jadi camelCase untuk response
@@ -200,6 +216,7 @@ router.post("/login", async (req, res) => {
       email: cashier.email,
       branchId: cashier.branchId,
       branchName,
+      companyId: cashier.companyId ?? null,
     },
   });
 });
@@ -218,9 +235,11 @@ router.get("/me", async (req, res) => {
 
 // ── Products (public read, admin write) ─────────────────────────────────────
 
-// GET /api/pos-kasir/products
+// GET /api/pos-kasir/products — requires cashier auth; company isolated to cashier's company
 router.get("/products", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const companyId = cashier.companyId ?? resolveCompanyId(req);
   const rows = await db.execute(sql`
     SELECT * FROM pos_products
     WHERE is_active = TRUE AND company_id = ${companyId}
@@ -350,20 +369,30 @@ router.delete("/products/:id", async (req, res) => {
 router.post("/orders", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
-  const { items, discount, note, branchId } = req.body ?? {};
+
+  // branchId WAJIB dari cashier record — tidak bisa di-override dari body
+  if (!cashier.branchId) {
+    return res.status(403).json({ message: "Kasir belum memiliki cabang. Hubungi admin untuk mengatur cabang." });
+  }
+  const effectiveBranchId = cashier.branchId;
+  const effectiveCompanyId = cashier.companyId ?? resolveCompanyId(req);
+
+  const { items, discount, note } = req.body ?? {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "Items tidak boleh kosong" });
   }
 
-  const productIds: number[] = items.map((i: { productId: number }) => i.productId);
+  const productIds: number[] = items.map((i: { productId: number }) => Number(i.productId));
 
-  // Load products with product_type and linked_product_id
+  // Load products — sekaligus validasi company_id agar kasir tidak bisa order produk perusahaan lain
   const posProds = (await db.execute(sql`
-    SELECT id, name, price, is_active, product_type, linked_product_id
+    SELECT id, name, price, is_active, product_type, linked_product_id, company_id
     FROM pos_products WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
+      AND company_id = ${effectiveCompanyId}
+      AND is_active = TRUE
   `)).rows as Array<{
     id: number; name: string; price: string; is_active: boolean;
-    product_type: string | null; linked_product_id: number | null;
+    product_type: string | null; linked_product_id: number | null; company_id: number;
   }>;
   const productMap = new Map(posProds.map((p) => [p.id, p]));
 
@@ -372,8 +401,8 @@ router.post("/orders", async (req, res) => {
   const stockItems: PosProductStock[] = [];
 
   for (const item of items as Array<{ productId: number; qty: number }>) {
-    const p = productMap.get(item.productId);
-    if (!p) return res.status(400).json({ message: `Produk ID ${item.productId} tidak ditemukan` });
+    const p = productMap.get(Number(item.productId));
+    if (!p) return res.status(400).json({ message: `Produk ID ${item.productId} tidak ditemukan atau tidak aktif` });
     const price = Number(p.price);
     const qty = Number(item.qty) || 1;
     const sub = price * qty;
@@ -388,22 +417,18 @@ router.post("/orders", async (req, res) => {
     });
   }
 
-  // Cek ketersediaan stok sebelum membuat order
-  const effectiveBranchId = branchId ? Number(branchId) : (cashier.branchId ?? null);
-  if (effectiveBranchId) {
-    const shortages = await checkPosStock(stockItems, effectiveBranchId);
-    if (shortages.length > 0) {
-      return res.status(422).json({
-        message: "Stok tidak cukup untuk menyelesaikan order.",
-        shortages,
-      });
-    }
+  // Cek ketersediaan stok sebelum membuat order (gunakan cabang kasir)
+  const shortages = await checkPosStock(stockItems, effectiveBranchId);
+  if (shortages.length > 0) {
+    return res.status(422).json({
+      message: "Stok tidak cukup untuk menyelesaikan order.",
+      shortages,
+    });
   }
 
   const discountAmt = Number(discount) || 0;
   const total = subtotal - discountAmt;
 
-  const effectiveCompanyId = resolveCompanyId(req);
   const [order] = await db.insert(posOrdersTable).values({
     companyId: effectiveCompanyId,
     orderNumber: orderNumber(),
@@ -434,6 +459,10 @@ router.patch("/orders/:id/pay", async (req, res) => {
   const [order] = await db.select().from(posOrdersTable).where(eq(posOrdersTable.id, id));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
   if (order.cashierId !== cashier.id) return res.status(403).json({ message: "Bukan order Anda" });
+  // Validasi branch: order harus dari cabang yang sama dengan kasir
+  if (cashier.branchId && order.branchId && order.branchId !== cashier.branchId) {
+    return res.status(403).json({ message: "Order bukan dari cabang Anda" });
+  }
   if (order.status !== "open") return res.status(400).json({ message: "Order sudah diproses" });
 
   const orderItems = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
