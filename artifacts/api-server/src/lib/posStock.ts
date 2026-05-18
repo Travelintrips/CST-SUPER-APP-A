@@ -217,6 +217,213 @@ export async function deductPosStock(
   return { warnings };
 }
 
+// ── POS Warehouse resolution (pos_branches → pos_warehouses) ─────────────────
+
+async function getPosWarehouseForBranch(branchId: number): Promise<number | null> {
+  // Coba default_warehouse_id di cabang dulu
+  const branchRow = (await db.execute(sql`
+    SELECT default_warehouse_id FROM pos_branches WHERE id = ${branchId}
+  `)).rows[0] as { default_warehouse_id: number | null } | undefined;
+  const defWh = branchRow?.default_warehouse_id;
+  if (defWh) return defWh;
+  // Fallback: gudang aktif pertama untuk cabang ini
+  const whRow = (await db.execute(sql`
+    SELECT id FROM pos_warehouses WHERE branch_id = ${branchId} AND is_active = TRUE
+    ORDER BY id ASC LIMIT 1
+  `)).rows[0] as { id: number } | undefined;
+  return whRow?.id ?? null;
+}
+
+// ── POS BOM stock check (pos_recipes + pos_inventory_stocks) ──────────────────
+
+/** Cek ketersediaan bahan baku berdasarkan pos_recipes. Tidak melakukan deduction. */
+export async function checkPosBomStock(
+  orderItems: Array<{ productId: number; productName: string; qty: number }>,
+  branchId: number,
+): Promise<StockShortage[]> {
+  const warehouseId = await getPosWarehouseForBranch(branchId);
+  if (!warehouseId) return [];
+
+  // Gabungkan kebutuhan bahan yang sama dari berbagai produk
+  const requiredMap = new Map<number, {
+    required: number; itemName: string; unit: string; productName: string;
+  }>();
+
+  for (const item of orderItems) {
+    const recipeRow = (await db.execute(sql`
+      SELECT id FROM pos_recipes
+      WHERE product_id = ${item.productId} AND is_active = TRUE
+      LIMIT 1
+    `)).rows[0] as { id: number } | undefined;
+    if (!recipeRow) continue;
+
+    const riRows = (await db.execute(sql`
+      SELECT ri.item_id,
+             ri.qty::float                            AS qty,
+             COALESCE(ri.waste_pct, 0)::float         AS waste_pct,
+             ii.name                                  AS item_name,
+             ii.unit
+      FROM pos_recipe_items ri
+      JOIN pos_inventory_items ii ON ii.id = ri.item_id
+      WHERE ri.recipe_id = ${recipeRow.id}
+    `)).rows as Array<{
+      item_id: number; qty: number; waste_pct: number; item_name: string; unit: string;
+    }>;
+
+    for (const ri of riRows) {
+      const needed = ri.qty * item.qty * (1 + ri.waste_pct / 100);
+      const prev = requiredMap.get(ri.item_id);
+      if (prev) {
+        prev.required += needed;
+      } else {
+        requiredMap.set(ri.item_id, {
+          required: needed,
+          itemName: ri.item_name,
+          unit: ri.unit,
+          productName: item.productName,
+        });
+      }
+    }
+  }
+
+  const shortages: StockShortage[] = [];
+  for (const [itemId, { required, itemName, unit, productName }] of requiredMap) {
+    const stockRow = (await db.execute(sql`
+      SELECT COALESCE(qty, 0)::float AS qty
+      FROM pos_inventory_stocks
+      WHERE item_id = ${itemId}
+        AND branch_id = ${branchId}
+        AND warehouse_id = ${warehouseId}
+      LIMIT 1
+    `)).rows[0] as { qty: number } | undefined;
+    const available = Number(stockRow?.qty ?? 0);
+    if (available < required) {
+      shortages.push({
+        productName,
+        ingredientName: itemName,
+        unit,
+        required: Math.round(required * 1000) / 1000,
+        available: Math.round(available * 1000) / 1000,
+      });
+    }
+  }
+
+  return shortages;
+}
+
+// ── POS BOM stock deduction (pos_inventory_stocks + pos_stock_mutations) ──────
+
+/**
+ * Kurangi stok bahan baku berdasarkan pos_recipes.
+ *
+ * @param tx  Drizzle transaction client (opsional). Jika diberikan, deduction
+ *            berjalan dalam satu transaksi bersama operasi lain (misal order
+ *            update). Jika tidak diberikan, fungsi membuat transaksinya sendiri.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function deductPosBomStock(
+  orderItems: Array<{ productId: number; productName: string; qty: number }>,
+  branchId: number,
+  saleId: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx?: any,
+): Promise<void> {
+  const warehouseId = await getPosWarehouseForBranch(branchId);
+  if (!warehouseId) return;
+
+  // Bangun peta deduction (gabungkan bahan yang sama)
+  const deductMap = new Map<number, { requiredQty: number; note: string; itemName: string }>();
+
+  for (const item of orderItems) {
+    const recipeRow = (await db.execute(sql`
+      SELECT id FROM pos_recipes
+      WHERE product_id = ${item.productId} AND is_active = TRUE
+      LIMIT 1
+    `)).rows[0] as { id: number } | undefined;
+    if (!recipeRow) continue;
+
+    const riRows = (await db.execute(sql`
+      SELECT ri.item_id,
+             ri.qty::float                           AS qty,
+             COALESCE(ri.waste_pct, 0)::float        AS waste_pct,
+             ii.name                                 AS item_name
+      FROM pos_recipe_items ri
+      JOIN pos_inventory_items ii ON ii.id = ri.item_id
+      WHERE ri.recipe_id = ${recipeRow.id}
+    `)).rows as Array<{ item_id: number; qty: number; waste_pct: number; item_name: string }>;
+
+    for (const ri of riRows) {
+      const needed = ri.qty * item.qty * (1 + ri.waste_pct / 100);
+      if (needed <= 0) continue;
+      const prev = deductMap.get(ri.item_id);
+      if (prev) {
+        prev.requiredQty += needed;
+      } else {
+        deductMap.set(ri.item_id, {
+          requiredQty: needed,
+          note: `POS Sale #${saleId} — ${item.productName}×${item.qty}`,
+          itemName: ri.item_name,
+        });
+      }
+    }
+  }
+
+  if (deductMap.size === 0) return;
+
+  const runDeductions = async (client: typeof db | NonNullable<typeof tx>) => {
+    for (const [itemId, d] of deductMap) {
+      // Kunci baris, baca qty terkini (FOR UPDATE)
+      const lockRow = (await client.execute(sql`
+        SELECT id, qty::float AS qty
+        FROM pos_inventory_stocks
+        WHERE item_id      = ${itemId}
+          AND branch_id    = ${branchId}
+          AND warehouse_id = ${warehouseId}
+        FOR UPDATE
+        LIMIT 1
+      `)).rows[0] as { id: number; qty: number } | undefined;
+
+      if (!lockRow) {
+        throw new Error(`Stok bahan "${d.itemName}" tidak ditemukan di gudang ini`);
+      }
+      const qtyBefore = Number(lockRow.qty);
+      if (qtyBefore < d.requiredQty) {
+        throw new Error(
+          `Stok "${d.itemName}" tidak cukup: butuh ${d.requiredQty.toFixed(3)}, tersedia ${qtyBefore.toFixed(3)}`,
+        );
+      }
+      const qtyAfter = qtyBefore - d.requiredQty;
+
+      await client.execute(sql`
+        UPDATE pos_inventory_stocks
+        SET qty = ${String(qtyAfter)}, updated_at = NOW()
+        WHERE id = ${lockRow.id}
+      `);
+
+      await client.execute(sql`
+        INSERT INTO pos_stock_mutations
+          (item_id, branch_id, warehouse_id, type, qty, qty_before, qty_after,
+           ref_type, ref_id, note, created_at)
+        VALUES
+          (${itemId}, ${branchId}, ${warehouseId},
+           'sale',
+           ${String(-d.requiredQty)}, ${String(qtyBefore)}, ${String(qtyAfter)},
+           'sales', ${saleId}, ${d.note}, NOW())
+      `);
+    }
+  };
+
+  if (tx) {
+    // Gunakan tx yang diberikan caller (sudah dalam satu transaksi dengan order update)
+    await runDeductions(tx);
+  } else {
+    // Buat transaksi sendiri
+    await db.transaction(async (innerTx) => {
+      await runDeductions(innerTx);
+    });
+  }
+}
+
 // ── Add stock back (for POS returns) ─────────────────────────────────────────
 
 export async function returnPosStock(

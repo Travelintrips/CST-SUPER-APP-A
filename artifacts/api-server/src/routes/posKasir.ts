@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { checkPosStock, deductPosStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
+import { checkPosStock, deductPosStock, checkPosBomStock, deductPosBomStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
 import { postPosTransaction, postPosCogs } from "../lib/accounting.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -499,19 +499,57 @@ router.patch("/orders/:id/pay", async (req, res) => {
     }
   }
 
+  // ── Cek stok bahan baku BOM (pos_recipes) sebelum bayar ───────────────────────
+  const bomItems = orderItems.map((i) => ({
+    productId: i.productId,
+    productName: i.productName,
+    qty: i.qty,
+  }));
+  if (cashier.branchId) {
+    const bomShortages = await checkPosBomStock(bomItems, cashier.branchId);
+    if (bomShortages.length > 0) {
+      return res.status(422).json({
+        message: "Stok bahan baku tidak cukup untuk menyelesaikan transaksi.",
+        shortages: bomShortages,
+      });
+    }
+  }
+
   const paid = Number(amountPaid) || Number(order.total);
   const change = paid - Number(order.total);
 
-  // ── Update order status ───────────────────────────────────────────────────────
-  const [updated] = await db.update(posOrdersTable).set({
-    status: "paid",
-    paymentMethod,
-    amountPaid: String(paid),
-    change: String(Math.max(0, change)),
-    paidAt: new Date(),
-  }).where(eq(posOrdersTable.id, id)).returning();
+  // ── Update order status + deduct BOM stock (1 transaksi atomik) ───────────────
+  // Jika deduction BOM gagal (misal race condition), order update ikut dibatalkan.
+  let updated: typeof posOrdersTable.$inferSelect | undefined;
+  try {
+    await db.transaction(async (tx) => {
+      const [upd] = await tx
+        .update(posOrdersTable)
+        .set({
+          status: "paid",
+          paymentMethod,
+          amountPaid: String(paid),
+          change: String(Math.max(0, change)),
+          paidAt: new Date(),
+        })
+        .where(eq(posOrdersTable.id, id))
+        .returning();
+      updated = upd;
 
-  // ── Deduct stok via wh_stock + wh_movements (atomic DB transaction + FOR UPDATE)
+      // Deduct bahan baku via pos_inventory_stocks + pos_stock_mutations
+      if (cashier.branchId && bomItems.length > 0) {
+        await deductPosBomStock(bomItems, cashier.branchId, order.id, tx);
+      }
+    });
+  } catch (txErr) {
+    return res.status(422).json({
+      message: `Checkout gagal: ${(txErr as Error).message}`,
+    });
+  }
+
+  if (!updated) return res.status(500).json({ message: "Order update gagal" });
+
+  // ── Deduct stok via wh_stock + wh_movements (existing POS stock logic) ────────
   if (cashier.branchId && stockItems.length > 0) {
     const { warnings } = await deductPosStock(
       stockItems,
