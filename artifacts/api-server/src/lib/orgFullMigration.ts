@@ -261,6 +261,14 @@ export async function runOrgFullMigration(): Promise<void> {
       }
     }
 
+    // ─── 9. Activate all existing org records ────────────────────────────────
+    await db.execute(sql`UPDATE companies   SET is_active = TRUE WHERE is_active = FALSE OR is_active IS NULL`);
+    await db.execute(sql`UPDATE branches    SET is_active = TRUE WHERE is_active = FALSE OR is_active IS NULL`);
+    await db.execute(sql`UPDATE divisions   SET is_active = TRUE WHERE is_active = FALSE OR is_active IS NULL`);
+    await db.execute(sql`UPDATE departments SET is_active = TRUE WHERE is_active = FALSE OR is_active IS NULL`);
+    await db.execute(sql`UPDATE sections    SET is_active = TRUE WHERE is_active = FALSE OR is_active IS NULL`);
+    await db.execute(sql`UPDATE suppliers   SET is_active = TRUE WHERE is_active = FALSE OR is_active IS NULL`);
+
     logger.info("Org full migration: selesai (sections, users FK columns, branches, divisions, departments, sections seeded)");
   } catch (err) {
     logger.error({ err }, "Org full migration failed");
