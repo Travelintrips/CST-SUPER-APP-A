@@ -29,6 +29,38 @@ function resolveCompanyId(req: any): number | null | "forbidden" {
   return id;
 }
 
+/**
+ * Detects PostgreSQL unique constraint violation (error code 23505) for our
+ * org-structure partial unique indexes. Returns a friendly error message or
+ * null if the error is unrelated.
+ */
+function getDuplicateCodeMessage(err: any, entityLabel: string): string | null {
+  const pgCode: string | undefined = err?.cause?.code ?? err?.code;
+  if (pgCode !== "23505") return null;
+
+  const constraint: string =
+    err?.cause?.constraint ?? err?.constraint ??
+    err?.cause?.message ?? err?.message ?? "";
+
+  if (
+    constraint.includes("branches_company_code_unique") ||
+    constraint.includes("divisions_company_code_unique") ||
+    constraint.includes("departments_company_code_unique") ||
+    constraint.includes("sections_company_code_unique") ||
+    // Fallback: drizzle wraps the message — check the inner message text too
+    (pgCode === "23505" && constraint.includes("company_code"))
+  ) {
+    return `Kode ${entityLabel} sudah digunakan oleh ${entityLabel} lain dalam perusahaan yang sama. Gunakan kode yang berbeda.`;
+  }
+
+  // Generic unique violation (e.g. other constraints)
+  if (pgCode === "23505") {
+    return `Terjadi konflik data unik pada ${entityLabel}. Periksa kembali nilai yang Anda masukkan.`;
+  }
+
+  return null;
+}
+
 // ── BRANCHES ─────────────────────────────────────────────────────────────────
 
 router.get("/branches", async (req, res) => {
@@ -50,10 +82,16 @@ router.post("/branches", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { companyId, name, code, address, phone } = req.body ?? {};
   if (!companyId || !name) return res.status(400).json({ message: "companyId and name required" });
-  const [created] = await db.insert(branchesTable)
-    .values({ companyId: Number(companyId), name, code, address, phone })
-    .returning();
-  return res.status(201).json(created);
+  try {
+    const [created] = await db.insert(branchesTable)
+      .values({ companyId: Number(companyId), name, code, address, phone })
+      .returning();
+    return res.status(201).json(created);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Cabang");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.patch("/branches/:id", async (req, res) => {
@@ -68,9 +106,15 @@ router.patch("/branches/:id", async (req, res) => {
   if (phone !== undefined) patch.phone = phone;
   if (isActive !== undefined) patch.isActive = isActive;
   if (!Object.keys(patch).length) return res.status(400).json({ message: "No fields to update" });
-  const [updated] = await db.update(branchesTable).set(patch).where(eq(branchesTable.id, id)).returning();
-  if (!updated) return res.status(404).json({ message: "Not found" });
-  return res.json(updated);
+  try {
+    const [updated] = await db.update(branchesTable).set(patch).where(eq(branchesTable.id, id)).returning();
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Cabang");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.delete("/branches/:id", async (req, res) => {
@@ -102,10 +146,16 @@ router.post("/divisions", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { companyId, name, code, description } = req.body ?? {};
   if (!companyId || !name) return res.status(400).json({ message: "companyId and name required" });
-  const [created] = await db.insert(divisionsTable)
-    .values({ companyId: Number(companyId), name, code, description })
-    .returning();
-  return res.status(201).json(created);
+  try {
+    const [created] = await db.insert(divisionsTable)
+      .values({ companyId: Number(companyId), name, code, description })
+      .returning();
+    return res.status(201).json(created);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Divisi");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.patch("/divisions/:id", async (req, res) => {
@@ -119,9 +169,15 @@ router.patch("/divisions/:id", async (req, res) => {
   if (description !== undefined) patch.description = description;
   if (isActive !== undefined) patch.isActive = isActive;
   if (!Object.keys(patch).length) return res.status(400).json({ message: "No fields" });
-  const [updated] = await db.update(divisionsTable).set(patch).where(eq(divisionsTable.id, id)).returning();
-  if (!updated) return res.status(404).json({ message: "Not found" });
-  return res.json(updated);
+  try {
+    const [updated] = await db.update(divisionsTable).set(patch).where(eq(divisionsTable.id, id)).returning();
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Divisi");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.delete("/divisions/:id", async (req, res) => {
@@ -157,10 +213,16 @@ router.post("/departments", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { companyId, divisionId, name, code, description } = req.body ?? {};
   if (!companyId || !name) return res.status(400).json({ message: "companyId and name required" });
-  const [created] = await db.insert(departmentsTable)
-    .values({ companyId: Number(companyId), divisionId: divisionId ? Number(divisionId) : null, name, code, description })
-    .returning();
-  return res.status(201).json(created);
+  try {
+    const [created] = await db.insert(departmentsTable)
+      .values({ companyId: Number(companyId), divisionId: divisionId ? Number(divisionId) : null, name, code, description })
+      .returning();
+    return res.status(201).json(created);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Departemen");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.patch("/departments/:id", async (req, res) => {
@@ -175,9 +237,15 @@ router.patch("/departments/:id", async (req, res) => {
   if (divisionId !== undefined) patch.divisionId = divisionId ? Number(divisionId) : null;
   if (isActive !== undefined) patch.isActive = isActive;
   if (!Object.keys(patch).length) return res.status(400).json({ message: "No fields" });
-  const [updated] = await db.update(departmentsTable).set(patch).where(eq(departmentsTable.id, id)).returning();
-  if (!updated) return res.status(404).json({ message: "Not found" });
-  return res.json(updated);
+  try {
+    const [updated] = await db.update(departmentsTable).set(patch).where(eq(departmentsTable.id, id)).returning();
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Departemen");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.delete("/departments/:id", async (req, res) => {
@@ -213,10 +281,16 @@ router.post("/sections", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { companyId, departmentId, name, code, description } = req.body ?? {};
   if (!companyId || !name) return res.status(400).json({ message: "companyId and name required" });
-  const [created] = await db.insert(sectionsTable)
-    .values({ companyId: Number(companyId), departmentId: departmentId ? Number(departmentId) : null, name, code, description })
-    .returning();
-  return res.status(201).json(created);
+  try {
+    const [created] = await db.insert(sectionsTable)
+      .values({ companyId: Number(companyId), departmentId: departmentId ? Number(departmentId) : null, name, code, description })
+      .returning();
+    return res.status(201).json(created);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Seksi");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.patch("/sections/:id", async (req, res) => {
@@ -231,9 +305,15 @@ router.patch("/sections/:id", async (req, res) => {
   if (departmentId !== undefined) patch.departmentId = departmentId ? Number(departmentId) : null;
   if (isActive !== undefined) patch.isActive = isActive;
   if (!Object.keys(patch).length) return res.status(400).json({ message: "No fields" });
-  const [updated] = await db.update(sectionsTable).set(patch).where(eq(sectionsTable.id, id)).returning();
-  if (!updated) return res.status(404).json({ message: "Not found" });
-  return res.json(updated);
+  try {
+    const [updated] = await db.update(sectionsTable).set(patch).where(eq(sectionsTable.id, id)).returning();
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    const msg = getDuplicateCodeMessage(err, "Seksi");
+    if (msg) return res.status(409).json({ message: msg });
+    throw err;
+  }
 });
 
 router.delete("/sections/:id", async (req, res) => {
