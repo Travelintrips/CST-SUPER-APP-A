@@ -249,7 +249,7 @@ export async function runOrgFullMigration(): Promise<void> {
       await db.execute(sql`
         INSERT INTO sections (company_id, department_id, name, code)
         VALUES (${s.company_id}, ${deptId}, ${s.name}, ${s.code})
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (code) DO NOTHING
       `);
     }
 
