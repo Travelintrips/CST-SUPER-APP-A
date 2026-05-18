@@ -34,6 +34,7 @@ import posInventoryRouter from "./posInventory";
 import warehouseRouter from "./warehouse";
 import inventoryReceiveRouter from "./inventoryReceive";
 import inventoryStockRouter from "./inventoryStock";
+import inventoryMainRouter from "./inventoryMain";
 import customRolesRouter from "./customRoles";
 import thaiTeaSuppliesRouter from "./thaiTeaSupplies";
 import purchaseWorkflowRouter from "./purchaseWorkflow";
