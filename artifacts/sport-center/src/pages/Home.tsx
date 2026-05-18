@@ -75,7 +75,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              to="/sport-center/booking"
+              to="/booking"
               className="bg-gradient-to-r from-blue-600 to-emerald-500 text-white px-8 py-4 rounded-full font-bold text-lg hover:shadow-2xl hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2"
             >
               Booking Sekarang
@@ -145,7 +145,7 @@ export default function Home() {
               </h2>
             </div>
             <Link
-              to="/sport-center/facilities"
+              to="/facilities"
               className="flex items-center gap-2 text-blue-600 font-semibold hover:gap-3 transition-all text-sm"
             >
               Lihat Semua <ChevronRight className="w-4 h-4" />
@@ -201,7 +201,7 @@ export default function Home() {
             Booking lapangan sekarang dan nikmati pengalaman olahraga premium bersama kami.
           </p>
           <Link
-            to="/sport-center/booking"
+            to="/booking"
             className="inline-flex items-center gap-2 bg-white text-blue-600 px-10 py-4 rounded-full font-bold text-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
           >
             Booking Sekarang

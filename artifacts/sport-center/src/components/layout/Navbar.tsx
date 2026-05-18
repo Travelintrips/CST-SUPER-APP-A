@@ -3,12 +3,12 @@ import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Dumbbell } from "lucide-react";
 
 const navLinks = [
-  { to: "/sport-center/", label: "Home" },
-  { to: "/sport-center/facilities", label: "Fasilitas" },
-  { to: "/sport-center/schedule", label: "Jadwal" },
-  { to: "/sport-center/booking", label: "Booking" },
-  { to: "/sport-center/about", label: "Tentang" },
-  { to: "/sport-center/contact", label: "Kontak" },
+  { to: "/", label: "Home" },
+  { to: "/facilities", label: "Fasilitas" },
+  { to: "/schedule", label: "Jadwal" },
+  { to: "/booking", label: "Booking" },
+  { to: "/about", label: "Tentang" },
+  { to: "/contact", label: "Kontak" },
 ];
 
 export default function Navbar() {
@@ -16,14 +16,14 @@ export default function Navbar() {
   const location = useLocation();
 
   const isActive = (to: string) =>
-    location.pathname === to || (to !== "/sport-center/" && location.pathname.startsWith(to));
+    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
 
   return (
     <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link
-            to="/sport-center/"
+            to="/"
             className="flex items-center gap-2 font-bold text-xl text-blue-600"
           >
             <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-emerald-500 rounded-lg flex items-center justify-center">
@@ -51,7 +51,7 @@ export default function Navbar() {
 
           <div className="hidden md:block">
             <Link
-              to="/sport-center/booking"
+              to="/booking"
               className="bg-gradient-to-r from-blue-600 to-emerald-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:shadow-lg hover:scale-105 transition-all duration-200"
             >
               Booking Sekarang
@@ -86,7 +86,7 @@ export default function Navbar() {
               </Link>
             ))}
             <Link
-              to="/sport-center/booking"
+              to="/booking"
               onClick={() => setOpen(false)}
               className="mt-2 bg-gradient-to-r from-blue-600 to-emerald-500 text-white px-4 py-3 rounded-xl text-sm font-semibold text-center"
             >

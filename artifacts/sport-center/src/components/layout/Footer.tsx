@@ -33,12 +33,12 @@ export default function Footer() {
             <h3 className="text-white font-semibold mb-4">Menu</h3>
             <ul className="space-y-2 text-sm">
               {[
-                { to: "/sport-center/", label: "Beranda" },
-                { to: "/sport-center/facilities", label: "Fasilitas" },
-                { to: "/sport-center/schedule", label: "Jadwal" },
-                { to: "/sport-center/booking", label: "Booking" },
-                { to: "/sport-center/about", label: "Tentang Kami" },
-                { to: "/sport-center/contact", label: "Kontak" },
+                { to: "/", label: "Beranda" },
+                { to: "/facilities", label: "Fasilitas" },
+                { to: "/schedule", label: "Jadwal" },
+                { to: "/booking", label: "Booking" },
+                { to: "/about", label: "Tentang Kami" },
+                { to: "/contact", label: "Kontak" },
               ].map((link) => (
                 <li key={link.to}>
                   <Link to={link.to} className="hover:text-blue-400 transition-colors">
@@ -54,7 +54,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm">
               {["Lapangan Futsal", "Lapangan Badminton", "Lapangan Tenis", "Lapangan Basket", "Kolam Renang", "Fitness & Gym"].map((f) => (
                 <li key={f}>
-                  <Link to="/sport-center/facilities" className="hover:text-blue-400 transition-colors">
+                  <Link to="/facilities" className="hover:text-blue-400 transition-colors">
                     {f}
                   </Link>
                 </li>

@@ -9,14 +9,16 @@ import Admin from "@/pages/Admin";
 import About from "@/pages/About";
 import Contact from "@/pages/Contact";
 
+const basename = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <div className="flex flex-col min-h-screen">
         <Routes>
-          <Route path="/sport-center/admin" element={<Admin />} />
+          <Route path="/admin" element={<Admin />} />
           <Route
-            path="/sport-center/*"
+            path="/*"
             element={
               <>
                 <Navbar />
@@ -28,14 +30,13 @@ export default function App() {
                     <Route path="/booking" element={<Booking />} />
                     <Route path="/about" element={<About />} />
                     <Route path="/contact" element={<Contact />} />
-                    <Route path="*" element={<Navigate to="/sport-center/" replace />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </main>
                 <Footer />
               </>
             }
           />
-          <Route path="*" element={<Navigate to="/sport-center/" replace />} />
         </Routes>
       </div>
     </BrowserRouter>

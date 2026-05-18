@@ -74,7 +74,7 @@ export default function FacilityCard({ facility }: FacilityCardProps) {
             <span className="text-slate-400 text-sm">/jam</span>
           </div>
           <Link
-            to={`/sport-center/booking?facility=${facility.id}`}
+            to={`/booking?facility=${facility.id}`}
             className="flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-emerald-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:shadow-md transition-all"
           >
             Booking
