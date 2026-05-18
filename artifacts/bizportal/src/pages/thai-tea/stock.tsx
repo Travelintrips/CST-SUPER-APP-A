@@ -19,24 +19,25 @@ async function apiFetch(path: string) {
   return res.json();
 }
 
+interface StockBranch {
+  stock_id: number | null;
+  branch_id: number;
+  branch_name: string;
+  business_unit: string | null;
+  warehouse_id: number | null;
+  warehouse_name: string | null;
+  qty: number;
+}
+
 interface StockItem {
-  product_id: number;
-  product_name: string;
+  item_id: number;
+  item_name: string;
   sku: string;
   unit: string;
+  cost_price: number;
   total_qty: number;
-  total_available: number;
-  avg_cost: number | null;
-  warehouse_count: number;
-  warehouses: Array<{
-    warehouse_id: number;
-    warehouse_name: string;
-    warehouse_code: string;
-    branch_name: string | null;
-    stock_on_hand: number;
-    stock_available: number;
-    average_cost: number | null;
-  }> | null;
+  branch_count: number;
+  branches: StockBranch[];
 }
 
 export default function ThaiTeaStockPage() {
@@ -53,11 +54,11 @@ export default function ThaiTeaStockPage() {
   const toggle = (id: number) => setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const filtered = stock.filter((s) =>
-    s.product_name.toLowerCase().includes(search.toLowerCase()) ||
+    s.item_name.toLowerCase().includes(search.toLowerCase()) ||
     s.sku.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalValue = stock.reduce((a, s) => a + s.total_qty * (s.avg_cost ?? 0), 0);
+  const totalValue = stock.reduce((a, s) => a + s.total_qty * (s.cost_price ?? 0), 0);
   const emptyCount = stock.filter((s) => s.total_qty <= 0).length;
   const totalItems = stock.length;
 
@@ -70,7 +71,7 @@ export default function ThaiTeaStockPage() {
               <Boxes className="h-6 w-6 text-amber-400" /> Stok Bahan Baku Thai Tea
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Inventori bahan baku dari sistem gudang terpadu (inventory_stock)
+              Inventori bahan baku dari sistem terpadu (pos_inventory_stocks · filter per cabang/gudang)
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={refresh}>
@@ -78,7 +79,6 @@ export default function ThaiTeaStockPage() {
           </Button>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-4">
@@ -109,14 +109,13 @@ export default function ThaiTeaStockPage() {
           <Card>
             <CardContent className="pt-4">
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Warehouse className="h-3.5 w-3.5" /> Stok Tersedia
+                <Warehouse className="h-3.5 w-3.5" /> Ada Stok
               </p>
               <p className="text-2xl font-bold text-blue-400">{totalItems - emptyCount}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Stock Table */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
@@ -136,39 +135,38 @@ export default function ThaiTeaStockPage() {
                   <TableHead className="w-8" />
                   <TableHead>Nama Bahan</TableHead>
                   <TableHead>SKU</TableHead>
-                  <TableHead className="text-right">Stok Tersedia</TableHead>
-                  <TableHead className="text-right">Stok On-Hand</TableHead>
+                  <TableHead className="text-right">Total Stok</TableHead>
                   <TableHead>Satuan</TableHead>
-                  <TableHead className="text-right">Avg. Cost</TableHead>
+                  <TableHead className="text-right">Harga Pokok</TableHead>
                   <TableHead className="text-right">Nilai Stok</TableHead>
-                  <TableHead>Gudang</TableHead>
+                  <TableHead>Cabang</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Memuat…</TableCell>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Memuat…</TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      {search ? "Tidak ditemukan." : "Belum ada data stok bahan thai tea."}
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      {search ? "Tidak ditemukan." : "Belum ada data stok. Jalankan seed bahan terlebih dahulu."}
                     </TableCell>
                   </TableRow>
                 ) : filtered.flatMap((s) => {
-                  const isOpen = expanded.has(s.product_id);
-                  const subRows = s.warehouses ?? [];
+                  const isOpen = expanded.has(s.item_id);
+                  const subRows = s.branches ?? [];
                   const canExpand = subRows.length > 0;
                   return [
                     <TableRow
-                      key={s.product_id}
-                      className={s.total_available <= 0 ? "bg-orange-950/10" : undefined}
+                      key={s.item_id}
+                      className={s.total_qty <= 0 ? "bg-orange-950/10" : undefined}
                     >
                       <TableCell>
                         {canExpand ? (
                           <Button
                             variant="ghost" size="icon" className="h-6 w-6"
-                            onClick={() => toggle(s.product_id)}
+                            onClick={() => toggle(s.item_id)}
                           >
                             {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                           </Button>
@@ -176,52 +174,51 @@ export default function ThaiTeaStockPage() {
                       </TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          {s.total_available <= 0 && <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />}
-                          {s.product_name}
+                          {s.total_qty <= 0 && <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />}
+                          {s.item_name}
                         </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="font-mono text-xs">{s.sku}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        <span className={s.total_available <= 0 ? "text-orange-400" : "text-emerald-400"}>
-                          {fmt(s.total_available)}
+                        <span className={s.total_qty <= 0 ? "text-orange-400" : "text-emerald-400"}>
+                          {fmt(s.total_qty)}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">{fmt(s.total_qty)}</TableCell>
                       <TableCell className="text-muted-foreground text-xs">{s.unit}</TableCell>
-                      <TableCell className="text-right text-xs">{s.avg_cost ? idr(s.avg_cost) : "—"}</TableCell>
+                      <TableCell className="text-right text-xs">{s.cost_price ? idr(s.cost_price) : "—"}</TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">
-                        {s.avg_cost ? idr(s.total_qty * s.avg_cost) : "—"}
+                        {s.cost_price ? idr(s.total_qty * s.cost_price) : "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs">
-                          {s.warehouse_count} gudang
+                          {Number(s.branch_count)} cabang
                         </Badge>
                       </TableCell>
                     </TableRow>,
-                    ...(isOpen ? subRows.map((wh) => (
-                      <TableRow key={`${s.product_id}-${wh.warehouse_id}`} className="bg-muted/20">
+                    ...(isOpen ? subRows.map((br) => (
+                      <TableRow key={`${s.item_id}-${br.branch_id}-${br.warehouse_id ?? "null"}`} className="bg-muted/20">
                         <TableCell />
                         <TableCell colSpan={2} className="pl-8 text-xs text-muted-foreground">
                           <div className="flex items-center gap-1.5">
                             <Warehouse className="h-3.5 w-3.5 text-amber-400" />
-                            <span>{wh.warehouse_name}</span>
-                            {wh.branch_name && <span className="text-muted-foreground">({wh.branch_name})</span>}
-                            <Badge variant="outline" className="font-mono text-xs">{wh.warehouse_code}</Badge>
+                            <span className="font-medium text-foreground">{br.branch_name}</span>
+                            {br.warehouse_name && (
+                              <span className="text-muted-foreground">/ {br.warehouse_name}</span>
+                            )}
+                            {br.business_unit && (
+                              <Badge variant="outline" className="text-xs">{br.business_unit}</Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-right text-xs font-medium">
-                          <span className={wh.stock_available <= 0 ? "text-orange-400" : "text-emerald-400"}>
-                            {fmt(wh.stock_available)}
+                          <span className={br.qty <= 0 ? "text-orange-400" : "text-emerald-400"}>
+                            {fmt(br.qty)}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right text-xs">{fmt(wh.stock_on_hand)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{s.unit}</TableCell>
-                        <TableCell className="text-right text-xs">
-                          {wh.average_cost ? idr(wh.average_cost) : "—"}
-                        </TableCell>
-                        <TableCell colSpan={2} />
+                        <TableCell colSpan={3} />
                       </TableRow>
                     )) : []),
                   ];
