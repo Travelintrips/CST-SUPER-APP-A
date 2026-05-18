@@ -13,7 +13,7 @@ import { toast } from "@/hooks/use-toast";
 import {
   Building2, GitBranch, LayoutList, FolderOpen, Users2, Network,
   Plus, Pencil, Trash2, ChevronRight, CheckCircle2, XCircle,
-  RefreshCw, Shield,
+  RefreshCw, Shield, AlertCircle,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -35,7 +35,13 @@ interface HierarchyCompany { id: number; name: string; code: string; isActive: b
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
-  if (!res.ok) { const txt = await res.text(); throw new Error(txt || res.statusText); }
+  if (!res.ok) {
+    const txt = await res.text();
+    let message = txt || res.statusText;
+    try { const parsed = JSON.parse(txt); if (parsed?.message) message = parsed.message; } catch {}
+    const err = Object.assign(new Error(message), { status: res.status });
+    throw err;
+  }
   return res.json();
 }
 
@@ -67,14 +73,20 @@ function CompaniesTab() {
   const qc = useQueryClient();
   const { data: companies = [], isLoading } = useQuery<Company[]>({ queryKey: ["companies"], queryFn: () => apiFetch("/companies") });
   const [dialog, setDialog] = useState<{ open: boolean; mode: "add" | "edit"; item: Partial<Company> }>({ open: false, mode: "add", item: {} });
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function openDialog(mode: "add" | "edit", item: Partial<Company>) {
+    setFormError(null);
+    setDialog({ open: true, mode, item });
+  }
 
   const save = useMutation({
     mutationFn: async (item: Partial<Company>) => {
       if (item.id) return apiFetch(`/companies/${item.id}`, { method: "PATCH", body: JSON.stringify({ companyName: item.companyName, companyCode: item.companyCode, address: item.address, phone: item.phone, email: item.email, npwp: item.npwp, isActive: item.isActive }) });
       return apiFetch("/companies", { method: "POST", body: JSON.stringify({ companyName: item.companyName, companyCode: item.companyCode, address: item.address, phone: item.phone, email: item.email, npwp: item.npwp }) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["companies"] }); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["companies"] }); setFormError(null); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
+    onError: (e: Error) => { setFormError(e.message); toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }); },
   });
 
   const del = useMutation({
@@ -87,7 +99,7 @@ function CompaniesTab() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted-foreground">{companies.length} perusahaan terdaftar</p>
-        <Button size="sm" onClick={() => setDialog({ open: true, mode: "add", item: { isActive: true } })}>
+        <Button size="sm" onClick={() => openDialog("add", { isActive: true })}>
           <Plus className="h-4 w-4 mr-1" />Tambah Perusahaan
         </Button>
       </div>
@@ -115,7 +127,7 @@ function CompaniesTab() {
                 <TableCell><ActiveBadge active={c.isActive} /></TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDialog({ open: true, mode: "edit", item: { ...c } })}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog("edit", { ...c })}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     {c.id > 4 && (
@@ -131,7 +143,7 @@ function CompaniesTab() {
         </Table>
       </div>
 
-      <Dialog open={dialog.open} onOpenChange={o => setDialog(d => ({ ...d, open: o }))}>
+      <Dialog open={dialog.open} onOpenChange={o => { if (!o) setFormError(null); setDialog(d => ({ ...d, open: o })); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{dialog.mode === "add" ? "Tambah Perusahaan" : "Edit Perusahaan"}</DialogTitle>
@@ -145,7 +157,13 @@ function CompaniesTab() {
               </div>
               <div>
                 <Label className="text-xs">Kode Perusahaan *</Label>
-                <Input className="mt-1" value={dialog.item.companyCode ?? ""} onChange={e => setDialog(d => ({ ...d, item: { ...d.item, companyCode: e.target.value.toUpperCase() } }))} placeholder="CMJ" maxLength={8} />
+                <Input
+                  className={`mt-1 ${formError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  value={dialog.item.companyCode ?? ""}
+                  onChange={e => { setFormError(null); setDialog(d => ({ ...d, item: { ...d.item, companyCode: e.target.value.toUpperCase() } })); }}
+                  placeholder="CMJ"
+                  maxLength={8}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -160,9 +178,15 @@ function CompaniesTab() {
                 <Label htmlFor="isActive" className="text-xs">Aktif</Label>
               </div>
             )}
+            {formError && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(d => ({ ...d, open: false }))}>Batal</Button>
+            <Button variant="outline" onClick={() => { setFormError(null); setDialog(d => ({ ...d, open: false })); }}>Batal</Button>
             <Button disabled={save.isPending} onClick={() => save.mutate(dialog.item)}>{save.isPending ? "Menyimpan..." : "Simpan"}</Button>
           </DialogFooter>
         </DialogContent>
@@ -191,6 +215,7 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
   const qc = useQueryClient();
   const [companyFilter, setCompanyFilter] = useState<string>("all");
   const [dialog, setDialog] = useState<{ open: boolean; mode: "add" | "edit"; item: Record<string, unknown> }>({ open: false, mode: "add", item: {} });
+  const [formError, setFormError] = useState<string | null>(null);
 
   const url = companyFilter !== "all" ? `${endpoint}?companyId=${companyFilter}` : `${endpoint}?companyId=all`;
   const { data: rows = [], isLoading } = useQuery<T[]>({ queryKey: [queryKey, companyFilter], queryFn: () => apiFetch(url) });
@@ -202,8 +227,8 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
       if (item.id) return apiFetch(`${endpoint}/${item.id}`, { method: "PATCH", body: JSON.stringify(item) });
       return apiFetch(endpoint, { method: "POST", body: JSON.stringify(item) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); setFormError(null); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
+    onError: (e: Error) => { setFormError(e.message); toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }); },
   });
 
   const del = useMutation({
@@ -215,6 +240,7 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
   function openAdd() {
     const init: Record<string, unknown> = { isActive: true };
     if (companyFilter !== "all") init.companyId = Number(companyFilter);
+    setFormError(null);
     setDialog({ open: true, mode: "add", item: init });
   }
 
@@ -253,6 +279,7 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                       const item: Record<string, unknown> = { ...row };
                       if (parentKey && (row as any)[parentKey]) item[parentKey] = (row as any)[parentKey];
+                      setFormError(null);
                       setDialog({ open: true, mode: "edit", item });
                     }}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -268,7 +295,7 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
         </Table>
       </div>
 
-      <Dialog open={dialog.open} onOpenChange={o => setDialog(d => ({ ...d, open: o }))}>
+      <Dialog open={dialog.open} onOpenChange={o => { if (!o) setFormError(null); setDialog(d => ({ ...d, open: o })); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{dialog.mode === "add" ? `Tambah ${label}` : `Edit ${label}`}</DialogTitle>
@@ -302,7 +329,11 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
               </div>
               <div>
                 <Label className="text-xs">Kode</Label>
-                <Input className="mt-1" value={String(dialog.item.code ?? "")} onChange={e => setDialog(d => ({ ...d, item: { ...d.item, code: e.target.value.toUpperCase() } }))} />
+                <Input
+                  className={`mt-1 ${formError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  value={String(dialog.item.code ?? "")}
+                  onChange={e => { setFormError(null); setDialog(d => ({ ...d, item: { ...d.item, code: e.target.value.toUpperCase() } })); }}
+                />
               </div>
             </div>
             <div>
@@ -315,9 +346,15 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
                 <Label htmlFor="isActiveGeneric" className="text-xs">Aktif</Label>
               </div>
             )}
+            {formError && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(d => ({ ...d, open: false }))}>Batal</Button>
+            <Button variant="outline" onClick={() => { setFormError(null); setDialog(d => ({ ...d, open: false })); }}>Batal</Button>
             <Button disabled={save.isPending} onClick={() => save.mutate(dialog.item)}>{save.isPending ? "Menyimpan..." : "Simpan"}</Button>
           </DialogFooter>
         </DialogContent>
