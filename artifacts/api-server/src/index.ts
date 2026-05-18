@@ -22,6 +22,7 @@ import { runFreightAuditMigration } from "./lib/freightAuditMigration";
 import { runAuditFixMigration } from "./lib/auditFixMigration";
 import { seedUom } from "./lib/uomSeed";
 import { runOrgFullMigration } from "./lib/orgFullMigration";
+import { runOrgRoleMigration } from "./lib/orgRoleMigration";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -139,6 +140,7 @@ async function startServer() {
     .then(() => runWithRetry("Freight audit log migration", runFreightAuditMigration))
     .then(() => runWithRetry("Audit fix migration", runAuditFixMigration))
     .then(() => runWithRetry("Org full migration", runOrgFullMigration))
+    .then(() => runWithRetry("Org/role migration", runOrgRoleMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

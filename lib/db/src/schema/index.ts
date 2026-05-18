@@ -43,4 +43,5 @@ export * from "./purchaseWorkflow";
 export * from "./freightAuditLog";
 export * from "./customRoles";
 export * from "./orgStructure";
+export * from "./approvalRules";
 

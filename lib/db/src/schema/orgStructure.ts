@@ -19,27 +19,33 @@ export const branchesTable = pgTable("branches", {
 export const divisionsTable = pgTable("divisions", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "cascade" }).notNull(),
+  branchId: integer("branch_id").references(() => branchesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   code: text("code"),
   description: text("description"),
+  managerId: text("manager_id"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("divisions_company_idx").on(t.companyId),
+  index("divisions_branch_idx").on(t.branchId),
 ]);
 
 export const departmentsTable = pgTable("departments", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "cascade" }).notNull(),
+  branchId: integer("branch_id").references(() => branchesTable.id, { onDelete: "set null" }),
   divisionId: integer("division_id").references(() => divisionsTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   code: text("code"),
   description: text("description"),
+  managerId: text("manager_id"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("departments_company_idx").on(t.companyId),
   index("departments_division_idx").on(t.divisionId),
+  index("departments_branch_idx").on(t.branchId),
 ]);
 
 export const sectionsTable = pgTable("sections", {

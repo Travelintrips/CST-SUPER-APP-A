@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { branchesTable, divisionsTable, departmentsTable, sectionsTable } from "@workspace/db/schema";
 import { requireAdmin } from "../lib/requireAdmin.js";
 
@@ -12,16 +12,13 @@ function isAdmin(req: any): boolean {
   return req.isAuthenticated() && req.user?.role === "admin";
 }
 
-/** Resolve companyId from query string; admins can query any company,
- *  regular users are scoped to their own company. Returns null = no filter. */
 function resolveCompanyId(req: any): number | null | "forbidden" {
   const qp = req.query.companyId as string | undefined;
   const userCompanyId: number | null = req.user?.companyId ?? null;
   const admin = isAdmin(req);
-
   if (qp === "all" || !qp) {
-    if (admin) return null; // all companies
-    return userCompanyId;   // restrict to own
+    if (admin) return null;
+    return userCompanyId;
   }
   const id = Number(qp);
   if (Number.isNaN(id)) return "forbidden";
@@ -88,11 +85,21 @@ router.get("/divisions", async (req, res) => {
   const cid = resolveCompanyId(req);
   if (cid === "forbidden") return res.status(403).json({ message: "Forbidden" });
 
+  const branchId = req.query.branchId ? Number(req.query.branchId) : null;
+
   const rows = await db.execute(sql`
-    SELECT d.*, c.company_name, c.company_code
+    SELECT
+      d.*,
+      c.company_name, c.company_code,
+      b.name AS branch_name,
+      u.name AS manager_name, u.email AS manager_email
     FROM divisions d
     JOIN companies c ON c.id = d.company_id
-    ${cid !== null ? sql`WHERE d.company_id = ${cid}` : sql``}
+    LEFT JOIN branches b ON b.id = d.branch_id
+    LEFT JOIN users u ON u.id = d.manager_id
+    WHERE TRUE
+      ${cid !== null ? sql`AND d.company_id = ${cid}` : sql``}
+      ${branchId !== null ? sql`AND d.branch_id = ${branchId}` : sql``}
     ORDER BY c.company_code, d.name
   `);
   return res.json(rows.rows);
@@ -100,24 +107,35 @@ router.get("/divisions", async (req, res) => {
 
 router.post("/divisions", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
-  const { companyId, name, code, description } = req.body ?? {};
+  const { companyId, branchId, name, code, description, managerId } = req.body ?? {};
   if (!companyId || !name) return res.status(400).json({ message: "companyId and name required" });
-  const [created] = await db.insert(divisionsTable)
-    .values({ companyId: Number(companyId), name, code, description })
-    .returning();
-  return res.status(201).json(created);
+  const result = await db.execute(sql`
+    INSERT INTO divisions (company_id, branch_id, name, code, description, manager_id)
+    VALUES (
+      ${Number(companyId)},
+      ${branchId ? Number(branchId) : null},
+      ${name},
+      ${code ?? null},
+      ${description ?? null},
+      ${managerId ?? null}
+    )
+    RETURNING *
+  `);
+  return res.status(201).json(result.rows[0]);
 });
 
 router.patch("/divisions/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, code, description, isActive } = req.body ?? {};
+  const { name, code, description, isActive, branchId, managerId } = req.body ?? {};
   const patch: Record<string, unknown> = {};
   if (name !== undefined) patch.name = name;
   if (code !== undefined) patch.code = code;
   if (description !== undefined) patch.description = description;
   if (isActive !== undefined) patch.isActive = isActive;
+  if (branchId !== undefined) patch.branchId = branchId ? Number(branchId) : null;
+  if (managerId !== undefined) patch.managerId = managerId ?? null;
   if (!Object.keys(patch).length) return res.status(400).json({ message: "No fields" });
   const [updated] = await db.update(divisionsTable).set(patch).where(eq(divisionsTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Not found" });
@@ -140,14 +158,24 @@ router.get("/departments", async (req, res) => {
   if (cid === "forbidden") return res.status(403).json({ message: "Forbidden" });
 
   const divId = req.query.divisionId ? Number(req.query.divisionId) : null;
+  const branchId = req.query.branchId ? Number(req.query.branchId) : null;
+
   const rows = await db.execute(sql`
-    SELECT dep.*, c.company_name, c.company_code, div.name AS division_name, div.code AS division_code
+    SELECT
+      dep.*,
+      c.company_name, c.company_code,
+      div.name AS division_name, div.code AS division_code,
+      b.name AS branch_name,
+      u.name AS manager_name, u.email AS manager_email
     FROM departments dep
     JOIN companies c ON c.id = dep.company_id
     LEFT JOIN divisions div ON div.id = dep.division_id
+    LEFT JOIN branches b ON b.id = dep.branch_id
+    LEFT JOIN users u ON u.id = dep.manager_id
     WHERE TRUE
       ${cid !== null ? sql`AND dep.company_id = ${cid}` : sql``}
       ${divId !== null ? sql`AND dep.division_id = ${divId}` : sql``}
+      ${branchId !== null ? sql`AND dep.branch_id = ${branchId}` : sql``}
     ORDER BY c.company_code, div.name, dep.name
   `);
   return res.json(rows.rows);
@@ -155,25 +183,37 @@ router.get("/departments", async (req, res) => {
 
 router.post("/departments", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
-  const { companyId, divisionId, name, code, description } = req.body ?? {};
+  const { companyId, divisionId, branchId, name, code, description, managerId } = req.body ?? {};
   if (!companyId || !name) return res.status(400).json({ message: "companyId and name required" });
-  const [created] = await db.insert(departmentsTable)
-    .values({ companyId: Number(companyId), divisionId: divisionId ? Number(divisionId) : null, name, code, description })
-    .returning();
-  return res.status(201).json(created);
+  const result = await db.execute(sql`
+    INSERT INTO departments (company_id, division_id, branch_id, name, code, description, manager_id)
+    VALUES (
+      ${Number(companyId)},
+      ${divisionId ? Number(divisionId) : null},
+      ${branchId ? Number(branchId) : null},
+      ${name},
+      ${code ?? null},
+      ${description ?? null},
+      ${managerId ?? null}
+    )
+    RETURNING *
+  `);
+  return res.status(201).json(result.rows[0]);
 });
 
 router.patch("/departments/:id", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
-  const { name, code, description, divisionId, isActive } = req.body ?? {};
+  const { name, code, description, divisionId, branchId, isActive, managerId } = req.body ?? {};
   const patch: Record<string, unknown> = {};
   if (name !== undefined) patch.name = name;
   if (code !== undefined) patch.code = code;
   if (description !== undefined) patch.description = description;
   if (divisionId !== undefined) patch.divisionId = divisionId ? Number(divisionId) : null;
+  if (branchId !== undefined) patch.branchId = branchId ? Number(branchId) : null;
   if (isActive !== undefined) patch.isActive = isActive;
+  if (managerId !== undefined) patch.managerId = managerId ?? null;
   if (!Object.keys(patch).length) return res.status(400).json({ message: "No fields" });
   const [updated] = await db.update(departmentsTable).set(patch).where(eq(departmentsTable.id, id)).returning();
   if (!updated) return res.status(404).json({ message: "Not found" });
@@ -265,15 +305,21 @@ router.get("/hierarchy", async (req, res) => {
   `);
 
   const divisions = await db.execute(sql`
-    SELECT * FROM divisions
-    ${cid !== null ? sql`WHERE company_id = ${cid}` : sql``}
-    ORDER BY company_id, name
+    SELECT d.*, u.name AS manager_name, b.name AS branch_name
+    FROM divisions d
+    LEFT JOIN users u ON u.id = d.manager_id
+    LEFT JOIN branches b ON b.id = d.branch_id
+    ${cid !== null ? sql`WHERE d.company_id = ${cid}` : sql``}
+    ORDER BY d.company_id, d.name
   `);
 
   const departments = await db.execute(sql`
-    SELECT * FROM departments
-    ${cid !== null ? sql`WHERE company_id = ${cid}` : sql``}
-    ORDER BY company_id, division_id, name
+    SELECT dep.*, u.name AS manager_name, b.name AS branch_name
+    FROM departments dep
+    LEFT JOIN users u ON u.id = dep.manager_id
+    LEFT JOIN branches b ON b.id = dep.branch_id
+    ${cid !== null ? sql`WHERE dep.company_id = ${cid}` : sql``}
+    ORDER BY dep.company_id, dep.division_id, dep.name
   `);
 
   const sections = await db.execute(sql`
@@ -282,14 +328,8 @@ router.get("/hierarchy", async (req, res) => {
     ORDER BY company_id, department_id, name
   `);
 
-  // User counts per node
   const userCounts = await db.execute(sql`
-    SELECT
-      company_id,
-      branch_id,
-      division_id,
-      department_id,
-      COUNT(*) AS cnt
+    SELECT company_id, branch_id, division_id, department_id, COUNT(*) AS cnt
     FROM users
     ${cid !== null ? sql`WHERE company_id = ${cid}` : sql``}
     GROUP BY company_id, branch_id, division_id, department_id
@@ -313,23 +353,23 @@ router.get("/hierarchy", async (req, res) => {
     return ucRows.filter(r => r.department_id === dId).reduce((s, r) => s + Number(r.cnt), 0);
   }
 
-  const tree = (companies.rows as Array<{ id: number; name: string; code: string; is_active: boolean }>).map((co) => ({
+  const tree = (companies.rows as any[]).map((co) => ({
     ...co,
     userCount: userCountByCompany(co.id),
-    branches: (branches.rows as Array<{ id: number; company_id: number; name: string; code: string; is_active: boolean }>)
+    branches: (branches.rows as any[])
       .filter(b => b.company_id === co.id)
       .map(b => ({ ...b, userCount: userCountByBranch(b.id) })),
-    divisions: (divisions.rows as Array<{ id: number; company_id: number; name: string; code: string; is_active: boolean }>)
+    divisions: (divisions.rows as any[])
       .filter(d => d.company_id === co.id)
       .map(div => ({
         ...div,
         userCount: userCountByDivision(div.id),
-        departments: (departments.rows as Array<{ id: number; company_id: number; division_id: number | null; name: string; code: string; is_active: boolean }>)
+        departments: (departments.rows as any[])
           .filter(dep => dep.company_id === co.id && dep.division_id === div.id)
           .map(dep => ({
             ...dep,
             userCount: userCountByDept(dep.id),
-            sections: (sections.rows as Array<{ id: number; company_id: number; department_id: number | null; name: string; code: string; is_active: boolean }>)
+            sections: (sections.rows as any[])
               .filter(s => s.company_id === co.id && s.department_id === dep.id),
           })),
       })),

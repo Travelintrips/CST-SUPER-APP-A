@@ -16,7 +16,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ShieldCheck, Plus, Pencil, Trash2, Users, UserPlus, X, ChevronRight } from "lucide-react";
+import { ShieldCheck, Plus, Pencil, Trash2, Users, UserPlus, X, ChevronRight, Building2, GitBranch, LayoutList, FolderOpen } from "lucide-react";
 
 const MODULES = [
   { key: "dashboard",       label: "Dashboard",            group: "Umum" },
@@ -52,6 +52,19 @@ const ROLE_LABELS: Record<string, string> = {
   logistics: "Logistik", pos: "POS",
 };
 
+const SCOPE_OPTIONS = [
+  { value: "all_companies",   label: "Semua Perusahaan",   icon: "🌐" },
+  { value: "company_only",    label: "Perusahaan Sendiri", icon: "🏢" },
+  { value: "branch_only",     label: "Cabang Sendiri",     icon: "🏪" },
+  { value: "division_only",   label: "Divisi Sendiri",     icon: "📂" },
+  { value: "department_only", label: "Departemen Sendiri", icon: "👥" },
+];
+
+interface Company { id: number; companyName: string; companyCode: string }
+interface Branch  { id: number; companyId: number; name: string; code?: string }
+interface Division { id: number; companyId: number; name: string; code?: string }
+interface Department { id: number; companyId: number; divisionId?: number | null; name: string; code?: string }
+
 interface CustomRole {
   id: number;
   name: string;
@@ -59,22 +72,24 @@ interface CustomRole {
   color: string;
   permissions: string[];
   user_count: number;
+  scope_type: string | null;
+  company_id: number | null;
+  branch_id: number | null;
+  division_id: number | null;
+  department_id: number | null;
+  company_name?: string;
+  branch_name?: string;
+  division_name?: string;
+  department_name?: string;
 }
 
 interface RoleUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  division: string | null;
+  id: string; email: string; name: string; role: string;
+  division: string | null; company_name?: string; branch_name?: string;
+  division_name?: string; department_name?: string;
 }
 
-interface AllUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-}
+interface AllUser { id: string; email: string; name: string; role: string }
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api${path}`, {
@@ -86,12 +101,24 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
-const emptyForm = { name: "", description: "", color: "#6366f1", permissions: [] as string[] };
+const emptyForm = {
+  name: "", description: "", color: "#6366f1", permissions: [] as string[],
+  scopeType: "company_only",
+  companyId: "" as string,
+  branchId: "" as string,
+  divisionId: "" as string,
+  departmentId: "" as string,
+};
 
 export default function SettingsRolesPage() {
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [divisions, setDivisions] = useState<Division[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editRole, setEditRole] = useState<CustomRole | null>(null);
@@ -120,6 +147,24 @@ export default function SettingsRolesPage() {
   }, []);
 
   useEffect(() => { loadRoles(); }, [loadRoles]);
+
+  useEffect(() => {
+    apiFetch("/companies").then(setCompanies).catch(() => {});
+    apiFetch("/org/branches?companyId=all").then(setBranches).catch(() => {});
+    apiFetch("/org/divisions?companyId=all").then(setDivisions).catch(() => {});
+    apiFetch("/org/departments?companyId=all").then(setDepartments).catch(() => {});
+  }, []);
+
+  const filteredBranches = branches.filter(b =>
+    !form.companyId || b.companyId === Number(form.companyId)
+  );
+  const filteredDivisions = divisions.filter(d =>
+    !form.companyId || d.companyId === Number(form.companyId)
+  );
+  const filteredDepartments = departments.filter(d =>
+    (!form.companyId || d.companyId === Number(form.companyId)) &&
+    (!form.divisionId || d.divisionId === Number(form.divisionId))
+  );
 
   const loadAllUsers = useCallback(async () => {
     try {
@@ -152,6 +197,11 @@ export default function SettingsRolesPage() {
       description: role.description ?? "",
       color: role.color,
       permissions: [...role.permissions],
+      scopeType: role.scope_type ?? "company_only",
+      companyId: role.company_id ? String(role.company_id) : "",
+      branchId: role.branch_id ? String(role.branch_id) : "",
+      divisionId: role.division_id ? String(role.division_id) : "",
+      departmentId: role.department_id ? String(role.department_id) : "",
     });
     setDialogOpen(true);
   };
@@ -169,16 +219,21 @@ export default function SettingsRolesPage() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
+      const payload = {
+        name: form.name,
+        description: form.description,
+        color: form.color,
+        permissions: form.permissions,
+        scopeType: form.scopeType,
+        companyId: form.companyId ? Number(form.companyId) : null,
+        branchId: form.branchId ? Number(form.branchId) : null,
+        divisionId: form.divisionId ? Number(form.divisionId) : null,
+        departmentId: form.departmentId ? Number(form.departmentId) : null,
+      };
       if (editRole) {
-        await apiFetch(`/custom-roles/${editRole.id}`, {
-          method: "PUT",
-          body: JSON.stringify(form),
-        });
+        await apiFetch(`/custom-roles/${editRole.id}`, { method: "PUT", body: JSON.stringify(payload) });
       } else {
-        await apiFetch("/custom-roles", {
-          method: "POST",
-          body: JSON.stringify(form),
-        });
+        await apiFetch("/custom-roles", { method: "POST", body: JSON.stringify(payload) });
       }
       setDialogOpen(false);
       await loadRoles();
@@ -232,6 +287,13 @@ export default function SettingsRolesPage() {
 
   const unassignedUsers = allUsers.filter((u) => !roleUsers.find((ru) => ru.id === u.id));
 
+  const scopeLabel = (s: string | null) => SCOPE_OPTIONS.find(o => o.value === s)?.label ?? s ?? "—";
+  const scopeIcon = (s: string | null) => SCOPE_OPTIONS.find(o => o.value === s)?.icon ?? "🔲";
+
+  const needsBranch = ["branch_only"].includes(form.scopeType);
+  const needsDivision = ["division_only", "department_only"].includes(form.scopeType);
+  const needsDepartment = form.scopeType === "department_only";
+
   return (
     <AppShell>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -240,7 +302,7 @@ export default function SettingsRolesPage() {
             <ShieldCheck className="h-7 w-7 text-primary" />
             <div>
               <h1 className="text-2xl font-bold">Manajemen Role</h1>
-              <p className="text-sm text-muted-foreground">Buat role kustom dan atur akses modul per pengguna</p>
+              <p className="text-sm text-muted-foreground">Buat role kustom dengan scope organisasi dan akses modul</p>
             </div>
           </div>
           <Button onClick={openAdd} className="gap-2">
@@ -282,6 +344,12 @@ export default function SettingsRolesPage() {
                         {role.description && (
                           <div className="text-xs text-muted-foreground truncate">{role.description}</div>
                         )}
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-xs">{scopeIcon(role.scope_type)}</span>
+                          <span className="text-xs text-muted-foreground">{scopeLabel(role.scope_type)}</span>
+                          {role.division_name && <span className="text-xs text-muted-foreground">· {role.division_name}</span>}
+                          {role.department_name && <span className="text-xs text-muted-foreground">· {role.department_name}</span>}
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
@@ -324,10 +392,12 @@ export default function SettingsRolesPage() {
                 <div className="h-7 w-7 rounded-md flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: selectedRole.color }}>
                   {selectedRole.name.slice(0, 2).toUpperCase()}
                 </div>
-                <h2 className="font-semibold">Pengguna — {selectedRole.name}</h2>
+                <div>
+                  <h2 className="font-semibold text-sm">Pengguna — {selectedRole.name}</h2>
+                  <p className="text-xs text-muted-foreground">{scopeIcon(selectedRole.scope_type)} {scopeLabel(selectedRole.scope_type)}</p>
+                </div>
               </div>
 
-              {/* Assign user */}
               <div className="flex gap-2">
                 <Select value={assignUserId} onValueChange={setAssignUserId}>
                   <SelectTrigger className="flex-1 h-8 text-sm">
@@ -349,7 +419,6 @@ export default function SettingsRolesPage() {
                 </Button>
               </div>
 
-              {/* User list */}
               {usersLoading ? (
                 <div className="text-sm text-muted-foreground text-center py-4">Memuat...</div>
               ) : roleUsers.length === 0 ? (
@@ -363,7 +432,11 @@ export default function SettingsRolesPage() {
                     <div key={u.id} className="flex items-center justify-between p-2 rounded-lg border bg-background">
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{u.name || u.email}</div>
-                        <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {u.email}
+                          {u.division_name && ` · ${u.division_name}`}
+                          {u.department_name && ` · ${u.department_name}`}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                         <Badge variant="outline" className="text-xs">{ROLE_LABELS[u.role] ?? u.role}</Badge>
@@ -428,6 +501,93 @@ export default function SettingsRolesPage() {
               />
             </div>
 
+            {/* Scope & Org Filters */}
+            <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5" /> Scope Akses Data
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipe Scope</Label>
+                <Select value={form.scopeType} onValueChange={(v) => setForm(f => ({
+                  ...f, scopeType: v,
+                  branchId: "", divisionId: "", departmentId: "",
+                }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {SCOPE_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.icon} {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1"><Building2 className="h-3 w-3" />Perusahaan</Label>
+                  <Select value={form.companyId} onValueChange={(v) => setForm(f => ({
+                    ...f, companyId: v, branchId: "", divisionId: "", departmentId: "",
+                  }))}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua / Pilih..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">— Semua —</SelectItem>
+                      {companies.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.companyCode} — {c.companyName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(needsBranch || form.scopeType === "branch_only") && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs flex items-center gap-1"><GitBranch className="h-3 w-3" />Cabang</Label>
+                    <Select value={form.branchId} onValueChange={(v) => setForm(f => ({ ...f, branchId: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih cabang..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">— Tidak dipilih —</SelectItem>
+                        {filteredBranches.map(b => (
+                          <SelectItem key={b.id} value={String(b.id)}>{b.code ? `[${b.code}] ` : ""}{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {needsDivision && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs flex items-center gap-1"><LayoutList className="h-3 w-3" />Divisi</Label>
+                    <Select value={form.divisionId} onValueChange={(v) => setForm(f => ({ ...f, divisionId: v, departmentId: "" }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih divisi..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">— Tidak dipilih —</SelectItem>
+                        {filteredDivisions.map(d => (
+                          <SelectItem key={d.id} value={String(d.id)}>{d.code ? `[${d.code}] ` : ""}{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {needsDepartment && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs flex items-center gap-1"><FolderOpen className="h-3 w-3" />Departemen</Label>
+                    <Select value={form.departmentId} onValueChange={(v) => setForm(f => ({ ...f, departmentId: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih departemen..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">— Tidak dipilih —</SelectItem>
+                        {filteredDepartments.map(d => (
+                          <SelectItem key={d.id} value={String(d.id)}>{d.code ? `[${d.code}] ` : ""}{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Permissions */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Akses Modul</Label>
