@@ -6,6 +6,8 @@ export const posOrderStatusEnum = pgEnum("pos_order_status", ["open", "paid", "c
 export const posPaymentMethodEnum = pgEnum("pos_payment_method", ["cash", "qris", "debit", "credit", "transfer"]);
 export const posShiftStatusEnum = pgEnum("pos_shift_status", ["open", "closed"]);
 
+export const posRoleEnum = pgEnum("pos_role", ["owner", "admin", "manager", "kasir", "gudang"]);
+
 export const posBranchesTable = pgTable("pos_branches", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
@@ -14,6 +16,7 @@ export const posBranchesTable = pgTable("pos_branches", {
   phone: text("phone"),
   isActive: boolean("is_active").notNull().default(true),
   businessUnit: text("business_unit"),
+  defaultWarehouseId: integer("default_warehouse_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("pos_branches_company_idx").on(t.companyId),
@@ -21,16 +24,21 @@ export const posBranchesTable = pgTable("pos_branches", {
 
 export const posCashiersTable = pgTable("pos_cashiers", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   phone: text("phone"),
   status: kasirStatusEnum("status").notNull().default("pending"),
+  posRole: posRoleEnum("pos_role").notNull().default("kasir"),
   branchId: integer("branch_id").references(() => posBranchesTable.id),
+  defaultBranchId: integer("default_branch_id").references(() => posBranchesTable.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   index("pos_cashiers_branch_idx").on(t.branchId),
+  index("pos_cashiers_company_idx").on(t.companyId),
+  index("pos_cashiers_role_idx").on(t.posRole),
 ]);
 
 export const posProductsTable = pgTable("pos_products", {
