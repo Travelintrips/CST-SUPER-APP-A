@@ -43,6 +43,7 @@ import orgRouter from "./org";
 import approvalWorkflowRouter from "./approvalWorkflow";
 import approvalRulesRouter from "./approvalRules";
 import productBomRouter from "./productBom";
+import auditLogRouter from "./auditLog";
 
 const router: IRouter = Router();
 
@@ -92,4 +93,5 @@ router.use("/org", orgRouter);
 router.use("/approvals", approvalWorkflowRouter);
 router.use("/approval-rules", approvalRulesRouter);
 router.use("/bom", productBomRouter);
+router.use("/audit-logs", auditLogRouter);
 export default router;

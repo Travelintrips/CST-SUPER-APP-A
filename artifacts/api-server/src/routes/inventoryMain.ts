@@ -15,6 +15,8 @@ import { sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
 import { postOpnameAdjust, postDamageJournal, postWarehouseTransfer } from "../lib/accounting.js";
+import { auditFromReq } from "../lib/auditLog.js";
+import { assertNotKasir } from "../lib/securityValidation.js";
 
 const router = Router();
 
@@ -261,6 +263,14 @@ router.post("/stock/adjust", async (req: Request, res: Response) => {
     INSERT INTO wh_movements (company_id, product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, note, created_by_id)
     VALUES (${companyId}, ${productId}, ${warehouseId}, ${rack}, ${type}, ${Math.abs(qty)}, ${qtyBefore}, ${qtyAfter}, ${costPrice ?? 0}, ${note ?? null}, ${createdById})
   `);
+  auditFromReq(req, {
+    action: "adjust",
+    module: "stock",
+    branchId: null,
+    referenceId: `product-${productId}/warehouse-${warehouseId}`,
+    oldData: { qty: qtyBefore },
+    newData: { qty: qtyAfter, note, warehouseId, productId },
+  });
   res.json({ ok: true, qtyBefore, qtyAfter });
 });
 
@@ -351,6 +361,13 @@ router.post("/transfers", async (req: Request, res: Response) => {
       VALUES (${transferId}, ${line.productId}, ${line.fromRackId ?? null}, ${line.toRackId ?? null}, ${line.qtyRequested})
     `);
   }
+  const newTransfer = tr.rows[0] as { transfer_number?: string };
+  auditFromReq(req, {
+    action: "create",
+    module: "transfer",
+    referenceId: newTransfer?.transfer_number ?? String(transferId),
+    newData: { fromWarehouseId, toWarehouseId, note, lineCount: lines.length },
+  });
   res.status(201).json({ ...tr.rows[0], lines });
 });
 
@@ -443,6 +460,12 @@ router.post("/transfers/:id/action", async (req: Request, res: Response) => {
   }
 
   const updated = await db.execute(sql`SELECT * FROM wh_transfers WHERE id = ${id}`);
+  auditFromReq(req, {
+    action: action as string,
+    module: "transfer",
+    referenceId: (transfer as { transfer_number?: string }).transfer_number ?? String(id),
+    newData: { action, status: (updated.rows[0] as any)?.status },
+  });
   res.json(updated.rows[0]);
 });
 
@@ -496,6 +519,13 @@ router.post("/damage", async (req: Request, res: Response) => {
               ${line.damageType ?? "rusak"}::wh_damage_type, ${line.note ?? null})
     `);
   }
+  const newDamage = dr.rows[0] as { report_number?: string };
+  auditFromReq(req, {
+    action: "create",
+    module: "damage",
+    referenceId: newDamage?.report_number ?? String(reportId),
+    newData: { warehouseId, note, lineCount: lines.length, lines: lines.map((l) => ({ productId: l.productId, qty: l.qty, damageType: l.damageType })) },
+  });
   res.status(201).json(dr.rows[0]);
 });
 
@@ -531,6 +561,12 @@ router.post("/damage/:id/confirm", async (req: Request, res: Response) => {
     `);
   }
   await db.execute(sql`UPDATE wh_damage_reports SET status = 'confirmed', confirmed_at = NOW() WHERE id = ${id}`);
+  auditFromReq(req, {
+    action: "confirm",
+    module: "damage",
+    referenceId: (report as { report_number?: string }).report_number ?? String(id),
+    newData: { status: "confirmed", warehouseId: report.warehouse_id },
+  });
   try {
     const valuation = await db.execute(sql`
       SELECT COALESCE(SUM(dl.qty::numeric * COALESCE(ws.cost_price::numeric, 0)), 0) AS total_value
@@ -611,6 +647,13 @@ router.post("/returns", async (req: Request, res: Response) => {
       VALUES (${returnId}, ${line.productId}, ${line.rackId ?? null}, ${line.qty}, ${line.unitCost ?? 0}, ${cond}, ${line.note ?? null})
     `);
   }
+  const newReturn = ret.rows[0] as { return_number?: string };
+  auditFromReq(req, {
+    action: "create",
+    module: "return",
+    referenceId: newReturn?.return_number ?? String(returnId),
+    newData: { type, warehouseId, refDocNumber, lineCount: lines.length },
+  });
   res.status(201).json(ret.rows[0]);
 });
 
@@ -680,6 +723,12 @@ router.post("/returns/:id/confirm", async (req: Request, res: Response) => {
     }
   }
   await db.execute(sql`UPDATE wh_returns SET status = 'confirmed', confirmed_at = NOW() WHERE id = ${id}`);
+  auditFromReq(req, {
+    action: "confirm",
+    module: "return",
+    referenceId: (returnDoc as { return_number?: string }).return_number ?? String(id),
+    newData: { status: "confirmed", type: returnDoc.type, warehouseId: returnDoc.warehouse_id },
+  });
   const updated = await db.execute(sql`SELECT * FROM wh_returns WHERE id = ${id}`);
   res.json(updated.rows[0]);
 });
@@ -733,6 +782,13 @@ router.post("/opname", async (req: Request, res: Response) => {
       VALUES (${opnameId}, ${s.product_id}, ${s.rack_id ?? null}, ${s.qty}, ${s.qty}, 0)
     `);
   }
+  const newOpname = opn.rows[0] as { opname_number?: string };
+  auditFromReq(req, {
+    action: "create",
+    module: "opname",
+    referenceId: newOpname?.opname_number ?? String(opnameId),
+    newData: { warehouseId, note, lineCount: stock.rows.length },
+  });
   res.status(201).json(opn.rows[0]);
 });
 
@@ -780,6 +836,12 @@ router.post("/opname/:id/confirm", async (req: Request, res: Response) => {
     UPDATE wh_opnames SET status = 'confirmed', confirmed_at = NOW(), confirmed_by_id = ${confirmedById}
     WHERE id = ${id}
   `);
+  auditFromReq(req, {
+    action: "confirm",
+    module: "opname",
+    referenceId: (opname as { opname_number?: string }).opname_number ?? String(id),
+    newData: { status: "confirmed", warehouseId: opname.warehouse_id, linesAdjusted: lines.rows.length },
+  });
 
   try {
     const diffLines = await db.execute(sql`

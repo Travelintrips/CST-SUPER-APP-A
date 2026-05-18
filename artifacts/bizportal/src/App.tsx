@@ -52,6 +52,7 @@ import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
 import ReportsApAgingPage from "@/pages/reports/ap-aging";
 import ReportsMainPage from "@/pages/reports/main";
+import AuditLogPage from "@/pages/reports/audit-log";
 import AccountingAccountsPage from "@/pages/accounting/accounts";
 import AccountingJournalsPage from "@/pages/accounting/journals";
 import AccountingTaxesPage from "@/pages/accounting/taxes";
@@ -362,6 +363,7 @@ function Router() {
         <Route path="/reports/ar-aging" component={() => <ProtectedRoute component={ReportsArAgingPage} />} />
         <Route path="/reports/ap-aging" component={() => <ProtectedRoute component={ReportsApAgingPage} />} />
         <Route path="/reports/operasional" component={() => <ProtectedRoute component={ReportsMainPage} />} />
+        <Route path="/reports/audit-log" component={() => <ProtectedRoute component={AuditLogPage} />} />
         {/* Accounting */}
         <Route path="/accounting/accounts" component={() => <ProtectedRoute component={AccountingAccountsPage} />} />
         <Route path="/accounting/journals" component={() => <ProtectedRoute component={AccountingJournalsPage} />} />

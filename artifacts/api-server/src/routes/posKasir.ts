@@ -15,6 +15,17 @@ import { checkPosStock, deductPosStock, checkPosBomStock, deductPosBomStock, typ
 import { postPosTransaction, postPosCogs } from "../lib/accounting.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { writeAuditLog } from "../lib/auditLog.js";
+
+/** Blokir role gudang dari semua route admin POS (PATCH/POST/DELETE) */
+function assertNotGudangAdmin(req: Request, res: Response): boolean {
+  const role = (req.user as { role?: string | null } | undefined)?.role ?? "";
+  if (role === "gudang") {
+    res.status(403).json({ message: "Petugas gudang tidak diizinkan mengakses administrasi POS" });
+    return false;
+  }
+  return true;
+}
 
 // ── POS image upload (Replit Object Storage) ──────────────────────────────────
 const posImageUpload = multer({
@@ -208,6 +219,21 @@ router.post("/login", async (req, res) => {
   }
 
   const token = makeCashierToken(cashier.id, cashier.email);
+  // Audit log: POS kasir login berhasil
+  const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "unknown";
+  const userAgent = (req.headers["user-agent"] as string) ?? "unknown";
+  writeAuditLog({
+    companyId: cashier.companyId ?? null,
+    branchId: cashier.branchId ?? null,
+    userId: String(cashier.id),
+    userEmail: cashier.email,
+    action: "login",
+    module: "pos",
+    referenceId: `kasir-${cashier.id}`,
+    newData: { email: cashier.email, branchId: cashier.branchId, branchName },
+    ipAddress,
+    userAgent,
+  });
   return res.json({
     token,
     cashier: {
@@ -445,6 +471,19 @@ router.post("/orders", async (req, res) => {
     lineItems.map((l) => ({ ...l, orderId: order!.id }))
   );
 
+  const ipPOS = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "unknown";
+  writeAuditLog({
+    companyId: effectiveCompanyId ?? null,
+    branchId: effectiveBranchId ?? null,
+    userId: String(cashier.id),
+    userEmail: cashier.email,
+    action: "create",
+    module: "pos",
+    referenceId: order!.orderNumber,
+    newData: { orderNumber: order!.orderNumber, total: order!.total, itemCount: lineItems.length },
+    ipAddress: ipPOS,
+    userAgent: (req.headers["user-agent"] as string) ?? "unknown",
+  });
   return res.status(201).json({ ...order, items: lineItems });
 });
 
@@ -606,6 +645,19 @@ router.patch("/orders/:id/pay", async (req, res) => {
     }
   } catch (e) { console.error("[pos-cogs]", e); }
 
+  const ipPay = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "unknown";
+  writeAuditLog({
+    companyId: order.companyId ?? null,
+    branchId: cashier.branchId ?? null,
+    userId: String(cashier.id),
+    userEmail: cashier.email,
+    action: "pay",
+    module: "pos",
+    referenceId: order.orderNumber,
+    newData: { orderNumber: order.orderNumber, total: order.total, paymentMethod, amountPaid: paid, change: Math.max(0, change) },
+    ipAddress: ipPay,
+    userAgent: (req.headers["user-agent"] as string) ?? "unknown",
+  });
   return res.json({ ...updated, items: orderItems });
 });
 
@@ -718,6 +770,7 @@ router.get("/admin/branches", async (req, res) => {
 // POST /api/pos-kasir/admin/branches
 router.post("/admin/branches", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
+  if (!assertNotGudangAdmin(req, res)) return;
   const { name, address, phone, isActive } = req.body ?? {};
   if (!name?.trim()) return res.status(400).json({ message: "Nama cabang wajib diisi" });
   const [created] = await db.insert(posBranchesTable).values({
@@ -732,6 +785,7 @@ router.post("/admin/branches", async (req, res) => {
 // PATCH /api/pos-kasir/admin/branches/:id
 router.patch("/admin/branches/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
+  if (!assertNotGudangAdmin(req, res)) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const patch: Record<string, unknown> = {};

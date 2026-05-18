@@ -52,6 +52,7 @@ import {
   QrCode,
   FileBarChart2,
   ShieldCheck,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -213,6 +214,7 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["manager", "admin", "owner", "kasir", "gudang"],
       children: [
         { titleKey: "Lap. Operasional (POS & Stok)", href: "/reports/operasional", icon: BarChart2, roles: ["manager", "admin", "owner", "kasir", "gudang"] },
+        { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
         { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
         { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch, roles: ["admin", "owner"] },
