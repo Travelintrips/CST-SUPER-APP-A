@@ -28,6 +28,7 @@ export const divisionsTable = pgTable("divisions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("divisions_company_idx").on(t.companyId),
+  uniqueIndex("divisions_company_code_unique").on(t.companyId, t.code).where(sql`${t.code} IS NOT NULL AND ${t.code} <> ''`),
 ]);
 
 export const departmentsTable = pgTable("departments", {
@@ -42,6 +43,7 @@ export const departmentsTable = pgTable("departments", {
 }, (t) => [
   index("departments_company_idx").on(t.companyId),
   index("departments_division_idx").on(t.divisionId),
+  uniqueIndex("departments_company_code_unique").on(t.companyId, t.code).where(sql`${t.code} IS NOT NULL AND ${t.code} <> ''`),
 ]);
 
 export const sectionsTable = pgTable("sections", {
