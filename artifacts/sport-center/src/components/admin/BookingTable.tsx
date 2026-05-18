@@ -1,36 +1,20 @@
 import { useState } from "react";
 import {
-  Search, CheckCircle, XCircle, Clock, Trash2, Filter,
-  CalendarDays, TrendingUp, Users, Trophy,
+  Search, Clock, Trash2, Filter,
+  CalendarDays, TrendingUp, Users, Trophy, RefreshCw, AlertCircle,
 } from "lucide-react";
 import { useBookings } from "@/hooks/useBookings";
-import { formatCurrency, formatDate } from "@/utils/bookingCode";
+import { formatCurrency } from "@/utils/bookingCode";
 import type { Booking } from "@/types";
 
 const statusConfig: Record<
   Booking["status"],
   { label: string; badge: string; dot: string }
 > = {
-  pending: {
-    label: "Menunggu",
-    badge: "bg-yellow-100 text-yellow-700 border border-yellow-200",
-    dot: "bg-yellow-400",
-  },
-  confirmed: {
-    label: "Dikonfirmasi",
-    badge: "bg-blue-100 text-blue-700 border border-blue-200",
-    dot: "bg-blue-500",
-  },
-  completed: {
-    label: "Selesai",
-    badge: "bg-emerald-100 text-emerald-700 border border-emerald-200",
-    dot: "bg-emerald-500",
-  },
-  cancelled: {
-    label: "Dibatalkan",
-    badge: "bg-red-100 text-red-600 border border-red-200",
-    dot: "bg-red-400",
-  },
+  pending: { label: "Menunggu", badge: "bg-yellow-100 text-yellow-700 border border-yellow-200", dot: "bg-yellow-400" },
+  confirmed: { label: "Dikonfirmasi", badge: "bg-blue-100 text-blue-700 border border-blue-200", dot: "bg-blue-500" },
+  completed: { label: "Selesai", badge: "bg-emerald-100 text-emerald-700 border border-emerald-200", dot: "bg-emerald-500" },
+  cancelled: { label: "Dibatalkan", badge: "bg-red-100 text-red-600 border border-red-200", dot: "bg-red-400" },
 };
 
 const ALL_STATUSES: Array<{ value: Booking["status"] | "all"; label: string }> = [
@@ -42,7 +26,7 @@ const ALL_STATUSES: Array<{ value: Booking["status"] | "all"; label: string }> =
 ];
 
 export default function BookingTable() {
-  const { bookings, updateStatus, deleteBooking } = useBookings();
+  const { bookings, loading, error, updateStatus, deleteBooking, refetch } = useBookings();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<Booking["status"] | "all">("all");
   const [filterDate, setFilterDate] = useState("");
@@ -66,6 +50,33 @@ export default function BookingTable() {
     const matchDate = !filterDate || b.date === filterDate;
     return matchSearch && matchStatus && matchDate;
   });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-slate-400">
+        <svg className="animate-spin w-8 h-8 mr-3 text-blue-500" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+        <span className="font-medium">Memuat data booking...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-red-500 gap-3">
+        <AlertCircle className="w-10 h-10" />
+        <p className="font-semibold">{error}</p>
+        <button
+          onClick={refetch}
+          className="flex items-center gap-2 px-4 py-2 bg-red-50 rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" /> Coba Lagi
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -145,13 +156,17 @@ export default function BookingTable() {
                 className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
               />
               {filterDate && (
-                <button
-                  onClick={() => setFilterDate("")}
-                  className="text-xs text-slate-400 hover:text-red-500 px-2"
-                >
+                <button onClick={() => setFilterDate("")} className="text-xs text-slate-400 hover:text-red-500 px-2">
                   Reset
                 </button>
               )}
+              <button
+                onClick={refetch}
+                className="p-2.5 border border-slate-200 rounded-xl text-slate-400 hover:text-blue-500 hover:border-blue-300 transition-colors"
+                title="Refresh data"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
             </div>
           </div>
           {(search || filterStatus !== "all" || filterDate) && (
@@ -201,9 +216,7 @@ export default function BookingTable() {
                       </td>
                       <td className="px-5 py-4 text-slate-600">
                         {new Date(b.date + "T00:00:00").toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
+                          day: "numeric", month: "short", year: "numeric",
                         })}
                       </td>
                       <td className="px-5 py-4 font-mono text-slate-600">
@@ -213,9 +226,7 @@ export default function BookingTable() {
                         {formatCurrency(b.totalPrice)}
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${s.badge}`}
-                        >
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${s.badge}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                           {s.label}
                         </span>
@@ -224,9 +235,7 @@ export default function BookingTable() {
                         <div className="flex items-center justify-center gap-2">
                           <select
                             value={b.status}
-                            onChange={(e) =>
-                              updateStatus(b.id, e.target.value as Booking["status"])
-                            }
+                            onChange={(e) => updateStatus(b.id, e.target.value as Booking["status"])}
                             className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
                           >
                             <option value="pending">Menunggu</option>
@@ -263,7 +272,7 @@ export default function BookingTable() {
                 {formatCurrency(
                   filtered
                     .filter((b) => b.status === "confirmed" || b.status === "completed")
-                    .reduce((s, b) => s + b.totalPrice, 0)
+                    .reduce((s, b) => s + b.totalPrice, 0),
                 )}
               </strong>
             </span>

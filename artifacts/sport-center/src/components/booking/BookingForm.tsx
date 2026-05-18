@@ -17,10 +17,6 @@ interface BookingFormProps {
 function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () => void }) {
   const navigate = useNavigate();
 
-  function handlePrint() {
-    window.print();
-  }
-
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl shadow-md p-8 text-center">
@@ -53,14 +49,8 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
               { label: "Telepon / WA", value: booking.customerPhone },
               { label: "Email", value: booking.customerEmail },
               { label: "Fasilitas", value: booking.facilityName },
-              {
-                label: "Tanggal",
-                value: formatDate(booking.date),
-              },
-              {
-                label: "Waktu",
-                value: `${booking.startTime} – ${booking.endTime} (${booking.totalHours} jam)`,
-              },
+              { label: "Tanggal", value: formatDate(booking.date) },
+              { label: "Waktu", value: `${booking.startTime} – ${booking.endTime} (${booking.totalHours} jam)` },
               ...(booking.notes ? [{ label: "Catatan", value: booking.notes }] : []),
             ].map((row) => (
               <div key={row.label} className="flex justify-between py-2.5 text-sm">
@@ -138,7 +128,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
 
       <div className="flex flex-col sm:flex-row gap-3 print:hidden">
         <button
-          onClick={handlePrint}
+          onClick={() => window.print()}
           className="flex-1 flex items-center justify-center gap-2 border-2 border-slate-300 text-slate-600 py-3 rounded-full font-semibold hover:bg-slate-50 transition-colors"
         >
           <Printer className="w-4 h-4" />
@@ -164,7 +154,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
 }
 
 export default function BookingForm({ preselectedFacilityId }: BookingFormProps) {
-  const { addBooking, bookings } = useBookings();
+  const { addBooking } = useBookings();
   const [success, setSuccess] = useState<Booking | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -193,18 +183,6 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
     setErrors((prev) => ({ ...prev, [field]: "" }));
   }
 
-  function hasConflict(): boolean {
-    if (!form.facilityId || !form.date || !form.startTime || !form.endTime) return false;
-    return bookings.some(
-      (b) =>
-        b.facilityId === form.facilityId &&
-        b.date === form.date &&
-        b.status !== "cancelled" &&
-        b.startTime < form.endTime &&
-        b.endTime > form.startTime,
-    );
-  }
-
   function validate(): boolean {
     const e: Record<string, string> = {};
     if (!form.facilityId) {
@@ -225,18 +203,16 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
     else if (form.startTime && form.endTime && form.endTime <= form.startTime)
       e.endTime = "Jam selesai harus setelah jam mulai";
     else if (totalHours < 1) e.endTime = "Minimum booking 1 jam";
-    else if (hasConflict())
-      e.endTime = "Slot waktu ini sudah dibooking. Pilih waktu atau fasilitas lain.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate() || !selectedFacility) return;
     setSubmitting(true);
-    setTimeout(() => {
-      const booking = addBooking({
+    try {
+      const booking = await addBooking({
         facilityId: form.facilityId,
         facilityName: selectedFacility.name,
         customerName: form.customerName,
@@ -249,10 +225,18 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
         totalPrice,
         notes: form.notes,
       });
-      setSubmitting(false);
       setSuccess(booking);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 800);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan";
+      if (msg.toLowerCase().includes("slot") || msg.toLowerCase().includes("dibooking")) {
+        setErrors((prev) => ({ ...prev, endTime: msg }));
+      } else {
+        setErrors((prev) => ({ ...prev, _global: msg }));
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handleReset() {
@@ -280,6 +264,13 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {errors._global && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {errors._global}
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
           <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center justify-center">1</span>
@@ -304,14 +295,9 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
             <AlertCircle className="w-3 h-3" />{errors.facilityId}
           </p>
         )}
-
         {selectedFacility && (
           <div className={`mt-4 rounded-xl p-4 flex gap-4 items-center ${selectedFacility.available ? "bg-blue-50" : "bg-red-50 border border-red-200"}`}>
-            <img
-              src={selectedFacility.image}
-              alt={selectedFacility.name}
-              className="w-16 h-16 rounded-xl object-cover shrink-0"
-            />
+            <img src={selectedFacility.image} alt={selectedFacility.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
             <div>
               <p className="font-bold text-slate-800">{selectedFacility.name}</p>
               <p className="text-blue-600 font-semibold text-sm">{formatCurrency(selectedFacility.pricePerHour)}/jam</p>
@@ -344,11 +330,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
                 errors.date ? "border-red-400 bg-red-50" : "border-slate-300"
               }`}
             />
-            {errors.date && (
-              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />{errors.date}
-              </p>
-            )}
+            {errors.date && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.date}</p>}
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-600 mb-1.5">
@@ -367,11 +349,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
-            {errors.startTime && (
-              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />{errors.startTime}
-              </p>
-            )}
+            {errors.startTime && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.startTime}</p>}
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-600 mb-1.5">
@@ -390,19 +368,12 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
-            {errors.endTime && (
-              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />{errors.endTime}
-              </p>
-            )}
+            {errors.endTime && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.endTime}</p>}
           </div>
         </div>
-
         {totalHours > 0 && selectedFacility && (
           <div className="mt-4 bg-gradient-to-r from-blue-600 to-emerald-500 text-white rounded-xl px-5 py-3 flex justify-between items-center">
-            <span className="text-sm opacity-90">
-              {totalHours} jam × {formatCurrency(selectedFacility.pricePerHour)}
-            </span>
+            <span className="text-sm opacity-90">{totalHours} jam × {formatCurrency(selectedFacility.pricePerHour)}</span>
             <span className="text-2xl font-black">{formatCurrency(totalPrice)}</span>
           </div>
         )}
@@ -413,7 +384,6 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
           <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center justify-center">3</span>
           Data Pemesan
         </h2>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-semibold text-slate-600 mb-1.5">
@@ -429,11 +399,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
                 errors.customerName ? "border-red-400 bg-red-50" : "border-slate-300"
               }`}
             />
-            {errors.customerName && (
-              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />{errors.customerName}
-              </p>
-            )}
+            {errors.customerName && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.customerName}</p>}
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-600 mb-1.5">
@@ -449,14 +415,9 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
                 errors.customerPhone ? "border-red-400 bg-red-50" : "border-slate-300"
               }`}
             />
-            {errors.customerPhone && (
-              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />{errors.customerPhone}
-              </p>
-            )}
+            {errors.customerPhone && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.customerPhone}</p>}
           </div>
         </div>
-
         <div>
           <label className="block text-sm font-semibold text-slate-600 mb-1.5">
             <Mail className="w-3.5 h-3.5 inline mr-1" />
@@ -471,13 +432,8 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
               errors.customerEmail ? "border-red-400 bg-red-50" : "border-slate-300"
             }`}
           />
-          {errors.customerEmail && (
-            <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />{errors.customerEmail}
-            </p>
-          )}
+          {errors.customerEmail && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.customerEmail}</p>}
         </div>
-
         <div>
           <label className="block text-sm font-semibold text-slate-600 mb-1.5">
             <FileText className="w-3.5 h-3.5 inline mr-1" />

@@ -1,61 +1,67 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Booking } from "@/types";
 import { generateBookingCode } from "@/utils/bookingCode";
 
-const STORAGE_KEY = "sport_center_bookings";
+const API_BASE = "/api/sport-center/bookings";
 
-function loadBookings(): Booking[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Booking[]) : [];
-  } catch {
-    return [];
+async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { message?: string }).message ?? `HTTP ${res.status}`);
   }
-}
-
-function saveBookings(bookings: Booking[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings));
+  return res.json() as Promise<T>;
 }
 
 export function useBookings() {
-  const [bookings, setBookings] = useState<Booking[]>(loadBookings);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchBookings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiFetch<Booking[]>(API_BASE);
+      setBookings(data);
+      setError(null);
+    } catch {
+      setError("Gagal memuat data booking");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
 
   const addBooking = useCallback(
-    (data: Omit<Booking, "id" | "bookingCode" | "status" | "createdAt">) => {
-      const newBooking: Booking = {
-        ...data,
-        id: crypto.randomUUID(),
-        bookingCode: generateBookingCode(),
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      };
-      setBookings((prev) => {
-        const updated = [newBooking, ...prev];
-        saveBookings(updated);
-        return updated;
+    async (data: Omit<Booking, "id" | "bookingCode" | "status" | "createdAt">): Promise<Booking> => {
+      const bookingCode = generateBookingCode();
+      const newBooking = await apiFetch<Booking>(API_BASE, {
+        method: "POST",
+        body: JSON.stringify({ ...data, bookingCode }),
       });
+      setBookings((prev) => [newBooking, ...prev]);
       return newBooking;
     },
     [],
   );
 
-  const updateStatus = useCallback(
-    (id: string, status: Booking["status"]) => {
-      setBookings((prev) => {
-        const updated = prev.map((b) => (b.id === id ? { ...b, status } : b));
-        saveBookings(updated);
-        return updated;
-      });
-    },
-    [],
-  );
-
-  const deleteBooking = useCallback((id: string) => {
-    setBookings((prev) => {
-      const updated = prev.filter((b) => b.id !== id);
-      saveBookings(updated);
-      return updated;
+  const updateStatus = useCallback(async (id: string | number, status: Booking["status"]) => {
+    const updated = await apiFetch<Booking>(`${API_BASE}/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
     });
+    setBookings((prev) => prev.map((b) => (String(b.id) === String(id) ? updated : b)));
+  }, []);
+
+  const deleteBooking = useCallback(async (id: string | number) => {
+    await apiFetch(`${API_BASE}/${id}`, { method: "DELETE" });
+    setBookings((prev) => prev.filter((b) => String(b.id) !== String(id)));
   }, []);
 
   const getBookingByCode = useCallback(
@@ -63,5 +69,5 @@ export function useBookings() {
     [bookings],
   );
 
-  return { bookings, addBooking, updateStatus, deleteBooking, getBookingByCode };
+  return { bookings, loading, error, addBooking, updateStatus, deleteBooking, getBookingByCode, refetch: fetchBookings };
 }

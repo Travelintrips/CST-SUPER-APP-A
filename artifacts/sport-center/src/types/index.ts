@@ -23,7 +23,7 @@ export interface Schedule {
 }
 
 export interface Booking {
-  id: string;
+  id: string | number;
   bookingCode: string;
   facilityId: string;
   facilityName: string;
