@@ -13,6 +13,8 @@ interface JobsContextType {
   completedJobs: Job[];
   isLoading: boolean;
   error: string | null;
+  pendingNewJob: Job | null;
+  clearPendingNewJob: () => void;
   getJob: (id: string) => Job | undefined;
   updateJobStatus: (id: string, status: ShipmentStatus, note?: string) => Promise<void>;
   addJobPhoto: (id: string, uri: string, type?: string) => Promise<void>;
@@ -27,6 +29,8 @@ const JobsContext = createContext<JobsContextType>({
   completedJobs: [],
   isLoading: false,
   error: null,
+  pendingNewJob: null,
+  clearPendingNewJob: () => {},
   getJob: () => undefined,
   updateJobStatus: async () => {},
   addJobPhoto: async () => {},
@@ -50,10 +54,13 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingNewJob, setPendingNewJob] = useState<Job | null>(null);
   const locationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Track both job ID and last known status so we fire notification whenever
   // a job transitions INTO 'ASSIGNED' (new assignment OR re-assignment).
   const knownJobsRef = useRef<Map<string, ShipmentStatus> | null>(null);
+
+  const clearPendingNewJob = useCallback(() => setPendingNewJob(null), []);
 
   const refreshJobs = useCallback(async () => {
     if (!token) return;
@@ -76,6 +83,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
             prevStatus !== 'ASSIGNED'
           ) {
             notifyNewJob(job.jobNumber, job.customerName, job.pickupAddress);
+            setPendingNewJob(job);
           }
         }
         knownJobsRef.current = new Map(newJobs.map((j) => [j.id, j.status]));
@@ -125,6 +133,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
                 String(record.customer_name ?? ''),
                 String(record.pickup_address ?? ''),
               );
+              // Banner will be populated after refreshJobs resolves
             }
           }
         },
@@ -225,6 +234,8 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         completedJobs,
         isLoading,
         error,
+        pendingNewJob,
+        clearPendingNewJob,
         getJob: (id) => jobs.find((j) => j.id === id),
         updateJobStatus,
         addJobPhoto,
