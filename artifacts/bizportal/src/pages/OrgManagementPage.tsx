@@ -49,6 +49,10 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
+function resolveActive(row: any): boolean {
+  return row.isActive ?? row.is_active ?? true;
+}
+
 function ActiveBadge({ active }: { active: boolean }) {
   return active
     ? <Badge className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><CheckCircle2 className="h-3 w-3 mr-1" />Aktif</Badge>
@@ -126,7 +130,7 @@ function CompaniesTab() {
                 <TableCell className="font-medium">{c.companyName}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{c.npwp ?? "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{c.email ?? c.phone ?? "—"}</TableCell>
-                <TableCell><ActiveBadge active={c.isActive} /></TableCell>
+                <TableCell><ActiveBadge active={resolveActive(c)} /></TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog("edit", { ...c })}>
@@ -283,11 +287,11 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
                 <TableCell className="font-medium">{row.name}</TableCell>
                 {extraColumns.map(ec => <TableCell key={ec.label} className="text-sm text-muted-foreground">{ec.render(row)}</TableCell>)}
                 <TableCell className="text-sm text-muted-foreground">{row.company_code ? `${row.company_code}` : "—"}</TableCell>
-                <TableCell><ActiveBadge active={row.isActive} /></TableCell>
+                <TableCell><ActiveBadge active={resolveActive(row)} /></TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
-                      const item: Record<string, unknown> = { ...row };
+                      const item: Record<string, unknown> = { ...row, isActive: resolveActive(row) };
                       if (parentKey && (row as any)[parentKey]) item[parentKey] = (row as any)[parentKey];
                       setFormError(null);
                       setDialog({ open: true, mode: "edit", item });
