@@ -154,12 +154,12 @@ export function AppShell({ children }: AppShellProps) {
     {
       type: "group",
       titleKey: "Produk & Recipe/BOM",
-      basePath: "/pos-products",
+      basePath: "/products",
       icon: ChefHat,
       roles: ["manager", "admin", "owner"],
       children: [
-        { titleKey: "Produk / Bahan Baku", href: "/pos-inventory/items", icon: PackageSearch },
-        { titleKey: "Recipe / BOM", href: "/pos-inventory/recipes", icon: FlaskConical },
+        { titleKey: "Produk / Bahan Baku", href: "/products/items", icon: PackageSearch },
+        { titleKey: "Recipe / BOM", href: "/products/recipes", icon: FlaskConical },
       ],
     },
 

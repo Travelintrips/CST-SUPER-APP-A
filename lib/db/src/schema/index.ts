@@ -44,5 +44,6 @@ export * from "./freightAuditLog";
 export * from "./customRoles";
 export * from "./orgStructure";
 export * from "./approvalRules";
+export * from "./productBom";
 export * from "./posAccess";
 

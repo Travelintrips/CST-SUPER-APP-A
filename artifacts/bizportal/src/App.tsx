@@ -105,6 +105,8 @@ import PosBranchesPage from "@/pages/pos-branches";
 import PosWarehousesPage from "@/pages/pos-warehouses";
 import PosRacksPage from "@/pages/pos-racks";
 import PosRecipesPage from "@/pages/pos-recipes";
+import ProductItemsPage from "@/pages/products/items";
+import ProductRecipesPage from "@/pages/products/recipes";
 import PosQrGeneratorPage from "@/pages/pos-qr-generator";
 import PosQrScannerPage from "@/pages/pos-qr-scanner";
 import SettingsRolesPage from "@/pages/settings-roles";
@@ -405,6 +407,9 @@ function Router() {
         <Route path="/thai-tea/branches" component={() => <ProtectedRoute component={ThaiTeaBranchesPage} />} />
         <Route path="/thai-tea/production" component={() => <ProtectedRoute component={ThaiTeaProductionPage} />} />
         <Route path="/thai-tea/reports" component={() => <ProtectedRoute component={ThaiTeaReportsPage} />} />
+        {/* Products & BOM */}
+        <Route path="/products/items" component={() => <ProtectedRoute component={ProductItemsPage} />} />
+        <Route path="/products/recipes" component={() => <ProtectedRoute component={ProductRecipesPage} />} />
         {/* POS Inventory */}
         <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
         <Route path="/pos-inventory/branches" component={() => <ProtectedRoute component={PosBranchesPage} />} />
