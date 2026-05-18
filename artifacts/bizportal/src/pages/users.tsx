@@ -372,7 +372,7 @@ export default function UsersPage() {
                       <Select value={editDivisionId} onValueChange={v => { setEditDivisionId(v); setEditDepartmentId("none"); setEditSectionId("none"); }}>
                         <SelectTrigger className="text-sm"><SelectValue placeholder="—" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">—</SelectItem>
+                          <SelectItem value="none">— Semua Divisi (Lintas Unit) —</SelectItem>
                           {filteredDivisions.map((d: any) => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
