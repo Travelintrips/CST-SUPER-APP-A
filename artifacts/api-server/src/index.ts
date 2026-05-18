@@ -91,6 +91,34 @@ async function runCriticalPreStartMigrations() {
       END IF;
     END $$;
   `);
+
+  // Add condition column to wh_return_lines for "kondisi barang" (layak / rusak / hilang)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'wh_return_lines') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'wh_return_lines' AND column_name = 'condition'
+        ) THEN
+          ALTER TABLE wh_return_lines ADD COLUMN condition TEXT NOT NULL DEFAULT 'layak';
+        END IF;
+      END IF;
+    END $$;
+  `);
+
+  // Ensure wh_returns has company_id column (older installs may lack it)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'wh_returns') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'wh_returns' AND column_name = 'company_id'
+        ) THEN
+          ALTER TABLE wh_returns ADD COLUMN company_id INTEGER;
+        END IF;
+      END IF;
+    END $$;
+  `);
 }
 
 async function startServer() {

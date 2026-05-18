@@ -589,7 +589,7 @@ router.post("/returns", async (req: Request, res: Response) => {
   const { type, refDocId, refDocNumber, warehouseId, note, lines } = req.body as {
     type: "purchase" | "sales"; refDocId?: number; refDocNumber?: string;
     warehouseId: number; note?: string;
-    lines: { productId: number; rackId?: number | null; qty: number; unitCost?: number; note?: string }[];
+    lines: { productId: number; rackId?: number | null; qty: number; unitCost?: number; condition?: string; note?: string }[];
   };
   if (!type || !warehouseId || !lines?.length) {
     res.status(400).json({ message: "type, warehouseId, lines wajib diisi" }); return;
@@ -605,9 +605,10 @@ router.post("/returns", async (req: Request, res: Response) => {
   `);
   const returnId = (ret.rows[0] as any).id;
   for (const line of lines) {
+    const cond = line.condition ?? "layak";
     await db.execute(sql`
-      INSERT INTO wh_return_lines (return_id, product_id, rack_id, qty, unit_cost, note)
-      VALUES (${returnId}, ${line.productId}, ${line.rackId ?? null}, ${line.qty}, ${line.unitCost ?? 0}, ${line.note ?? null})
+      INSERT INTO wh_return_lines (return_id, product_id, rack_id, qty, unit_cost, condition, note)
+      VALUES (${returnId}, ${line.productId}, ${line.rackId ?? null}, ${line.qty}, ${line.unitCost ?? 0}, ${cond}, ${line.note ?? null})
     `);
   }
   res.status(201).json(ret.rows[0]);
@@ -624,26 +625,59 @@ router.post("/returns/:id/confirm", async (req: Request, res: Response) => {
 
   const lines = await db.execute(sql`SELECT * FROM wh_return_lines WHERE return_id = ${id}`);
   for (const line of lines.rows as any[]) {
+    const condition: string = line.condition ?? "layak";
+    const qty = Number(line.qty);
+
     const cur = await db.execute(sql`
       SELECT qty::float FROM wh_stock
       WHERE product_id = ${line.product_id} AND warehouse_id = ${returnDoc.warehouse_id}
       AND (rack_id = ${line.rack_id ?? null} OR (rack_id IS NULL AND ${line.rack_id ?? null} IS NULL))
     `);
     const qtyBefore = Number(cur.rows[0]?.qty ?? 0);
-    const delta = returnDoc.type === "sales" ? Number(line.qty) : -Number(line.qty);
-    const qtyAfter = qtyBefore + delta;
-    await db.execute(sql`
-      INSERT INTO wh_stock (company_id, product_id, warehouse_id, rack_id, qty, updated_at)
-      VALUES (${companyId}, ${line.product_id}, ${returnDoc.warehouse_id}, ${line.rack_id ?? null}, ${qtyAfter}, NOW())
-      ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
-      DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
-    `);
-    const mvType = returnDoc.type === "sales" ? "return_in" : "return_out";
-    await db.execute(sql`
-      INSERT INTO wh_movements (company_id, product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id)
-      VALUES (${companyId}, ${line.product_id}, ${returnDoc.warehouse_id}, ${line.rack_id ?? null},
-              ${mvType}, ${line.qty}, ${qtyBefore}, ${qtyAfter}, ${line.unit_cost}, 'wh_return', ${id})
-    `);
+
+    if (returnDoc.type === "sales") {
+      // Retur dari pelanggan ke gudang
+      if (condition === "layak") {
+        // Barang bagus → masuk stok
+        const qtyAfter = qtyBefore + qty;
+        await db.execute(sql`
+          INSERT INTO wh_stock (company_id, product_id, warehouse_id, rack_id, qty, updated_at)
+          VALUES (${companyId}, ${line.product_id}, ${returnDoc.warehouse_id}, ${line.rack_id ?? null}, ${qtyAfter}, NOW())
+          ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+          DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
+        `);
+        await db.execute(sql`
+          INSERT INTO wh_movements (company_id, product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
+          VALUES (${companyId}, ${line.product_id}, ${returnDoc.warehouse_id}, ${line.rack_id ?? null},
+                  'return_in', ${qty}, ${qtyBefore}, ${qtyAfter}, ${line.unit_cost}, 'wh_return', ${id},
+                  'Retur penjualan — kondisi layak, masuk stok')
+        `);
+      } else {
+        // Barang rusak/hilang saat retur dari pelanggan → tidak masuk stok, langsung catat sebagai damaged/lost
+        // Stok tidak berubah (barang rusak tidak layak disimpan)
+        await db.execute(sql`
+          INSERT INTO wh_movements (company_id, product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
+          VALUES (${companyId}, ${line.product_id}, ${returnDoc.warehouse_id}, ${line.rack_id ?? null},
+                  'damage', ${qty}, ${qtyBefore}, ${qtyBefore}, ${line.unit_cost}, 'wh_return', ${id},
+                  ${'Retur penjualan — kondisi ' + condition + ', tidak masuk stok'})
+        `);
+      }
+    } else {
+      // Retur pembelian ke supplier → selalu kurangi stok
+      const qtyAfter = Math.max(0, qtyBefore - qty);
+      await db.execute(sql`
+        INSERT INTO wh_stock (company_id, product_id, warehouse_id, rack_id, qty, updated_at)
+        VALUES (${companyId}, ${line.product_id}, ${returnDoc.warehouse_id}, ${line.rack_id ?? null}, ${qtyAfter}, NOW())
+        ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
+        DO UPDATE SET qty = ${qtyAfter}, updated_at = NOW()
+      `);
+      const mvNote = condition !== "layak" ? `Retur pembelian — kondisi ${condition}` : "Retur pembelian ke supplier";
+      await db.execute(sql`
+        INSERT INTO wh_movements (company_id, product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
+        VALUES (${companyId}, ${line.product_id}, ${returnDoc.warehouse_id}, ${line.rack_id ?? null},
+                'return_out', ${qty}, ${qtyBefore}, ${qtyAfter}, ${line.unit_cost}, 'wh_return', ${id}, ${mvNote})
+      `);
+    }
   }
   await db.execute(sql`UPDATE wh_returns SET status = 'confirmed', confirmed_at = NOW() WHERE id = ${id}`);
   const updated = await db.execute(sql`SELECT * FROM wh_returns WHERE id = ${id}`);
