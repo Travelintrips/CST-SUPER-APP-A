@@ -44,7 +44,7 @@ export interface Booking {
   endTime: string;
   totalHours: number;
   totalPrice: number;
-  status: "pending" | "confirmed" | "cancelled";
+  status: "pending" | "confirmed" | "completed" | "cancelled";
   createdAt: string;
   notes?: string;
 }
