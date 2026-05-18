@@ -58,6 +58,20 @@ function getDuplicateCodeMessage(err: any, entityLabel: string): string | null {
   return null;
 }
 
+// ── camelCase helper ──────────────────────────────────────────────────────────
+
+function snakeToCamel(s: string): string {
+  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function rowToCamel(row: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[snakeToCamel(k)] = v;
+  }
+  return out;
+}
+
 // ── BRANCHES ─────────────────────────────────────────────────────────────────
 
 router.get("/branches", async (req, res) => {
@@ -72,7 +86,7 @@ router.get("/branches", async (req, res) => {
     ${cid !== null ? sql`WHERE b.company_id = ${cid}` : sql``}
     ORDER BY c.company_code, b.name
   `);
-  return res.json(rows.rows);
+  return res.json(rows.rows.map(rowToCamel));
 });
 
 router.get("/branches/check-code", async (req, res) => {
@@ -162,7 +176,7 @@ router.get("/divisions", async (req, res) => {
       ${branchId !== null ? sql`AND d.branch_id = ${branchId}` : sql``}
     ORDER BY c.company_code, d.name
   `);
-  return res.json(rows.rows);
+  return res.json(rows.rows.map(rowToCamel));
 });
 
 router.get("/divisions/check-code", async (req, res) => {
@@ -270,7 +284,7 @@ router.get("/departments", async (req, res) => {
       ${branchId !== null ? sql`AND dep.branch_id = ${branchId}` : sql``}
     ORDER BY c.company_code, div.name, dep.name
   `);
-  return res.json(rows.rows);
+  return res.json(rows.rows.map(rowToCamel));
 });
 
 router.get("/departments/check-code", async (req, res) => {
@@ -370,7 +384,7 @@ router.get("/sections", async (req, res) => {
       ${deptId !== null ? sql`AND s.department_id = ${deptId}` : sql``}
     ORDER BY c.company_code, dep.name, s.name
   `);
-  return res.json(rows.rows);
+  return res.json(rows.rows.map(rowToCamel));
 });
 
 router.get("/sections/check-code", async (req, res) => {
@@ -505,24 +519,30 @@ router.get("/hierarchy", async (req, res) => {
     return ucRows.filter(r => r.department_id === dId).reduce((s, r) => s + Number(r.cnt), 0);
   }
 
-  const tree = (companies.rows as any[]).map((co) => ({
+  const companiesC = (companies.rows as any[]).map(rowToCamel);
+  const branchesC  = (branches.rows  as any[]).map(rowToCamel);
+  const divisionsC = (divisions.rows  as any[]).map(rowToCamel);
+  const departmentsC = (departments.rows as any[]).map(rowToCamel);
+  const sectionsC  = (sections.rows  as any[]).map(rowToCamel);
+
+  const tree = companiesC.map((co) => ({
     ...co,
     userCount: userCountByCompany(co.id),
-    branches: (branches.rows as any[])
-      .filter(b => b.company_id === co.id)
+    branches: branchesC
+      .filter(b => b.companyId === co.id)
       .map(b => ({ ...b, userCount: userCountByBranch(b.id) })),
-    divisions: (divisions.rows as any[])
-      .filter(d => d.company_id === co.id)
+    divisions: divisionsC
+      .filter(d => d.companyId === co.id)
       .map(div => ({
         ...div,
         userCount: userCountByDivision(div.id),
-        departments: (departments.rows as any[])
-          .filter(dep => dep.company_id === co.id && dep.division_id === div.id)
+        departments: departmentsC
+          .filter(dep => dep.companyId === co.id && dep.divisionId === div.id)
           .map(dep => ({
             ...dep,
             userCount: userCountByDept(dep.id),
-            sections: (sections.rows as any[])
-              .filter(s => s.company_id === co.id && s.department_id === dep.id),
+            sections: sectionsC
+              .filter(s => s.companyId === co.id && s.departmentId === dep.id),
           })),
       })),
   }));
