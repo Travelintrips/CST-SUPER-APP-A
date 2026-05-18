@@ -133,11 +133,15 @@ export async function runOrgFullMigration(): Promise<void> {
       { company_id: 4, name: "Cabang Bekasi",         code: "BKS-ERA", address: "Bekasi" },
     ];
     for (const b of branchSeed) {
-      await db.execute(sql`
-        INSERT INTO branches (company_id, name, code, address)
-        VALUES (${b.company_id}, ${b.name}, ${b.code}, ${b.address})
-        ON CONFLICT DO NOTHING
-      `);
+      const existing = await db.execute(
+        sql`SELECT id FROM branches WHERE company_id = ${b.company_id} AND code = ${b.code} LIMIT 1`,
+      );
+      if (!(existing.rows[0] as SeededRow | undefined)?.id) {
+        await db.execute(sql`
+          INSERT INTO branches (company_id, name, code, address)
+          VALUES (${b.company_id}, ${b.name}, ${b.code}, ${b.address})
+        `);
+      }
     }
 
     // ─── 6. Seed divisions ───────────────────────────────────────────────────
@@ -246,11 +250,15 @@ export async function runOrgFullMigration(): Promise<void> {
     for (const s of sectionDefs) {
       const deptId = deptIdMap[s.dept_code];
       if (!deptId) continue;
-      await db.execute(sql`
-        INSERT INTO sections (company_id, department_id, name, code)
-        VALUES (${s.company_id}, ${deptId}, ${s.name}, ${s.code})
-        ON CONFLICT DO NOTHING
-      `);
+      const existing = await db.execute(
+        sql`SELECT id FROM sections WHERE company_id = ${s.company_id} AND code = ${s.code} LIMIT 1`,
+      );
+      if (!(existing.rows[0] as SeededRow | undefined)?.id) {
+        await db.execute(sql`
+          INSERT INTO sections (company_id, department_id, name, code)
+          VALUES (${s.company_id}, ${deptId}, ${s.name}, ${s.code})
+        `);
+      }
     }
 
     logger.info("Org full migration: selesai (sections, users FK columns, branches, divisions, departments, sections seeded)");
