@@ -259,11 +259,6 @@ export async function runOrgFullMigration(): Promise<void> {
           VALUES (${s.company_id}, ${deptId}, ${s.name}, ${s.code})
         `);
       }
-      await db.execute(sql`
-        INSERT INTO sections (company_id, department_id, name, code)
-        VALUES (${s.company_id}, ${deptId}, ${s.name}, ${s.code})
-        ON CONFLICT (code) DO NOTHING
-      `);
     }
 
     logger.info("Org full migration: selesai (sections, users FK columns, branches, divisions, departments, sections seeded)");
