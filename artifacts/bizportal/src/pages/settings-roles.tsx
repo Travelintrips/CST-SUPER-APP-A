@@ -16,39 +16,75 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ShieldCheck, Plus, Pencil, Trash2, Users, UserPlus, X, ChevronRight, Building2, GitBranch, LayoutList, FolderOpen } from "lucide-react";
+import { ShieldCheck, Plus, Pencil, Trash2, Users, UserPlus, X, ChevronRight, Building2, GitBranch, Eye, PenLine, PlusCircle, Trash } from "lucide-react";
 
+// Modul yang sesuai dengan sidebar baru
+// Permission key format: "module:action"
+// Contoh: "dashboard:view", "inventory:create", dst.
 const MODULES = [
-  { key: "dashboard",       label: "Dashboard",            group: "Umum" },
-  { key: "sales",           label: "Penjualan",            group: "Transaksi" },
-  { key: "purchase",        label: "Pembelian",            group: "Transaksi" },
-  { key: "accounting",      label: "Akuntansi",            group: "Transaksi" },
-  { key: "reports",         label: "Laporan",              group: "Transaksi" },
-  { key: "trading",         label: "Trading",              group: "Bisnis" },
-  { key: "logistics",       label: "Logistik",             group: "Bisnis" },
-  { key: "pos",             label: "POS Kasir",            group: "POS" },
-  { key: "pos-kasir",       label: "Kasir Thai Tea",       group: "POS" },
-  { key: "pos-inventory",   label: "Inventori POS",        group: "POS" },
-  { key: "warehouse",       label: "Gudang",               group: "Operasional" },
-  { key: "expense",         label: "Pengeluaran",          group: "Operasional" },
-  { key: "correspondences", label: "Korespondensi",        group: "Komunikasi" },
-  { key: "email-inbox",     label: "Email Inbox",          group: "Komunikasi" },
-  { key: "holding",         label: "Holding",              group: "Manajemen" },
-  { key: "users",           label: "Manajemen Pengguna",   group: "Admin" },
-  { key: "media",           label: "Media Manager",        group: "Admin" },
-  { key: "settings",        label: "Pengaturan",           group: "Admin" },
-  { key: "roles",           label: "Manajemen Role",       group: "Admin" },
+  { key: "dashboard",    label: "Dashboard",          group: "Menu Utama" },
+  { key: "pos-kasir",    label: "POS Kasir",           group: "Menu Utama" },
+  { key: "pos-products", label: "Produk & Recipe/BOM", group: "Menu Utama" },
+  { key: "pos-inventory",label: "Inventory",           group: "Menu Utama" },
+  { key: "cabang",       label: "Cabang",              group: "Menu Utama" },
+  { key: "users-role",   label: "User & Role",         group: "Menu Utama" },
+  { key: "reports",      label: "Laporan",             group: "Menu Utama" },
+  { key: "settings",     label: "Settings",            group: "Menu Utama" },
+  { key: "sales",        label: "Penjualan",           group: "Modul ERP" },
+  { key: "purchase",     label: "Pembelian",           group: "Modul ERP" },
+  { key: "accounting",   label: "Akuntansi",           group: "Modul ERP" },
+  { key: "logistics",    label: "Logistik",            group: "Modul ERP" },
+  { key: "trading",      label: "Trading",             group: "Modul ERP" },
+  { key: "expense",      label: "Pengeluaran",         group: "Modul ERP" },
+  { key: "correspondences", label: "Korespondensi",   group: "Lainnya" },
+  { key: "media",        label: "Media Manager",       group: "Lainnya" },
+  { key: "holding",      label: "Holding",             group: "Lainnya" },
 ];
 
-const GROUPS = Array.from(new Set(MODULES.map((m) => m.group)));
+const CRUD_ACTIONS = [
+  { key: "view",   label: "Lihat",  icon: Eye },
+  { key: "create", label: "Buat",   icon: PlusCircle },
+  { key: "edit",   label: "Edit",   icon: PenLine },
+  { key: "delete", label: "Hapus",  icon: Trash },
+] as const;
+
+type CrudAction = typeof CRUD_ACTIONS[number]["key"];
+
+const MODULE_GROUPS = Array.from(new Set(MODULES.map((m) => m.group)));
 
 const COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f97316",
   "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
 ];
 
+// Preset role templates
+const ROLE_TEMPLATES: Record<string, { label: string; permissions: string[] }> = {
+  kasir: {
+    label: "Kasir",
+    permissions: ["dashboard:view", "pos-kasir:view", "pos-kasir:create"],
+  },
+  gudang: {
+    label: "Gudang",
+    permissions: [
+      "pos-inventory:view", "pos-inventory:create", "pos-inventory:edit",
+    ],
+  },
+  manager: {
+    label: "Manager",
+    permissions: [
+      "dashboard:view",
+      "pos-kasir:view",
+      "pos-products:view",
+      "pos-inventory:view", "pos-inventory:create", "pos-inventory:edit",
+      "cabang:view",
+      "reports:view",
+    ],
+  },
+};
+
 const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin", ecommerce: "Ecommerce", trading: "Trading",
+  admin: "Admin", owner: "Owner", kasir: "Kasir", gudang: "Gudang",
+  manager: "Manager", ecommerce: "Ecommerce", trading: "Trading",
   logistics: "Logistik", pos: "POS",
 };
 
@@ -110,6 +146,47 @@ const emptyForm = {
   departmentId: "" as string,
 };
 
+// Helper: cek apakah permission tertentu aktif
+function hasPerm(permissions: string[], moduleKey: string, action: CrudAction): boolean {
+  return (
+    permissions.includes(`${moduleKey}:${action}`) ||
+    // backward compat: jika hanya ada "moduleKey" tanpa action, anggap view=true
+    (action === "view" && permissions.includes(moduleKey))
+  );
+}
+
+// Helper: toggle satu permission
+function togglePerm(permissions: string[], moduleKey: string, action: CrudAction): string[] {
+  const key = `${moduleKey}:${action}`;
+  if (permissions.includes(key)) {
+    // Hapus permission ini. Jika hapus "view", hapus semua action modul itu juga
+    if (action === "view") {
+      return permissions.filter((p) => !p.startsWith(`${moduleKey}:`));
+    }
+    return permissions.filter((p) => p !== key);
+  } else {
+    const next = [...permissions, key];
+    // Jika menambah create/edit/delete, otomatis tambahkan view juga
+    if (action !== "view" && !next.includes(`${moduleKey}:view`)) {
+      next.push(`${moduleKey}:view`);
+    }
+    return next;
+  }
+}
+
+// Helper: toggle semua action untuk satu modul
+function toggleAllModule(permissions: string[], moduleKey: string): string[] {
+  const allKeys = CRUD_ACTIONS.map((a) => `${moduleKey}:${a.key}`);
+  const hasAll = allKeys.every((k) => permissions.includes(k));
+  if (hasAll) {
+    // Hapus semua + legacy key
+    return permissions.filter((p) => !p.startsWith(`${moduleKey}:`) && p !== moduleKey);
+  } else {
+    const without = permissions.filter((p) => !p.startsWith(`${moduleKey}:`) && p !== moduleKey);
+    return [...without, ...allKeys];
+  }
+}
+
 export default function SettingsRolesPage() {
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,12 +232,8 @@ export default function SettingsRolesPage() {
     apiFetch("/org/departments?companyId=all").then(setDepartments).catch(() => {});
   }, []);
 
-  const filteredBranches = branches.filter(b =>
-    !form.companyId || b.companyId === Number(form.companyId)
-  );
-  const filteredDivisions = divisions.filter(d =>
-    !form.companyId || d.companyId === Number(form.companyId)
-  );
+  const filteredBranches = branches.filter(b => !form.companyId || b.companyId === Number(form.companyId));
+  const filteredDivisions = divisions.filter(d => !form.companyId || d.companyId === Number(form.companyId));
   const filteredDepartments = departments.filter(d =>
     (!form.companyId || d.companyId === Number(form.companyId)) &&
     (!form.divisionId || d.divisionId === Number(form.divisionId))
@@ -206,13 +279,10 @@ export default function SettingsRolesPage() {
     setDialogOpen(true);
   };
 
-  const togglePerm = (key: string) => {
-    setForm((f) => ({
-      ...f,
-      permissions: f.permissions.includes(key)
-        ? f.permissions.filter((p) => p !== key)
-        : [...f.permissions, key],
-    }));
+  const applyTemplate = (templateKey: string) => {
+    const tpl = ROLE_TEMPLATES[templateKey];
+    if (!tpl) return;
+    setForm((f) => ({ ...f, permissions: tpl.permissions }));
   };
 
   const handleSave = async () => {
@@ -288,11 +358,19 @@ export default function SettingsRolesPage() {
   const unassignedUsers = allUsers.filter((u) => !roleUsers.find((ru) => ru.id === u.id));
 
   const scopeLabel = (s: string | null) => SCOPE_OPTIONS.find(o => o.value === s)?.label ?? s ?? "—";
-  const scopeIcon = (s: string | null) => SCOPE_OPTIONS.find(o => o.value === s)?.icon ?? "🔲";
+  const scopeIcon  = (s: string | null) => SCOPE_OPTIONS.find(o => o.value === s)?.icon ?? "🔲";
 
-  const needsBranch = ["branch_only"].includes(form.scopeType);
-  const needsDivision = ["division_only", "department_only"].includes(form.scopeType);
+  const needsBranch     = ["branch_only"].includes(form.scopeType);
+  const needsDivision   = ["division_only", "department_only"].includes(form.scopeType);
   const needsDepartment = form.scopeType === "department_only";
+
+  // Summary permissions untuk card display
+  const permSummary = (perms: string[]) => {
+    const modules = MODULES.filter((m) =>
+      perms.some((p) => p.startsWith(`${m.key}:`) || p === m.key)
+    );
+    return modules;
+  };
 
   return (
     <AppShell>
@@ -302,12 +380,34 @@ export default function SettingsRolesPage() {
             <ShieldCheck className="h-7 w-7 text-primary" />
             <div>
               <h1 className="text-2xl font-bold">Manajemen Role</h1>
-              <p className="text-sm text-muted-foreground">Buat role kustom dengan scope organisasi dan akses modul</p>
+              <p className="text-sm text-muted-foreground">Buat role kustom dengan permission per menu (Lihat / Buat / Edit / Hapus)</p>
             </div>
           </div>
           <Button onClick={openAdd} className="gap-2">
             <Plus className="h-4 w-4" /> Tambah Role
           </Button>
+        </div>
+
+        {/* Built-in role reference */}
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Role Bawaan Sistem</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {[
+              { role: "kasir",   desc: "Dashboard + POS Kasir",          color: "#6366f1" },
+              { role: "gudang",  desc: "Inventory saja",                  color: "#14b8a6" },
+              { role: "manager", desc: "Dashboard, POS, Inventory, Laporan", color: "#f97316" },
+              { role: "admin",   desc: "Semua menu dalam company",        color: "#3b82f6" },
+              { role: "owner",   desc: "Semua menu",                      color: "#ec4899" },
+            ].map((r) => (
+              <div key={r.role} className="rounded-md border bg-background p-2.5 text-center">
+                <div className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white text-xs font-bold mb-1" style={{ backgroundColor: r.color }}>
+                  {r.role.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="text-xs font-semibold capitalize">{r.role}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">{r.desc}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {error && (
@@ -317,71 +417,76 @@ export default function SettingsRolesPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Role List */}
           <div className="space-y-3">
+            <p className="text-sm font-medium text-muted-foreground">Role Kustom ({roles.length})</p>
             {loading ? (
               <div className="text-sm text-muted-foreground py-8 text-center">Memuat...</div>
             ) : roles.length === 0 ? (
               <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
                 <ShieldCheck className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Belum ada role. Klik "Tambah Role" untuk mulai.</p>
+                <p className="text-sm">Belum ada role kustom. Klik "Tambah Role" untuk mulai.</p>
               </div>
             ) : (
-              roles.map((role) => (
-                <div
-                  key={role.id}
-                  className={`rounded-xl border bg-card p-4 cursor-pointer transition-all hover:shadow-md ${selectedRole?.id === role.id ? "ring-2 ring-primary" : ""}`}
-                  onClick={() => openRoleUsers(role)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="h-9 w-9 rounded-lg flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
-                        style={{ backgroundColor: role.color }}
-                      >
-                        {role.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-semibold truncate">{role.name}</div>
-                        {role.description && (
-                          <div className="text-xs text-muted-foreground truncate">{role.description}</div>
-                        )}
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-xs">{scopeIcon(role.scope_type)}</span>
-                          <span className="text-xs text-muted-foreground">{scopeLabel(role.scope_type)}</span>
-                          {role.division_name && <span className="text-xs text-muted-foreground">· {role.division_name}</span>}
-                          {role.department_name && <span className="text-xs text-muted-foreground">· {role.department_name}</span>}
+              roles.map((role) => {
+                const summary = permSummary(role.permissions);
+                return (
+                  <div
+                    key={role.id}
+                    className={`rounded-xl border bg-card p-4 cursor-pointer transition-all hover:shadow-md ${selectedRole?.id === role.id ? "ring-2 ring-primary" : ""}`}
+                    onClick={() => openRoleUsers(role)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: role.color }}>
+                          {role.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">{role.name}</div>
+                          {role.description && (
+                            <div className="text-xs text-muted-foreground truncate">{role.description}</div>
+                          )}
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-xs">{scopeIcon(role.scope_type)}</span>
+                            <span className="text-xs text-muted-foreground">{scopeLabel(role.scope_type)}</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEdit(role); }}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteTarget(role); }}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEdit(role); }}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteTarget(role); }}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
 
-                  <div className="mt-3 flex items-center justify-between">
-                    <div className="flex flex-wrap gap-1">
-                      {role.permissions.slice(0, 4).map((p) => (
-                        <Badge key={p} variant="secondary" className="text-xs py-0">{MODULES.find((m) => m.key === p)?.label ?? p}</Badge>
-                      ))}
-                      {role.permissions.length > 4 && (
-                        <Badge variant="outline" className="text-xs py-0">+{role.permissions.length - 4} lagi</Badge>
-                      )}
-                      {role.permissions.length === 0 && (
-                        <span className="text-xs text-muted-foreground italic">Tidak ada akses</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
-                      <Users className="h-3.5 w-3.5" />
-                      {role.user_count} pengguna
-                      <ChevronRight className="h-3.5 w-3.5" />
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex flex-wrap gap-1">
+                        {summary.slice(0, 4).map((m) => {
+                          const actions = CRUD_ACTIONS.filter((a) => hasPerm(role.permissions, m.key, a.key));
+                          return (
+                            <Badge key={m.key} variant="secondary" className="text-xs py-0 gap-1">
+                              {m.label}
+                              <span className="text-muted-foreground">{actions.map((a) => a.label[0]).join("")}</span>
+                            </Badge>
+                          );
+                        })}
+                        {summary.length > 4 && (
+                          <Badge variant="outline" className="text-xs py-0">+{summary.length - 4} lagi</Badge>
+                        )}
+                        {summary.length === 0 && (
+                          <span className="text-xs text-muted-foreground italic">Tidak ada akses</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
+                        <Users className="h-3.5 w-3.5" />
+                        {role.user_count} pengguna
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -460,12 +565,13 @@ export default function SettingsRolesPage() {
 
       {/* Add / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editRole ? "Edit Role" : "Tambah Role Baru"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-5 py-2">
+            {/* Nama & Warna */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Nama Role <span className="text-destructive">*</span></Label>
@@ -501,29 +607,52 @@ export default function SettingsRolesPage() {
               />
             </div>
 
-            {/* Scope & Org Filters */}
+            {/* Template Cepat */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Template Cepat</Label>
+              <div className="flex gap-2 flex-wrap">
+                {Object.entries(ROLE_TEMPLATES).map(([key, tpl]) => (
+                  <Button
+                    key={key}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => applyTemplate(key)}
+                  >
+                    Terapkan preset {tpl.label}
+                  </Button>
+                ))}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => setForm((f) => ({ ...f, permissions: [] }))}
+                >
+                  Hapus semua
+                </Button>
+              </div>
+            </div>
+
+            {/* Scope */}
             <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
               <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" /> Scope Akses Data
               </div>
-
               <div className="space-y-1.5">
                 <Label className="text-xs">Tipe Scope</Label>
                 <Select value={form.scopeType} onValueChange={(v) => setForm(f => ({
-                  ...f, scopeType: v,
-                  branchId: "", divisionId: "", departmentId: "",
+                  ...f, scopeType: v, branchId: "", divisionId: "", departmentId: "",
                 }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {SCOPE_OPTIONS.map(o => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.icon} {o.label}
-                      </SelectItem>
+                      <SelectItem key={o.value} value={o.value}>{o.icon} {o.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs flex items-center gap-1"><Building2 className="h-3 w-3" />Perusahaan</Label>
@@ -532,54 +661,19 @@ export default function SettingsRolesPage() {
                   }))}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua / Pilih..." /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__all__">— Semua —</SelectItem>
-                      {companies.map(c => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.companyCode} — {c.companyName}</SelectItem>
-                      ))}
+                      <SelectItem value="__all__">Semua perusahaan</SelectItem>
+                      {companies.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.companyName}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-
-                {(needsBranch || form.scopeType === "branch_only") && (
+                {needsBranch && (
                   <div className="space-y-1.5">
                     <Label className="text-xs flex items-center gap-1"><GitBranch className="h-3 w-3" />Cabang</Label>
-                    <Select value={form.branchId || "__none__"} onValueChange={(v) => setForm(f => ({ ...f, branchId: v === "__none__" ? "" : v }))}>
+                    <Select value={form.branchId || "__all__"} onValueChange={(v) => setForm(f => ({ ...f, branchId: v === "__all__" ? "" : v }))}>
                       <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih cabang..." /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
-                        {filteredBranches.map(b => (
-                          <SelectItem key={b.id} value={String(b.id)}>{b.code ? `[${b.code}] ` : ""}{b.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {needsDivision && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs flex items-center gap-1"><LayoutList className="h-3 w-3" />Divisi</Label>
-                    <Select value={form.divisionId || "__none__"} onValueChange={(v) => setForm(f => ({ ...f, divisionId: v === "__none__" ? "" : v, departmentId: "" }))}>
-                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih divisi..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
-                        {filteredDivisions.map(d => (
-                          <SelectItem key={d.id} value={String(d.id)}>{d.code ? `[${d.code}] ` : ""}{d.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {needsDepartment && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs flex items-center gap-1"><FolderOpen className="h-3 w-3" />Departemen</Label>
-                    <Select value={form.departmentId || "__none__"} onValueChange={(v) => setForm(f => ({ ...f, departmentId: v === "__none__" ? "" : v }))}>
-                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih departemen..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
-                        {filteredDepartments.map(d => (
-                          <SelectItem key={d.id} value={String(d.id)}>{d.code ? `[${d.code}] ` : ""}{d.name}</SelectItem>
-                        ))}
+                        <SelectItem value="__all__">Semua cabang</SelectItem>
+                        {filteredBranches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -587,40 +681,75 @@ export default function SettingsRolesPage() {
               </div>
             </div>
 
-            {/* Permissions */}
+            {/* Permission Matrix */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Akses Modul</Label>
-                <div className="flex gap-2">
-                  <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setForm((f) => ({ ...f, permissions: MODULES.map((m) => m.key) }))}>Pilih Semua</Button>
-                  <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setForm((f) => ({ ...f, permissions: [] }))}>Kosongkan</Button>
+                <Label className="text-sm font-semibold">Permission Menu</Label>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {CRUD_ACTIONS.map((a) => (
+                    <span key={a.key} className="flex items-center gap-1">
+                      <a.icon size={11} /> {a.label}
+                    </span>
+                  ))}
                 </div>
               </div>
-              <div className="rounded-lg border p-4 space-y-4">
-                {GROUPS.map((group) => (
-                  <div key={group}>
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{group}</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {MODULES.filter((m) => m.group === group).map((m) => (
-                        <div key={m.key} className="flex items-center gap-2">
-                          <Checkbox
-                            id={`perm-${m.key}`}
-                            checked={form.permissions.includes(m.key)}
-                            onCheckedChange={() => togglePerm(m.key)}
-                          />
-                          <label htmlFor={`perm-${m.key}`} className="text-sm cursor-pointer select-none">{m.label}</label>
-                        </div>
-                      ))}
+
+              {MODULE_GROUPS.map((group) => {
+                const groupModules = MODULES.filter((m) => m.group === group);
+                return (
+                  <div key={group} className="rounded-lg border overflow-hidden">
+                    <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      {group}
+                    </div>
+                    <div className="divide-y">
+                      {groupModules.map((mod) => {
+                        const allChecked = CRUD_ACTIONS.every((a) => hasPerm(form.permissions, mod.key, a.key));
+                        const someChecked = CRUD_ACTIONS.some((a) => hasPerm(form.permissions, mod.key, a.key));
+                        return (
+                          <div key={mod.key} className="flex items-center px-3 py-2 gap-4 hover:bg-muted/20 transition-colors">
+                            {/* Module toggle */}
+                            <div className="flex items-center gap-2 w-44 min-w-0">
+                              <Checkbox
+                                checked={allChecked}
+                                ref={(el) => {
+                                  if (el) (el as any).indeterminate = someChecked && !allChecked;
+                                }}
+                                onCheckedChange={() =>
+                                  setForm((f) => ({ ...f, permissions: toggleAllModule(f.permissions, mod.key) }))
+                                }
+                                id={`module-${mod.key}`}
+                              />
+                              <label htmlFor={`module-${mod.key}`} className="text-sm cursor-pointer select-none truncate">
+                                {mod.label}
+                              </label>
+                            </div>
+
+                            {/* CRUD checkboxes */}
+                            <div className="flex items-center gap-4 ml-auto">
+                              {CRUD_ACTIONS.map((action) => (
+                                <Checkbox
+                                  key={action.key}
+                                  checked={hasPerm(form.permissions, mod.key, action.key)}
+                                  onCheckedChange={() =>
+                                    setForm((f) => ({ ...f, permissions: togglePerm(f.permissions, mod.key, action.key) }))
+                                  }
+                                  title={action.label}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Batal</Button>
-            <Button onClick={handleSave} disabled={!form.name.trim() || saving}>
+            <Button onClick={handleSave} disabled={saving || !form.name.trim()}>
               {saving ? "Menyimpan..." : editRole ? "Simpan Perubahan" : "Buat Role"}
             </Button>
           </DialogFooter>
@@ -628,17 +757,21 @@ export default function SettingsRolesPage() {
       </Dialog>
 
       {/* Delete Confirm */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Role "{deleteTarget?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              Semua pengguna yang ditetapkan ke role ini akan dilepas. Tindakan ini tidak dapat dibatalkan.
+              Tindakan ini tidak bisa dibatalkan. Semua pengguna yang memiliki role ini akan kehilangan akses khusus.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               {deleting ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
