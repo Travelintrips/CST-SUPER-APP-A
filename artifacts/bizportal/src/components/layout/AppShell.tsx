@@ -181,6 +181,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "purchaseReport", href: "/reports/purchase", icon: ShoppingBag },
         { titleKey: "arAging", href: "/reports/ar-aging", icon: Receipt },
         { titleKey: "apAging", href: "/reports/ap-aging", icon: FileText },
+        { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch },
       ],
     },
     {
@@ -287,6 +288,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2 },
       ],
     },
+    { type: "flat", titleKey: "Approval Workflow", href: "/approvals", icon: ClipboardList, roles: ["admin"] },
     { type: "flat", titleKey: "correspondences", href: "/correspondences", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "emailInbox", href: "/email-inbox", icon: Mail, roles: ["admin"] },
     { type: "flat", titleKey: "users", href: "/users", icon: Users, roles: ["admin"] },

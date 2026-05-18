@@ -21,13 +21,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface Company { id: number; companyName: string; companyCode: string; isActive: boolean; isHolding?: boolean; address?: string; phone?: string; email?: string; npwp?: string }
 interface Branch  { id: number; companyId: number; name: string; code?: string; address?: string; phone?: string; isActive: boolean; company_name?: string; company_code?: string }
-interface Division { id: number; companyId: number; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; company_code?: string }
-interface Department { id: number; companyId: number; divisionId?: number | null; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; division_name?: string }
+interface Division { id: number; companyId: number; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; company_code?: string; branch_name?: string; manager_name?: string }
+interface Department { id: number; companyId: number; divisionId?: number | null; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; company_code?: string; division_name?: string; branch_name?: string; manager_name?: string }
 interface Section { id: number; companyId: number; departmentId?: number | null; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; department_name?: string }
 
 interface HierarchySection { id: number; name: string; code?: string; isActive: boolean }
-interface HierarchyDept  { id: number; name: string; code?: string; isActive: boolean; sections: HierarchySection[]; userCount: number }
-interface HierarchyDiv   { id: number; name: string; code?: string; isActive: boolean; departments: HierarchyDept[]; userCount: number }
+interface HierarchyDept  { id: number; name: string; code?: string; isActive: boolean; sections: HierarchySection[]; userCount: number; manager_name?: string }
+interface HierarchyDiv   { id: number; name: string; code?: string; isActive: boolean; departments: HierarchyDept[]; userCount: number; manager_name?: string; branch_name?: string }
 interface HierarchyBranch { id: number; name: string; code?: string; isActive: boolean; userCount: number }
 interface HierarchyCompany { id: number; name: string; code: string; isActive: boolean; userCount: number; branches: HierarchyBranch[]; divisions: HierarchyDiv[] }
 
@@ -313,10 +313,10 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
             {parentKey && parentLabel && (
               <div>
                 <Label className="text-xs">{parentLabel}</Label>
-                <Select value={String(dialog.item[parentKey] ?? "")} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, [parentKey!]: v ? Number(v) : null } }))}>
+                <Select value={String(dialog.item[parentKey] ?? "__none__")} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, [parentKey!]: v === "__none__" ? null : Number(v) } }))}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder={`Pilih ${parentLabel}`} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— Tidak ada —</SelectItem>
+                    <SelectItem value="__none__">— Tidak ada —</SelectItem>
                     {filteredParents.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code ? `[${p.code}] ` : ""}{p.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -455,11 +455,12 @@ function HierarchyView({ companies }: { companies: Company[] }) {
                                   className="w-full flex items-center justify-between px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors"
                                   onClick={() => toggle(divKey)}
                                 >
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${divOpen ? "rotate-90" : ""}`} />
                                     <span className="font-medium">{div.name}</span>
                                     {div.code && <code className="text-xs bg-muted px-1 rounded font-mono">{div.code}</code>}
                                     <span className="text-xs text-muted-foreground">({div.departments.length} dept)</span>
+                                    {div.manager_name && <span className="text-xs text-muted-foreground">· Mgr: {div.manager_name}</span>}
                                   </div>
                                   <span className="text-xs text-muted-foreground flex items-center gap-0.5"><Users2 className="h-3 w-3" />{div.userCount}</span>
                                 </button>
@@ -474,13 +475,14 @@ function HierarchyView({ companies }: { companies: Company[] }) {
                                             className="w-full flex items-center justify-between py-1.5 text-xs hover:text-foreground text-muted-foreground"
                                             onClick={() => dep.sections.length > 0 && toggle(depKey)}
                                           >
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                               {dep.sections.length > 0 && <ChevronRight className={`h-3 w-3 transition-transform ${depOpen ? "rotate-90" : ""}`} />}
                                               {dep.sections.length === 0 && <div className="w-3" />}
                                               <FolderOpen className="h-3.5 w-3.5" />
                                               <span className="font-medium text-foreground">{dep.name}</span>
                                               {dep.code && <code className="text-xs bg-background px-1 rounded font-mono">{dep.code}</code>}
                                               {dep.sections.length > 0 && <span className="text-muted-foreground">({dep.sections.length} seksi)</span>}
+                                              {dep.manager_name && <span className="text-muted-foreground text-xs">· Mgr: {dep.manager_name}</span>}
                                             </div>
                                             <span className="flex items-center gap-0.5"><Users2 className="h-3 w-3" />{dep.userCount}</span>
                                           </button>
@@ -580,6 +582,10 @@ export default function OrgManagementPage() {
               endpoint="/org/divisions"
               queryKey="org/divisions"
               companies={companies}
+              extraColumns={[
+                { label: "Manager", render: (r: any) => <span className="text-xs">{r.manager_name ?? "—"}</span> },
+                { label: "Cabang", render: (r: any) => <span className="text-xs">{r.branch_name ?? "—"}</span> },
+              ]}
             />
           </TabsContent>
 
@@ -592,7 +598,10 @@ export default function OrgManagementPage() {
               parentLabel="Divisi"
               parentItems={divParents}
               parentKey="divisionId"
-              extraColumns={[{ label: "Divisi", render: (r: any) => <span>{r.division_name ?? "—"}</span> }]}
+              extraColumns={[
+                { label: "Divisi", render: (r: any) => <span>{r.division_name ?? "—"}</span> },
+                { label: "Manager", render: (r: any) => <span className="text-xs">{r.manager_name ?? "—"}</span> },
+              ]}
             />
           </TabsContent>
 

@@ -235,4 +235,127 @@ router.get("/ap-aging", async (_req, res) => {
   return res.json({ total, buckets, items: items.sort((a, b) => b.daysOld - a.daysOld) });
 });
 
+// GET /api/reports/inventory-valuation
+// Laporan valuasi persediaan: nilai stok per produk, per gudang, per perusahaan
+router.get("/inventory-valuation", async (req, res) => {
+  const companyId = typeof req.query["companyId"] === "string" && req.query["companyId"] !== "all"
+    ? Number(req.query["companyId"]) : null;
+  const warehouseId = typeof req.query["warehouseId"] === "string" ? Number(req.query["warehouseId"]) : null;
+
+  const rows = await db.execute<{
+    product_id: string; product_name: string; sku: string | null;
+    warehouse_id: string; warehouse_name: string;
+    company_id: string; company_name: string;
+    qty: string; cost_price: string; total_value: string;
+    category: string | null;
+  }>(sql`
+    SELECT
+      p.id::text AS product_id,
+      p.name AS product_name,
+      p.sku,
+      w.id::text AS warehouse_id,
+      w.name AS warehouse_name,
+      c.id::text AS company_id,
+      c.company_name,
+      COALESCE(ws.qty, '0') AS qty,
+      COALESCE(ws.cost_price, '0') AS cost_price,
+      COALESCE((ws.qty::numeric * ws.cost_price::numeric), 0)::text AS total_value,
+      pc.name AS category
+    FROM wh_stock ws
+    JOIN products p ON p.id = ws.product_id
+    JOIN warehouses w ON w.id = ws.warehouse_id
+    LEFT JOIN companies c ON c.id = w.company_id
+    LEFT JOIN product_categories pc ON pc.id = p.category_id
+    WHERE ws.qty::numeric > 0
+      ${companyId ? sql`AND w.company_id = ${companyId}` : sql``}
+      ${warehouseId ? sql`AND ws.warehouse_id = ${warehouseId}` : sql``}
+    ORDER BY c.company_name, w.name, p.name
+  `);
+
+  // Aggregate totals
+  const items = rows.rows.map((r) => ({
+    productId: Number(r.product_id),
+    productName: r.product_name,
+    sku: r.sku ?? null,
+    warehouseId: Number(r.warehouse_id),
+    warehouseName: r.warehouse_name,
+    companyId: Number(r.company_id),
+    companyName: r.company_name,
+    qty: Number(r.qty),
+    costPrice: Number(r.cost_price),
+    totalValue: Number(r.total_value),
+    category: r.category ?? null,
+  }));
+
+  const totalValue = items.reduce((s, i) => s + i.totalValue, 0);
+  const totalQty = items.reduce((s, i) => s + i.qty, 0);
+  const totalItems = items.length;
+
+  // Summary per company
+  const byCompany: Record<string, { companyName: string; totalValue: number; itemCount: number }> = {};
+  for (const item of items) {
+    const key = String(item.companyId);
+    if (!byCompany[key]) byCompany[key] = { companyName: item.companyName, totalValue: 0, itemCount: 0 };
+    byCompany[key].totalValue += item.totalValue;
+    byCompany[key].itemCount += 1;
+  }
+
+  // Summary per warehouse
+  const byWarehouse: Record<string, { warehouseName: string; totalValue: number; itemCount: number }> = {};
+  for (const item of items) {
+    const key = String(item.warehouseId);
+    if (!byWarehouse[key]) byWarehouse[key] = { warehouseName: item.warehouseName, totalValue: 0, itemCount: 0 };
+    byWarehouse[key].totalValue += item.totalValue;
+    byWarehouse[key].itemCount += 1;
+  }
+
+  return res.json({
+    items,
+    summary: { totalValue, totalQty, totalItems },
+    byCompany: Object.entries(byCompany).map(([id, v]) => ({ companyId: Number(id), ...v })),
+    byWarehouse: Object.entries(byWarehouse).map(([id, v]) => ({ warehouseId: Number(id), ...v })),
+  });
+});
+
+// GET /api/reports/stock-movements
+// Laporan mutasi stok dalam periode tertentu
+router.get("/stock-movements", async (req, res) => {
+  const { from, to, error } = parseDateRange(req);
+  if (error) return res.status(400).json({ message: error });
+  const companyId = typeof req.query["companyId"] === "string" && req.query["companyId"] !== "all"
+    ? Number(req.query["companyId"]) : null;
+
+  const rows = await db.execute<{
+    id: string; product_name: string; warehouse_name: string;
+    type: string; qty: string; qty_before: string; qty_after: string;
+    cost_price: string; ref_type: string | null; ref_id: string | null;
+    note: string | null; created_at: string;
+  }>(sql`
+    SELECT
+      m.id::text,
+      p.name AS product_name,
+      w.name AS warehouse_name,
+      m.type,
+      m.qty,
+      m.qty_before,
+      m.qty_after,
+      COALESCE(m.cost_price, '0') AS cost_price,
+      m.ref_type,
+      m.ref_id::text,
+      m.note,
+      m.created_at::text
+    FROM wh_movements m
+    JOIN products p ON p.id = m.product_id
+    JOIN warehouses w ON w.id = m.warehouse_id
+    WHERE 1=1
+      ${from ? sql`AND m.created_at >= ${from}` : sql``}
+      ${to ? sql`AND m.created_at <= ${to}` : sql``}
+      ${companyId ? sql`AND w.company_id = ${companyId}` : sql``}
+    ORDER BY m.created_at DESC
+    LIMIT 1000
+  `);
+
+  return res.json({ movements: rows.rows, count: rows.rows.length });
+});
+
 export default router;

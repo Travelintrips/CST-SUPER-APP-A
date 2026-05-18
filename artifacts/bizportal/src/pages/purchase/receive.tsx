@@ -355,12 +355,12 @@ export default function PurchaseReceivePage() {
                             </TableCell>
                             <TableCell>
                               <Select
-                                value={inp.rackId}
+                                value={inp.rackId || "__none__"}
                                 disabled={!warehouseId || racks.length === 0}
                                 onValueChange={(v) =>
                                   setLineInputs((prev) => ({
                                     ...prev,
-                                    [l.id]: { ...prev[l.id], rackId: v },
+                                    [l.id]: { ...prev[l.id], rackId: v === "__none__" ? "" : v },
                                   }))
                                 }
                               >
@@ -368,7 +368,7 @@ export default function PurchaseReceivePage() {
                                   <SelectValue placeholder="Pilih rak..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="">— Tanpa Rak —</SelectItem>
+                                  <SelectItem value="__none__">— Tanpa Rak —</SelectItem>
                                   {racks.map((r) => (
                                     <SelectItem key={r.id} value={String(r.id)}>
                                       {r.rack_code} – {r.rack_name}

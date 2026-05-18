@@ -54,6 +54,8 @@ import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
 import ReportsApAgingPage from "@/pages/reports/ap-aging";
+import ReportsInventoryValuationPage from "@/pages/reports/inventory-valuation";
+import ApprovalsPage from "@/pages/approvals/index";
 import AccountingAccountsPage from "@/pages/accounting/accounts";
 import AccountingJournalsPage from "@/pages/accounting/journals";
 import AccountingTaxesPage from "@/pages/accounting/taxes";
@@ -143,6 +145,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/reports/purchase" component={PR(ReportsPurchasePage)} />
       <Route path="/reports/ar-aging" component={PR(ReportsArAgingPage)} />
       <Route path="/reports/ap-aging" component={PR(ReportsApAgingPage)} />
+      <Route path="/reports/inventory-valuation" component={PR(ReportsInventoryValuationPage)} />
+      <Route path="/approvals" component={PR(ApprovalsPage)} />
       <Route path="/accounting/accounts" component={PR(AccountingAccountsPage)} />
       <Route path="/accounting/journals" component={PR(AccountingJournalsPage)} />
       <Route path="/accounting/taxes" component={PR(AccountingTaxesPage)} />

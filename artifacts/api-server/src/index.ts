@@ -23,6 +23,9 @@ import { runAuditFixMigration } from "./lib/auditFixMigration";
 import { seedUom } from "./lib/uomSeed";
 import { runOrgFullMigration } from "./lib/orgFullMigration";
 import { runOrgUniqueCodesMigration } from "./lib/orgUniqueCodesMigration";
+import { runOrgRoleMigration } from "./lib/orgRoleMigration";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "5000";
 
@@ -71,13 +74,39 @@ async function runWithRetry<T>(
   }
 }
 
-const server = app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
+// ── Pre-startup critical schema migrations (run BEFORE accepting requests) ────
+// These ensure Drizzle ORM columns exist before any query can be executed.
+async function runCriticalPreStartMigrations() {
+  // Add grir_account_id column without FK (FK is added later in accountingMigration when COA exists)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'accounting_settings') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'accounting_settings' AND column_name = 'grir_account_id'
+        ) THEN
+          ALTER TABLE accounting_settings ADD COLUMN grir_account_id INTEGER;
+        END IF;
+      END IF;
+    END $$;
+  `);
+}
+
+async function startServer() {
+  try {
+    await runCriticalPreStartMigrations();
+    logger.info("Pre-start schema migrations applied");
+  } catch (err) {
+    logger.warn({ err }, "Pre-start migrations failed (non-fatal — table may not exist yet)");
   }
 
-  logger.info({ port }, "Server listening");
+  const server = app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+
+    logger.info({ port }, "Server listening");
 
   // Graceful shutdown on SIGTERM / SIGINT — release port immediately so the
   // next process can bind without waiting for OS TIME_WAIT.
@@ -113,6 +142,7 @@ const server = app.listen(port, (err) => {
     .then(() => runWithRetry("Audit fix migration", runAuditFixMigration))
     .then(() => runWithRetry("Org full migration", runOrgFullMigration))
     .then(() => runWithRetry("Org unique codes migration", runOrgUniqueCodesMigration))
+    .then(() => runWithRetry("Org/role migration", runOrgRoleMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
@@ -135,4 +165,10 @@ const server = app.listen(port, (err) => {
     .catch((err) => {
       logger.error({ err }, "Startup migration/seed chain failed");
     });
+  });
+}
+
+startServer().catch((err) => {
+  logger.error({ err }, "Fatal startup error");
+  process.exit(1);
 });
