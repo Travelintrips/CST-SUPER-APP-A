@@ -458,53 +458,7 @@ export function AppShell({ children }: AppShellProps) {
             </SidebarGroup>
           </SidebarContent>
 
-          <SidebarFooter className="border-t border-border p-4">
-            <div className="mb-3">
-              <LanguageSelector />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex w-full items-center gap-3 rounded-md p-2 hover:bg-sidebar-accent transition-colors text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
-                  <Avatar className="h-9 w-9 border border-border">
-                    <AvatarFallback className="bg-primary text-primary-foreground">
-                      {getInitials(dbUser?.name || undefined)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-1 flex-col overflow-hidden">
-                    <span className="truncate text-sm font-medium leading-none">
-                      {dbUser?.name || "User"}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground mt-1">
-                      {dbUser?.role || t.common.noRole}
-                    </span>
-                  </div>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-popover text-popover-foreground border-border">
-                <div className="flex items-center gap-2 p-2">
-                  <Avatar className="h-8 w-8 border border-border">
-                    <AvatarFallback>{getInitials(dbUser?.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{dbUser?.name}</p>
-                    <p className="text-xs text-muted-foreground">{dbUser?.email}</p>
-                  </div>
-                </div>
-                <div className="p-2 pt-0">
-                  <Badge variant="secondary" className="w-full justify-center capitalize">
-                    {dbUser?.role} {t.common.division}
-                  </Badge>
-                </div>
-                <DropdownMenuItem
-                  onClick={() => { window.location.href = "/api/logout?redirect=/bizportal/"; }}
-                  className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>{t.common.logOut}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
+          <SidebarFooter />
         </Sidebar>
 
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -520,7 +474,48 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <div className="hidden lg:flex sticky top-0 z-10 h-12 items-center justify-between border-b border-border bg-background px-6">
             <CompanySwitcher />
-            <NotificationBell />
+            <div className="flex items-center gap-3">
+              <LanguageSelector />
+              <NotificationBell />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-accent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Avatar className="h-7 w-7 border border-border">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                        {getInitials(dbUser?.name || undefined)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col text-left">
+                      <span className="text-xs font-medium leading-none">{dbUser?.name || "User"}</span>
+                      <span className="text-[10px] text-muted-foreground">{dbUser?.role || t.common.noRole}</span>
+                    </div>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 bg-popover text-popover-foreground border-border">
+                  <div className="flex items-center gap-2 p-2">
+                    <Avatar className="h-8 w-8 border border-border">
+                      <AvatarFallback>{getInitials(dbUser?.name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{dbUser?.name}</p>
+                      <p className="text-xs text-muted-foreground">{dbUser?.email}</p>
+                    </div>
+                  </div>
+                  <div className="p-2 pt-0">
+                    <Badge variant="secondary" className="w-full justify-center capitalize">
+                      {dbUser?.role} {t.common.division}
+                    </Badge>
+                  </div>
+                  <DropdownMenuItem
+                    onClick={() => { window.location.href = "/api/logout?redirect=/bizportal/"; }}
+                    className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>{t.common.logOut}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
           <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {children}
