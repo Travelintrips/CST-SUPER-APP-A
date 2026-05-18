@@ -164,7 +164,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
 }
 
 export default function BookingForm({ preselectedFacilityId }: BookingFormProps) {
-  const { addBooking } = useBookings();
+  const { addBooking, bookings } = useBookings();
   const [success, setSuccess] = useState<Booking | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -193,9 +193,25 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
     setErrors((prev) => ({ ...prev, [field]: "" }));
   }
 
+  function hasConflict(): boolean {
+    if (!form.facilityId || !form.date || !form.startTime || !form.endTime) return false;
+    return bookings.some(
+      (b) =>
+        b.facilityId === form.facilityId &&
+        b.date === form.date &&
+        b.status !== "cancelled" &&
+        b.startTime < form.endTime &&
+        b.endTime > form.startTime,
+    );
+  }
+
   function validate(): boolean {
     const e: Record<string, string> = {};
-    if (!form.facilityId) e.facilityId = "Pilih fasilitas terlebih dahulu";
+    if (!form.facilityId) {
+      e.facilityId = "Pilih fasilitas terlebih dahulu";
+    } else if (selectedFacility && !selectedFacility.available) {
+      e.facilityId = "Fasilitas ini sedang tidak tersedia untuk booking";
+    }
     if (!form.customerName.trim()) e.customerName = "Nama wajib diisi";
     if (!form.customerPhone.trim()) e.customerPhone = "Nomor WhatsApp wajib diisi";
     else if (!/^(\+62|62|0)[0-9]{8,13}$/.test(form.customerPhone.replace(/[\s\-]/g, "")))
@@ -209,6 +225,8 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
     else if (form.startTime && form.endTime && form.endTime <= form.startTime)
       e.endTime = "Jam selesai harus setelah jam mulai";
     else if (totalHours < 1) e.endTime = "Minimum booking 1 jam";
+    else if (hasConflict())
+      e.endTime = "Slot waktu ini sudah dibooking. Pilih waktu atau fasilitas lain.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -240,7 +258,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
   function handleReset() {
     setSuccess(null);
     setForm({
-      facilityId: "",
+      facilityId: preselectedFacilityId ?? "",
       customerName: "",
       customerPhone: "",
       customerEmail: "",
@@ -288,7 +306,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
         )}
 
         {selectedFacility && (
-          <div className="mt-4 bg-blue-50 rounded-xl p-4 flex gap-4 items-center">
+          <div className={`mt-4 rounded-xl p-4 flex gap-4 items-center ${selectedFacility.available ? "bg-blue-50" : "bg-red-50 border border-red-200"}`}>
             <img
               src={selectedFacility.image}
               alt={selectedFacility.name}
@@ -298,6 +316,9 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
               <p className="font-bold text-slate-800">{selectedFacility.name}</p>
               <p className="text-blue-600 font-semibold text-sm">{formatCurrency(selectedFacility.pricePerHour)}/jam</p>
               <p className="text-xs text-slate-500 mt-0.5">Kapasitas: maks. {selectedFacility.capacity} orang</p>
+              {!selectedFacility.available && (
+                <p className="text-xs text-red-600 font-semibold mt-1">⚠ Fasilitas ini tidak tersedia</p>
+              )}
             </div>
           </div>
         )}

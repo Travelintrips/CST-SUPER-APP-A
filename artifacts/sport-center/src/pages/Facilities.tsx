@@ -3,7 +3,7 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import FacilityCard from "@/components/ui/FacilityCard";
 import { facilities } from "@/data/dummyData";
 
-const categories = ["Semua", "Futsal", "Badminton", "Tenis", "Basket", "Renang", "Gym"];
+const categories = ["Semua", ...Array.from(new Set(facilities.map((f) => f.category))).sort()];
 
 export default function Facilities() {
   const [search, setSearch] = useState("");

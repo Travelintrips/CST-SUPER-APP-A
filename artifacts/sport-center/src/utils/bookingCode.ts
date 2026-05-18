@@ -3,8 +3,8 @@ export function generateBookingCode(): string {
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const dd = String(now.getDate()).padStart(2, "0");
-  const rand = String(Math.floor(Math.random() * 900) + 100);
-  return `BK-${yyyy}${mm}${dd}-${rand}`;
+  const suffix = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `BK-${yyyy}${mm}${dd}-${suffix}`;
 }
 
 export function formatCurrency(amount: number): string {
