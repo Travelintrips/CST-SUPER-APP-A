@@ -3,6 +3,19 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const NOTIFY_SOUND = require('../assets/sounds/notify.mp3') as string | number;
+
+function playNotificationSound(): void {
+  if (Platform.OS !== 'web') return;
+  try {
+    const src = typeof NOTIFY_SOUND === 'string' ? NOTIFY_SOUND : String(NOTIFY_SOUND);
+    const audio = new window.Audio(src);
+    audio.volume = 1.0;
+    audio.play().catch(() => {});
+  } catch {}
+}
+
 // expo-notifications dropped push/remote notification support in Expo Go since
 // SDK 53. The notification handler and channel setup only work in a custom
 // development build (APK). Skip silently when running inside Expo Go so the
@@ -38,7 +51,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 300, 200, 300],
         lightColor: '#FF6B00',
-        sound: 'default',
+        sound: 'notify.mp3',
         enableVibrate: true,
         showBadge: true,
       });
@@ -56,13 +69,14 @@ export function notifyNewJob(
 ): void {
   if (isExpoGo) return;
 
+  playNotificationSound();
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
   Notifications.scheduleNotificationAsync({
     content: {
       title: `🚛 Job Baru: ${jobNumber}`,
       body: `${customerName || 'Pelanggan'}\n📍 ${pickupAddress || '-'}`,
-      sound: 'default',
+      sound: 'notify.mp3',
       data: { jobNumber },
       ...(Platform.OS === 'android' ? { channelId: 'job-alerts' } : {}),
     },

@@ -48,7 +48,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#FF6B00",
           "androidMode": "default",
-          "androidCollapsedTitle": "CST Driver"
+          "androidCollapsedTitle": "CST Driver",
+          "sounds": ["./assets/sounds/notify.mp3"]
         }
       ]
     ],
