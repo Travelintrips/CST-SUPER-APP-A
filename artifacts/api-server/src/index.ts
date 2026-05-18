@@ -24,6 +24,7 @@ import { seedUom } from "./lib/uomSeed";
 import { runOrgFullMigration } from "./lib/orgFullMigration";
 import { runOrgUniqueCodesMigration } from "./lib/orgUniqueCodesMigration";
 import { runOrgRoleMigration } from "./lib/orgRoleMigration";
+import { runUserRoleMigration } from "./lib/userRoleMigration";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -143,6 +144,7 @@ async function startServer() {
     .then(() => runWithRetry("Org full migration", runOrgFullMigration))
     .then(() => runWithRetry("Org unique codes migration", runOrgUniqueCodesMigration))
     .then(() => runWithRetry("Org/role migration", runOrgRoleMigration))
+    .then(() => runWithRetry("User role enum migration", runUserRoleMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

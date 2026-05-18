@@ -22,7 +22,7 @@ function emailIsAdmin(email: string): boolean {
   return !!domain && ADMIN_EMAIL_DOMAINS.includes(domain);
 }
 
-const ALLOWED_ROLES = ["admin", "ecommerce", "trading", "logistics", "pos"] as const;
+const ALLOWED_ROLES = ["admin", "ecommerce", "trading", "logistics", "pos", "pos-kasir", "pos-inventory"] as const;
 type AllowedRole = typeof ALLOWED_ROLES[number];
 
 async function ensureUserRecord(userId: string, email?: string | null, name?: string | null) {
