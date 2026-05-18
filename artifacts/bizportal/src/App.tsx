@@ -11,6 +11,7 @@ import { AppRoutes } from "@/routes";
 import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
+import ApprovalsPage from "@/pages/approvals/index";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
@@ -269,6 +270,7 @@ function Router() {
         <Route path="/" component={AuthRouteGuard} />
         <Route path="/welcome" component={() => <ProtectedRoute component={WelcomePage} />} />
         <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
+        <Route path="/approvals" component={() => <ProtectedRoute component={ApprovalsPage} />} />
         <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
         <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
