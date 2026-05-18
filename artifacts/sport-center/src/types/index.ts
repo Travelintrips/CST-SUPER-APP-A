@@ -7,28 +7,19 @@ export interface Facility {
   capacity: number;
   amenities: string[];
   available: boolean;
-  rating: number;
-  category: string;
+  rating?: number;
+  category?: string;
 }
 
-export interface TimeSlot {
+export interface Schedule {
   id: string;
   facilityId: string;
   day: string;
   startTime: string;
   endTime: string;
-  available: boolean;
-}
-
-export interface DayScheduleItem {
-  id: string;
-  time: string;
   activity: string;
-  location: string;
-  facilityId: string;
-  totalSlots: number;
-  bookedSlots: number;
-  pricePerHour: number;
+  availableSlots: number;
+  price: number;
 }
 
 export interface Booking {
@@ -56,19 +47,4 @@ export interface Testimonial {
   content: string;
   rating: number;
   avatar: string;
-}
-
-export interface Schedule {
-  facilityId: string;
-  facilityName: string;
-  slots: {
-    time: string;
-    mon: boolean;
-    tue: boolean;
-    wed: boolean;
-    thu: boolean;
-    fri: boolean;
-    sat: boolean;
-    sun: boolean;
-  }[];
 }
