@@ -20,6 +20,17 @@ export interface TimeSlot {
   available: boolean;
 }
 
+export interface DayScheduleItem {
+  id: string;
+  time: string;
+  activity: string;
+  location: string;
+  facilityId: string;
+  totalSlots: number;
+  bookedSlots: number;
+  pricePerHour: number;
+}
+
 export interface Booking {
   id: string;
   bookingCode: string;

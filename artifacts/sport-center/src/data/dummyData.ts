@@ -1,4 +1,4 @@
-import type { Facility, Testimonial, Schedule } from "@/types";
+import type { Facility, Testimonial, DayScheduleItem } from "@/types";
 
 export const facilities: Facility[] = [
   {
@@ -117,38 +117,104 @@ export const testimonials: Testimonial[] = [
   },
 ];
 
-export const schedules: Schedule[] = [
-  {
-    facilityId: "futsal-1",
-    facilityName: "Lapangan Futsal Indoor",
-    slots: [
-      { time: "06:00 - 07:00", mon: true, tue: true, wed: false, thu: true, fri: true, sat: false, sun: false },
-      { time: "07:00 - 08:00", mon: false, tue: false, wed: true, thu: false, fri: false, sat: true, sun: true },
-      { time: "08:00 - 09:00", mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true },
-      { time: "09:00 - 10:00", mon: true, tue: false, wed: true, thu: false, fri: true, sat: false, sun: true },
-      { time: "15:00 - 16:00", mon: false, tue: true, wed: false, thu: true, fri: false, sat: true, sun: false },
-      { time: "16:00 - 17:00", mon: true, tue: true, wed: true, thu: true, fri: false, sat: false, sun: true },
-      { time: "17:00 - 18:00", mon: false, tue: false, wed: false, thu: false, fri: true, sat: true, sun: false },
-      { time: "19:00 - 20:00", mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true },
-      { time: "20:00 - 21:00", mon: false, tue: true, wed: false, thu: true, fri: true, sat: false, sun: false },
-    ],
-  },
-  {
-    facilityId: "badminton-1",
-    facilityName: "Lapangan Badminton A",
-    slots: [
-      { time: "06:00 - 07:00", mon: true, tue: true, wed: true, thu: false, fri: true, sat: true, sun: false },
-      { time: "07:00 - 08:00", mon: false, tue: false, wed: false, thu: true, fri: false, sat: false, sun: true },
-      { time: "08:00 - 09:00", mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true },
-      { time: "16:00 - 17:00", mon: false, tue: true, wed: false, thu: false, fri: false, sat: true, sun: true },
-      { time: "17:00 - 18:00", mon: true, tue: false, wed: true, thu: true, fri: true, sat: false, sun: false },
-      { time: "18:00 - 19:00", mon: false, tue: true, wed: false, thu: false, fri: false, sat: true, sun: true },
-    ],
-  },
-];
-
 export const timeOptions = [
   "06:00", "07:00", "08:00", "09:00", "10:00", "11:00",
   "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
-  "18:00", "19:00", "20:00", "21:00", "22:00",
+  "18:00", "19:00", "20:00", "21:00",
 ];
+
+export type DayKey = "senin" | "selasa" | "rabu" | "kamis" | "jumat" | "sabtu" | "minggu";
+
+export const dayLabels: { key: DayKey; label: string; short: string }[] = [
+  { key: "senin", label: "Senin", short: "Sen" },
+  { key: "selasa", label: "Selasa", short: "Sel" },
+  { key: "rabu", label: "Rabu", short: "Rab" },
+  { key: "kamis", label: "Kamis", short: "Kam" },
+  { key: "jumat", label: "Jumat", short: "Jum" },
+  { key: "sabtu", label: "Sabtu", short: "Sab" },
+  { key: "minggu", label: "Minggu", short: "Min" },
+];
+
+export const daySchedules: Record<DayKey, DayScheduleItem[]> = {
+  senin: [
+    { id: "s1", time: "06:00 – 07:00", activity: "Futsal Umum", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s2", time: "07:00 – 08:00", activity: "Kelas Badminton Pagi", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 3, pricePerHour: 75000 },
+    { id: "s3", time: "08:00 – 09:00", activity: "Renang Bebas", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 10, pricePerHour: 50000 },
+    { id: "s4", time: "09:00 – 10:00", activity: "Latihan Tenis", location: "Lapangan Tenis Outdoor", facilityId: "tenis-1", totalSlots: 6, bookedSlots: 6, pricePerHour: 100000 },
+    { id: "s5", time: "10:00 – 11:00", activity: "Futsal Umum", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 5, pricePerHour: 150000 },
+    { id: "s6", time: "10:00 – 11:00", activity: "Sesi Gym Pagi", location: "Fitness Center & Gym", facilityId: "gym-1", totalSlots: 20, bookedSlots: 8, pricePerHour: 35000 },
+    { id: "s7", time: "15:00 – 16:00", activity: "Kelas Basket Junior", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 20, pricePerHour: 200000 },
+    { id: "s8", time: "16:00 – 17:00", activity: "Badminton Sore", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 2, pricePerHour: 75000 },
+    { id: "s9", time: "17:00 – 18:00", activity: "Futsal Sore", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s10", time: "19:00 – 20:00", activity: "Futsal Malam", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 7, pricePerHour: 150000 },
+    { id: "s11", time: "19:00 – 20:00", activity: "Renang Malam", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 12, pricePerHour: 50000 },
+    { id: "s12", time: "20:00 – 21:00", activity: "Basket Malam", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 9, pricePerHour: 200000 },
+  ],
+  selasa: [
+    { id: "s13", time: "06:00 – 07:00", activity: "Renang Pagi", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 15, pricePerHour: 50000 },
+    { id: "s14", time: "07:00 – 08:00", activity: "Futsal Pagi", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s15", time: "08:00 – 09:00", activity: "Badminton Pagi", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 4, pricePerHour: 75000 },
+    { id: "s16", time: "09:00 – 10:00", activity: "Sesi Gym Pagi", location: "Fitness Center & Gym", facilityId: "gym-1", totalSlots: 20, bookedSlots: 6, pricePerHour: 35000 },
+    { id: "s17", time: "16:00 – 17:00", activity: "Tenis Sore", location: "Lapangan Tenis Outdoor", facilityId: "tenis-1", totalSlots: 6, bookedSlots: 3, pricePerHour: 100000 },
+    { id: "s18", time: "17:00 – 18:00", activity: "Futsal Sore", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 10, pricePerHour: 150000 },
+    { id: "s19", time: "18:00 – 19:00", activity: "Basket Sore", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 20, pricePerHour: 200000 },
+    { id: "s20", time: "19:00 – 20:00", activity: "Badminton Malam", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 5, pricePerHour: 75000 },
+    { id: "s21", time: "20:00 – 21:00", activity: "Futsal Malam", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 7, pricePerHour: 150000 },
+  ],
+  rabu: [
+    { id: "s22", time: "06:00 – 07:00", activity: "Futsal Pagi", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 8, pricePerHour: 150000 },
+    { id: "s23", time: "07:00 – 08:00", activity: "Kelas Renang Anak", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 20, bookedSlots: 20, pricePerHour: 50000 },
+    { id: "s24", time: "08:00 – 09:00", activity: "Gym Pagi", location: "Fitness Center & Gym", facilityId: "gym-1", totalSlots: 20, bookedSlots: 11, pricePerHour: 35000 },
+    { id: "s25", time: "09:00 – 10:00", activity: "Badminton Umum", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 2, pricePerHour: 75000 },
+    { id: "s26", time: "15:00 – 16:00", activity: "Tenis Sore", location: "Lapangan Tenis Outdoor", facilityId: "tenis-1", totalSlots: 6, bookedSlots: 6, pricePerHour: 100000 },
+    { id: "s27", time: "16:00 – 17:00", activity: "Futsal Sore", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 4, pricePerHour: 150000 },
+    { id: "s28", time: "17:00 – 18:00", activity: "Badminton Sore", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 8, pricePerHour: 75000 },
+    { id: "s29", time: "19:00 – 20:00", activity: "Basket Malam", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 13, pricePerHour: 200000 },
+  ],
+  kamis: [
+    { id: "s30", time: "06:00 – 07:00", activity: "Renang Pagi", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 9, pricePerHour: 50000 },
+    { id: "s31", time: "07:00 – 08:00", activity: "Badminton Pagi", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 8, pricePerHour: 75000 },
+    { id: "s32", time: "09:00 – 10:00", activity: "Futsal Pagi", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 6, pricePerHour: 150000 },
+    { id: "s33", time: "10:00 – 11:00", activity: "Tenis Pagi", location: "Lapangan Tenis Outdoor", facilityId: "tenis-1", totalSlots: 6, bookedSlots: 2, pricePerHour: 100000 },
+    { id: "s34", time: "15:00 – 16:00", activity: "Gym Sore", location: "Fitness Center & Gym", facilityId: "gym-1", totalSlots: 20, bookedSlots: 15, pricePerHour: 35000 },
+    { id: "s35", time: "16:00 – 17:00", activity: "Futsal Sore", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s36", time: "17:00 – 18:00", activity: "Basket Sore", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 7, pricePerHour: 200000 },
+    { id: "s37", time: "19:00 – 20:00", activity: "Futsal Malam", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 11, pricePerHour: 150000 },
+    { id: "s38", time: "20:00 – 21:00", activity: "Badminton Malam", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 3, pricePerHour: 75000 },
+  ],
+  jumat: [
+    { id: "s39", time: "06:00 – 07:00", activity: "Futsal Pagi", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s40", time: "07:00 – 08:00", activity: "Renang Pagi", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 18, pricePerHour: 50000 },
+    { id: "s41", time: "08:00 – 09:00", activity: "Badminton Pagi", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 5, pricePerHour: 75000 },
+    { id: "s42", time: "09:00 – 10:00", activity: "Gym Pagi", location: "Fitness Center & Gym", facilityId: "gym-1", totalSlots: 20, bookedSlots: 7, pricePerHour: 35000 },
+    { id: "s43", time: "15:00 – 16:00", activity: "Tenis Sore", location: "Lapangan Tenis Outdoor", facilityId: "tenis-1", totalSlots: 6, bookedSlots: 4, pricePerHour: 100000 },
+    { id: "s44", time: "16:00 – 17:00", activity: "Futsal Sore", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 9, pricePerHour: 150000 },
+    { id: "s45", time: "17:00 – 18:00", activity: "Basket Sore", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 20, pricePerHour: 200000 },
+    { id: "s46", time: "19:00 – 20:00", activity: "Futsal Malam", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s47", time: "20:00 – 21:00", activity: "Badminton Malam", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 1, pricePerHour: 75000 },
+  ],
+  sabtu: [
+    { id: "s48", time: "06:00 – 07:00", activity: "Renang Pagi", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 25, pricePerHour: 50000 },
+    { id: "s49", time: "07:00 – 08:00", activity: "Futsal Weekend", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s50", time: "08:00 – 09:00", activity: "Kelas Basket Anak", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 15, bookedSlots: 15, pricePerHour: 200000 },
+    { id: "s51", time: "09:00 – 10:00", activity: "Badminton Weekend", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 6, pricePerHour: 75000 },
+    { id: "s52", time: "10:00 – 11:00", activity: "Tenis Weekend", location: "Lapangan Tenis Outdoor", facilityId: "tenis-1", totalSlots: 6, bookedSlots: 3, pricePerHour: 100000 },
+    { id: "s53", time: "10:00 – 11:00", activity: "Futsal Weekend", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 7, pricePerHour: 150000 },
+    { id: "s54", time: "15:00 – 16:00", activity: "Renang Sore", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 20, pricePerHour: 50000 },
+    { id: "s55", time: "16:00 – 17:00", activity: "Futsal Sore", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s56", time: "17:00 – 18:00", activity: "Basket Sore", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 12, pricePerHour: 200000 },
+    { id: "s57", time: "19:00 – 20:00", activity: "Futsal Malam", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s58", time: "20:00 – 21:00", activity: "Gym Malam", location: "Fitness Center & Gym", facilityId: "gym-1", totalSlots: 20, bookedSlots: 10, pricePerHour: 35000 },
+  ],
+  minggu: [
+    { id: "s59", time: "06:00 – 07:00", activity: "Senam Pagi", location: "Fitness Center & Gym", facilityId: "gym-1", totalSlots: 20, bookedSlots: 8, pricePerHour: 35000 },
+    { id: "s60", time: "07:00 – 08:00", activity: "Renang Keluarga", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 50, bookedSlots: 32, pricePerHour: 50000 },
+    { id: "s61", time: "08:00 – 09:00", activity: "Futsal Weekend", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 14, pricePerHour: 150000 },
+    { id: "s62", time: "09:00 – 10:00", activity: "Badminton Keluarga", location: "Lapangan Badminton A", facilityId: "badminton-1", totalSlots: 8, bookedSlots: 8, pricePerHour: 75000 },
+    { id: "s63", time: "10:00 – 11:00", activity: "Tenis Keluarga", location: "Lapangan Tenis Outdoor", facilityId: "tenis-1", totalSlots: 6, bookedSlots: 2, pricePerHour: 100000 },
+    { id: "s64", time: "15:00 – 16:00", activity: "Basket Umum", location: "Lapangan Basket", facilityId: "basket-1", totalSlots: 20, bookedSlots: 14, pricePerHour: 200000 },
+    { id: "s65", time: "16:00 – 17:00", activity: "Futsal Sore", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 9, pricePerHour: 150000 },
+    { id: "s66", time: "17:00 – 18:00", activity: "Renang Sore", location: "Kolam Renang Olimpik", facilityId: "renang-1", totalSlots: 30, bookedSlots: 30, pricePerHour: 50000 },
+    { id: "s67", time: "19:00 – 20:00", activity: "Futsal Malam", location: "Lapangan Futsal Indoor", facilityId: "futsal-1", totalSlots: 14, bookedSlots: 11, pricePerHour: 150000 },
+  ],
+};

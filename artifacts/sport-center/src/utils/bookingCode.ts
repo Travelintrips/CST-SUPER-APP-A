@@ -1,7 +1,10 @@
 export function generateBookingCode(): string {
-  const year = new Date().getFullYear();
-  const random = Math.random().toString(36).substring(2, 7).toUpperCase();
-  return `SC-${year}-${random}`;
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const rand = String(Math.floor(Math.random() * 900) + 100);
+  return `BK-${yyyy}${mm}${dd}-${rand}`;
 }
 
 export function formatCurrency(amount: number): string {
@@ -14,7 +17,7 @@ export function formatCurrency(amount: number): string {
 }
 
 export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("id-ID", {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("id-ID", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -23,6 +26,7 @@ export function formatDate(dateStr: string): string {
 }
 
 export function calculateTotalHours(startTime: string, endTime: string): number {
+  if (!startTime || !endTime) return 0;
   const [sh, sm] = startTime.split(":").map(Number);
   const [eh, em] = endTime.split(":").map(Number);
   const startMinutes = sh * 60 + sm;
