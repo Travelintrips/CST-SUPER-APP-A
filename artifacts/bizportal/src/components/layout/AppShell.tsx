@@ -99,7 +99,7 @@ interface GroupItem {
   basePath: string;
   icon: LucideIcon;
   roles: string[];
-  children: { titleKey: string; href: string; icon: LucideIcon }[];
+  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[] }[];
   companyCodes?: string[];
 }
 
@@ -210,13 +210,14 @@ export function AppShell({ children }: AppShellProps) {
       titleKey: "Laporan",
       basePath: "/reports",
       icon: BarChart2,
-      roles: ["manager", "admin", "owner"],
+      roles: ["manager", "admin", "owner", "kasir", "gudang"],
       children: [
-        { titleKey: "Laporan Penjualan", href: "/reports/sales", icon: TrendingUp },
-        { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag },
-        { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch },
-        { titleKey: "AR Aging", href: "/reports/ar-aging", icon: Receipt },
-        { titleKey: "AP Aging", href: "/reports/ap-aging", icon: FileText },
+        { titleKey: "Lap. Operasional (POS & Stok)", href: "/reports/operasional", icon: BarChart2, roles: ["manager", "admin", "owner", "kasir", "gudang"] },
+        { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
+        { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
+        { titleKey: "Valuasi Persediaan", href: "/reports/inventory-valuation", icon: PackageSearch, roles: ["admin", "owner"] },
+        { titleKey: "AR Aging", href: "/reports/ar-aging", icon: Receipt, roles: ["admin", "owner"] },
+        { titleKey: "AP Aging", href: "/reports/ap-aging", icon: FileText, roles: ["admin", "owner"] },
       ],
     },
 
@@ -480,7 +481,7 @@ export function AppShell({ children }: AppShellProps) {
         </SidebarMenuButton>
         {open && (
           <SidebarMenuSub>
-            {item.children.map((c) => (
+            {item.children.filter((c) => !c.roles || (dbUser?.role && c.roles.includes(dbUser.role))).map((c) => (
               <SidebarMenuSubItem key={c.href}>
                 <SidebarMenuSubButton asChild isActive={isChildActive(c.href)}>
                   <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
