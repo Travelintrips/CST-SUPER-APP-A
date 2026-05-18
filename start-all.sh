@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# Kill any processes on our ports before starting
-for PORT in 5000 23434 8080 8082; do
+# Kill any stale processes on our ports before starting
+for PORT in 8080 5000; do
   fuser -k ${PORT}/tcp 2>/dev/null || true
 done
 
@@ -21,15 +21,5 @@ cd artifacts/bizportal
 PORT=5000 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
 BIZPORTAL_PID=$!
 
-echo "==> Starting Customer Portal on port 23434..."
-cd ../customer-portal
-PORT=23434 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
-PORTAL_PID=$!
-
-echo "==> Starting Sport Center on port 8082..."
-cd ../sport-center
-PORT=8082 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
-SPORT_PID=$!
-
-echo "==> All services started. API=$APISERVER_PID BizPortal=$BIZPORTAL_PID Portal=$PORTAL_PID Sport=$SPORT_PID"
+echo "==> All services started. API=$APISERVER_PID BizPortal=$BIZPORTAL_PID"
 wait
