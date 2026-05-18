@@ -51,6 +51,19 @@ async function nextExpenseNumber(): Promise<string> {
 
 // ===================== Expense Categories =====================
 
+router.get("/categories/check-code", async (req, res) => {
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) return res.json({ taken: false });
+  const result = await db.execute(sql`
+    SELECT id FROM expense_categories
+    WHERE UPPER(code) = ${code}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  return res.json({ taken: result.rows.length > 0 });
+});
+
 router.get("/categories", async (_req, res) => {
   const rows = await db
     .select()

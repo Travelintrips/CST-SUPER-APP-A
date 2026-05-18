@@ -1,4 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
+import { useCodeCheck } from "@/hooks/useCodeCheck";
+import { CodeCheckIndicator } from "@/components/ui/code-check-indicator";
 import {
   useListProducts,
   useCreateProduct,
@@ -421,6 +423,11 @@ export default function SalesItemsPage() {
   const setF = <K extends keyof ItemForm>(key: K, val: ItemForm[K]) =>
     setForm((f) => ({ ...f, [key]: val }));
 
+  const skuCheckUrl = dialogOpen && form.sku.trim()
+    ? `/api/ecommerce/products/check-sku?sku=${encodeURIComponent(form.sku)}${editingId ? `&excludeId=${editingId}` : ""}`
+    : null;
+  const { checking: skuChecking, taken: skuTaken } = useCodeCheck(skuCheckUrl, form.sku);
+
   const validate = (): string | null => {
     if (!form.name.trim()) return "Nama item wajib diisi";
     if (!form.sku.trim()) return "SKU/Kode item wajib diisi";
@@ -736,8 +743,9 @@ export default function SalesItemsPage() {
                   value={form.sku}
                   onChange={(e) => setF("sku", e.target.value)}
                   placeholder="SVC-001"
-                  className="bg-slate-800 border-slate-600 text-slate-200"
+                  className={`bg-slate-800 border-slate-600 text-slate-200${skuTaken === true ? " border-destructive" : ""}`}
                 />
+                <CodeCheckIndicator checking={skuChecking} taken={skuTaken} />
               </div>
             </div>
 

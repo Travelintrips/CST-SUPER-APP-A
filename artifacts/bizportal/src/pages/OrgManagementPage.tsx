@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useCodeCheck } from "@/hooks/useCodeCheck";
+import { CodeCheckIndicator } from "@/components/ui/code-check-indicator";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -217,6 +219,14 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
   const [dialog, setDialog] = useState<{ open: boolean; mode: "add" | "edit"; item: Record<string, unknown> }>({ open: false, mode: "add", item: {} });
   const [formError, setFormError] = useState<string | null>(null);
 
+  const dialogCode = String(dialog.item.code ?? "");
+  const dialogCompanyId = dialog.item.companyId ? Number(dialog.item.companyId) : null;
+  const dialogExcludeId = dialog.mode === "edit" && dialog.item.id ? Number(dialog.item.id) : null;
+  const codeCheckUrl = dialog.open && dialogCode.trim() && dialogCompanyId
+    ? `${endpoint}/check-code?code=${encodeURIComponent(dialogCode)}&companyId=${dialogCompanyId}${dialogExcludeId ? `&excludeId=${dialogExcludeId}` : ""}`
+    : null;
+  const { checking: codeChecking, taken: codeTaken } = useCodeCheck(codeCheckUrl, dialogCode);
+
   const url = companyFilter !== "all" ? `${endpoint}?companyId=${companyFilter}` : `${endpoint}?companyId=all`;
   const { data: rows = [], isLoading } = useQuery<T[]>({ queryKey: [queryKey, companyFilter], queryFn: () => apiFetch(url) });
 
@@ -330,10 +340,11 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
               <div>
                 <Label className="text-xs">Kode</Label>
                 <Input
-                  className={`mt-1 ${formError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  className={`mt-1 ${codeTaken === true ? "border-destructive focus-visible:ring-destructive" : formError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                   value={String(dialog.item.code ?? "")}
                   onChange={e => { setFormError(null); setDialog(d => ({ ...d, item: { ...d.item, code: e.target.value.toUpperCase() } })); }}
                 />
+                <CodeCheckIndicator checking={codeChecking} taken={codeTaken} />
               </div>
             </div>
             <div>

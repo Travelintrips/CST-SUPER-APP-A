@@ -75,6 +75,22 @@ router.get("/branches", async (req, res) => {
   return res.json(rows.rows);
 });
 
+router.get("/branches/check-code", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) return res.json({ taken: false });
+  const result = await db.execute(sql`
+    SELECT id FROM branches
+    WHERE UPPER(COALESCE(code, '')) = ${code}
+    ${companyId && !Number.isNaN(companyId) ? sql`AND company_id = ${companyId}` : sql``}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  return res.json({ taken: result.rows.length > 0 });
+});
+
 router.post("/branches", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { companyId, name, code, address, phone } = req.body ?? {};
@@ -147,6 +163,22 @@ router.get("/divisions", async (req, res) => {
     ORDER BY c.company_code, d.name
   `);
   return res.json(rows.rows);
+});
+
+router.get("/divisions/check-code", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) return res.json({ taken: false });
+  const result = await db.execute(sql`
+    SELECT id FROM divisions
+    WHERE UPPER(COALESCE(code, '')) = ${code}
+    ${companyId && !Number.isNaN(companyId) ? sql`AND company_id = ${companyId}` : sql``}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  return res.json({ taken: result.rows.length > 0 });
 });
 
 router.post("/divisions", async (req, res) => {
@@ -241,6 +273,22 @@ router.get("/departments", async (req, res) => {
   return res.json(rows.rows);
 });
 
+router.get("/departments/check-code", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) return res.json({ taken: false });
+  const result = await db.execute(sql`
+    SELECT id FROM departments
+    WHERE UPPER(COALESCE(code, '')) = ${code}
+    ${companyId && !Number.isNaN(companyId) ? sql`AND company_id = ${companyId}` : sql``}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  return res.json({ taken: result.rows.length > 0 });
+});
+
 router.post("/departments", async (req, res) => {
   if (!(await requireAdmin(req, res))) return;
   const { companyId, divisionId, branchId, name, code, description, managerId } = req.body ?? {};
@@ -323,6 +371,22 @@ router.get("/sections", async (req, res) => {
     ORDER BY c.company_code, dep.name, s.name
   `);
   return res.json(rows.rows);
+});
+
+router.get("/sections/check-code", async (req, res) => {
+  if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const companyId = req.query.companyId ? Number(req.query.companyId) : null;
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) return res.json({ taken: false });
+  const result = await db.execute(sql`
+    SELECT id FROM sections
+    WHERE UPPER(COALESCE(code, '')) = ${code}
+    ${companyId && !Number.isNaN(companyId) ? sql`AND company_id = ${companyId}` : sql``}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  return res.json({ taken: result.rows.length > 0 });
 });
 
 router.post("/sections", async (req, res) => {

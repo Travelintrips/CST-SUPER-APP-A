@@ -163,6 +163,19 @@ router.get("/racks", async (req: Request, res: Response) => {
   res.json(rows.rows);
 });
 
+router.get("/racks/check-code", async (req: Request, res: Response) => {
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) { res.json({ taken: false }); return; }
+  const result = await db.execute(sql`
+    SELECT id FROM pos_racks
+    WHERE UPPER(code) = ${code}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  res.json({ taken: result.rows.length > 0 });
+});
+
 router.post("/racks", async (req: Request, res: Response) => {
   const { code, name, warehouseId, isActive } = req.body as { code: string; name: string; warehouseId: number; isActive?: boolean };
   if (!code || !name || !warehouseId) { res.status(400).json({ message: "code, name, warehouseId wajib diisi" }); return; }
