@@ -527,12 +527,12 @@ export default function SettingsRolesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs flex items-center gap-1"><Building2 className="h-3 w-3" />Perusahaan</Label>
-                  <Select value={form.companyId} onValueChange={(v) => setForm(f => ({
-                    ...f, companyId: v, branchId: "", divisionId: "", departmentId: "",
+                  <Select value={form.companyId || "__all__"} onValueChange={(v) => setForm(f => ({
+                    ...f, companyId: v === "__all__" ? "" : v, branchId: "", divisionId: "", departmentId: "",
                   }))}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Semua / Pilih..." /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">— Semua —</SelectItem>
+                      <SelectItem value="__all__">— Semua —</SelectItem>
                       {companies.map(c => (
                         <SelectItem key={c.id} value={String(c.id)}>{c.companyCode} — {c.companyName}</SelectItem>
                       ))}
@@ -543,10 +543,10 @@ export default function SettingsRolesPage() {
                 {(needsBranch || form.scopeType === "branch_only") && (
                   <div className="space-y-1.5">
                     <Label className="text-xs flex items-center gap-1"><GitBranch className="h-3 w-3" />Cabang</Label>
-                    <Select value={form.branchId} onValueChange={(v) => setForm(f => ({ ...f, branchId: v }))}>
+                    <Select value={form.branchId || "__none__"} onValueChange={(v) => setForm(f => ({ ...f, branchId: v === "__none__" ? "" : v }))}>
                       <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih cabang..." /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">— Tidak dipilih —</SelectItem>
+                        <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
                         {filteredBranches.map(b => (
                           <SelectItem key={b.id} value={String(b.id)}>{b.code ? `[${b.code}] ` : ""}{b.name}</SelectItem>
                         ))}
@@ -558,10 +558,10 @@ export default function SettingsRolesPage() {
                 {needsDivision && (
                   <div className="space-y-1.5">
                     <Label className="text-xs flex items-center gap-1"><LayoutList className="h-3 w-3" />Divisi</Label>
-                    <Select value={form.divisionId} onValueChange={(v) => setForm(f => ({ ...f, divisionId: v, departmentId: "" }))}>
+                    <Select value={form.divisionId || "__none__"} onValueChange={(v) => setForm(f => ({ ...f, divisionId: v === "__none__" ? "" : v, departmentId: "" }))}>
                       <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih divisi..." /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">— Tidak dipilih —</SelectItem>
+                        <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
                         {filteredDivisions.map(d => (
                           <SelectItem key={d.id} value={String(d.id)}>{d.code ? `[${d.code}] ` : ""}{d.name}</SelectItem>
                         ))}
@@ -573,10 +573,10 @@ export default function SettingsRolesPage() {
                 {needsDepartment && (
                   <div className="space-y-1.5">
                     <Label className="text-xs flex items-center gap-1"><FolderOpen className="h-3 w-3" />Departemen</Label>
-                    <Select value={form.departmentId} onValueChange={(v) => setForm(f => ({ ...f, departmentId: v }))}>
+                    <Select value={form.departmentId || "__none__"} onValueChange={(v) => setForm(f => ({ ...f, departmentId: v === "__none__" ? "" : v }))}>
                       <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pilih departemen..." /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">— Tidak dipilih —</SelectItem>
+                        <SelectItem value="__none__">— Tidak dipilih —</SelectItem>
                         {filteredDepartments.map(d => (
                           <SelectItem key={d.id} value={String(d.id)}>{d.code ? `[${d.code}] ` : ""}{d.name}</SelectItem>
                         ))}

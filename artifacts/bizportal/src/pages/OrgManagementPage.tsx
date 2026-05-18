@@ -286,10 +286,10 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
             {parentKey && parentLabel && (
               <div>
                 <Label className="text-xs">{parentLabel}</Label>
-                <Select value={String(dialog.item[parentKey] ?? "")} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, [parentKey!]: v ? Number(v) : null } }))}>
+                <Select value={String(dialog.item[parentKey] ?? "__none__")} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, [parentKey!]: v === "__none__" ? null : Number(v) } }))}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder={`Pilih ${parentLabel}`} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— Tidak ada —</SelectItem>
+                    <SelectItem value="__none__">— Tidak ada —</SelectItem>
                     {filteredParents.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code ? `[${p.code}] ` : ""}{p.name}</SelectItem>)}
                   </SelectContent>
                 </Select>

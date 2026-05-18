@@ -227,10 +227,10 @@ export default function PosStockOpnamePage() {
             </div>
             <div className="space-y-2">
               <Label>Gudang (opsional)</Label>
-              <Select value={form.warehouseId} onValueChange={v => setForm(f => ({ ...f, warehouseId: v }))}>
+              <Select value={form.warehouseId || "__all__"} onValueChange={v => setForm(f => ({ ...f, warehouseId: v === "__all__" ? "" : v }))}>
                 <SelectTrigger><SelectValue placeholder="Semua gudang" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Semua Gudang</SelectItem>
+                  <SelectItem value="__all__">Semua Gudang</SelectItem>
                   {filteredWarehouses.map(w => <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>)}
                 </SelectContent>
               </Select>
