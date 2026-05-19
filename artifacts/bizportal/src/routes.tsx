@@ -95,6 +95,13 @@ import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import SportCenterSchedulePage from "@/pages/sport-center-schedule";
 import SportCenterReportPage from "@/pages/sport-center-report";
+import MediaManagerPage from "@/pages/media-manager";
+import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
+import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
+import HoldingPage from "@/pages/HoldingPage";
+import OrgManagementPage from "@/pages/OrgManagementPage";
+import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
+import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
 import SportCenterDashboard from "@/pages/sport-center/index";
 import SportCenterBookingsPage from "@/pages/sport-center/bookings";
 import SportCenterServicesPage from "@/pages/sport-center/services";
@@ -221,10 +228,17 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
       <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
+      <Route path="/settings/ai-knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings/roles" component={PR(SettingsRolesPage)} />
+      <Route path="/settings/approval-rules" component={PR(SettingsApprovalRulesPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
       <Route path="/users" component={PR(UsersPage)} />
+      <Route path="/media" component={PR(MediaManagerPage)} />
+      <Route path="/org-management" component={PR(OrgManagementPage)} />
+      <Route path="/holding" component={PR(HoldingPage)} />
+      <Route path="/holding/dashboard" component={PR(HoldingDashboardPage)} />
+      <Route path="/holding/pl-report" component={PR(HoldingPLReportPage)} />
       <Route path="/sport-center" component={PR(SportCenterDashboard)} />
       <Route path="/sport-center/bookings" component={PR(SportCenterBookingsPage)} />
       <Route path="/sport-center/services" component={PR(SportCenterServicesPage)} />
