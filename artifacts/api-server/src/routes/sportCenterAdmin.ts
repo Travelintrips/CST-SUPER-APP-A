@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postSportCenterBooking } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
 export const sportCenterAdminRouter = Router();
 
@@ -66,6 +67,13 @@ async function ensureTables() {
   await db.execute(sql`ALTER TABLE sport_center_services ADD COLUMN IF NOT EXISTS code TEXT UNIQUE`);
   await db.execute(sql`ALTER TABLE sport_center_services ADD COLUMN IF NOT EXISTS image_url TEXT`);
   await db.execute(sql`ALTER TABLE sport_center_services ADD COLUMN IF NOT EXISTS amenities JSONB NOT NULL DEFAULT '[]'`);
+  // Tambah nilai enum baru ke accounting_entry_source (idempotent, PG 9.6+)
+  await db.execute(sql`
+    DO $$ BEGIN
+      ALTER TYPE accounting_entry_source ADD VALUE IF NOT EXISTS 'sport_center_booking';
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS sport_center_purchase_requests (
       id SERIAL PRIMARY KEY,
@@ -212,12 +220,43 @@ sportCenterAdminRouter.put("/bookings/:id/status", async (req: Request, res: Res
       date: prev.date,
       totalPrice: Number(prev.total_price),
       createdById: userId,
-    }).catch(() => {});
+    }).catch((err) => {
+      req.log?.error({ bookingId: id, err }, "Auto-post Sport Center booking failed");
+    });
+
+    const confirmMsg = buildConfirmationMessage(prev);
 
     // Kirim notifikasi WhatsApp ke pelanggan
     if (prev.customer_phone) {
-      const msg = buildConfirmationMessage(prev);
-      sendWhatsApp(prev.customer_phone, msg).catch(() => {});
+      sendWhatsApp(prev.customer_phone, confirmMsg).catch(() => {});
+    }
+
+    // Kirim email konfirmasi ke pelanggan
+    if (isSmtpConfigured() && prev.customer_email) {
+      const price = Number(prev.total_price).toLocaleString("id-ID", {
+        style: "currency", currency: "IDR", maximumFractionDigits: 0,
+      });
+      const hours = parseFloat(prev.total_hours);
+      sendMail({
+        to: prev.customer_email,
+        subject: `Booking Dikonfirmasi — ${prev.booking_code} | Sport Center SHIA`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:auto">
+<h2 style="color:#16a34a">✅ Booking Anda Dikonfirmasi!</h2>
+<p>Halo <b>${prev.customer_name}</b>,</p>
+<p>Booking Anda di Sport Center SHIA telah <b>dikonfirmasi</b>. Berikut detailnya:</p>
+<table style="border-collapse:collapse;width:100%;font-size:14px;margin:16px 0">
+  <tr style="background:#f0fdf4"><td style="padding:8px 12px;color:#666;width:40%">Kode Booking</td><td style="padding:8px 12px"><b>${prev.booking_code}</b></td></tr>
+  <tr><td style="padding:8px 12px;color:#666">Fasilitas</td><td style="padding:8px 12px">${prev.facility_name}</td></tr>
+  <tr style="background:#f0fdf4"><td style="padding:8px 12px;color:#666">Tanggal</td><td style="padding:8px 12px">${prev.date}</td></tr>
+  <tr><td style="padding:8px 12px;color:#666">Waktu</td><td style="padding:8px 12px">${prev.start_time} – ${prev.end_time} (${hours} jam)</td></tr>
+  <tr style="background:#f0fdf4"><td style="padding:8px 12px;color:#666">Total Pembayaran</td><td style="padding:8px 12px"><b>${price}</b></td></tr>
+  ${prev.notes ? `<tr><td style="padding:8px 12px;color:#666">Catatan</td><td style="padding:8px 12px">${prev.notes}</td></tr>` : ""}
+</table>
+<p style="color:#374151">Mohon hadir tepat waktu. Terima kasih telah menggunakan layanan Sport Center SHIA!</p>
+<p style="color:#9ca3af;font-size:12px">Pesan ini dikirim otomatis. Hubungi kami jika ada pertanyaan.</p>
+</div>`,
+        text: `Booking Dikonfirmasi!\nKode: ${prev.booking_code}\nFasilitas: ${prev.facility_name}\nTanggal: ${prev.date} ${prev.start_time}–${prev.end_time} (${hours} jam)\nTotal: ${price}\n\nMohon hadir tepat waktu. Terima kasih.`,
+      }).catch(() => {});
     }
   }
 });

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
 export const sportCenterRouter = Router();
 
@@ -196,10 +197,39 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
     notes: booking.notes || null,
   });
 
+  const adminWaMsg = msg;
   Promise.all([
-    getAdminWa().then((wa) => wa ? sendWhatsApp(wa, msg) : Promise.resolve()),
-    getAdminGroupWa().then((gwa) => gwa ? sendWhatsApp(gwa, msg) : Promise.resolve()),
+    getAdminWa().then((wa) => wa ? sendWhatsApp(wa, adminWaMsg) : Promise.resolve()),
+    getAdminGroupWa().then((gwa) => gwa ? sendWhatsApp(gwa, adminWaMsg) : Promise.resolve()),
   ]).catch(() => {});
+
+  // Email notifikasi ke admin
+  if (isSmtpConfigured()) {
+    const adminEmail = process.env.ADMIN_EMAIL ?? "";
+    if (adminEmail) {
+      const price = Number(booking.totalPrice).toLocaleString("id-ID", {
+        style: "currency", currency: "IDR", maximumFractionDigits: 0,
+      });
+      sendMail({
+        to: adminEmail,
+        subject: `[Sport Center] Booking Baru — ${booking.bookingCode}`,
+        html: `<h2>Booking Baru — Sport Center SHIA</h2>
+<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
+  <tr><td style="padding:4px 12px;color:#666">Kode</td><td style="padding:4px 12px"><b>${booking.bookingCode}</b></td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Pelanggan</td><td style="padding:4px 12px">${booking.customerName}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">HP</td><td style="padding:4px 12px">${booking.customerPhone}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Email</td><td style="padding:4px 12px">${booking.customerEmail}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Fasilitas</td><td style="padding:4px 12px">${booking.facilityName}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Tanggal</td><td style="padding:4px 12px">${booking.date}</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Waktu</td><td style="padding:4px 12px">${booking.startTime} – ${booking.endTime} (${booking.totalHours} jam)</td></tr>
+  <tr><td style="padding:4px 12px;color:#666">Total</td><td style="padding:4px 12px"><b>${price}</b></td></tr>
+  ${booking.notes ? `<tr><td style="padding:4px 12px;color:#666">Catatan</td><td style="padding:4px 12px">${booking.notes}</td></tr>` : ""}
+</table>
+<p style="color:#888;margin-top:16px">Segera konfirmasi di BizPortal › Sport Center › Booking.</p>`,
+        text: `Booking Baru\nKode: ${booking.bookingCode}\nPelanggan: ${booking.customerName}\nFasilitas: ${booking.facilityName}\nTanggal: ${booking.date} ${booking.startTime}–${booking.endTime}\nTotal: ${price}`,
+      }).catch(() => {});
+    }
+  }
 });
 
 sportCenterRouter.put("/:id/status", async (req: Request, res: Response) => {
