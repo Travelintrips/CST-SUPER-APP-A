@@ -1,10 +1,26 @@
 import * as Haptics from 'expo-haptics';
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const NOTIFY_SOUND = require('../assets/sounds/notify.mp3') as string | number;
+
+// expo-notifications dropped push/remote notification support in Expo Go SDK 53.
+// Use lazy require so the import itself doesn't crash in Expo Go.
+const isExpoGo =
+  Constants.appOwnership === 'expo' ||
+  (Constants.executionEnvironment as string) === 'storeClient';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getNotifications(): any | null {
+  if (isExpoGo || Platform.OS === 'web') return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-notifications');
+  } catch {
+    return null;
+  }
+}
 
 function playNotificationSound(): void {
   if (Platform.OS !== 'web') return;
@@ -16,39 +32,39 @@ function playNotificationSound(): void {
   } catch {}
 }
 
-// expo-notifications dropped push/remote notification support in Expo Go since
-// SDK 53. The notification handler and channel setup only work in a custom
-// development build (APK). Skip silently when running inside Expo Go so the
-// console error doesn't appear — the APK build gets full functionality.
-const isExpoGo = Constants.appOwnership === 'expo';
-
-if (!isExpoGo) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
-}
+// Setup notification handler on native dev/prod build
+(function setupHandler() {
+  const Notif = getNotifications();
+  if (!Notif) return;
+  try {
+    Notif.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  } catch {}
+})();
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === 'web' || isExpoGo) return false;
+  const Notif = getNotifications();
+  if (!Notif) return false;
   try {
-    const { status: existing } = await Notifications.getPermissionsAsync();
+    const { status: existing } = await Notif.getPermissionsAsync();
     let final = existing;
     if (existing !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
+      const { status } = await Notif.requestPermissionsAsync();
       final = status;
     }
     if (final !== 'granted') return false;
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('job-alerts', {
+      await Notif.setNotificationChannelAsync('job-alerts', {
         name: 'Notifikasi Job Baru',
-        importance: Notifications.AndroidImportance.MAX,
+        importance: Notif.AndroidImportance.MAX,
         vibrationPattern: [0, 300, 200, 300],
         lightColor: '#FF6B00',
         sound: 'notify.mp3',
@@ -67,12 +83,13 @@ export function notifyNewJob(
   customerName: string,
   pickupAddress: string,
 ): void {
-  if (isExpoGo) return;
-
   playNotificationSound();
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-  Notifications.scheduleNotificationAsync({
+  const Notif = getNotifications();
+  if (!Notif) return;
+
+  Notif.scheduleNotificationAsync({
     content: {
       title: `🚛 Job Baru: ${jobNumber}`,
       body: `${customerName || 'Pelanggan'}\n📍 ${pickupAddress || '-'}`,
