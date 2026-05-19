@@ -20,10 +20,6 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "POS Kasir"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -33,20 +29,8 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash start-all.sh"
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "POS Kasir"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
 args = "bash start-pos-kasir.sh"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -89,6 +73,10 @@ externalPort = 9000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8008
 
 [[ports]]
 localPort = 8082
