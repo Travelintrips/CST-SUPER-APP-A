@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { CommandPalette, useCommandPalette } from "@/components/CommandPalette";
 import { Link, useLocation } from "wouter";
 import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations, getListAiDraftQuotationsQueryKey } from "@workspace/api-client-react";
 import {
@@ -55,6 +56,7 @@ import {
   Calendar,
   CalendarDays,
   Dumbbell,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -453,6 +455,8 @@ export function AppShell({ children }: AppShellProps) {
     return false;
   };
 
+  const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     for (const item of navItems) {
@@ -578,19 +582,38 @@ export function AppShell({ children }: AppShellProps) {
         </Sidebar>
 
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
           <div className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-border bg-background px-4 sm:px-6 lg:hidden">
             <SidebarTrigger />
             <div className="flex items-center gap-2 font-bold">
               <Building2 size={18} className="text-primary" />
               <span>BizPortal</span>
             </div>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => setCmdOpen(true)}
+                className="flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                aria-label="Buka pencarian (Ctrl+K)"
+              >
+                <Search size={13} />
+                <span className="hidden sm:inline">Cari...</span>
+                <kbd className="hidden sm:inline rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">⌘K</kbd>
+              </button>
               <NotificationBell />
             </div>
           </div>
           <div className="hidden lg:flex sticky top-0 z-10 h-12 items-center justify-between border-b border-border bg-background px-6">
             <CompanySwitcher />
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setCmdOpen(true)}
+                className="flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
+                aria-label="Buka pencarian (Ctrl+K)"
+              >
+                <Search size={13} />
+                <span>Cari halaman...</span>
+                <kbd className="ml-1 rounded bg-background px-1 py-0.5 text-[10px] font-mono border border-border">Ctrl+K</kbd>
+              </button>
               <LanguageSelector />
               <NotificationBell />
               <DropdownMenu>
