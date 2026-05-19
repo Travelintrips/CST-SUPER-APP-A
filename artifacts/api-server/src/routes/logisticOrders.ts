@@ -405,10 +405,11 @@ logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response)
   return res.json(rates);
 });
 
-// GET /api/logistic/orders/vendors — admin only
+// GET /api/logistic/orders/vendors — admin & logistics staff
 logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
   const user = (req as any).user;
-  if (!user || user.role !== "admin") {
+  const allowed = ["admin", "owner", "logistics"];
+  if (!user || !allowed.includes(user.role)) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
@@ -429,9 +430,14 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
   const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
   const q = parsed.success ? parsed.data : {};
 
-  const companyId = resolveCompanyId(req);
+  const rawCompany = req.query["company"] ?? req.query["companyId"];
+  const isConsolidated = rawCompany === "0" || rawCompany === "all" || rawCompany === undefined;
+  const companyId = isConsolidated ? null : resolveCompanyId(req);
 
-  const conditions = [eq(logisticOrdersTable.companyId, companyId)];
+  // companyId=0 or "all" = consolidated view (all companies), otherwise filter by specific company
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conditions: any[] = [];
+  if (companyId !== null && companyId > 0) conditions.push(eq(logisticOrdersTable.companyId, companyId));
   if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
   if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
   if (q.search) {
