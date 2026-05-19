@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -35,7 +35,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Search, Package, Wrench, FlaskConical, Building, ExternalLink, BookOpen, ShoppingBag, Globe } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Wrench, FlaskConical, Building, ExternalLink, BookOpen, ShoppingBag, Globe, X, ArrowRight, Tag } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const fmt = (n: number) =>
@@ -85,13 +85,15 @@ function SummaryCard({ icon: Icon, label, count, color }: {
 
 // ── TAB 1: MASTER ITEM (SALES) ────────────────────────────────────────────────
 
-function MasterItemTab() {
+function MasterItemTab({ initialSearch = "" }: { initialSearch?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [filterType, setFilterType] = useState<"all" | "barang" | "jasa">("all");
   const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("active");
+
+  useEffect(() => { setSearch(initialSearch); }, [initialSearch]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: number; name: string; sku: string; itemType: string; subcategory: string | null; unit: string; price: number; isActive: boolean; description: string | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
@@ -330,10 +332,11 @@ function MasterItemTab() {
 
 // ── TAB 2: PRODUK JUAL (BOM) ──────────────────────────────────────────────────
 
-function ProdukBomTab() {
+function ProdukBomTab({ initialSearch = "" }: { initialSearch?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
+  useEffect(() => { setSearch(initialSearch); }, [initialSearch]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<BomProduct | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", unit: "pcs", price: "", costPrice: "", itemType: "barang", subcategory: "", isActive: true });
@@ -472,10 +475,11 @@ function ProdukBomTab() {
 
 // ── TAB 3: BAHAN BAKU (BOM) ───────────────────────────────────────────────────
 
-function BahanBakuTab() {
+function BahanBakuTab({ initialSearch = "" }: { initialSearch?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
+  useEffect(() => { setSearch(initialSearch); }, [initialSearch]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<BomRawMaterial | null>(null);
   const [form, setForm] = useState({ name: "", sku: "", unit: "gram", costPrice: "", description: "", isActive: true });
@@ -600,14 +604,19 @@ function BahanBakuTab() {
 
 // ── TAB 4: STOK & SUPPLIER TRADING ───────────────────────────────────────────
 
-function TradingTab() {
+function TradingTab({ initialSearch = "" }: { initialSearch?: string }) {
   const { t } = useLanguage();
   const { toast } = useToast();
   const qc = useQueryClient();
 
   const [innerTab, setInnerTab] = useState<"stok" | "supplier">("stok");
-  const [searchStok, setSearchStok] = useState("");
-  const [searchSupplier, setSearchSupplier] = useState("");
+  const [searchStok, setSearchStok] = useState(initialSearch);
+  const [searchSupplier, setSearchSupplier] = useState(initialSearch);
+
+  useEffect(() => {
+    setSearchStok(initialSearch);
+    setSearchSupplier(initialSearch);
+  }, [initialSearch]);
 
   const { data: stocks = [], isLoading: loadStocks } = useListStocks();
   const { data: suppliers = [], isLoading: loadSuppliers } = useListSuppliers({ query: { queryKey: getListSuppliersQueryKey() } });
@@ -917,6 +926,191 @@ function SupplierFields({ defaults }: { defaults?: Supplier }) {
   );
 }
 
+// ── GLOBAL SEARCH RESULTS ────────────────────────────────────────────────────
+
+type SearchResult = {
+  id: string;
+  name: string;
+  sku: string;
+  detail: string;
+  source: string;
+  sourceColor: string;
+  sourceIcon: typeof Package;
+  tab: "master-item" | "produk-bom" | "bahan-baku" | "trading";
+};
+
+function GlobalSearchResults({
+  query,
+  products,
+  bomProducts,
+  bomMaterials,
+  stocks,
+  suppliers,
+  onNavigate,
+}: {
+  query: string;
+  products: Product[];
+  bomProducts: BomProduct[];
+  bomMaterials: BomRawMaterial[];
+  stocks: StockItem[];
+  suppliers: Supplier[];
+  onNavigate: (tab: SearchResult["tab"], q: string) => void;
+}) {
+  const q = query.toLowerCase();
+
+  const results: SearchResult[] = useMemo(() => {
+    const out: SearchResult[] = [];
+
+    (products as Product[]).forEach((p) => {
+      if (p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) {
+        out.push({
+          id: `mi-${p.id}`,
+          name: p.name,
+          sku: p.sku,
+          detail: `${p.itemType === "jasa" ? "Jasa" : "Barang"} • ${p.subcategory ?? "-"} • ${fmt(p.price)}`,
+          source: "Master Item",
+          sourceColor: "bg-blue-100 text-blue-700",
+          sourceIcon: ShoppingBag,
+          tab: "master-item",
+        });
+      }
+    });
+
+    (bomProducts as BomProduct[]).forEach((p) => {
+      if (p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)) {
+        out.push({
+          id: `bp-${p.id}`,
+          name: p.name,
+          sku: p.sku,
+          detail: `Produk Jual • ${p.unit} • Jual ${fmt(p.price)}`,
+          source: "Produk Jual",
+          sourceColor: "bg-orange-100 text-orange-700",
+          sourceIcon: Package,
+          tab: "produk-bom",
+        });
+      }
+    });
+
+    (bomMaterials as BomRawMaterial[]).forEach((m) => {
+      if (m.name.toLowerCase().includes(q) || m.sku.toLowerCase().includes(q)) {
+        out.push({
+          id: `bm-${m.id}`,
+          name: m.name,
+          sku: m.sku,
+          detail: `Bahan Baku • ${m.unit} • HPP ${fmt(m.cost_price)}`,
+          source: "Bahan Baku",
+          sourceColor: "bg-purple-100 text-purple-700",
+          sourceIcon: FlaskConical,
+          tab: "bahan-baku",
+        });
+      }
+    });
+
+    (stocks as StockItem[]).forEach((s) => {
+      const n = (s.name ?? "").toLowerCase();
+      const sku = (s.sku ?? "").toLowerCase();
+      if (n.includes(q) || sku.includes(q)) {
+        out.push({
+          id: `st-${s.id}`,
+          name: s.name ?? "-",
+          sku: s.sku ?? "-",
+          detail: `Stok Trading • ${s.unit ?? "-"} • Beli ${fmt(Number(s.buyPrice ?? 0))}`,
+          source: "Stok Trading",
+          sourceColor: "bg-green-100 text-green-700",
+          sourceIcon: Globe,
+          tab: "trading",
+        });
+      }
+    });
+
+    (suppliers as Supplier[]).forEach((s) => {
+      if ((s.name ?? "").toLowerCase().includes(q) || (s.contactEmail ?? "").toLowerCase().includes(q)) {
+        out.push({
+          id: `sp-${s.id}`,
+          name: s.name ?? "-",
+          sku: s.contactEmail ?? "-",
+          detail: `Supplier • ${s.country ?? "-"} • ${s.phone ?? "-"}`,
+          source: "Supplier",
+          sourceColor: "bg-teal-100 text-teal-700",
+          sourceIcon: Building,
+          tab: "trading",
+        });
+      }
+    });
+
+    return out;
+  }, [q, products, bomProducts, bomMaterials, stocks, suppliers]);
+
+  const grouped = useMemo(() => {
+    const map: Record<string, SearchResult[]> = {};
+    results.forEach((r) => {
+      if (!map[r.source]) map[r.source] = [];
+      map[r.source].push(r);
+    });
+    return map;
+  }, [results]);
+
+  if (results.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+        <Search className="h-8 w-8 opacity-30" />
+        <p className="text-sm">Tidak ada hasil untuk "<strong>{query}</strong>"</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Ditemukan <strong>{results.length}</strong> hasil dari semua katalog untuk "<strong>{query}</strong>"
+      </p>
+      {Object.entries(grouped).map(([source, items]) => (
+        <Card key={source}>
+          <CardContent className="p-0">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/40">
+              <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-sm font-medium">{source}</span>
+              <Badge variant="secondary" className="text-xs px-1.5">{items.length}</Badge>
+            </div>
+            <Table>
+              <TableBody>
+                {items.map((item) => {
+                  const Icon = item.sourceIcon;
+                  return (
+                    <TableRow key={item.id} className="hover:bg-muted/30">
+                      <TableCell className="w-8 pl-4">
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium text-sm">{item.name}</div>
+                        <div className="text-xs text-muted-foreground">{item.detail}</div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{item.sku}</code>
+                      </TableCell>
+                      <TableCell className="text-right pr-4">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => onNavigate(item.tab, query)}
+                        >
+                          Buka Tab
+                          <ArrowRight className="h-3 w-3" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function KatalogTerpaduPage() {
@@ -926,52 +1120,109 @@ export default function KatalogTerpaduPage() {
   const { data: bomProducts = [] } = useQuery<BomProduct[]>({ queryKey: ["bom-products"], queryFn: () => apiFetch("/bom/products") });
   const { data: bomMaterials = [] } = useQuery<BomRawMaterial[]>({ queryKey: ["bom-raw-materials"], queryFn: () => apiFetch("/bom/raw-materials") });
 
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("master-item");
+  const [tabSearch, setTabSearch] = useState("");
+
+  const isSearching = globalSearch.trim().length > 0;
+
+  function handleNavigate(tab: SearchResult["tab"], q: string) {
+    setGlobalSearch("");
+    setActiveTab(tab);
+    setTabSearch(q);
+  }
+
+  const totalItems = (products as Product[]).length +
+    (bomProducts as BomProduct[]).length +
+    (bomMaterials as BomRawMaterial[]).length +
+    (stocks as StockItem[]).length +
+    (suppliers as Supplier[]).length;
+
   return (
     <AppShell>
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Katalog Terpadu</h1>
-          <p className="text-sm text-muted-foreground mt-1">Semua item — Master Item Penjualan, Produk/Bahan Baku BOM, dan Stok Trading — dalam satu halaman</p>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard icon={ShoppingBag} label="Master Item (Sales)" count={(products as { id: number }[]).length} color="border-blue-200 bg-blue-50/50 text-blue-700" />
-          <SummaryCard icon={Package} label="Produk Jual (BOM)" count={(bomProducts as BomProduct[]).length} color="border-orange-200 bg-orange-50/50 text-orange-700" />
-          <SummaryCard icon={FlaskConical} label="Bahan Baku (BOM)" count={(bomMaterials as BomRawMaterial[]).length} color="border-purple-200 bg-purple-50/50 text-purple-700" />
-          <SummaryCard icon={Globe} label="Stok Trading + Supplier" count={(stocks as StockItem[]).length + (suppliers as Supplier[]).length} color="border-green-200 bg-green-50/50 text-green-700" />
-        </div>
-
-        <Tabs defaultValue="master-item">
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="master-item" className="flex items-center gap-1.5">
-              <ShoppingBag className="h-3.5 w-3.5" />
-              Master Item
-              <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(products as { id: number }[]).length}</Badge>
-            </TabsTrigger>
-            <TabsTrigger value="produk-bom" className="flex items-center gap-1.5">
-              <Package className="h-3.5 w-3.5" />
-              Produk Jual
-              <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(bomProducts as BomProduct[]).length}</Badge>
-            </TabsTrigger>
-            <TabsTrigger value="bahan-baku" className="flex items-center gap-1.5">
-              <FlaskConical className="h-3.5 w-3.5" />
-              Bahan Baku
-              <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(bomMaterials as BomRawMaterial[]).length}</Badge>
-            </TabsTrigger>
-            <TabsTrigger value="trading" className="flex items-center gap-1.5">
-              <Globe className="h-3.5 w-3.5" />
-              Trading
-              <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(stocks as StockItem[]).length}</Badge>
-            </TabsTrigger>
-          </TabsList>
-
-          <div className="mt-4">
-            <TabsContent value="master-item"><MasterItemTab /></TabsContent>
-            <TabsContent value="produk-bom"><ProdukBomTab /></TabsContent>
-            <TabsContent value="bahan-baku"><BahanBakuTab /></TabsContent>
-            <TabsContent value="trading"><TradingTab /></TabsContent>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Katalog Terpadu</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {totalItems} item dari semua modul — Master Item, BOM, dan Trading
+            </p>
           </div>
-        </Tabs>
+        </div>
+
+        {/* Global Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            className="pl-9 pr-9 h-11 text-base"
+            placeholder="Cari di semua katalog — nama, SKU, email supplier…"
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+          />
+          {isSearching && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground"
+              onClick={() => setGlobalSearch("")}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        {isSearching ? (
+          <GlobalSearchResults
+            query={globalSearch}
+            products={products as Product[]}
+            bomProducts={bomProducts as BomProduct[]}
+            bomMaterials={bomMaterials as BomRawMaterial[]}
+            stocks={stocks as StockItem[]}
+            suppliers={suppliers as Supplier[]}
+            onNavigate={handleNavigate}
+          />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <SummaryCard icon={ShoppingBag} label="Master Item (Sales)" count={(products as { id: number }[]).length} color="border-blue-200 bg-blue-50/50 text-blue-700" />
+              <SummaryCard icon={Package} label="Produk Jual (BOM)" count={(bomProducts as BomProduct[]).length} color="border-orange-200 bg-orange-50/50 text-orange-700" />
+              <SummaryCard icon={FlaskConical} label="Bahan Baku (BOM)" count={(bomMaterials as BomRawMaterial[]).length} color="border-purple-200 bg-purple-50/50 text-purple-700" />
+              <SummaryCard icon={Globe} label="Stok Trading + Supplier" count={(stocks as StockItem[]).length + (suppliers as Supplier[]).length} color="border-green-200 bg-green-50/50 text-green-700" />
+            </div>
+
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="master-item" className="flex items-center gap-1.5">
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  Master Item
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(products as { id: number }[]).length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="produk-bom" className="flex items-center gap-1.5">
+                  <Package className="h-3.5 w-3.5" />
+                  Produk Jual
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(bomProducts as BomProduct[]).length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="bahan-baku" className="flex items-center gap-1.5">
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  Bahan Baku
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(bomMaterials as BomRawMaterial[]).length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="trading" className="flex items-center gap-1.5">
+                  <Globe className="h-3.5 w-3.5" />
+                  Trading
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5">{(stocks as StockItem[]).length}</Badge>
+                </TabsTrigger>
+              </TabsList>
+
+              <div className="mt-4">
+                <TabsContent value="master-item"><MasterItemTab initialSearch={activeTab === "master-item" ? tabSearch : ""} /></TabsContent>
+                <TabsContent value="produk-bom"><ProdukBomTab initialSearch={activeTab === "produk-bom" ? tabSearch : ""} /></TabsContent>
+                <TabsContent value="bahan-baku"><BahanBakuTab initialSearch={activeTab === "bahan-baku" ? tabSearch : ""} /></TabsContent>
+                <TabsContent value="trading"><TradingTab initialSearch={activeTab === "trading" ? tabSearch : ""} /></TabsContent>
+              </div>
+            </Tabs>
+          </>
+        )}
       </div>
     </AppShell>
   );
