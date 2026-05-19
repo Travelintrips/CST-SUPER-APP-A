@@ -37,15 +37,18 @@ function posRedirectPlugin() {
     name: "pos-redirect",
     configureServer(server: import("vite").ViteDevServer) {
       server.middlewares.use((req, res, next) => {
-        const url = req.url ?? "/";
-        const isAllowed =
-          url.startsWith("/kasir") ||
-          url.startsWith("/menu-board") ||
-          url.startsWith("/api/") ||
+        const url = (req.url ?? "/").split("?")[0];
+        const isKasirPath =
+          url.startsWith("/kasir") || url.startsWith("/menu-board");
+        const isViteInternal =
           url.startsWith("/@") ||
-          url.startsWith("/node_modules") ||
           url.startsWith("/__vite") ||
-          url.includes(".");
+          url.startsWith("/node_modules") ||
+          url.startsWith("/src") ||
+          url.startsWith("/api/");
+        const isStaticAsset =
+          /\.(js|jsx|mjs|cjs|ts|tsx|css|scss|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|map|json|webp|mp4|webm|html)$/.test(url);
+        const isAllowed = isKasirPath || isViteInternal || isStaticAsset;
         if (!isAllowed) {
           const html = `<!DOCTYPE html><html><head>
 <meta charset="utf-8">
