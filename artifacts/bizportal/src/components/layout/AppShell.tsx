@@ -53,6 +53,7 @@ import {
   FileBarChart2,
   ShieldCheck,
   Shield,
+  Calendar,
   CalendarDays,
   Dumbbell,
   type LucideIcon,
