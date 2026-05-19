@@ -261,16 +261,15 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "purchaseDashboard", href: "/purchase", icon: LayoutDashboard },
         { titleKey: "Purchase Request (PR)", href: "/purchase/pr", icon: ClipboardList },
-        { titleKey: "rfq", href: "/purchase/rfq", icon: ClipboardList },
+        { titleKey: "rfq", href: "/purchase/rfq", icon: FileText },
         { titleKey: "purchaseOrders", href: "/purchase/orders", icon: ShoppingBag },
         { titleKey: "Terima Barang (GRN)", href: "/purchase/gr", icon: PackageCheck },
         { titleKey: "QC Inspection", href: "/purchase/qc", icon: ClipboardCheck },
         { titleKey: "Purchase Return", href: "/purchase/returns", icon: RotateCcw },
-        { titleKey: "Vendor Invoice (AP)", href: "/purchase/vendor-invoices", icon: FileText },
+        { titleKey: "Vendor Invoice (AP)", href: "/purchase/vendor-invoices", icon: Receipt },
         { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
-        { titleKey: "bills", href: "/purchase/bills", icon: FileText },
       ],
     },
     {
@@ -321,12 +320,35 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "expenseReports", href: "/expense/reports", icon: BarChart2 },
       ],
     },
-    { type: "flat", titleKey: "correspondences", href: "/correspondences", icon: Mail, roles: ["admin", "owner"] },
-    { type: "flat", titleKey: "emailInbox", href: "/email-inbox", icon: Mail, roles: ["admin", "owner"] },
-    { type: "flat", titleKey: "Image Manager", href: "/media", icon: ImageIcon, roles: ["admin", "owner"] },
-    { type: "flat", titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot, roles: ["admin", "owner"] },
-    { type: "flat", titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen, roles: ["admin", "owner"] },
-    { type: "flat", titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine, roles: ["admin", "owner"] },
+
+    // ── KOMUNIKASI (gabungan Korespondensi + Email Inbox) ──────────────
+    {
+      type: "group",
+      titleKey: "Komunikasi",
+      basePath: "/correspondences",
+      icon: Mail,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "correspondences", href: "/correspondences", icon: Mail },
+        { titleKey: "emailInbox", href: "/email-inbox", icon: MessageCircle },
+      ],
+    },
+
+    // ── AI & MEDIA (gabungan AI tools + Image Manager) ─────────────────
+    {
+      type: "group",
+      titleKey: "AI & Media",
+      basePath: "/settings/ai",
+      icon: Bot,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot },
+        { titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen },
+        { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
+        { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
+      ],
+    },
+
     {
       type: "group",
       titleKey: "holding",
@@ -420,7 +442,7 @@ export function AppShell({ children }: AppShellProps) {
 
   // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
   const MAIN_PATHS = [
-    "/dashboard", "/pos-kasir", "/pos-products", "/pos-inventory",
+    "/dashboard", "/pos-kasir", "/products", "/pos-inventory",
     "/users", "/reports", "/settings",
   ];
   const mainNav = filteredNav.filter((item) => {
