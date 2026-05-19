@@ -206,7 +206,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Pengguna", href: "/users", icon: UserCircle },
         { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
         { titleKey: "Aturan Approval", href: "/settings/approval-rules", icon: ClipboardCheck },
-        { titleKey: "Struktur Organisasi", href: "/org-management", icon: Network },
+        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
       ],
     },
 
