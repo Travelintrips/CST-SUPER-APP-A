@@ -1,8 +1,40 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 
 export const sportCenterRouter = Router();
+
+function buildAdminBookingMessage(b: {
+  bookingCode: string;
+  customerName: string;
+  customerPhone: string;
+  facilityName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  totalHours: number;
+  totalPrice: number;
+  notes?: string | null;
+}): string {
+  const price = Number(b.totalPrice).toLocaleString("id-ID", {
+    style: "currency", currency: "IDR", maximumFractionDigits: 0,
+  });
+  return (
+    `🏟️ *Booking Baru — Sport Center SHIA*\n\n` +
+    `📋 *Kode*      : ${b.bookingCode}\n` +
+    `👤 *Pelanggan* : ${b.customerName}\n` +
+    `📱 *HP*        : ${b.customerPhone}\n` +
+    `🏃 *Fasilitas* : ${b.facilityName}\n` +
+    `📅 *Tanggal*   : ${b.date}\n` +
+    `⏰ *Waktu*     : ${b.startTime} – ${b.endTime} (${b.totalHours} jam)\n` +
+    `💰 *Total*     : ${price}\n` +
+    (b.notes ? `📝 *Catatan*   : ${b.notes}\n` : "") +
+    `\n⚡ Status: *Menunggu Konfirmasi*\n` +
+    `Segera konfirmasi di BizPortal › Sport Center › Booking.`
+  );
+}
 
 interface BookingRow {
   id: number;
@@ -118,7 +150,27 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
     RETURNING *
   `);
 
-  res.status(201).json(toBooking(result.rows[0] as BookingRow));
+  const booking = toBooking(result.rows[0] as BookingRow);
+  res.status(201).json(booking);
+
+  // Notifikasi WA ke admin & grup — fire-and-forget
+  const msg = buildAdminBookingMessage({
+    bookingCode: booking.bookingCode,
+    customerName: booking.customerName,
+    customerPhone: booking.customerPhone,
+    facilityName: booking.facilityName,
+    date: booking.date,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    totalHours: booking.totalHours,
+    totalPrice: booking.totalPrice,
+    notes: booking.notes || null,
+  });
+
+  Promise.all([
+    getAdminWa().then((wa) => wa ? sendWhatsApp(wa, msg) : Promise.resolve()),
+    getAdminGroupWa().then((gwa) => gwa ? sendWhatsApp(gwa, msg) : Promise.resolve()),
+  ]).catch(() => {});
 });
 
 sportCenterRouter.put("/:id/status", async (req: Request, res: Response) => {

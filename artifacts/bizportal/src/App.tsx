@@ -132,6 +132,11 @@ import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purch
 import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
 import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
 import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
+import SportCenterDashboard from "@/pages/sport-center/index";
+import SportCenterBookingsPage from "@/pages/sport-center/bookings";
+import SportCenterServicesPage from "@/pages/sport-center/services";
+import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-requests";
+import SportCenterReportsPage from "@/pages/sport-center/reports";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -437,6 +442,12 @@ function Router() {
         <Route path="/pos-inventory/transfers" component={() => <ProtectedRoute component={PosStockTransfersPage} />} />
         <Route path="/pos-inventory/qr-generator" component={() => <ProtectedRoute component={PosQrGeneratorPage} />} />
         <Route path="/pos-inventory/qr-scanner" component={() => <ProtectedRoute component={PosQrScannerPage} />} />
+        {/* Sport Center */}
+        <Route path="/sport-center" component={() => <ProtectedRoute component={SportCenterDashboard} />} />
+        <Route path="/sport-center/bookings" component={() => <ProtectedRoute component={SportCenterBookingsPage} />} />
+        <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
+        <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
+        <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportsPage} />} />
         {/* Warehouse (legacy) */}
         <Route path="/warehouse/stock" component={() => <ProtectedRoute component={WarehouseStockPage} />} />
         <Route path="/warehouse/movements" component={() => <ProtectedRoute component={WarehouseMovementsPage} />} />
