@@ -343,7 +343,7 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin", "owner"],
       children: [
         { titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot },
-        { titleKey: "aiKnowledgeBase", href: "/settings/ai-knowledge", icon: BookOpen },
+        { titleKey: "aiKnowledgeBase", href: "/settings/ai-chatbot/knowledge", icon: BookOpen },
         { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],

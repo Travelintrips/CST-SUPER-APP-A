@@ -80,21 +80,6 @@ import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
 import OrgManagementPage from "@/pages/OrgManagementPage";
 import PosKasirAdminPage from "@/pages/pos-kasir-admin";
-import WarehouseStockPage from "@/pages/warehouse/index";
-import WarehouseMovementsPage from "@/pages/warehouse/movements";
-import WarehouseTransfersPage from "@/pages/warehouse/transfers";
-import WarehouseDamagePage from "@/pages/warehouse/damage";
-import WarehouseReturnsPage from "@/pages/warehouse/returns";
-import WarehouseRecipesPage from "@/pages/warehouse/recipes";
-import WarehouseOpnamePage from "@/pages/warehouse/opname";
-import InvWarehousesPage from "@/pages/inventory/warehouses";
-import InvRacksPage from "@/pages/inventory/racks";
-import InvStockPage from "@/pages/inventory/stock";
-import InvTransfersPage from "@/pages/inventory/transfers";
-import InvReturnsPage from "@/pages/inventory/returns";
-import InvDamagePage from "@/pages/inventory/damage";
-import InvOpnamePage from "@/pages/inventory/opname";
-import InvMovementsPage from "@/pages/inventory/movements";
 import PurchaseReceivePage from "@/pages/purchase/receive";
 import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
 import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
@@ -136,7 +121,7 @@ import SportCenterDashboard from "@/pages/sport-center/index";
 import SportCenterBookingsPage from "@/pages/sport-center/bookings";
 import SportCenterServicesPage from "@/pages/sport-center/services";
 import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-requests";
-import SportCenterReportsPage from "@/pages/sport-center/reports";
+import InventoryValuationPage from "@/pages/reports/inventory-valuation";
 import SportCenterSchedulePage from "@/pages/sport-center-schedule";
 import SportCenterReportPage from "@/pages/sport-center-report";
 
@@ -371,6 +356,7 @@ function Router() {
         <Route path="/reports/ap-aging" component={() => <ProtectedRoute component={ReportsApAgingPage} />} />
         <Route path="/reports/operasional" component={() => <ProtectedRoute component={ReportsMainPage} />} />
         <Route path="/reports/audit-log" component={() => <ProtectedRoute component={AuditLogPage} />} />
+        <Route path="/reports/inventory-valuation" component={() => <ProtectedRoute component={InventoryValuationPage} />} />
         {/* Accounting */}
         <Route path="/accounting/accounts" component={() => <ProtectedRoute component={AccountingAccountsPage} />} />
         <Route path="/accounting/journals" component={() => <ProtectedRoute component={AccountingJournalsPage} />} />
@@ -386,11 +372,6 @@ function Router() {
         <Route path="/accounting/reports/profit-loss" component={() => <ProtectedRoute component={AccountingProfitLossPage} />} />
         <Route path="/accounting/reports/balance-sheet" component={() => <ProtectedRoute component={AccountingBalanceSheetPage} />} />
         {/* Expenses */}
-        <Route path="/expenses" component={() => <ProtectedRoute component={ExpenseListPage} />} />
-        <Route path="/expenses/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
-        <Route path="/expenses/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
-        <Route path="/expenses/reports" component={() => <ProtectedRoute component={ExpenseReportsPage} />} />
-        <Route path="/expenses/:id" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
         <Route path="/expense" component={() => <ProtectedRoute component={ExpenseListPage} />} />
         <Route path="/expense/new" component={() => <ProtectedRoute component={ExpenseEditorPage} />} />
         <Route path="/expense/categories" component={() => <ProtectedRoute component={ExpenseCategoriesPage} />} />
@@ -451,23 +432,6 @@ function Router() {
         <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
         <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
         <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportPage} />} />
-        {/* Warehouse (legacy) */}
-        <Route path="/warehouse/stock" component={() => <ProtectedRoute component={WarehouseStockPage} />} />
-        <Route path="/warehouse/movements" component={() => <ProtectedRoute component={WarehouseMovementsPage} />} />
-        <Route path="/warehouse/transfers" component={() => <ProtectedRoute component={WarehouseTransfersPage} />} />
-        <Route path="/warehouse/damage" component={() => <ProtectedRoute component={WarehouseDamagePage} />} />
-        <Route path="/warehouse/returns" component={() => <ProtectedRoute component={WarehouseReturnsPage} />} />
-        <Route path="/warehouse/recipes" component={() => <ProtectedRoute component={WarehouseRecipesPage} />} />
-        <Route path="/warehouse/opname" component={() => <ProtectedRoute component={WarehouseOpnamePage} />} />
-        {/* Inventory — modul berbasis cabang & gudang */}
-        <Route path="/inventory/warehouses" component={() => <ProtectedRoute component={InvWarehousesPage} />} />
-        <Route path="/inventory/racks" component={() => <ProtectedRoute component={InvRacksPage} />} />
-        <Route path="/inventory/stock" component={() => <ProtectedRoute component={InvStockPage} />} />
-        <Route path="/inventory/transfers" component={() => <ProtectedRoute component={InvTransfersPage} />} />
-        <Route path="/inventory/returns" component={() => <ProtectedRoute component={InvReturnsPage} />} />
-        <Route path="/inventory/damage" component={() => <ProtectedRoute component={InvDamagePage} />} />
-        <Route path="/inventory/opname" component={() => <ProtectedRoute component={InvOpnamePage} />} />
-        <Route path="/inventory/movements" component={() => <ProtectedRoute component={InvMovementsPage} />} />
         <Route component={NotFound} />
       </Switch>
     </WouterRouter>
