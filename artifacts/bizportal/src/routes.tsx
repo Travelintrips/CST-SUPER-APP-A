@@ -15,6 +15,7 @@ import LogisticsDriversPage from "@/pages/logistics-drivers";
 import LogisticsDriverPerformancePage from "@/pages/logistics-driver-performance";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
+import PosKasirAdminPage from "@/pages/pos-kasir-admin";
 import PosBranchesPage from "@/pages/pos-branches";
 import PosWarehousesPage from "@/pages/pos-warehouses";
 import PosRacksPage from "@/pages/pos-racks";
@@ -35,6 +36,7 @@ import SettingsPage from "@/pages/settings";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UomPage from "@/pages/settings/uom";
+import SettingsRolesPage from "@/pages/settings-roles";
 import UsersPage from "@/pages/users";
 import WelcomePage from "@/pages/welcome";
 import SalesDashboardPage from "@/pages/sales/dashboard";
@@ -55,6 +57,7 @@ import PurchaseBillsPage from "@/pages/purchase/bills";
 import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
+import ReportsAuditLogPage from "@/pages/reports/audit-log";
 import ReportsApAgingPage from "@/pages/reports/ap-aging";
 import ReportsInventoryValuationPage from "@/pages/reports/inventory-valuation";
 import ApprovalsPage from "@/pages/approvals/index";
@@ -95,6 +98,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/ecommerce" component={PR(EcommercePage)} />
       <Route path="/trading" component={PR(TradingPage)} />
       <Route path="/pos" component={PR(PosPage)} />
+      <Route path="/pos-kasir" component={PR(PosKasirAdminPage)} />
       <Route path="/pos-inventory/branches" component={PR(PosBranchesPage)} />
       <Route path="/pos-inventory/warehouses" component={PR(PosWarehousesPage)} />
       <Route path="/pos-inventory/racks" component={PR(PosRacksPage)} />
@@ -147,6 +151,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
+      <Route path="/reports/operasional" component={PR(PosKasirAdminPage)} />
+      <Route path="/reports/audit-log" component={PR(ReportsAuditLogPage)} />
       <Route path="/reports/sales" component={PR(ReportsSalesPage)} />
       <Route path="/reports/purchase" component={PR(ReportsPurchasePage)} />
       <Route path="/reports/ar-aging" component={PR(ReportsArAgingPage)} />
@@ -177,6 +183,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
+      <Route path="/settings/roles" component={PR(SettingsRolesPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
       <Route path="/users" component={PR(UsersPage)} />
       <Route path="/sport-center/schedule" component={PR(SportCenterSchedulePage)} />

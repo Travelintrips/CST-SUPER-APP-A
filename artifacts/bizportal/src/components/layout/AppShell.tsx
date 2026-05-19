@@ -171,18 +171,18 @@ export function AppShell({ children }: AppShellProps) {
     {
       type: "group",
       titleKey: "Inventory",
-      basePath: "/inventory",
+      basePath: "/pos-inventory",
       icon: Boxes,
       roles: ["gudang", "manager", "admin", "owner"],
       children: [
-        { titleKey: "Gudang", href: "/inventory/warehouses", icon: Warehouse },
-        { titleKey: "Rak", href: "/inventory/racks", icon: LayoutGrid },
-        { titleKey: "Stok", href: "/inventory/stock", icon: Boxes },
-        { titleKey: "Transfer Stok", href: "/inventory/transfers", icon: ArrowLeftRight },
-        { titleKey: "Retur Barang", href: "/inventory/returns", icon: RotateCcw },
-        { titleKey: "Barang Rusak / Hilang", href: "/inventory/damage", icon: AlertTriangle },
-        { titleKey: "Stock Opname", href: "/inventory/opname", icon: ClipboardCheck },
-        { titleKey: "Riwayat Pergerakan", href: "/inventory/movements", icon: Activity },
+        { titleKey: "Gudang", href: "/pos-inventory/warehouses", icon: Warehouse },
+        { titleKey: "Rak", href: "/pos-inventory/racks", icon: LayoutGrid },
+        { titleKey: "Stok", href: "/pos-inventory/stocks", icon: Boxes },
+        { titleKey: "Transfer Stok", href: "/pos-inventory/transfers", icon: ArrowLeftRight },
+        { titleKey: "Retur Barang", href: "/pos-inventory/returns", icon: RotateCcw },
+        { titleKey: "Barang Rusak / Hilang", href: "/pos-inventory/losses", icon: AlertTriangle },
+        { titleKey: "Stock Opname", href: "/pos-inventory/opname", icon: ClipboardCheck },
+        { titleKey: "Riwayat Pergerakan", href: "/pos-inventory/mutations", icon: Activity },
       ],
     },
 
@@ -199,13 +199,12 @@ export function AppShell({ children }: AppShellProps) {
     {
       type: "group",
       titleKey: "User & Role",
-      basePath: "/users-role",
+      basePath: "/users",
       icon: Users,
       roles: ["admin", "owner"],
       children: [
         { titleKey: "Pengguna", href: "/users", icon: UserCircle },
         { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
-        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
       ],
     },
 
@@ -422,7 +421,7 @@ export function AppShell({ children }: AppShellProps) {
   // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
   const MAIN_PATHS = [
     "/dashboard", "/pos-kasir", "/pos-products", "/pos-inventory",
-    "/users-role", "/reports", "/settings",
+    "/users", "/reports", "/settings",
   ];
   const mainNav = filteredNav.filter((item) => {
     const p = item.type === "group" ? item.basePath : item.href;
