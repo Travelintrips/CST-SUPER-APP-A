@@ -60,16 +60,19 @@ const STATUS_COLOR = {
   tersedia: "bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200 cursor-pointer",
   hampir: "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200 cursor-pointer",
   penuh: "bg-red-100 text-red-500 border-red-200 cursor-not-allowed opacity-70",
+  buka: "bg-slate-100 text-slate-400 border-slate-200 cursor-default",
 };
 const STATUS_DOT = {
   tersedia: "bg-emerald-500",
   hampir: "bg-amber-400",
   penuh: "bg-red-400",
+  buka: "bg-slate-300",
 };
 const STATUS_LABEL = {
   tersedia: "Tersedia",
   hampir: "Hampir Penuh",
   penuh: "Penuh",
+  buka: "Buka",
 };
 
 type SlotPopupData = {
@@ -264,7 +267,14 @@ export default function Schedule() {
                                 className={`border-b border-r border-slate-100 p-1 h-12 ${
                                   isToday ? "bg-blue-50/30" : ""
                                 }`}
-                              />
+                              >
+                                <div className={`w-full h-full rounded-lg border text-[11px] font-semibold px-1 py-1 flex flex-col items-center justify-center ${STATUS_COLOR.buka}`}>
+                                  <span className="flex items-center gap-1">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT.buka}`} />
+                                    {STATUS_LABEL.buka}
+                                  </span>
+                                </div>
+                              </td>
                             );
                           }
 
@@ -298,8 +308,8 @@ export default function Schedule() {
                 </table>
               </div>
 
-              <div className="flex items-center gap-4 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-                {([["tersedia","Tersedia (4+)"],["hampir","Hampir Penuh (2–3)"],["penuh","Penuh (0–1)"]] as const).map(([status, label]) => (
+              <div className="flex items-center gap-4 px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex-wrap">
+                {([["buka","Buka (Tidak ada kelas)"],["tersedia","Tersedia (4+)"],["hampir","Hampir Penuh (2–3)"],["penuh","Penuh (0–1)"]] as const).map(([status, label]) => (
                   <span key={status} className="flex items-center gap-1.5 text-xs text-slate-500">
                     <span className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT[status]}`} />
                     {label}
