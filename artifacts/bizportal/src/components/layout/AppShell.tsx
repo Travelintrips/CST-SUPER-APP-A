@@ -1,5 +1,5 @@
 import { ReactNode, useState } from "react";
-import { CommandPalette, useCommandPalette } from "@/components/CommandPalette";
+import { CommandPalette, useCommandPalette, usePageTracker } from "@/components/CommandPalette";
 import { Link, useLocation } from "wouter";
 import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations, getListAiDraftQuotationsQueryKey } from "@workspace/api-client-react";
 import {
@@ -456,6 +456,7 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
+  usePageTracker();
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};

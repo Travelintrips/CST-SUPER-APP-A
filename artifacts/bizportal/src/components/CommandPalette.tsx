@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Dialog,
@@ -17,12 +17,12 @@ import {
   LayoutDashboard, Package, Truck, Calculator, Settings, Building2,
   Users, TrendingUp, ShoppingBag, FileText, Receipt, ClipboardList,
   UserCircle, BookOpen, Wallet, FileSpreadsheet, Landmark, Mail,
-  Ship, Boxes, DollarSign, Tags, BarChart2, PackageOpen, List,
+  Ship, Boxes, DollarSign, Tags, BarChart2,
   GitMerge, Bot, ScanLine, MessageCircle, Layers, ImageIcon,
   Warehouse, LayoutGrid, PackageSearch, ArrowLeftRight, ClipboardCheck,
-  Activity, FlaskConical, ChefHat, GitBranch, RotateCcw, AlertTriangle,
-  PackageCheck, QrCode, FileBarChart2, ShieldCheck, Shield, Calendar,
-  CalendarDays, Dumbbell, Network, type LucideIcon,
+  Activity, FlaskConical, GitBranch, RotateCcw, AlertTriangle,
+  PackageCheck, FileBarChart2, ShieldCheck, Shield, Calendar,
+  CalendarDays, Dumbbell, Network, Clock, X, type LucideIcon,
 } from "lucide-react";
 
 interface CommandEntry {
@@ -143,6 +143,46 @@ const COMMANDS: CommandEntry[] = [
   { title: "Portal Product Orders", href: "/portal-product-orders", icon: ShoppingBag, group: "Lainnya" },
 ];
 
+const STORAGE_KEY = "bizportal:recent-pages";
+const MAX_RECENT = 8;
+
+function readRecent(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function writeRecent(hrefs: string[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(hrefs));
+  } catch {
+    // ignore
+  }
+}
+
+function pushRecent(href: string): string[] {
+  const known = new Set(COMMANDS.map((c) => c.href));
+  if (!known.has(href)) return readRecent();
+  const prev = readRecent().filter((h) => h !== href);
+  const next = [href, ...prev].slice(0, MAX_RECENT);
+  writeRecent(next);
+  return next;
+}
+
+export function usePageTracker() {
+  const [location] = useLocation();
+  const prevRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (location !== prevRef.current) {
+      prevRef.current = location;
+      pushRecent(location);
+    }
+  }, [location]);
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -150,6 +190,15 @@ interface Props {
 
 export function CommandPalette({ open, onOpenChange }: Props) {
   const [, navigate] = useLocation();
+  const [search, setSearch] = useState("");
+  const [recentHrefs, setRecentHrefs] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      setSearch("");
+      setRecentHrefs(readRecent());
+    }
+  }, [open]);
 
   const handleSelect = useCallback(
     (href: string) => {
@@ -159,15 +208,63 @@ export function CommandPalette({ open, onOpenChange }: Props) {
     [navigate, onOpenChange],
   );
 
+  const removeRecent = useCallback((href: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = readRecent().filter((h) => h !== href);
+    writeRecent(updated);
+    setRecentHrefs(updated);
+  }, []);
+
+  const recentCommands = recentHrefs
+    .map((href) => COMMANDS.find((c) => c.href === href))
+    .filter((c): c is CommandEntry => c !== undefined);
+
+  const showRecent = search.trim() === "" && recentCommands.length > 0;
   const groups = Array.from(new Set(COMMANDS.map((c) => c.group)));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-xl overflow-hidden gap-0" aria-describedby={undefined}>
-        <Command className="rounded-lg border-0" shouldFilter>
-          <CommandInput placeholder="Cari halaman..." autoFocus />
-          <CommandList className="max-h-[420px]">
+        <Command className="rounded-lg border-0" shouldFilter={search.trim() !== ""}>
+          <CommandInput
+            placeholder="Cari halaman..."
+            autoFocus
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList className="max-h-[460px]">
             <CommandEmpty>Halaman tidak ditemukan.</CommandEmpty>
+
+            {showRecent && (
+              <>
+                <CommandGroup heading="Terakhir Dikunjungi">
+                  {recentCommands.map((c) => (
+                    <CommandItem
+                      key={`recent-${c.href}`}
+                      value={`recent ${c.title} ${c.group}`}
+                      onSelect={() => handleSelect(c.href)}
+                      className="flex items-center gap-2 cursor-pointer group"
+                    >
+                      <Clock size={13} className="shrink-0 text-muted-foreground/70" />
+                      <c.icon size={14} className="shrink-0 text-muted-foreground" />
+                      <span>{c.title}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground/50 hidden sm:block pr-1">
+                        {c.group}
+                      </span>
+                      <button
+                        onClick={(e) => removeRecent(c.href, e)}
+                        className="ml-1 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity"
+                        aria-label="Hapus dari riwayat"
+                      >
+                        <X size={11} />
+                      </button>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                <CommandSeparator />
+              </>
+            )}
+
             {groups.map((group, gi) => (
               <span key={group}>
                 {gi > 0 && <CommandSeparator />}
