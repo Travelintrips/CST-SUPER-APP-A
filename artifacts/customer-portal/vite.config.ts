@@ -23,13 +23,24 @@ if (!isBuildMode && (Number.isNaN(port) || port <= 0)) {
 const basePath = process.env.BASE_PATH ?? "/";
 const isPosMode = process.env.VITE_POS_MODE === "true";
 
-// Plugin: redirect / ke /kasir/login saat mode POS aktif
+// Plugin: paksa semua request ke /kasir/login saat mode POS aktif,
+// kecuali path kasir itu sendiri, API, dan asset internal Vite
 function posRedirectPlugin() {
   return {
     name: "pos-redirect",
     configureServer(server: import("vite").ViteDevServer) {
       server.middlewares.use((req, res, next) => {
-        if (isPosMode && (req.url === "/" || req.url === "")) {
+        if (!isPosMode) { next(); return; }
+        const url = req.url ?? "/";
+        const isAllowed =
+          url.startsWith("/kasir") ||
+          url.startsWith("/menu-board") ||
+          url.startsWith("/api/") ||
+          url.startsWith("/@") ||
+          url.startsWith("/node_modules") ||
+          url.startsWith("/__vite") ||
+          url.includes(".") // file statis (js, css, png, dll.)
+        if (!isAllowed) {
           res.writeHead(302, { Location: "/kasir/login" });
           res.end();
           return;
