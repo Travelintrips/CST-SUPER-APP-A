@@ -296,6 +296,18 @@ export function AppShell({ children }: AppShellProps) {
     },
     {
       type: "group",
+      titleKey: "holding",
+      basePath: "/holding",
+      icon: Building2,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
+        { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: LayoutDashboard },
+        { titleKey: "holdingPLReport", href: "/holding/pl-report", icon: TrendingUp },
+      ],
+    },
+    {
+      type: "group",
       titleKey: "logistics",
       basePath: "/logistics",
       icon: Truck,
