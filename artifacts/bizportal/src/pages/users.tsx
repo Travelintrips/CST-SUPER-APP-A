@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Pencil, Users, ShieldAlert, ShieldCheck, X, CheckCircle2, XCircle, Clock, CaseSensitive } from "lucide-react";
+import { Pencil, Users, ShieldAlert, ShieldCheck, X, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -215,7 +214,7 @@ export default function UsersPage() {
   };
 
   const isForbidden = (error as any)?.status === 403 || (error as any)?.message?.includes("403");
-  const pendingCount = kasirs.filter(k => k.status === "pending").length;
+  const allLoading = isLoading || kasirLoading;
 
   return (
     <AppShell>
@@ -232,63 +231,44 @@ export default function UsersPage() {
             <p className="text-sm text-muted-foreground">{t.users.adminOnly}</p>
           </CardContent></Card>
         ) : (
-          <Tabs defaultValue="bizportal">
-            <TabsList>
-              <TabsTrigger value="bizportal">
-                <Users className="h-4 w-4 mr-1.5" />
-                Pengguna BizPortal
-              </TabsTrigger>
-              <TabsTrigger value="kasir" className="relative">
-                <CaseSensitive className="h-4 w-4 mr-1.5" />
-                Kasir POS
-                {pendingCount > 0 && (
-                  <span className="ml-1.5 bg-amber-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                    {pendingCount}
-                  </span>
-                )}
-              </TabsTrigger>
-            </TabsList>
-
-            {/* ── Tab 1: BizPortal users ── */}
-            <TabsContent value="bizportal" className="mt-4">
-              {/* Desktop table */}
-              <Card className="hidden md:block">
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t.common.name}</TableHead>
-                        <TableHead>{t.common.email}</TableHead>
-                        <TableHead>{t.users.role}</TableHead>
-                        <TableHead>Custom Role</TableHead>
-                        <TableHead>Perusahaan</TableHead>
-                        <TableHead>Divisi / Dept</TableHead>
-                        <TableHead className="text-right w-[80px]">{t.common.actions}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {isLoading ? (
-                        Array.from({ length: 4 }).map((_, i) => (
-                          <TableRow key={i}>
-                            {Array.from({ length: 7 }).map((__, j) => (
-                              <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                            ))}
-                          </TableRow>
-                        ))
-                      ) : users?.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center">
-                            <div className="flex flex-col items-center justify-center text-muted-foreground">
-                              <Users className="h-8 w-8 mb-2 opacity-50" />
-                              <p>{t.users.noUsers}</p>
-                            </div>
-                          </TableCell>
+          <>
+            {/* Desktop table */}
+            <Card className="hidden md:block">
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t.common.name}</TableHead>
+                      <TableHead>{t.common.email}</TableHead>
+                      <TableHead>Tipe</TableHead>
+                      <TableHead>Role / Status</TableHead>
+                      <TableHead>Custom Role</TableHead>
+                      <TableHead>Perusahaan / Cabang</TableHead>
+                      <TableHead>Divisi / Dept</TableHead>
+                      <TableHead className="text-right w-[140px]">{t.common.actions}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allLoading ? (
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <TableRow key={i}>
+                          {Array.from({ length: 8 }).map((__, j) => (
+                            <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                          ))}
                         </TableRow>
-                      ) : (
-                        users?.map((u) => (
-                          <TableRow key={u.id}>
+                      ))
+                    ) : (
+                      <>
+                        {/* BizPortal users */}
+                        {users?.map((u) => (
+                          <TableRow key={`bp-${u.id}`}>
                             <TableCell className="font-medium">{u.name}</TableCell>
                             <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-xs">
+                                BizPortal
+                              </Badge>
+                            </TableCell>
                             <TableCell>
                               <Badge variant="outline" className={roleColor(u.role)}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
                             </TableCell>
@@ -317,154 +297,144 @@ export default function UsersPage() {
                               </Button>
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                        ))}
 
-              {/* Mobile cards */}
-              <div className="md:hidden space-y-3">
-                {isLoading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <Card key={i}><CardContent className="p-4 space-y-2">
-                      <Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/3" />
-                    </CardContent></Card>
-                  ))
-                ) : users?.map((u) => (
-                  <Card key={u.id}><CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{u.name}</p>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
-                      </div>
-                      <Badge variant="outline" className={`shrink-0 ${roleColor(u.role)}`}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {u.companyCode && <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>}
-                      {u.divisionName && <span className="text-xs text-muted-foreground">{u.divisionName}</span>}
-                      {u.departmentName && <span className="text-xs text-muted-foreground">/ {u.departmentName}</span>}
-                    </div>
-                    <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)}>
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
-                    </Button>
-                  </CardContent></Card>
-                ))}
-              </div>
-            </TabsContent>
-
-            {/* ── Tab 2: Kasir POS ── */}
-            <TabsContent value="kasir" className="mt-4">
-              <Card className="hidden md:block">
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t.common.name}</TableHead>
-                        <TableHead>{t.common.email}</TableHead>
-                        <TableHead>Telepon</TableHead>
-                        <TableHead>Cabang</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Terdaftar</TableHead>
-                        <TableHead className="text-right w-[140px]">Aksi</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {kasirLoading ? (
-                        Array.from({ length: 3 }).map((_, i) => (
-                          <TableRow key={i}>
-                            {Array.from({ length: 7 }).map((__, j) => (
-                              <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                            ))}
+                        {/* Kasir POS users */}
+                        {kasirs.map((k) => (
+                          <TableRow key={`kasir-${k.id}`}>
+                            <TableCell className="font-medium">{k.name}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">{k.email}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-xs">
+                                Kasir POS
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{kasirStatusBadge(k.status)}</TableCell>
+                            <TableCell>
+                              {k.phone
+                                ? <span className="text-xs text-muted-foreground">{k.phone}</span>
+                                : <span className="text-xs text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {k.branchName
+                                ? <span className="text-xs">{k.branchName}</span>
+                                : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {new Date(k.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                {k.status !== "approved" && (
+                                  <Button size="sm" variant="outline"
+                                    className="text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 h-7 px-2 text-xs"
+                                    onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
+                                    disabled={kasirStatusMutation.isPending}>
+                                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
+                                  </Button>
+                                )}
+                                {k.status !== "rejected" && (
+                                  <Button size="sm" variant="outline"
+                                    className="text-red-500 border-red-500/30 hover:bg-red-500/10 h-7 px-2 text-xs"
+                                    onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
+                                    disabled={kasirStatusMutation.isPending}>
+                                    <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
                           </TableRow>
-                        ))
-                      ) : kasirs.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                            Belum ada kasir terdaftar
-                          </TableCell>
-                        </TableRow>
-                      ) : kasirs.map((k) => (
-                        <TableRow key={k.id}>
-                          <TableCell className="font-medium">{k.name}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">{k.email}</TableCell>
-                          <TableCell className="text-sm">{k.phone ?? "—"}</TableCell>
-                          <TableCell className="text-sm">{k.branchName ?? <span className="text-muted-foreground">—</span>}</TableCell>
-                          <TableCell>{kasirStatusBadge(k.status)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {new Date(k.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              {k.status !== "approved" && (
-                                <Button size="sm" variant="outline"
-                                  className="text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 h-7 px-2 text-xs"
-                                  onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
-                                  disabled={kasirStatusMutation.isPending}>
-                                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
-                                </Button>
-                              )}
-                              {k.status !== "rejected" && (
-                                <Button size="sm" variant="outline"
-                                  className="text-red-500 border-red-500/30 hover:bg-red-500/10 h-7 px-2 text-xs"
-                                  onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
-                                  disabled={kasirStatusMutation.isPending}>
-                                  <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                        ))}
 
-              {/* Mobile kasir cards */}
-              <div className="md:hidden space-y-3">
-                {kasirLoading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <Card key={i}><CardContent className="p-4 space-y-2">
-                      <Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/3" />
-                    </CardContent></Card>
-                  ))
-                ) : kasirs.map((k) => (
-                  <Card key={k.id}><CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{k.name}</p>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{k.email}</p>
-                        {k.phone && <p className="text-xs text-muted-foreground">{k.phone}</p>}
-                      </div>
-                      {kasirStatusBadge(k.status)}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                      {k.branchName && <span>Cabang: {k.branchName}</span>}
-                      <span>Daftar: {new Date(k.createdAt).toLocaleDateString("id-ID")}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      {k.status !== "approved" && (
-                        <Button size="sm" variant="outline" className="flex-1 text-emerald-600 border-emerald-500/30"
-                          onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
-                          disabled={kasirStatusMutation.isPending}>
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
-                        </Button>
-                      )}
-                      {k.status !== "rejected" && (
-                        <Button size="sm" variant="outline" className="flex-1 text-red-500 border-red-500/30"
-                          onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
-                          disabled={kasirStatusMutation.isPending}>
-                          <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
-                        </Button>
-                      )}
-                    </div>
+                        {!allLoading && (users?.length ?? 0) === 0 && kasirs.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={8} className="h-24 text-center">
+                              <div className="flex flex-col items-center justify-center text-muted-foreground">
+                                <Users className="h-8 w-8 mb-2 opacity-50" />
+                                <p>{t.users.noUsers}</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-3">
+              {allLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i}><CardContent className="p-4 space-y-2">
+                    <Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/3" />
                   </CardContent></Card>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
+                ))
+              ) : (
+                <>
+                  {users?.map((u) => (
+                    <Card key={`bp-${u.id}`}><CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px] px-1.5 py-0">BizPortal</Badge>
+                          </div>
+                          <p className="font-medium truncate">{u.name}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
+                        </div>
+                        <Badge variant="outline" className={`shrink-0 ${roleColor(u.role)}`}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {u.companyCode && <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>}
+                        {u.divisionName && <span className="text-xs text-muted-foreground">{u.divisionName}</span>}
+                        {u.departmentName && <span className="text-xs text-muted-foreground">/ {u.departmentName}</span>}
+                      </div>
+                      <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)}>
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
+                      </Button>
+                    </CardContent></Card>
+                  ))}
+
+                  {kasirs.map((k) => (
+                    <Card key={`kasir-${k.id}`}><CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-[10px] px-1.5 py-0">Kasir POS</Badge>
+                          </div>
+                          <p className="font-medium truncate">{k.name}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{k.email}</p>
+                          {k.phone && <p className="text-xs text-muted-foreground">{k.phone}</p>}
+                        </div>
+                        {kasirStatusBadge(k.status)}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                        {k.branchName && <span>Cabang: {k.branchName}</span>}
+                        <span>Daftar: {new Date(k.createdAt).toLocaleDateString("id-ID")}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {k.status !== "approved" && (
+                          <Button size="sm" variant="outline" className="flex-1 text-emerald-600 border-emerald-500/30"
+                            onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
+                            disabled={kasirStatusMutation.isPending}>
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
+                          </Button>
+                        )}
+                        {k.status !== "rejected" && (
+                          <Button size="sm" variant="outline" className="flex-1 text-red-500 border-red-500/30"
+                            onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
+                            disabled={kasirStatusMutation.isPending}>
+                            <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent></Card>
+                  ))}
+                </>
+              )}
+            </div>
+          </>
         )}
       </div>
 
