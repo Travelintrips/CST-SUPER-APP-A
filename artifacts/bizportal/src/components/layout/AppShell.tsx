@@ -205,6 +205,8 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "Pengguna", href: "/users", icon: UserCircle },
         { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
+        { titleKey: "Aturan Approval", href: "/settings/approval-rules", icon: ClipboardCheck },
+        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
       ],
     },
 
@@ -216,7 +218,7 @@ export function AppShell({ children }: AppShellProps) {
       icon: BarChart2,
       roles: ["manager", "admin", "owner", "kasir", "gudang"],
       children: [
-        { titleKey: "Lap. Operasional (POS & Stok)", href: "/reports/operasional", icon: BarChart2, roles: ["manager", "admin", "owner", "kasir", "gudang"] },
+        { titleKey: "Lap. Operasional (POS & Stok)", href: "/pos-kasir", icon: BarChart2, roles: ["manager", "admin", "owner", "kasir", "gudang"] },
         { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
         { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
@@ -290,6 +292,18 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
+      ],
+    },
+    {
+      type: "group",
+      titleKey: "holding",
+      basePath: "/holding",
+      icon: Building2,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
+        { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: LayoutDashboard },
+        { titleKey: "holdingPLReport", href: "/holding/pl-report", icon: TrendingUp },
       ],
     },
     {

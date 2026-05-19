@@ -24,6 +24,10 @@ args = "POS"
 task = "workflow.run"
 args = "Sport Center"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BizPortal"
+
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -46,6 +50,18 @@ outputType = "console"
 task = "shell.exec"
 args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3002
+
+[[workflows.workflow]]
+name = "BizPortal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -83,11 +99,7 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 9000
-
-[[ports]]
-localPort = 5000
-externalPort = 80
+externalPort = 3000
 
 [[ports]]
 localPort = 8080
