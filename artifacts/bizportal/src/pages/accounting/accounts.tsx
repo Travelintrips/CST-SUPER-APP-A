@@ -30,7 +30,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "@/contexts/CompanyContext";
-import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check, Building2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Landmark, Search, ChevronRight, ChevronDown, ChevronsUpDown, Check } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
   asset: "Aset",
@@ -96,10 +96,9 @@ export default function AccountsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = useLanguage();
-  const { companies, activeCompanyId } = useCompany();
+  const { activeCompanyId } = useCompany();
 
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
-  const companyId = selectedCompanyId ?? activeCompanyId ?? 1;
+  const companyId = activeCompanyId ?? 1;
 
   const { data: accounts = [] } = useQuery<Account[]>({
     queryKey: ["/api/accounting/accounts", companyId],
@@ -219,28 +218,6 @@ export default function AccountsPage() {
             <p className="text-sm text-muted-foreground">Chart of Accounts (CoA) — hierarki akun buku besar</p>
           </div>
           <div className="flex items-center gap-2">
-            {companies.length > 1 && (
-              <Select
-                value={String(companyId)}
-                onValueChange={(v) => {
-                  setSelectedCompanyId(Number(v));
-                  setSearch("");
-                  setCollapsed(new Set());
-                }}
-              >
-                <SelectTrigger className="w-56">
-                  <Building2 className="h-4 w-4 mr-1 text-muted-foreground shrink-0" />
-                  <SelectValue placeholder="Pilih perusahaan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.companyCode} — {c.companyName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
             <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-account"><Plus className="h-4 w-4 mr-2" />Tambah Akun</Button>
