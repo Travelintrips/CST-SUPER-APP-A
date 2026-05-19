@@ -95,6 +95,16 @@ import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import SportCenterSchedulePage from "@/pages/sport-center-schedule";
 import SportCenterReportPage from "@/pages/sport-center-report";
+import SportCenterDashboard from "@/pages/sport-center/index";
+import SportCenterBookingsPage from "@/pages/sport-center/bookings";
+import SportCenterServicesPage from "@/pages/sport-center/services";
+import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-requests";
+import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
+import ThaiTeaStockPage from "@/pages/thai-tea/stock";
+import ThaiTeaBranchesPage from "@/pages/thai-tea/branches";
+import ThaiTeaProductionPage from "@/pages/thai-tea/production";
+import ThaiTeaRecipesPage from "@/pages/thai-tea/recipes";
+import ThaiTeaReportsPage from "@/pages/thai-tea/reports";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
@@ -215,8 +225,19 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/roles" component={PR(SettingsRolesPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
       <Route path="/users" component={PR(UsersPage)} />
+      <Route path="/sport-center" component={PR(SportCenterDashboard)} />
+      <Route path="/sport-center/bookings" component={PR(SportCenterBookingsPage)} />
+      <Route path="/sport-center/services" component={PR(SportCenterServicesPage)} />
+      <Route path="/sport-center/purchase-requests" component={PR(SportCenterPurchaseRequestsPage)} />
       <Route path="/sport-center/schedule" component={PR(SportCenterSchedulePage)} />
       <Route path="/sport-center/reports" component={PR(SportCenterReportPage)} />
+      <Route path="/thai-tea" component={PR(ThaiTeaDashboardPage)} />
+      <Route path="/thai-tea/dashboard" component={PR(ThaiTeaDashboardPage)} />
+      <Route path="/thai-tea/stock" component={PR(ThaiTeaStockPage)} />
+      <Route path="/thai-tea/branches" component={PR(ThaiTeaBranchesPage)} />
+      <Route path="/thai-tea/production" component={PR(ThaiTeaProductionPage)} />
+      <Route path="/thai-tea/recipes" component={PR(ThaiTeaRecipesPage)} />
+      <Route path="/thai-tea/reports" component={PR(ThaiTeaReportsPage)} />
       <Route component={NotFound} />
     </Switch>
   );
