@@ -52,10 +52,21 @@ function posRedirectPlugin() {
         if (!isAllowed) {
           const html = `<!DOCTYPE html><html><head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=/kasir/login">
 <title>Redirecting...</title>
 </head><body>
-<script>window.location.replace('/kasir/login');</script>
+<script>
+(async function(){
+  if('serviceWorker' in navigator){
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for(const r of regs) await r.unregister();
+  }
+  if('caches' in window){
+    const keys = await caches.keys();
+    for(const k of keys) await caches.delete(k);
+  }
+  window.location.replace('/kasir/login');
+})();
+</script>
 <p>Mengalihkan ke halaman login...</p>
 </body></html>`;
           res.writeHead(200, {
