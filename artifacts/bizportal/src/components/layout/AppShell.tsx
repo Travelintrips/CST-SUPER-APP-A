@@ -53,6 +53,8 @@ import {
   FileBarChart2,
   ShieldCheck,
   Shield,
+  CalendarDays,
+  Dumbbell,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -350,6 +352,16 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Monitoring Cabang", href: "/thai-tea/branches", icon: GitBranch },
         { titleKey: "Produksi / Racikan", href: "/thai-tea/production", icon: FlaskConical },
         { titleKey: "Laporan", href: "/thai-tea/reports", icon: BarChart2 },
+      ],
+    },
+    {
+      type: "group",
+      titleKey: "Sport Center",
+      basePath: "/sport-center",
+      icon: Dumbbell,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Jadwal Booking", href: "/sport-center/schedule", icon: CalendarDays },
       ],
     },
   ];

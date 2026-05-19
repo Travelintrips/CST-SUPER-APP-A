@@ -80,6 +80,7 @@ import ExpenseReportsPage from "@/pages/expense/reports";
 import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
+import SportCenterSchedulePage from "@/pages/sport-center-schedule";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 const PR = (C: React.ComponentType) => () => <ProtectedRoute component={C} />;
@@ -177,6 +178,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/settings/ai-scan" component={PR(AiScanSettingsPage)} />
       <Route path="/settings" component={PR(SettingsPage)} />
       <Route path="/users" component={PR(UsersPage)} />
+      <Route path="/sport-center/schedule" component={PR(SportCenterSchedulePage)} />
       <Route component={NotFound} />
     </Switch>
   );
