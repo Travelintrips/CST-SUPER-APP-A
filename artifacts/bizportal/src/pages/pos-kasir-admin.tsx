@@ -55,6 +55,14 @@ interface DailyRow {
   revenue: string;
 }
 
+interface BranchCompRow {
+  branchId: number | null;
+  branchName: string;
+  revenue: number;
+  orderCount: number;
+  avgOrderValue: number;
+}
+
 interface Product {
   id: number;
   name: string;
@@ -144,6 +152,7 @@ export default function PosKasirAdminPage() {
   // Report
   const [report, setReport] = useState<ReportData | null>(null);
   const [daily, setDaily] = useState<DailyRow[]>([]);
+  const [branchComp, setBranchComp] = useState<BranchCompRow[]>([]);
   const [reportFrom, setReportFrom] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10);
   });
@@ -237,12 +246,15 @@ export default function PosKasirAdminPage() {
       if (reportCashierId && reportCashierId !== "all") params.set("cashierId", reportCashierId);
       const dailyParams = new URLSearchParams();
       if (reportBranchId && reportBranchId !== "all") dailyParams.set("branchId", reportBranchId);
-      const [rRes, dRes] = await Promise.all([
+      const compParams = new URLSearchParams({ from: reportFrom, to: reportTo });
+      const [rRes, dRes, cRes] = await Promise.all([
         fetch(`/api/pos-kasir/admin/report?${params}`, { credentials: "include" }),
         fetch(`/api/pos-kasir/admin/report/daily${dailyParams.size ? `?${dailyParams}` : ""}`, { credentials: "include" }),
+        fetch(`/api/pos-kasir/admin/report/branch-comparison?${compParams}`, { credentials: "include" }),
       ]);
       if (rRes.ok) setReport(await rRes.json() as ReportData);
       if (dRes.ok) setDaily(await dRes.json() as DailyRow[]);
+      if (cRes.ok) setBranchComp(await cRes.json() as BranchCompRow[]);
     } finally { setReportLoading(false); }
   }, [reportFrom, reportTo, reportBranchId, reportCashierId]);
 
@@ -866,6 +878,99 @@ export default function PosKasirAdminPage() {
                 </CardContent>
               </Card>
             )}
+
+            {branchComp.length > 0 && (() => {
+              const totalRev = branchComp.reduce((s, b) => s + b.revenue, 0);
+              const maxRev = branchComp[0]?.revenue ?? 1;
+              const MEDALS = ["🥇", "🥈", "🥉"];
+              const BRANCH_COLORS = [
+                "bg-amber-500", "bg-blue-500", "bg-emerald-500", "bg-violet-500",
+                "bg-rose-500", "bg-cyan-500", "bg-orange-500", "bg-teal-500",
+              ];
+              return (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-amber-600" />
+                      Perbandingan Penjualan Antar Cabang
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {reportFrom} s/d {reportTo} · {branchComp.length} cabang
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {branchComp.map((b, i) => {
+                      const pct = totalRev > 0 ? (b.revenue / totalRev) * 100 : 0;
+                      const barPct = maxRev > 0 ? (b.revenue / maxRev) * 100 : 0;
+                      const colorClass = BRANCH_COLORS[i % BRANCH_COLORS.length];
+                      return (
+                        <div key={b.branchId ?? "none"} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-base leading-none w-6 shrink-0">{MEDALS[i] ?? `#${i + 1}`}</span>
+                              <span className="font-medium truncate">{b.branchName}</span>
+                            </div>
+                            <div className="flex items-center gap-4 shrink-0 ml-2">
+                              <span className="text-xs text-muted-foreground hidden sm:block">{b.orderCount} order · avg {fmt(b.avgOrderValue)}</span>
+                              <span className="font-semibold text-right w-28">{fmt(b.revenue)}</span>
+                              <span className="text-xs text-muted-foreground w-10 text-right">{pct.toFixed(1)}%</span>
+                            </div>
+                          </div>
+                          <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
+                              style={{ width: `${barPct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="pt-2 border-t">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-8">#</TableHead>
+                            <TableHead>Cabang</TableHead>
+                            <TableHead className="text-right">Pendapatan</TableHead>
+                            <TableHead className="text-right">Order</TableHead>
+                            <TableHead className="text-right">Rata-rata/Order</TableHead>
+                            <TableHead className="text-right">% Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {branchComp.map((b, i) => {
+                            const pct = totalRev > 0 ? (b.revenue / totalRev) * 100 : 0;
+                            return (
+                              <TableRow key={b.branchId ?? "none"} className={i === 0 ? "bg-amber-50/50" : ""}>
+                                <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                                <TableCell className="font-medium">{b.branchName}</TableCell>
+                                <TableCell className="text-right font-semibold">{fmt(b.revenue)}</TableCell>
+                                <TableCell className="text-right">{b.orderCount}</TableCell>
+                                <TableCell className="text-right text-muted-foreground">{fmt(b.avgOrderValue)}</TableCell>
+                                <TableCell className="text-right">
+                                  <span className={`inline-flex items-center justify-end font-medium ${i === 0 ? "text-amber-700" : "text-muted-foreground"}`}>
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          <TableRow className="border-t-2 font-semibold bg-gray-50">
+                            <TableCell />
+                            <TableCell>Total</TableCell>
+                            <TableCell className="text-right">{fmt(totalRev)}</TableCell>
+                            <TableCell className="text-right">{branchComp.reduce((s, b) => s + b.orderCount, 0)}</TableCell>
+                            <TableCell />
+                            <TableCell className="text-right">100%</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </TabsContent>
 
           {/* ── Products Tab ── */}

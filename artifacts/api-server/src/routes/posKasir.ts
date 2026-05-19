@@ -908,6 +908,41 @@ router.get("/admin/report/daily", async (req, res) => {
   return res.json(result.rows);
 });
 
+// GET /api/pos-kasir/admin/report/branch-comparison
+router.get("/admin/report/branch-comparison", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const { from, to } = req.query;
+  const start = from ? new Date(String(from)) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
+  const end = to ? new Date(String(to)) : (() => { const d = new Date(); d.setHours(23,59,59,999); return d; })();
+
+  const result = await db.execute(sql`
+    SELECT
+      b.id as branch_id,
+      COALESCE(b.name, 'Tidak Ada Cabang') as branch_name,
+      COUNT(o.id) as order_count,
+      COALESCE(SUM(o.total), 0) as revenue,
+      COALESCE(AVG(o.total), 0) as avg_order_value
+    FROM pos_orders o
+    LEFT JOIN pos_branches b ON o.branch_id = b.id
+    WHERE o.status = 'paid'
+      AND o.paid_at >= ${start}
+      AND o.paid_at <= ${end}
+    GROUP BY b.id, b.name
+    ORDER BY revenue DESC
+  `);
+
+  return res.json(result.rows.map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      branchId: row.branch_id ?? null,
+      branchName: String(row.branch_name ?? "Tidak Ada Cabang"),
+      orderCount: Number(row.order_count ?? 0),
+      revenue: Number(row.revenue ?? 0),
+      avgOrderValue: Number(row.avg_order_value ?? 0),
+    };
+  }));
+});
+
 // ── Admin — Stock ─────────────────────────────────────────────────────────────
 
 // GET /api/pos-kasir/admin/stock?branchId=X
