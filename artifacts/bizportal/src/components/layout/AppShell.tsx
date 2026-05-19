@@ -53,6 +53,7 @@ import {
   FileBarChart2,
   ShieldCheck,
   Shield,
+  Dumbbell,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -335,6 +336,20 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: BarChart2 },
         { titleKey: "holdingPLReport", href: "/holding/pl-report", icon: FileBarChart2 },
         { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
+      ],
+    },
+    {
+      type: "group",
+      titleKey: "Sport Center",
+      basePath: "/sport-center",
+      icon: Dumbbell,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Dashboard", href: "/sport-center", icon: LayoutDashboard },
+        { titleKey: "Booking", href: "/sport-center/bookings", icon: Calendar },
+        { titleKey: "Produk & Layanan", href: "/sport-center/services", icon: Package },
+        { titleKey: "Purchase Request", href: "/sport-center/purchase-requests", icon: ClipboardList },
+        { titleKey: "Laporan", href: "/sport-center/reports", icon: BarChart2 },
       ],
     },
     {
