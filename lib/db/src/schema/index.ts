@@ -47,4 +47,5 @@ export * from "./approvalRules";
 export * from "./productBom";
 export * from "./posAccess";
 export * from "./sportCenter";
+export * from "./notificationLogs";
 

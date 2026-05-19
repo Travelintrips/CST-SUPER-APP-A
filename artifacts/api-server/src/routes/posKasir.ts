@@ -7,7 +7,7 @@ import { db } from "@workspace/db";
 import {
   posCashiersTable, posProductsTable, posOrdersTable,
   posOrderItemsTable, posStockItemsTable, posStockAdjustmentsTable,
-  posBranchesTable, posSettingsTable,
+  posBranchesTable, posSettingsTable, notificationLogsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
@@ -1219,6 +1219,33 @@ router.patch("/admin/settings", async (req, res) => {
   const settings: Record<string, string> = {};
   for (const r of rows) settings[r.key] = r.value;
   return res.json(settings);
+});
+
+// ── Notification Logs ─────────────────────────────────────────────────────────
+
+// GET /api/pos-kasir/admin/notification-logs
+router.get("/admin/notification-logs", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const { channel, status, from, to, limit: limitQ } = req.query;
+  const limit = Math.min(Number(limitQ ?? 200), 500);
+  const start = from ? new Date(String(from)) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
+  const end = to ? new Date(String(to) + "T23:59:59") : new Date();
+
+  const filters: import("drizzle-orm").SQL[] = [
+    gte(notificationLogsTable.createdAt, start),
+    lte(notificationLogsTable.createdAt, end),
+  ];
+  if (channel && channel !== "all") filters.push(eq(notificationLogsTable.channel, String(channel)));
+  if (status && status !== "all") filters.push(eq(notificationLogsTable.status, String(status)));
+
+  const rows = await db
+    .select()
+    .from(notificationLogsTable)
+    .where(and(...filters))
+    .orderBy(desc(notificationLogsTable.createdAt))
+    .limit(limit);
+
+  return res.json(rows);
 });
 
 export default router;

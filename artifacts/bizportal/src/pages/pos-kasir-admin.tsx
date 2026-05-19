@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin, ImageIcon, Loader2, X, Settings } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Users, TrendingUp, Package, RefreshCw, Plus, Pencil, Trash2, MapPin, ImageIcon, Loader2, X, Settings, Bell, MessageSquare, Mail, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -184,10 +184,46 @@ export default function PosKasirAdminPage() {
   const [shiftFrom, setShiftFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); });
   const [shiftTo, setShiftTo] = useState(() => new Date().toISOString().slice(0, 10));
 
+  // Notification Logs
+  interface NotifLog {
+    id: number;
+    channel: string;
+    recipient: string;
+    subject?: string | null;
+    message: string;
+    status: string;
+    errorMsg?: string | null;
+    context: string;
+    refType?: string | null;
+    refId?: string | null;
+    createdAt: string;
+  }
+  const [notifLogs, setNotifLogs] = useState<NotifLog[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifChannel, setNotifChannel] = useState<string>("all");
+  const [notifStatus, setNotifStatus] = useState<string>("all");
+  const [notifFrom, setNotifFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); });
+  const [notifTo, setNotifTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [notifExpanded, setNotifExpanded] = useState<number | null>(null);
+
   // Settings / Logo
   const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
   const [logoUploading, setLogoUploading] = useState(false);
   const logoFileRef = useRef<HTMLInputElement>(null);
+
+  const loadNotifLogs = useCallback(async (ch?: string, st?: string, f?: string, t?: string) => {
+    setNotifLoading(true);
+    try {
+      const params = new URLSearchParams({ from: f ?? notifFrom, to: notifTo });
+      const chVal = ch ?? notifChannel;
+      const stVal = st ?? notifStatus;
+      if (chVal !== "all") params.set("channel", chVal);
+      if (stVal !== "all") params.set("status", stVal);
+      params.set("to", t ?? notifTo);
+      const res = await fetch(`/api/pos-kasir/admin/notification-logs?${params}`, { credentials: "include" });
+      if (res.ok) setNotifLogs(await res.json() as NotifLog[]);
+    } finally { setNotifLoading(false); }
+  }, [notifFrom, notifTo, notifChannel, notifStatus]);
 
   const loadSettings = useCallback(async () => {
     const res = await fetch("/api/pos-kasir/settings");
@@ -334,7 +370,8 @@ export default function PosKasirAdminPage() {
     loadInvProducts();
     loadStocks().then(() => setLastUpdated(new Date()));
     loadShifts();
-  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadInvProducts, loadStocks, loadShifts]);
+    loadNotifLogs();
+  }, [loadSettings, loadBranches, loadCashiers, loadReport, loadProducts, loadInvProducts, loadStocks, loadShifts, loadNotifLogs]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -499,7 +536,7 @@ export default function PosKasirAdminPage() {
         </div>
 
         <Tabs defaultValue="branches">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="branches" className="flex items-center gap-1.5">
               <MapPin className="h-4 w-4" /> Cabang
             </TabsTrigger>
@@ -517,6 +554,9 @@ export default function PosKasirAdminPage() {
             </TabsTrigger>
             <TabsTrigger value="stock" className="flex items-center gap-1.5">
               <Package className="h-4 w-4" /> Stok
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-1.5">
+              <Bell className="h-4 w-4" /> Notifikasi
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-1.5">
               <Settings className="h-4 w-4" /> Pengaturan
@@ -1145,6 +1185,197 @@ export default function PosKasirAdminPage() {
                     })}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── Notifications Tab ── */}
+          <TabsContent value="notifications">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Bell className="h-4 w-4 text-orange-500" /> Riwayat Notifikasi
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">Log pengiriman WA dan email — tampilkan status berhasil/gagal</p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => loadNotifLogs()} disabled={notifLoading}>
+                    {notifLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+                    Refresh
+                  </Button>
+                </div>
+
+                {/* Filter Bar */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t mt-2">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Channel:</label>
+                    <Select value={notifChannel} onValueChange={(v) => { setNotifChannel(v); loadNotifLogs(v, undefined); }}>
+                      <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua</SelectItem>
+                        <SelectItem value="wa">WhatsApp</SelectItem>
+                        <SelectItem value="email">Email</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Status:</label>
+                    <Select value={notifStatus} onValueChange={(v) => { setNotifStatus(v); loadNotifLogs(undefined, v); }}>
+                      <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua</SelectItem>
+                        <SelectItem value="sent">Terkirim</SelectItem>
+                        <SelectItem value="failed">Gagal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Dari:</label>
+                    <Input type="date" className="h-7 text-xs w-36" value={notifFrom}
+                      onChange={(e) => setNotifFrom(e.target.value)} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Sampai:</label>
+                    <Input type="date" className="h-7 text-xs w-36" value={notifTo}
+                      onChange={(e) => setNotifTo(e.target.value)} />
+                  </div>
+                  <Button size="sm" variant="default" className="h-7 text-xs px-3" onClick={() => loadNotifLogs()}>
+                    Terapkan
+                  </Button>
+                </div>
+
+                {/* Summary Badges */}
+                {notifLogs.length > 0 && (
+                  <div className="flex gap-2 pt-1">
+                    <Badge className="bg-gray-100 text-gray-700 border-gray-200 text-xs font-normal">
+                      {notifLogs.length} entri
+                    </Badge>
+                    <Badge className="bg-green-100 text-green-700 border-green-200 text-xs font-normal">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      {notifLogs.filter((l) => l.status === "sent").length} terkirim
+                    </Badge>
+                    <Badge className="bg-red-100 text-red-700 border-red-200 text-xs font-normal">
+                      <XCircle className="h-3 w-3 mr-1" />
+                      {notifLogs.filter((l) => l.status === "failed").length} gagal
+                    </Badge>
+                    <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs font-normal">
+                      <MessageSquare className="h-3 w-3 mr-1" />
+                      {notifLogs.filter((l) => l.channel === "wa").length} WA
+                    </Badge>
+                    <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs font-normal">
+                      <Mail className="h-3 w-3 mr-1" />
+                      {notifLogs.filter((l) => l.channel === "email").length} Email
+                    </Badge>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent className="p-0">
+                {notifLoading ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm">Memuat riwayat notifikasi...</span>
+                  </div>
+                ) : notifLogs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Bell className="h-8 w-8 opacity-30" />
+                    <p className="text-sm">Belum ada notifikasi dalam rentang waktu ini</p>
+                    <p className="text-xs opacity-70">Log akan muncul otomatis setiap WA atau email dikirim dari sistem</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Waktu</TableHead>
+                        <TableHead className="w-[70px]">Channel</TableHead>
+                        <TableHead className="w-[80px]">Status</TableHead>
+                        <TableHead>Penerima</TableHead>
+                        <TableHead>Pesan / Subjek</TableHead>
+                        <TableHead className="w-[80px]">Konteks</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {notifLogs.map((log) => {
+                        const isExpanded = notifExpanded === log.id;
+                        const ts = new Date(log.createdAt);
+                        const timeStr = ts.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) + " " + ts.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                        return (
+                          <>
+                            <TableRow
+                              key={log.id}
+                              className={`cursor-pointer hover:bg-muted/40 ${isExpanded ? "bg-muted/30" : ""}`}
+                              onClick={() => setNotifExpanded(isExpanded ? null : log.id)}
+                            >
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{timeStr}</TableCell>
+                              <TableCell>
+                                {log.channel === "wa" ? (
+                                  <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1">
+                                    <MessageSquare className="h-3 w-3" /> WA
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs gap-1">
+                                    <Mail className="h-3 w-3" /> Email
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {log.status === "sent" ? (
+                                  <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1">
+                                    <CheckCircle className="h-3 w-3" /> Terkirim
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1">
+                                    <XCircle className="h-3 w-3" /> Gagal
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs font-mono max-w-[140px] truncate" title={log.recipient}>
+                                {log.recipient}
+                              </TableCell>
+                              <TableCell className="text-xs max-w-[260px]">
+                                {log.subject ? (
+                                  <span className="font-medium">{log.subject}</span>
+                                ) : (
+                                  <span className="text-muted-foreground truncate block">{log.message.slice(0, 80)}{log.message.length > 80 ? "…" : ""}</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="text-xs capitalize">{log.context}</Badge>
+                              </TableCell>
+                            </TableRow>
+                            {isExpanded && (
+                              <TableRow key={`exp-${log.id}`} className="bg-muted/20">
+                                <TableCell colSpan={6} className="py-3 px-4">
+                                  <div className="space-y-2">
+                                    {log.status === "failed" && log.errorMsg && (
+                                      <div className="flex items-start gap-2 p-2 bg-red-50 border border-red-200 rounded-md">
+                                        <AlertCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />
+                                        <p className="text-xs text-red-700 font-medium">Error: {log.errorMsg}</p>
+                                      </div>
+                                    )}
+                                    {log.subject && (
+                                      <div>
+                                        <p className="text-xs font-semibold text-muted-foreground mb-0.5">Subjek</p>
+                                        <p className="text-xs">{log.subject}</p>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <p className="text-xs font-semibold text-muted-foreground mb-0.5">Isi Pesan</p>
+                                      <pre className="text-xs whitespace-pre-wrap font-sans bg-white border rounded p-2 max-h-40 overflow-y-auto">{log.message}</pre>
+                                    </div>
+                                    {(log.refType || log.refId) && (
+                                      <p className="text-xs text-muted-foreground">Referensi: {log.refType} #{log.refId}</p>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

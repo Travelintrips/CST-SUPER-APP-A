@@ -1,10 +1,14 @@
 import { Resend } from "resend";
+import { logNotification } from "./notificationLog.js";
 
 export interface SendMailOptions {
   to: string;
   subject: string;
   html: string;
   text: string;
+  context?: string;
+  refType?: string;
+  refId?: string;
   attachments?: Array<{
     filename: string;
     content: Buffer;
@@ -41,8 +45,30 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
   });
 
   if (error) {
+    await logNotification({
+      channel: "email",
+      recipient: opts.to,
+      subject: opts.subject,
+      message: opts.text,
+      status: "failed",
+      errorMsg: error.message,
+      context: opts.context,
+      refType: opts.refType,
+      refId: opts.refId,
+    });
     throw new Error(`Resend error: ${error.message}`);
   }
+
+  await logNotification({
+    channel: "email",
+    recipient: opts.to,
+    subject: opts.subject,
+    message: opts.text,
+    status: "sent",
+    context: opts.context,
+    refType: opts.refType,
+    refId: opts.refId,
+  });
 }
 
 export function isSmtpConfigured(): boolean {
