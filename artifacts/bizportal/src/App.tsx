@@ -137,6 +137,8 @@ import SportCenterBookingsPage from "@/pages/sport-center/bookings";
 import SportCenterServicesPage from "@/pages/sport-center/services";
 import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-requests";
 import SportCenterReportsPage from "@/pages/sport-center/reports";
+import SportCenterSchedulePage from "@/pages/sport-center-schedule";
+import SportCenterReportPage from "@/pages/sport-center-report";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -445,9 +447,10 @@ function Router() {
         {/* Sport Center */}
         <Route path="/sport-center" component={() => <ProtectedRoute component={SportCenterDashboard} />} />
         <Route path="/sport-center/bookings" component={() => <ProtectedRoute component={SportCenterBookingsPage} />} />
+        <Route path="/sport-center/schedule" component={() => <ProtectedRoute component={SportCenterSchedulePage} />} />
         <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
         <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
-        <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportsPage} />} />
+        <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportPage} />} />
         {/* Warehouse (legacy) */}
         <Route path="/warehouse/stock" component={() => <ProtectedRoute component={WarehouseStockPage} />} />
         <Route path="/warehouse/movements" component={() => <ProtectedRoute component={WarehouseMovementsPage} />} />
