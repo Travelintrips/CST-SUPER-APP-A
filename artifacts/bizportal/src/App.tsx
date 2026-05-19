@@ -1,5 +1,6 @@
 import React from "react";
 import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
+import { Router as WouterRouter, Redirect, Switch, Route } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -127,7 +128,16 @@ import InventoryValuationPage from "@/pages/reports/inventory-valuation";
 import SportCenterSchedulePage from "@/pages/sport-center-schedule";
 import SportCenterReportPage from "@/pages/sport-center-report";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const ROLE_CACHE_KEY = "biz_user_role_v1";

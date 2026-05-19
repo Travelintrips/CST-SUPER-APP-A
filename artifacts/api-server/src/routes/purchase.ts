@@ -376,20 +376,21 @@ router.post("/documents/:id/action", async (req, res) => {
 
           // ── wh_stock (POS/legacy) ──────────────────────────────────────────
           if (posWhId) {
+            const docCompanyId = (doc as any).companyId ?? null;
             const cur = await db.execute(sql`
               SELECT qty::float FROM wh_stock WHERE product_id = ${line.productId} AND warehouse_id = ${posWhId} AND rack_id IS NULL
             `);
             const qtyBefore = Number((cur.rows[0] as any)?.qty ?? 0);
             const qtyAfter = qtyBefore + qty;
             await db.execute(sql`
-              INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, cost_price, updated_at)
-              VALUES (${line.productId}, ${posWhId}, NULL, ${qtyAfter}, ${costPrice}, NOW())
+              INSERT INTO wh_stock (company_id, product_id, warehouse_id, rack_id, qty, cost_price, updated_at)
+              VALUES (${docCompanyId}, ${line.productId}, ${posWhId}, NULL, ${qtyAfter}, ${costPrice}, NOW())
               ON CONFLICT ON CONSTRAINT wh_stock_product_warehouse_rack_idx
-              DO UPDATE SET qty = ${qtyAfter}, cost_price = ${costPrice}, updated_at = NOW()
+              DO UPDATE SET company_id = COALESCE(wh_stock.company_id, ${docCompanyId}), qty = ${qtyAfter}, cost_price = ${costPrice}, updated_at = NOW()
             `);
             await db.execute(sql`
-              INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
-              VALUES (${line.productId}, ${posWhId}, NULL, 'po_receipt', ${qty}, ${qtyBefore}, ${qtyAfter}, ${costPrice},
+              INSERT INTO wh_movements (company_id, product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note)
+              VALUES (${docCompanyId}, ${line.productId}, ${posWhId}, NULL, 'po_receipt', ${qty}, ${qtyBefore}, ${qtyAfter}, ${costPrice},
                       'purchase_order', ${id}, ${`PO Diterima: ${doc.docNumber}`})
             `);
           }

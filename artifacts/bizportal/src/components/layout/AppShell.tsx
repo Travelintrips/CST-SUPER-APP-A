@@ -50,7 +50,6 @@ import {
   AlertTriangle,
   PackageCheck,
   QrCode,
-  FileBarChart2,
   ShieldCheck,
   Shield,
   Calendar,
@@ -352,18 +351,6 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
 
-    {
-      type: "group",
-      titleKey: "holding",
-      basePath: "/holding",
-      icon: Layers,
-      roles: ["owner"],
-      children: [
-        { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: BarChart2 },
-        { titleKey: "holdingPLReport", href: "/holding/pl-report", icon: FileBarChart2 },
-        { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
-      ],
-    },
     {
       type: "group",
       titleKey: "Sport Center",

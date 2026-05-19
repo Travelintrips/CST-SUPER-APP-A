@@ -206,7 +206,12 @@ router.get("/inventory-valuation", async (req, res) => {
     JOIN products p ON p.id = ws.product_id
     JOIN warehouses w ON w.id = ws.warehouse_id
     LEFT JOIN companies c ON c.id = w.company_id
-    LEFT JOIN product_categories pc ON pc.id = p.category_id
+    LEFT JOIN LATERAL (
+      SELECT pc2.name FROM product_category_map pcm2
+      JOIN product_categories pc2 ON pc2.id = pcm2.category_id
+      WHERE pcm2.product_id = p.id
+      LIMIT 1
+    ) pc ON true
     WHERE ws.qty::numeric > 0
       ${companyId ? sql`AND w.company_id = ${companyId}` : sql``}
       ${warehouseId ? sql`AND ws.warehouse_id = ${warehouseId}` : sql``}
