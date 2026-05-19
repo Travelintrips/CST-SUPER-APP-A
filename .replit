@@ -18,34 +18,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "POS"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Sport Center"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "POS"
+name = "Start application"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash start-pos-kasir.sh"
-
-[[workflows.workflow]]
-name = "Sport Center"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3002
+waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -83,16 +68,14 @@ defaultBucketID = "replit-objstore-e357cc66-19c3-4d73-9ca9-3069d78355d1"
 
 [[ports]]
 localPort = 3000
-externalPort = 3000
-
-[[ports]]
-localPort = 3002
 externalPort = 9000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
-localPort = 8080
+
+[[ports]]
+localPort = 8081
 externalPort = 8008
 
 [[ports]]
