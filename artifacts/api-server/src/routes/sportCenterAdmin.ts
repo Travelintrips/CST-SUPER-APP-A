@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { postSportCenterBooking } from "../lib/accounting.js";
 
 export const sportCenterAdminRouter = Router();
 
@@ -112,9 +113,30 @@ sportCenterAdminRouter.put("/bookings/:id/status", async (req: Request, res: Res
   const { status } = req.body as { status: string };
   const allowed = ["pending", "confirmed", "completed", "cancelled"];
   if (!allowed.includes(status)) { res.status(400).json({ message: "Status tidak valid" }); return; }
+
+  const before = await db.execute(sql`SELECT * FROM sport_center_bookings WHERE id = ${id} LIMIT 1`);
+  if (before.rows.length === 0) { res.status(404).json({ message: "Tidak ditemukan" }); return; }
+  const prev = before.rows[0] as {
+    status: string; booking_code: string; customer_name: string;
+    facility_name: string; date: string; total_price: number;
+  };
+
   const result = await db.execute(sql`UPDATE sport_center_bookings SET status = ${status} WHERE id = ${id} RETURNING *`);
   if (result.rows.length === 0) { res.status(404).json({ message: "Tidak ditemukan" }); return; }
   res.json(result.rows[0]);
+
+  if (status === "confirmed" && prev.status !== "confirmed") {
+    const userId = (req.user as { id?: string } | undefined)?.id ?? null;
+    postSportCenterBooking({
+      bookingId: id,
+      bookingCode: prev.booking_code,
+      customerName: prev.customer_name,
+      facilityName: prev.facility_name,
+      date: prev.date,
+      totalPrice: Number(prev.total_price),
+      createdById: userId,
+    }).catch(() => {});
+  }
 });
 
 sportCenterAdminRouter.delete("/bookings/:id", async (req: Request, res: Response) => {
