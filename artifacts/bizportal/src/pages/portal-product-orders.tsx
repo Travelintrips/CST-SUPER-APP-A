@@ -7,9 +7,11 @@ import {
   useLinkPortalProductOrderItem,
   useListPortalProducts,
   getListPortalProductOrdersQueryKey,
+  getGetPortalProductOrderQueryOptions,
 } from "@workspace/api-client-react";
 import type { PortalProductOrder } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +46,7 @@ function formatTanggal(iso: string) {
 
 export default function PortalProductOrdersPage() {
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
 
   const [search, setSearch] = useState("");
@@ -262,6 +265,7 @@ export default function PortalProductOrdersPage() {
                         key={order.id}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => setDetailOrderId(order.id)}
+                        {...prefetchHover(getGetPortalProductOrderQueryOptions(order.id))}
                       >
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <Checkbox

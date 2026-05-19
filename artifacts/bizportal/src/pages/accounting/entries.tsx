@@ -24,9 +24,11 @@ import { useCompany } from "@/contexts/CompanyContext";
 import {
   useListAccountingEntries, useCreateAccountingEntry, useListJournals, useListAccounts,
   getListAccountingEntriesQueryKey,
+  getGetAccountingEntryQueryOptions,
   type AccountingEntry,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { Plus, FileText, Trash2, Printer, Download, RotateCcw, RefreshCw } from "lucide-react";
 import { exportXlsx, printWindow } from "@/lib/export";
 
@@ -161,6 +163,7 @@ function ResetDraftDialog({ entry, onDone }: { entry: AccountingEntry; onDone: (
 
 export default function EntriesPage() {
   const qc = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
   const { activeCompanyId } = useCompany();
@@ -348,7 +351,7 @@ export default function EntriesPage() {
               {rows.length === 0 ? (
                 <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Tidak ada entri</TableCell></TableRow>
               ) : rows.map((e) => (
-                <TableRow key={e.id} data-testid={`row-entry-${e.id}`} className={e.status === "cancelled" ? "opacity-40" : undefined}>
+                <TableRow key={e.id} data-testid={`row-entry-${e.id}`} className={e.status === "cancelled" ? "opacity-40" : undefined} {...prefetchHover(getGetAccountingEntryQueryOptions(e.id))}>
                   <TableCell>
                     <Link href={`/accounting/entries/${e.id}`} className="text-indigo-400 hover:underline font-mono text-xs">
                       {e.entryNumber}

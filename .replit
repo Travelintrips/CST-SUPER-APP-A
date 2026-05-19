@@ -18,22 +18,18 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "POS"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Sport Center"
+args = "Start application"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Customer Portal"
 
 [[workflows.workflow]]
-name = "POS"
+name = "Start application"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
@@ -51,6 +47,7 @@ outputType = "console"
 task = "shell.exec"
 args = "fuser -k 3002/tcp 2>/dev/null || true; sleep 1; cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3002
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Customer Portal"
@@ -105,6 +102,14 @@ externalPort = 9000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8008
+
+[[ports]]
+localPort = 8082
+externalPort = 3002
 
 [[ports]]
 localPort = 8083
