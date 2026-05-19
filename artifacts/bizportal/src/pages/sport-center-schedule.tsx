@@ -1,26 +1,35 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
   ChevronLeft, ChevronRight, CalendarDays, Clock, User, Phone, Mail,
-  CheckCircle2, XCircle, Clock3, CircleDot, AlertCircle,
+  CheckCircle2, XCircle, Clock3, CircleDot, AlertCircle, Plus,
 } from "lucide-react";
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
 const FACILITIES = [
-  { id: "all",          name: "Semua Fasilitas" },
-  { id: "futsal-01",    name: "Lapangan Futsal" },
-  { id: "badminton-01", name: "Lapangan Badminton" },
-  { id: "basket-01",    name: "Lapangan Basket" },
-  { id: "fitness-01",   name: "Area Fitness" },
-  { id: "yoga-01",      name: "Studio Yoga" },
-  { id: "zumba-01",     name: "Studio Zumba" },
+  { id: "futsal-01",    name: "Lapangan Futsal",    pricePerHour: 150000 },
+  { id: "badminton-01", name: "Lapangan Badminton",  pricePerHour: 75000  },
+  { id: "basket-01",    name: "Lapangan Basket",     pricePerHour: 200000 },
+  { id: "fitness-01",   name: "Area Fitness",        pricePerHour: 35000  },
+  { id: "yoga-01",      name: "Studio Yoga",         pricePerHour: 50000  },
+  { id: "zumba-01",     name: "Studio Zumba",        pricePerHour: 60000  },
+];
+
+const FACILITIES_WITH_ALL = [
+  { id: "all", name: "Semua Fasilitas", pricePerHour: 0 },
+  ...FACILITIES,
 ];
 
 const FACILITY_COLORS: Record<string, string> = {
@@ -33,15 +42,18 @@ const FACILITY_COLORS: Record<string, string> = {
 };
 
 const STATUS_CONFIG = {
-  pending:   { label: "Menunggu",   color: "bg-amber-500/15 text-amber-700 border-amber-400/40",   icon: Clock3 },
-  confirmed: { label: "Dikonfirmasi", color: "bg-emerald-500/15 text-emerald-700 border-emerald-400/40", icon: CheckCircle2 },
-  completed: { label: "Selesai",    color: "bg-slate-500/15 text-slate-600 border-slate-400/40",   icon: CircleDot },
-  cancelled: { label: "Dibatalkan", color: "bg-red-500/15 text-red-600 border-red-400/40",         icon: XCircle },
+  pending:   { label: "Menunggu",      color: "bg-amber-500/15 text-amber-700 border-amber-400/40",   icon: Clock3 },
+  confirmed: { label: "Dikonfirmasi",  color: "bg-emerald-500/15 text-emerald-700 border-emerald-400/40", icon: CheckCircle2 },
+  completed: { label: "Selesai",       color: "bg-slate-500/15 text-slate-600 border-slate-400/40",   icon: CircleDot },
+  cancelled: { label: "Dibatalkan",    color: "bg-red-500/15 text-red-600 border-red-400/40",         icon: XCircle },
 };
 
-const START_HOUR = 6;
-const END_HOUR   = 23;
-const TOTAL_HOURS = END_HOUR - START_HOUR;
+const START_HOUR   = 6;
+const END_HOUR     = 23;
+const TOTAL_HOURS  = END_HOUR - START_HOUR;
+const CELL_HEIGHT  = 56; // px per hour
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface Booking {
   id: number;
@@ -61,6 +73,15 @@ interface Booking {
   createdAt: string;
 }
 
+interface NewBookingDraft {
+  date: string;
+  startTime: string;
+  endTime: string;
+  facilityId: string;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api${path}`, {
     credentials: "include",
@@ -74,8 +95,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 function getWeekStart(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -86,7 +106,7 @@ function addDays(date: Date, n: number): Date {
   return d;
 }
 
-function toDateStr(date: Date): string {
+function toDateStr(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
@@ -96,8 +116,58 @@ function timeToPercent(t: string): number {
   return Math.max(0, Math.min(100, (mins / (TOTAL_HOURS * 60)) * 100));
 }
 
-const DAYS_ID = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
-const DAYS_FULL = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+function minsToTimeStr(totalMins: number): string {
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function timeStrToMins(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function calcHours(start: string, end: string): number {
+  const diff = timeStrToMins(end) - timeStrToMins(start);
+  return Math.max(0, diff / 60);
+}
+
+function generateBookingCode(): string {
+  const now = new Date();
+  const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `SC/${ymd}/${rand}`;
+}
+
+function snapToHalfHour(mins: number): number {
+  return Math.round(mins / 30) * 30;
+}
+
+// Y pixel relative to column → time string snapped to 30-min grid
+function yToTime(y: number): string {
+  const totalMins = (y / (CELL_HEIGHT * TOTAL_HOURS)) * (TOTAL_HOURS * 60);
+  const snapped   = snapToHalfHour(Math.max(0, Math.min(TOTAL_HOURS * 60, totalMins)));
+  return minsToTimeStr(START_HOUR * 60 + snapped);
+}
+
+function formatCurrency(n: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency", currency: "IDR", maximumFractionDigits: 0,
+  }).format(n);
+}
+
+const DAYS_SHORT = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+const DAYS_FULL  = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+
+// ── Time options ─────────────────────────────────────────────────────────────
+
+const TIME_OPTIONS: string[] = [];
+for (let h = START_HOUR; h <= END_HOUR; h++) {
+  TIME_OPTIONS.push(`${String(h).padStart(2, "0")}:00`);
+  if (h < END_HOUR) TIME_OPTIONS.push(`${String(h).padStart(2, "0")}:30`);
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export default function SportCenterSchedulePage() {
   const { toast } = useToast();
@@ -108,6 +178,21 @@ export default function SportCenterSchedulePage() {
   const [selected, setSelected] = useState<Booking | null>(null);
   const [view, setView] = useState<"week" | "day">("week");
   const [dayOffset, setDayOffset] = useState(0);
+
+  // New booking state
+  const [newDraft, setNewDraft]       = useState<NewBookingDraft | null>(null);
+  const [newFacilityId, setNewFacilityId]   = useState("");
+  const [newStartTime, setNewStartTime]     = useState("");
+  const [newEndTime, setNewEndTime]         = useState("");
+  const [newDate, setNewDate]               = useState("");
+  const [newCustomerName, setNewCustomerName]   = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newCustomerEmail, setNewCustomerEmail] = useState("");
+  const [newNotes, setNewNotes]             = useState("");
+  const [newPrice, setNewPrice]             = useState<number>(0);
+  const [isCreating, setIsCreating]         = useState(false);
+
+  const colRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const weekDates = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
@@ -145,6 +230,19 @@ export default function SportCenterSchedulePage() {
     onError: () => toast({ title: "Gagal menghapus booking", variant: "destructive" }),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (payload: object) =>
+      apiFetch("/sport-center/bookings", { method: "POST", body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sport-center-bookings"] });
+      setNewDraft(null);
+      toast({ title: "Booking berhasil dibuat", description: `${newCustomerName} · ${newDate}` });
+    },
+    onError: (err: Error) => toast({ title: "Gagal membuat booking", description: err.message, variant: "destructive" }),
+  });
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+
   const bookingsInView = useMemo(() => {
     const dates = view === "week"
       ? weekDates.map(toDateStr)
@@ -165,61 +263,115 @@ export default function SportCenterSchedulePage() {
     return map;
   }, [bookingsInView]);
 
-  const displayDates = view === "week"
-    ? weekDates
-    : [addDays(weekStart, dayOffset)];
-
+  const displayDates = view === "week" ? weekDates : [addDays(weekStart, dayOffset)];
   const today = toDateStr(new Date());
 
-  const totalThisView = bookingsInView.length;
+  const totalThisView     = bookingsInView.length;
   const confirmedThisView = bookingsInView.filter(b => b.status === "confirmed").length;
   const pendingThisView   = bookingsInView.filter(b => b.status === "pending").length;
 
-  function formatCurrency(n: number) {
-    return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
-  }
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
-  function formatDateHeader(date: Date, idx: number) {
-    const ds = toDateStr(date);
-    const isToday = ds === today;
-    const dayLabel = view === "week" ? DAYS_ID[idx] : DAYS_FULL[idx];
-    const dateNum  = date.getDate();
-    return { dayLabel, dateNum, isToday };
-  }
-
-  function navigateWeek(dir: number) {
-    setWeekStart(prev => addDays(prev, dir * 7));
-  }
+  function navigateWeek(dir: number) { setWeekStart(prev => addDays(prev, dir * 7)); }
 
   function navigateDay(dir: number) {
-    const newOffset = dayOffset + dir;
-    if (newOffset < 0) {
-      setWeekStart(prev => addDays(prev, -7));
-      setDayOffset(6);
-    } else if (newOffset > 6) {
-      setWeekStart(prev => addDays(prev, 7));
-      setDayOffset(0);
-    } else {
-      setDayOffset(newOffset);
+    const n = dayOffset + dir;
+    if (n < 0)      { setWeekStart(prev => addDays(prev, -7)); setDayOffset(6); }
+    else if (n > 6) { setWeekStart(prev => addDays(prev, 7));  setDayOffset(0); }
+    else              setDayOffset(n);
+  }
+
+  function openNewBookingFromClick(date: Date, y: number) {
+    const startT = yToTime(y);
+    const startMins = timeStrToMins(startT);
+    const endMins   = Math.min(startMins + 60, END_HOUR * 60);
+    const endT      = minsToTimeStr(endMins);
+    const ds        = toDateStr(date);
+
+    // pre-select facility from filter (if specific)
+    const preselect = facilityFilter !== "all" ? facilityFilter : (FACILITIES[0]?.id ?? "");
+    const fac       = FACILITIES.find(f => f.id === preselect) ?? FACILITIES[0];
+    const hours     = calcHours(startT, endT);
+
+    setNewDate(ds);
+    setNewStartTime(startT);
+    setNewEndTime(endT);
+    setNewFacilityId(fac?.id ?? "");
+    setNewPrice(Math.round(hours * (fac?.pricePerHour ?? 0)));
+    setNewCustomerName("");
+    setNewCustomerPhone("");
+    setNewCustomerEmail("");
+    setNewNotes("");
+    setNewDraft({ date: ds, startTime: startT, endTime: endT, facilityId: fac?.id ?? "" });
+  }
+
+  function handleNewFacilityChange(id: string) {
+    setNewFacilityId(id);
+    const fac   = FACILITIES.find(f => f.id === id);
+    const hours = calcHours(newStartTime, newEndTime);
+    setNewPrice(Math.round(hours * (fac?.pricePerHour ?? 0)));
+  }
+
+  function handleNewTimeChange(field: "start" | "end", val: string) {
+    const start = field === "start" ? val : newStartTime;
+    const end   = field === "end"   ? val : newEndTime;
+    if (field === "start") setNewStartTime(val);
+    if (field === "end")   setNewEndTime(val);
+    const fac   = FACILITIES.find(f => f.id === newFacilityId);
+    const hours = calcHours(start, end);
+    setNewPrice(Math.round(hours * (fac?.pricePerHour ?? 0)));
+  }
+
+  async function handleCreateSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCustomerName || !newCustomerPhone || !newFacilityId || !newStartTime || !newEndTime) {
+      toast({ title: "Lengkapi semua field wajib", variant: "destructive" });
+      return;
+    }
+    if (timeStrToMins(newEndTime) <= timeStrToMins(newStartTime)) {
+      toast({ title: "Jam selesai harus setelah jam mulai", variant: "destructive" });
+      return;
+    }
+    setIsCreating(true);
+    const fac   = FACILITIES.find(f => f.id === newFacilityId);
+    const hours = calcHours(newStartTime, newEndTime);
+    try {
+      await createMutation.mutateAsync({
+        bookingCode:   generateBookingCode(),
+        facilityId:    newFacilityId,
+        facilityName:  fac?.name ?? newFacilityId,
+        customerName:  newCustomerName.trim(),
+        customerPhone: newCustomerPhone.trim(),
+        customerEmail: newCustomerEmail.trim() || "—",
+        date:          newDate,
+        startTime:     newStartTime,
+        endTime:       newEndTime,
+        totalHours:    hours,
+        totalPrice:    newPrice,
+        notes:         newNotes.trim(),
+      });
+    } finally {
+      setIsCreating(false);
     }
   }
 
+  // ── Labels ─────────────────────────────────────────────────────────────────
+
   const weekLabel = (() => {
-    const start = weekDates[0];
-    const end   = weekDates[6];
-    const sm    = start.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
-    const em    = end.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
-    return `${sm} – ${em}`;
+    const s = weekDates[0].toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+    const e = weekDates[6].toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+    return `${s} – ${e}`;
   })();
 
-  const dayLabel = (() => {
-    const d = addDays(weekStart, dayOffset);
-    return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  })();
+  const dayLabel = addDays(weekStart, dayOffset).toLocaleDateString("id-ID", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
 
-  const hourLabels = Array.from({ length: TOTAL_HOURS }, (_, i) => `${String(START_HOUR + i).padStart(2, "0")}:00`);
+  const hourLabels = Array.from({ length: TOTAL_HOURS }, (_, i) =>
+    `${String(START_HOUR + i).padStart(2, "0")}:00`
+  );
 
-  const CELL_HEIGHT = 56; // px per hour
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <AppShell>
@@ -231,7 +383,9 @@ export default function SportCenterSchedulePage() {
               <CalendarDays className="h-7 w-7 text-primary" />
               Jadwal Booking
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">Kalender ketersediaan fasilitas Sport Center</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Kalender fasilitas Sport Center · <span className="text-primary font-medium">klik slot kosong</span> untuk buat booking baru
+            </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={facilityFilter} onValueChange={setFacilityFilter}>
@@ -239,7 +393,7 @@ export default function SportCenterSchedulePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {FACILITIES.map(f => (
+                {FACILITIES_WITH_ALL.map(f => (
                   <SelectItem key={f.id} value={f.id}>
                     <div className="flex items-center gap-2">
                       {f.id !== "all" && (
@@ -252,16 +406,12 @@ export default function SportCenterSchedulePage() {
               </SelectContent>
             </Select>
             <div className="flex rounded-md border overflow-hidden text-sm">
-              <button
-                onClick={() => setView("week")}
-                className={`px-3 py-1.5 transition-colors ${view === "week" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-              >
+              <button onClick={() => setView("week")}
+                className={`px-3 py-1.5 transition-colors ${view === "week" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                 Minggu
               </button>
-              <button
-                onClick={() => setView("day")}
-                className={`px-3 py-1.5 transition-colors ${view === "day" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-              >
+              <button onClick={() => setView("day")}
+                className={`px-3 py-1.5 transition-colors ${view === "day" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
                 Hari
               </button>
             </div>
@@ -315,52 +465,42 @@ export default function SportCenterSchedulePage() {
             ) : (
               <div className="overflow-x-auto">
                 <div style={{ minWidth: view === "week" ? 700 : 320 }}>
+
                   {/* Day headers */}
-                  <div
-                    className="grid border-b bg-muted/40 sticky top-0 z-10"
-                    style={{ gridTemplateColumns: `56px repeat(${displayDates.length}, 1fr)` }}
-                  >
+                  <div className="grid border-b bg-muted/40 sticky top-0 z-10"
+                    style={{ gridTemplateColumns: `56px repeat(${displayDates.length}, 1fr)` }}>
                     <div className="border-r" />
                     {displayDates.map((date, idx) => {
-                      const { dayLabel: dl, dateNum, isToday } = formatDateHeader(date, idx);
-                      const ds = toDateStr(date);
-                      const count = (bookingsByDate[ds] ?? []).length;
+                      const ds       = toDateStr(date);
+                      const isToday  = ds === today;
+                      const dl       = view === "week" ? DAYS_SHORT[idx] : DAYS_FULL[idx];
+                      const dateNum  = date.getDate();
+                      const count    = (bookingsByDate[ds] ?? []).length;
                       return (
-                        <div
-                          key={ds}
-                          className={`py-2 px-1.5 text-center border-r last:border-r-0 ${isToday ? "bg-primary/5" : ""}`}
-                        >
-                          <div className={`text-xs font-medium uppercase tracking-wide ${isToday ? "text-primary" : "text-muted-foreground"}`}>
-                            {dl}
-                          </div>
+                        <div key={ds}
+                          className={`py-2 px-1.5 text-center border-r last:border-r-0 ${isToday ? "bg-primary/5" : ""}`}>
+                          <div className={`text-xs font-medium uppercase tracking-wide ${isToday ? "text-primary" : "text-muted-foreground"}`}>{dl}</div>
                           <div className={`text-lg font-bold leading-tight mt-0.5 ${isToday ? "text-primary" : ""}`}>
-                            {isToday ? (
-                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-base">
-                                {dateNum}
-                              </span>
-                            ) : dateNum}
+                            {isToday
+                              ? <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-base">{dateNum}</span>
+                              : dateNum}
                           </div>
-                          {count > 0 && (
-                            <div className="text-[10px] text-muted-foreground mt-0.5">{count} booking</div>
-                          )}
+                          {count > 0 && <div className="text-[10px] text-muted-foreground mt-0.5">{count} booking</div>}
                         </div>
                       );
                     })}
                   </div>
 
                   {/* Grid body */}
-                  <div
-                    className="grid"
-                    style={{ gridTemplateColumns: `56px repeat(${displayDates.length}, 1fr)` }}
-                  >
+                  <div className="grid"
+                    style={{ gridTemplateColumns: `56px repeat(${displayDates.length}, 1fr)` }}>
+
                     {/* Hour labels */}
                     <div className="border-r">
                       {hourLabels.map(h => (
-                        <div
-                          key={h}
+                        <div key={h}
                           className="border-b flex items-start justify-end pr-2 pt-1 text-[11px] text-muted-foreground"
-                          style={{ height: CELL_HEIGHT }}
-                        >
+                          style={{ height: CELL_HEIGHT }}>
                           {h}
                         </div>
                       ))}
@@ -368,41 +508,54 @@ export default function SportCenterSchedulePage() {
 
                     {/* Day columns */}
                     {displayDates.map((date) => {
-                      const ds = toDateStr(date);
-                      const isToday = ds === today;
-                      const dayBookings = (bookingsByDate[ds] ?? [])
-                        .filter(b => b.status !== "cancelled");
+                      const ds          = toDateStr(date);
+                      const isToday     = ds === today;
+                      const dayBookings = (bookingsByDate[ds] ?? []).filter(b => b.status !== "cancelled");
 
                       return (
                         <div
                           key={ds}
-                          className={`border-r last:border-r-0 relative ${isToday ? "bg-primary/[0.02]" : ""}`}
+                          ref={el => { colRefs.current[ds] = el; }}
+                          onClick={(e) => {
+                            // only fire when clicking the column background (not a booking block)
+                            if ((e.target as HTMLElement).closest("[data-booking]")) return;
+                            const rect = colRefs.current[ds]?.getBoundingClientRect();
+                            if (!rect) return;
+                            const y = e.clientY - rect.top;
+                            openNewBookingFromClick(date, y);
+                          }}
+                          className={`border-r last:border-r-0 relative cursor-pointer group
+                            ${isToday ? "bg-primary/[0.02]" : ""}
+                            hover:bg-muted/20 transition-colors`}
                           style={{ height: CELL_HEIGHT * TOTAL_HOURS }}
                         >
                           {/* Hour grid lines */}
                           {hourLabels.map((_, i) => (
-                            <div
-                              key={i}
+                            <div key={i}
                               className="absolute w-full border-b border-dashed border-border/40"
-                              style={{ top: i * CELL_HEIGHT }}
-                            />
+                              style={{ top: i * CELL_HEIGHT }} />
                           ))}
+
+                          {/* "+" hint on hover */}
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-0">
+                            <Plus className="h-5 w-5 text-primary/30" />
+                          </div>
 
                           {/* Booking blocks */}
                           {dayBookings.map(b => {
-                            const topPct  = timeToPercent(b.startTime);
-                            const botPct  = timeToPercent(b.endTime);
-                            const heightPct = botPct - topPct;
-                            const totalPx = CELL_HEIGHT * TOTAL_HOURS;
-                            const topPx    = (topPct / 100) * totalPx;
-                            const heightPx = Math.max(22, (heightPct / 100) * totalPx - 2);
-                            const facColor = FACILITY_COLORS[b.facilityId] ?? "bg-primary";
-                            const isShort  = heightPx < 40;
+                            const topPct    = timeToPercent(b.startTime);
+                            const botPct    = timeToPercent(b.endTime);
+                            const totalPx   = CELL_HEIGHT * TOTAL_HOURS;
+                            const topPx     = (topPct / 100) * totalPx;
+                            const heightPx  = Math.max(22, ((botPct - topPct) / 100) * totalPx - 2);
+                            const facColor  = FACILITY_COLORS[b.facilityId] ?? "bg-primary";
+                            const isShort   = heightPx < 40;
 
                             return (
                               <button
                                 key={b.id}
-                                onClick={() => setSelected(b)}
+                                data-booking="1"
+                                onClick={(e) => { e.stopPropagation(); setSelected(b); }}
                                 className={`absolute left-0.5 right-0.5 rounded overflow-hidden text-left
                                   transition-all hover:brightness-90 hover:shadow-md border border-white/20
                                   ${facColor} text-white z-[1]`}
@@ -442,7 +595,7 @@ export default function SportCenterSchedulePage() {
         {/* Legend */}
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           <span className="font-medium">Fasilitas:</span>
-          {FACILITIES.filter(f => f.id !== "all").map(f => (
+          {FACILITIES.map(f => (
             <span key={f.id} className="flex items-center gap-1">
               <span className={`h-3 w-3 rounded ${FACILITY_COLORS[f.id]}`} />
               {f.name}
@@ -451,7 +604,166 @@ export default function SportCenterSchedulePage() {
         </div>
       </div>
 
-      {/* Booking Detail Dialog */}
+      {/* ── New Booking Dialog ── */}
+      <Dialog open={!!newDraft} onOpenChange={(open) => !open && setNewDraft(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-primary" />
+              Buat Booking Baru
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateSubmit} className="space-y-4 pt-1">
+
+            {/* Fasilitas */}
+            <div className="grid gap-1.5">
+              <Label className="text-xs">Fasilitas <span className="text-destructive">*</span></Label>
+              <Select value={newFacilityId} onValueChange={handleNewFacilityChange}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue placeholder="Pilih fasilitas" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FACILITIES.map(f => (
+                    <SelectItem key={f.id} value={f.id}>
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2.5 w-2.5 rounded-full ${FACILITY_COLORS[f.id]}`} />
+                        {f.name}
+                        <span className="text-xs text-muted-foreground ml-auto">{formatCurrency(f.pricePerHour)}/jam</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Tanggal & Waktu */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Tanggal <span className="text-destructive">*</span></Label>
+                <Input
+                  type="date"
+                  value={newDate}
+                  onChange={e => setNewDate(e.target.value)}
+                  className="text-sm"
+                  required
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Jam Mulai <span className="text-destructive">*</span></Label>
+                <Select value={newStartTime} onValueChange={v => handleNewTimeChange("start", v)}>
+                  <SelectTrigger className="text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent className="max-h-52">
+                    {TIME_OPTIONS.map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Jam Selesai <span className="text-destructive">*</span></Label>
+                <Select value={newEndTime} onValueChange={v => handleNewTimeChange("end", v)}>
+                  <SelectTrigger className="text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent className="max-h-52">
+                    {TIME_OPTIONS.filter(t => t > newStartTime).map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Durasi & Harga */}
+            {newStartTime && newEndTime && newStartTime < newEndTime && (
+              <div className="flex items-center gap-3 rounded-lg bg-muted/50 border px-3 py-2.5 text-sm">
+                <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">
+                  Durasi: <strong className="text-foreground">{calcHours(newStartTime, newEndTime)} jam</strong>
+                </span>
+                <span className="ml-auto font-semibold text-primary">{formatCurrency(newPrice)}</span>
+              </div>
+            )}
+
+            <div className="border-t pt-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Data Pelanggan</p>
+
+              <div className="grid gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="nb-name" className="text-xs">
+                    Nama Pelanggan <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="nb-name"
+                    value={newCustomerName}
+                    onChange={e => setNewCustomerName(e.target.value)}
+                    placeholder="cth. Budi Santoso"
+                    className="text-sm"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="nb-phone" className="text-xs">
+                      Telepon <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="nb-phone"
+                      value={newCustomerPhone}
+                      onChange={e => setNewCustomerPhone(e.target.value)}
+                      placeholder="cth. 08123456789"
+                      className="text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="nb-email" className="text-xs">Email</Label>
+                    <Input
+                      id="nb-email"
+                      type="email"
+                      value={newCustomerEmail}
+                      onChange={e => setNewCustomerEmail(e.target.value)}
+                      placeholder="opsional"
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="nb-price" className="text-xs">Total Harga (Rp)</Label>
+                  <Input
+                    id="nb-price"
+                    type="number"
+                    value={newPrice}
+                    onChange={e => setNewPrice(Number(e.target.value))}
+                    className="text-sm"
+                    min={0}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="nb-notes" className="text-xs">Catatan</Label>
+                  <Textarea
+                    id="nb-notes"
+                    value={newNotes}
+                    onChange={e => setNewNotes(e.target.value)}
+                    placeholder="opsional"
+                    className="text-sm resize-none"
+                    rows={2}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setNewDraft(null)}>
+                Batal
+              </Button>
+              <Button type="submit" disabled={isCreating || createMutation.isPending}>
+                {isCreating ? "Menyimpan…" : "Buat Booking"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Booking Detail Dialog ── */}
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="max-w-md">
           {selected && (() => {
@@ -466,7 +778,6 @@ export default function SportCenterSchedulePage() {
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-1">
-                  {/* Status */}
                   <div className="flex items-center justify-between">
                     <Badge variant="outline" className={`gap-1.5 px-2.5 py-1 ${cfg.color}`}>
                       <StatusIcon className="h-3.5 w-3.5" />
@@ -475,7 +786,6 @@ export default function SportCenterSchedulePage() {
                     <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{selected.bookingCode}</code>
                   </div>
 
-                  {/* Info grid */}
                   <div className="rounded-lg border divide-y text-sm">
                     <div className="flex items-center gap-3 px-3 py-2.5">
                       <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -483,8 +793,8 @@ export default function SportCenterSchedulePage() {
                         <div className="text-xs text-muted-foreground">Fasilitas & Tanggal</div>
                         <div className="font-medium">{selected.facilityName}</div>
                         <div className="text-muted-foreground">
-                          {new Date(selected.date).toLocaleDateString("id-ID", {
-                            weekday: "long", day: "numeric", month: "long", year: "numeric"
+                          {new Date(selected.date + "T00:00:00").toLocaleDateString("id-ID", {
+                            weekday: "long", day: "numeric", month: "long", year: "numeric",
                           })}
                         </div>
                       </div>
@@ -511,13 +821,15 @@ export default function SportCenterSchedulePage() {
                         <div>{selected.customerPhone}</div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div>
-                        <div className="text-xs text-muted-foreground">Email</div>
-                        <div className="text-muted-foreground text-xs">{selected.customerEmail}</div>
+                    {selected.customerEmail && selected.customerEmail !== "—" && (
+                      <div className="flex items-center gap-3 px-3 py-2.5">
+                        <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Email</div>
+                          <div className="text-muted-foreground text-xs">{selected.customerEmail}</div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {selected.notes && (
                       <div className="px-3 py-2.5 text-xs text-muted-foreground">
                         <span className="font-medium text-foreground">Catatan: </span>{selected.notes}
@@ -525,7 +837,6 @@ export default function SportCenterSchedulePage() {
                     )}
                   </div>
 
-                  {/* Actions */}
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ubah Status</p>
                     <div className="flex flex-wrap gap-2">
