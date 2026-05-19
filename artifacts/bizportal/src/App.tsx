@@ -432,6 +432,12 @@ function Router() {
         <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
         <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
         <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportPage} />} />
+        {/* Legacy /expenses/* → /expense/* */}
+        <Route path="/expenses" component={() => <Redirect to="/expense" />} />
+        <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
+        <Route path="/expenses/categories" component={() => <Redirect to="/expense/categories" />} />
+        <Route path="/expenses/reports" component={() => <Redirect to="/expense/reports" />} />
+        <Route path="/expenses/:id" component={({ params }: { params: { id: string } }) => <Redirect to={`/expense/${params.id}/edit`} />} />
         {/* Legacy /warehouse/* → /pos-inventory/* */}
         <Route path="/warehouse/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
         <Route path="/warehouse/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
