@@ -37,6 +37,15 @@ function buildConfirmationMessage(booking: {
   );
 }
 
+const DEFAULT_SERVICES = [
+  { name: "Lapangan Futsal", category: "Futsal", description: "Lapangan futsal standar FIFA dengan rumput sintetis premium. Dilengkapi pencahayaan LED profesional dan sistem ventilasi modern.", pricePerHour: 150000, capacity: 14, unit: "jam", sortOrder: 1 },
+  { name: "Lapangan Badminton", category: "Badminton", description: "Lapangan indoor dengan lantai vinyl profesional berstandar BWF. Tersedia 4 lapangan dengan net premium.", pricePerHour: 75000, capacity: 8, unit: "jam", sortOrder: 2 },
+  { name: "Lapangan Basket", category: "Basket", description: "Lapangan basket indoor dengan lantai parket resmi NBA. Dilengkapi papan skor digital dan sistem tata suara.", pricePerHour: 200000, capacity: 20, unit: "jam", sortOrder: 3 },
+  { name: "Fitness Center", category: "Gym", description: "Pusat kebugaran lengkap dengan peralatan cardio dan beban terkini. Tersedia personal trainer berpengalaman.", pricePerHour: 35000, capacity: 40, unit: "sesi", sortOrder: 4 },
+  { name: "Studio Yoga", category: "Yoga", description: "Studio yoga ber-AC dengan lantai kayu hangat dan perlengkapan yoga lengkap. Cocok untuk semua level.", pricePerHour: 50000, capacity: 20, unit: "sesi", sortOrder: 5 },
+  { name: "Studio Zumba & Aerobik", category: "Aerobik", description: "Studio dance dan aerobik dengan lantai sprung, cermin full-wall, dan sound system bertenaga untuk sesi yang menyenangkan.", pricePerHour: 60000, capacity: 25, unit: "sesi", sortOrder: 6 },
+];
+
 async function ensureTables() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS sport_center_services (
@@ -72,6 +81,19 @@ async function ensureTables() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Seed default services jika tabel masih kosong
+  const existing = await db.execute(sql`SELECT COUNT(*) as cnt FROM sport_center_services`);
+  const count = parseInt((existing.rows[0] as { cnt: string }).cnt);
+  if (count === 0) {
+    for (const s of DEFAULT_SERVICES) {
+      await db.execute(sql`
+        INSERT INTO sport_center_services (name, category, description, price_per_hour, capacity, unit, is_active, sort_order)
+        VALUES (${s.name}, ${s.category}, ${s.description}, ${s.pricePerHour}, ${s.capacity}, ${s.unit}, true, ${s.sortOrder})
+      `);
+    }
+    console.log("[sportCenter] Default services seeded (6 fasilitas)");
+  }
 }
 
 ensureTables().catch(console.error);
