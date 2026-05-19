@@ -205,6 +205,7 @@ export default function PosKasirAdminPage() {
   const [notifFrom, setNotifFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); });
   const [notifTo, setNotifTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [notifExpanded, setNotifExpanded] = useState<number | null>(null);
+  const [notifRetrying, setNotifRetrying] = useState<Set<number>>(new Set());
 
   // Settings / Logo
   const [logoUrl, setLogoUrl] = useState<string>("/thai-tea-cst-logo.jpeg");
@@ -224,6 +225,27 @@ export default function PosKasirAdminPage() {
       if (res.ok) setNotifLogs(await res.json() as NotifLog[]);
     } finally { setNotifLoading(false); }
   }, [notifFrom, notifTo, notifChannel, notifStatus]);
+
+  const retryNotif = useCallback(async (id: number) => {
+    setNotifRetrying((prev) => new Set(prev).add(id));
+    try {
+      const res = await fetch(`/api/pos-kasir/admin/notification-logs/${id}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json() as { ok?: boolean; message?: string; error?: string };
+      if (res.ok && data.ok) {
+        toast({ title: "Berhasil dikirim ulang", description: data.message });
+        await loadNotifLogs();
+      } else {
+        toast({ title: "Gagal kirim ulang", description: data.error ?? "Terjadi kesalahan.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Gagal kirim ulang", description: "Tidak dapat menghubungi server.", variant: "destructive" });
+    } finally {
+      setNotifRetrying((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  }, [loadNotifLogs, toast]);
 
   const loadSettings = useCallback(async () => {
     const res = await fetch("/api/pos-kasir/settings");
@@ -1347,10 +1369,26 @@ export default function PosKasirAdminPage() {
                               <TableRow key={`exp-${log.id}`} className="bg-muted/20">
                                 <TableCell colSpan={6} className="py-3 px-4">
                                   <div className="space-y-2">
-                                    {log.status === "failed" && log.errorMsg && (
-                                      <div className="flex items-start gap-2 p-2 bg-red-50 border border-red-200 rounded-md">
-                                        <AlertCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                                        <p className="text-xs text-red-700 font-medium">Error: {log.errorMsg}</p>
+                                    {log.status === "failed" && (
+                                      <div className="flex items-center justify-between gap-2 p-2 bg-red-50 border border-red-200 rounded-md">
+                                        <div className="flex items-start gap-2 min-w-0">
+                                          <AlertCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />
+                                          <p className="text-xs text-red-700 font-medium truncate">
+                                            {log.errorMsg ? `Error: ${log.errorMsg}` : "Pengiriman sebelumnya gagal."}
+                                          </p>
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-6 text-xs px-2 shrink-0 border-red-300 text-red-700 hover:bg-red-100"
+                                          disabled={notifRetrying.has(log.id)}
+                                          onClick={(e) => { e.stopPropagation(); retryNotif(log.id); }}
+                                        >
+                                          {notifRetrying.has(log.id)
+                                            ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                            : <RefreshCw className="h-3 w-3 mr-1" />}
+                                          Kirim Ulang
+                                        </Button>
                                       </div>
                                     )}
                                     {log.subject && (

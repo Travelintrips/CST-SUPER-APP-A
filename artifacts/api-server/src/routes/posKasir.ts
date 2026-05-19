@@ -10,6 +10,8 @@ import {
   posBranchesTable, posSettingsTable, notificationLogsTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { checkPosStock, deductPosStock, checkPosBomStock, deductPosBomStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
 import { postPosTransaction, postPosCogs } from "../lib/accounting.js";
@@ -1222,6 +1224,42 @@ router.patch("/admin/settings", async (req, res) => {
 });
 
 // ── Notification Logs ─────────────────────────────────────────────────────────
+
+// POST /api/pos-kasir/admin/notification-logs/:id/retry
+router.post("/admin/notification-logs/:id/retry", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "invalid id" });
+
+  const [log] = await db.select().from(notificationLogsTable).where(eq(notificationLogsTable.id, id)).limit(1);
+  if (!log) return res.status(404).json({ error: "log not found" });
+  if (log.status === "sent") return res.status(400).json({ error: "Notifikasi ini sudah berhasil terkirim, tidak perlu dikirim ulang." });
+
+  const retryContext = log.context ? `${log.context}:retry` : "retry";
+
+  try {
+    if (log.channel === "wa") {
+      await sendWhatsApp(log.recipient, log.message, {
+        context: retryContext,
+        refType: log.refType ?? undefined,
+        refId: log.refId ?? undefined,
+      });
+    } else {
+      await sendMail({
+        to: log.recipient,
+        subject: log.subject ?? "(tanpa subjek)",
+        text: log.message,
+        html: `<pre style="font-family:inherit;white-space:pre-wrap">${log.message.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>`,
+        context: retryContext,
+        refType: log.refType ?? undefined,
+        refId: log.refId ?? undefined,
+      });
+    }
+    return res.json({ ok: true, message: "Notifikasi berhasil dikirim ulang." });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err?.message ?? "Gagal mengirim ulang notifikasi." });
+  }
+});
 
 // GET /api/pos-kasir/admin/notification-logs
 router.get("/admin/notification-logs", async (req, res) => {
