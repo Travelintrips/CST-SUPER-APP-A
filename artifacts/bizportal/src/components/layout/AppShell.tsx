@@ -349,6 +349,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "Dashboard", href: "/sport-center", icon: LayoutDashboard },
         { titleKey: "Booking", href: "/sport-center/bookings", icon: Calendar },
+        { titleKey: "Jadwal Booking", href: "/sport-center/schedule", icon: CalendarDays },
         { titleKey: "Produk & Layanan", href: "/sport-center/services", icon: Package },
         { titleKey: "Purchase Request", href: "/sport-center/purchase-requests", icon: ClipboardList },
         { titleKey: "Laporan", href: "/sport-center/reports", icon: BarChart2 },
@@ -367,16 +368,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Monitoring Cabang", href: "/thai-tea/branches", icon: GitBranch },
         { titleKey: "Produksi / Racikan", href: "/thai-tea/production", icon: FlaskConical },
         { titleKey: "Laporan", href: "/thai-tea/reports", icon: BarChart2 },
-      ],
-    },
-    {
-      type: "group",
-      titleKey: "Sport Center",
-      basePath: "/sport-center",
-      icon: Dumbbell,
-      roles: ["admin", "owner"],
-      children: [
-        { titleKey: "Jadwal Booking", href: "/sport-center/schedule", icon: CalendarDays },
       ],
     },
   ];
