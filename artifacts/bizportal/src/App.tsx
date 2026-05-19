@@ -1,5 +1,5 @@
 import React from "react";
-import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
+import { Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -458,6 +458,7 @@ function Router() {
         <Route path="/inventory/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
         <Route component={NotFound} />
       </Switch>
+      <AppRoutes rootGuard={AuthRouteGuard} />
     </WouterRouter>
   );
 }
