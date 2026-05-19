@@ -202,6 +202,7 @@ export function AppShell({ children }: AppShellProps) {
       children: [
         { titleKey: "Pengguna", href: "/users", icon: UserCircle },
         { titleKey: "Manajemen Role", href: "/settings/roles", icon: ShieldCheck },
+        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
       ],
     },
 
@@ -334,7 +335,6 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "holdingDashboard", href: "/holding/dashboard", icon: BarChart2 },
         { titleKey: "holdingPLReport", href: "/holding/pl-report", icon: FileBarChart2 },
         { titleKey: "holdingCompanies", href: "/holding", icon: Building2 },
-        { titleKey: "Struktur Organisasi", href: "/org", icon: Network },
       ],
     },
     {

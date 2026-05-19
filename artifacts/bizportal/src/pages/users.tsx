@@ -24,7 +24,7 @@ const ROLE_LABELS: Record<string, string> = {
   trading:         "Trading",
   logistics:       "Logistik",
   pos:             "POS Kasir",
-  "pos-kasir":     "Kasir Thai Tea",
+  "pos-kasir":     "Kasir POS",
   "pos-inventory": "Inventori POS",
 };
 
