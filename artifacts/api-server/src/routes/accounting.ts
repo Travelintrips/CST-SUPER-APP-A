@@ -26,7 +26,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
-import { resolveCompanyId } from "../lib/resolveCompany.js";
+import { resolveCompanyId, resolveCompanyScope } from "../lib/resolveCompany.js";
 import {
   ensureAccountingSettings,
   seedAccountingDefaults,
@@ -417,12 +417,13 @@ router.patch("/taxes/:id", async (req, res) => {
 
 // ============ Journal Entries ============
 router.get("/entries", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [
-    eq(accountingEntriesTable.companyId, companyId),
-  ];
+  const conds: SQL<unknown>[] = [];
+  if (scope !== "all") {
+    conds.push(eq(accountingEntriesTable.companyId, scope));
+  }
   if (range.from)
     conds.push(
       gte(accountingEntriesTable.date, range.from.toISOString().split("T")[0]!),
@@ -599,12 +600,13 @@ function serializePayment(p: typeof accountingPaymentsTable.$inferSelect) {
 }
 
 router.get("/payments", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
-  const conds: SQL<unknown>[] = [
-    eq(accountingPaymentsTable.companyId, companyId),
-  ];
+  const conds: SQL<unknown>[] = [];
+  if (scope !== "all") {
+    conds.push(eq(accountingPaymentsTable.companyId, scope));
+  }
   if (range.from)
     conds.push(
       gte(
@@ -1341,12 +1343,14 @@ router.patch("/settings", async (req, res) => {
 async function buildLedgerWindow(
   from: Date | null,
   to: Date | null,
-  companyId = 1,
+  companyScope: number | "all" = 1,
 ) {
   const conds: SQL<unknown>[] = [
     eq(accountingEntriesTable.status, "posted"),
-    eq(accountingEntriesTable.companyId, companyId),
   ];
+  if (companyScope !== "all") {
+    conds.push(eq(accountingEntriesTable.companyId, companyScope));
+  }
   if (from)
     conds.push(
       gte(accountingEntriesTable.date, from.toISOString().split("T")[0]!),
@@ -1370,14 +1374,14 @@ async function buildLedgerWindow(
 }
 
 router.get("/reports/trial-balance", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db
     .select()
     .from(chartOfAccountsTable)
     .orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to, companyId);
+  const { lines } = await buildLedgerWindow(range.from, range.to, scope);
   const totals = new Map<number, { debit: number; credit: number }>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? { debit: 0, credit: 0 };
@@ -1411,7 +1415,7 @@ router.get("/reports/trial-balance", async (req, res) => {
 });
 
 router.get("/reports/general-ledger", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accountId = req.query["accountId"]
@@ -1424,7 +1428,7 @@ router.get("/reports/general-ledger", async (req, res) => {
   const { entries, lines } = await buildLedgerWindow(
     range.from,
     range.to,
-    companyId,
+    scope,
   );
   const entryById = new Map(entries.map((e) => [e.id, e]));
   const filtered = accountId
@@ -1503,14 +1507,14 @@ router.get("/reports/general-ledger", async (req, res) => {
 });
 
 router.get("/reports/profit-loss", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const scope = resolveCompanyScope(req);
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
   const accounts = await db
     .select()
     .from(chartOfAccountsTable)
     .orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(range.from, range.to, companyId);
+  const { lines } = await buildLedgerWindow(range.from, range.to, scope);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const cur = totals.get(l.accountId) ?? 0;
@@ -1552,7 +1556,7 @@ router.get("/reports/profit-loss", async (req, res) => {
 });
 
 router.get("/reports/balance-sheet", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const scope = resolveCompanyScope(req);
   // Balance sheet is "as of" date — use 'to' as cutoff, ignore 'from'
   const range = parseDateRange(req);
   if (range.error) return res.status(400).json({ message: range.error });
@@ -1561,7 +1565,7 @@ router.get("/reports/balance-sheet", async (req, res) => {
     .select()
     .from(chartOfAccountsTable)
     .orderBy(chartOfAccountsTable.code);
-  const { lines } = await buildLedgerWindow(null, asOf, companyId);
+  const { lines } = await buildLedgerWindow(null, asOf, scope);
   const totals = new Map<number, number>();
   for (const l of lines) {
     const acc = accounts.find((a) => a.id === l.accountId);

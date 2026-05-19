@@ -19,7 +19,7 @@ export default function ProfitLossPage() {
   const params = useMemo(() => ({
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
-    ...(isConsolidated ? {} : { company: activeCompanyId }),
+    company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
   }), [from, to, activeCompanyId, isConsolidated]);
   const { data, isLoading } = useGetProfitLoss(params, { query: { queryKey: getGetProfitLossQueryKey(params) } });
 

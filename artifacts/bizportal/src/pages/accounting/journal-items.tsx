@@ -49,7 +49,7 @@ export default function JournalItemsPage() {
     ...(filter.accountId ? { accountId: filter.accountId } : {}),
     ...(filter.from ? { from: new Date(filter.from).toISOString() } : {}),
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
-    ...(isConsolidated ? {} : { company: activeCompanyId }),
+    company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
   }), [filter, activeCompanyId, isConsolidated]);
 
   const { data: lines, isLoading } = useListAccountingEntryLines(params, {

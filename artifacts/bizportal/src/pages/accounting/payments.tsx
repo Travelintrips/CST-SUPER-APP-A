@@ -185,7 +185,7 @@ export default function PaymentsPage() {
     ...(filter.to ? { to: new Date(filter.to + "T23:59:59").toISOString() } : {}),
     ...(filter.sourceType && filter.sourceType !== "all" ? { sourceType: filter.sourceType } : {}),
     ...(filter.sourceDocId ? { sourceDocId: filter.sourceDocId } : {}),
-    ...(isConsolidated ? {} : { company: activeCompanyId }),
+    company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
   }), [filter, activeCompanyId, isConsolidated]);
 
   const { data: allPayments = [] as AccountingPayment[], isLoading } = useListAccountingPayments(params, {

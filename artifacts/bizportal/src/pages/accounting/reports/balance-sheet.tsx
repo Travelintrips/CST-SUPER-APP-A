@@ -17,7 +17,7 @@ export default function BalanceSheetPage() {
   const [asOf, setAsOf] = useState("");
   const params = useMemo(() => ({
     ...(asOf ? { to: new Date(asOf + "T23:59:59").toISOString() } : {}),
-    ...(isConsolidated ? {} : { company: activeCompanyId }),
+    company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
   }), [asOf, activeCompanyId, isConsolidated]);
   const { data, isLoading } = useGetBalanceSheet(params, { query: { queryKey: getGetBalanceSheetQueryKey(params) } });
 

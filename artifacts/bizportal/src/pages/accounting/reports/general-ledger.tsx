@@ -24,7 +24,7 @@ export default function GeneralLedgerPage() {
     ...(from ? { from: new Date(from).toISOString() } : {}),
     ...(to ? { to: new Date(to + "T23:59:59").toISOString() } : {}),
     ...(accountId ? { accountId } : {}),
-    ...(isConsolidated ? {} : { company: activeCompanyId }),
+    company: (isConsolidated ? "all" : activeCompanyId) as unknown as number,
   }), [from, to, accountId, activeCompanyId, isConsolidated]);
   const { data, isLoading } = useGetGeneralLedger(params, { query: { queryKey: getGetGeneralLedgerQueryKey(params) } });
   const { data: accounts } = useListAccounts();
