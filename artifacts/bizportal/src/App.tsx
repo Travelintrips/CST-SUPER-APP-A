@@ -432,6 +432,23 @@ function Router() {
         <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
         <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
         <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportPage} />} />
+        {/* Legacy /warehouse/* → /pos-inventory/* */}
+        <Route path="/warehouse/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
+        <Route path="/warehouse/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
+        <Route path="/warehouse/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
+        <Route path="/warehouse/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
+        <Route path="/warehouse/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
+        <Route path="/warehouse/recipes" component={() => <Redirect to="/pos-inventory/recipes" />} />
+        <Route path="/warehouse/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
+        {/* Legacy /inventory/* → /pos-inventory/* */}
+        <Route path="/inventory/warehouses" component={() => <Redirect to="/pos-inventory/warehouses" />} />
+        <Route path="/inventory/racks" component={() => <Redirect to="/pos-inventory/racks" />} />
+        <Route path="/inventory/stock" component={() => <Redirect to="/pos-inventory/stocks" />} />
+        <Route path="/inventory/transfers" component={() => <Redirect to="/pos-inventory/transfers" />} />
+        <Route path="/inventory/returns" component={() => <Redirect to="/pos-inventory/returns" />} />
+        <Route path="/inventory/damage" component={() => <Redirect to="/pos-inventory/losses" />} />
+        <Route path="/inventory/opname" component={() => <Redirect to="/pos-inventory/opname" />} />
+        <Route path="/inventory/movements" component={() => <Redirect to="/pos-inventory/mutations" />} />
         <Route component={NotFound} />
       </Switch>
     </WouterRouter>
