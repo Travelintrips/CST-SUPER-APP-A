@@ -3,8 +3,9 @@ set -e
 
 # Kill stale processes on ports we'll use
 for PORT in 8080 5000; do
-  fuser -k ${PORT}/tcp 2>/dev/null || true
+  lsof -ti :${PORT} 2>/dev/null | xargs -r kill -9 2>/dev/null || true
 done
+sleep 1
 
 echo "==> Building API Server..."
 cd /home/runner/workspace/artifacts/api-server
