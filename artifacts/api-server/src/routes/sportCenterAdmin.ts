@@ -3,8 +3,39 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { postSportCenterBooking } from "../lib/accounting.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
 
 export const sportCenterAdminRouter = Router();
+
+function buildConfirmationMessage(booking: {
+  booking_code: string;
+  customer_name: string;
+  facility_name: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  total_hours: string;
+  total_price: number;
+  notes: string | null;
+}): string {
+  const price = Number(booking.total_price).toLocaleString("id-ID", {
+    style: "currency", currency: "IDR", maximumFractionDigits: 0,
+  });
+  const hours = parseFloat(booking.total_hours);
+  return (
+    `✅ *Booking Sport Center Dikonfirmasi*\n\n` +
+    `Halo ${booking.customer_name},\n` +
+    `Booking Anda telah *dikonfirmasi*! Berikut detailnya:\n\n` +
+    `📋 *Kode Booking* : ${booking.booking_code}\n` +
+    `🏟️ *Fasilitas*   : ${booking.facility_name}\n` +
+    `📅 *Tanggal*     : ${booking.date}\n` +
+    `⏰ *Waktu*       : ${booking.start_time} – ${booking.end_time} (${hours} jam)\n` +
+    `💰 *Total*       : ${price}\n` +
+    (booking.notes ? `📝 *Catatan*     : ${booking.notes}\n` : "") +
+    `\nMohon hadir tepat waktu. Terima kasih telah menggunakan layanan Sport Center SHIA!\n\n` +
+    `_Pesan ini dikirim otomatis. Hubungi kami jika ada pertanyaan._`
+  );
+}
 
 async function ensureTables() {
   await db.execute(sql`
@@ -117,8 +148,17 @@ sportCenterAdminRouter.put("/bookings/:id/status", async (req: Request, res: Res
   const before = await db.execute(sql`SELECT * FROM sport_center_bookings WHERE id = ${id} LIMIT 1`);
   if (before.rows.length === 0) { res.status(404).json({ message: "Tidak ditemukan" }); return; }
   const prev = before.rows[0] as {
-    status: string; booking_code: string; customer_name: string;
-    facility_name: string; date: string; total_price: number;
+    status: string;
+    booking_code: string;
+    customer_name: string;
+    customer_phone: string;
+    facility_name: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    total_hours: string;
+    total_price: number;
+    notes: string | null;
   };
 
   const result = await db.execute(sql`UPDATE sport_center_bookings SET status = ${status} WHERE id = ${id} RETURNING *`);
@@ -127,6 +167,8 @@ sportCenterAdminRouter.put("/bookings/:id/status", async (req: Request, res: Res
 
   if (status === "confirmed" && prev.status !== "confirmed") {
     const userId = (req.user as { id?: string } | undefined)?.id ?? null;
+
+    // Auto-post accounting journal
     postSportCenterBooking({
       bookingId: id,
       bookingCode: prev.booking_code,
@@ -136,6 +178,12 @@ sportCenterAdminRouter.put("/bookings/:id/status", async (req: Request, res: Res
       totalPrice: Number(prev.total_price),
       createdById: userId,
     }).catch(() => {});
+
+    // Kirim notifikasi WhatsApp ke pelanggan
+    if (prev.customer_phone) {
+      const msg = buildConfirmationMessage(prev);
+      sendWhatsApp(prev.customer_phone, msg).catch(() => {});
+    }
   }
 });
 
