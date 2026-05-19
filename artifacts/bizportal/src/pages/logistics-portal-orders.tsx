@@ -6,10 +6,12 @@ import {
   useUpdateLogisticOrderType,
   useCreateSalesDocument,
   getListLogisticOrdersQueryKey,
+  getGetLogisticOrderQueryOptions,
   useGetLogisticOrder,
 } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -85,6 +87,7 @@ function formatTanggal(iso: string) {
 
 export default function LogisticsPortalOrdersPage() {
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
   const [, navigate] = useLocation();
@@ -369,6 +372,7 @@ export default function LogisticsPortalOrdersPage() {
                     key={o.id}
                     className="cursor-pointer hover:bg-muted/40 transition-colors"
                     onClick={() => setDetailDialog(o)}
+                    {...prefetchHover(getGetLogisticOrderQueryOptions(o.id))}
                   >
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5 flex-wrap">
