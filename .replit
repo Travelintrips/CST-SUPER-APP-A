@@ -18,23 +18,22 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Start application"
+args = "POS"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Customer Portal"
+args = "Sport Center"
 
 [[workflows.workflow]]
-name = "Start application"
+name = "POS"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash start-pos-kasir.sh"
-waitForPort = 8080
 
 [[workflows.workflow]]
 name = "Sport Center"
@@ -45,21 +44,8 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 3002/tcp 2>/dev/null || true; sleep 1; cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3002
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "Customer Portal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/customer-portal && PORT=5000 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -104,7 +90,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 8081
+localPort = 8080
 externalPort = 8008
 
 [[ports]]
