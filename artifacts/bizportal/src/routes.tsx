@@ -54,6 +54,16 @@ import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import VendorsPage from "@/pages/purchase/vendors";
 import VendorDetailPage from "@/pages/purchase/vendor-detail";
 import PurchaseBillsPage from "@/pages/purchase/bills";
+import GoodsReceiptListPage from "@/pages/purchase/gr-list";
+import GoodsReceiptEditorPage from "@/pages/purchase/gr-editor";
+import QcListPage from "@/pages/purchase/qc-list";
+import QcEditorPage from "@/pages/purchase/qc-editor";
+import { PurchaseReturnsListPage, PurchaseReturnEditorPage } from "@/pages/purchase/purchase-returns";
+import { VendorInvoicesListPage, VendorInvoiceEditorPage } from "@/pages/purchase/vendor-invoices";
+import { PaymentRequestsListPage, PaymentRequestEditorPage } from "@/pages/purchase/payment-requests";
+import { LandedCostsListPage, LandedCostEditorPage } from "@/pages/purchase/landed-costs";
+import VendorComparisonPage from "@/pages/purchase/vendor-comparison";
+import PurchaseReceivePage from "@/pages/purchase/receive";
 import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
@@ -151,7 +161,26 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/purchase/vendors" component={PR(VendorsPage)} />
       <Route path="/purchase/vendors/:id" component={PR(VendorDetailPage)} />
       <Route path="/purchase/bills" component={PR(PurchaseBillsPage)} />
-      <Route path="/reports/operasional" component={PR(PosKasirAdminPage)} />
+      <Route path="/purchase/gr" component={PR(GoodsReceiptListPage)} />
+      <Route path="/purchase/gr/new" component={PR(GoodsReceiptEditorPage)} />
+      <Route path="/purchase/gr/:id" component={PR(GoodsReceiptEditorPage)} />
+      <Route path="/purchase/qc" component={PR(QcListPage)} />
+      <Route path="/purchase/qc/new" component={PR(QcEditorPage)} />
+      <Route path="/purchase/qc/:id" component={PR(QcEditorPage)} />
+      <Route path="/purchase/returns" component={PR(PurchaseReturnsListPage)} />
+      <Route path="/purchase/returns/new" component={PR(PurchaseReturnEditorPage)} />
+      <Route path="/purchase/returns/:id" component={PR(PurchaseReturnEditorPage)} />
+      <Route path="/purchase/vendor-invoices" component={PR(VendorInvoicesListPage)} />
+      <Route path="/purchase/vendor-invoices/new" component={PR(VendorInvoiceEditorPage)} />
+      <Route path="/purchase/vendor-invoices/:id" component={PR(VendorInvoiceEditorPage)} />
+      <Route path="/purchase/payment-requests" component={PR(PaymentRequestsListPage)} />
+      <Route path="/purchase/payment-requests/new" component={PR(PaymentRequestEditorPage)} />
+      <Route path="/purchase/payment-requests/:id" component={PR(PaymentRequestEditorPage)} />
+      <Route path="/purchase/landed-costs" component={PR(LandedCostsListPage)} />
+      <Route path="/purchase/landed-costs/new" component={PR(LandedCostEditorPage)} />
+      <Route path="/purchase/landed-costs/:id" component={PR(LandedCostEditorPage)} />
+      <Route path="/purchase/vendor-comparison/:rfqId" component={PR(VendorComparisonPage)} />
+      <Route path="/purchase/receive/:id" component={PR(PurchaseReceivePage)} />
       <Route path="/reports/audit-log" component={PR(ReportsAuditLogPage)} />
       <Route path="/reports/sales" component={PR(ReportsSalesPage)} />
       <Route path="/reports/purchase" component={PR(ReportsPurchasePage)} />

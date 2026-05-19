@@ -216,7 +216,7 @@ export function AppShell({ children }: AppShellProps) {
       icon: BarChart2,
       roles: ["manager", "admin", "owner", "kasir", "gudang"],
       children: [
-        { titleKey: "Lap. Operasional (POS & Stok)", href: "/reports/operasional", icon: BarChart2, roles: ["manager", "admin", "owner", "kasir", "gudang"] },
+        { titleKey: "Lap. Operasional (POS & Stok)", href: "/pos-kasir", icon: BarChart2, roles: ["manager", "admin", "owner", "kasir", "gudang"] },
         { titleKey: "Audit Log Keamanan", href: "/reports/audit-log", icon: Shield, roles: ["admin", "owner"] },
         { titleKey: "Laporan Penjualan B2B", href: "/reports/sales", icon: TrendingUp, roles: ["manager", "admin", "owner"] },
         { titleKey: "Laporan Pembelian", href: "/reports/purchase", icon: ShoppingBag, roles: ["admin", "owner"] },
