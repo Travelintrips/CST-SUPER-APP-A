@@ -58,10 +58,14 @@ if (typeof window !== "undefined" && window.location.hostname === "bizportal.cst
   window.location.replace("https://cstlogistic.co.id/bizportal/");
 }
 
-// Jika berjalan dalam mode POS Kasir, redirect langsung ke /kasir/login
+// Jika berjalan dalam mode POS Kasir, paksa semua path non-kasir ke /kasir/login
 if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
   const path = window.location.pathname;
-  if (path === "/" || path === "") {
+  const isKasirPath =
+    path.startsWith("/kasir") ||
+    path.startsWith("/menu-board") ||
+    path.startsWith("/api/");
+  if (!isKasirPath) {
     window.location.replace("/kasir/login");
   }
 }
