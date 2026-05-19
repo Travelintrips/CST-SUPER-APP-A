@@ -1,28 +1,7 @@
 import { randomUUID } from "crypto";
+import { ObjectStorageService } from "./objectStorage.js";
 
-const isDev = process.env.NODE_ENV !== "production";
-
-function getSupabaseUrl(): string {
-  return (isDev ? process.env.SUPABASE_URL_DEV : undefined)
-    ?? process.env.SUPABASE_URL
-    ?? process.env.VITE_SUPABASE_URL
-    ?? "";
-}
-
-function getServiceKey(): string {
-  return (isDev ? process.env.SUPABASE_SERVICE_ROLE_KEY_DEV : undefined)
-    ?? process.env.SUPABASE_SERVICE_ROLE_KEY
-    ?? "";
-}
-
-const MEDIA_BUCKET = "media";
-
-function getSupabaseHeaders() {
-  return {
-    Authorization: `Bearer ${getServiceKey()}`,
-    apikey: getServiceKey(),
-  };
-}
+const objectStorage = new ObjectStorageService();
 
 function extFromContentType(contentType: string): string {
   const map: Record<string, string> = {
@@ -41,69 +20,37 @@ function extFromContentType(contentType: string): string {
 }
 
 /**
- * Upload buffer ke Supabase Storage bucket "media" (public).
- * Returns absolute public URL.
+ * Upload buffer ke Replit Object Storage (public).
+ * Returns absolute public URL path.
  */
 export async function uploadToSupabase(
   buffer: Buffer,
   contentType: string,
   folder = "uploads",
 ): Promise<{ publicUrl: string; storagePath: string }> {
-  const supabaseUrl = getSupabaseUrl();
-  const serviceKey = getServiceKey();
-
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY tidak dikonfigurasi");
-  }
-
   const ext = extFromContentType(contentType);
   const objectId = randomUUID();
   const fileName = `${objectId}.${ext}`;
-  const storagePath = `${folder}/${fileName}`;
+  const objectKey = `${folder}/${fileName}`;
 
-  const uploadUrl = `${supabaseUrl}/storage/v1/object/${MEDIA_BUCKET}/${storagePath}`;
-  const res = await fetch(uploadUrl, {
-    method: "POST",
-    headers: {
-      ...getSupabaseHeaders(),
-      "Content-Type": contentType,
-    },
-    body: buffer,
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Supabase upload gagal (${res.status}): ${body}`);
-  }
-
-  const publicUrl = `${supabaseUrl}/storage/v1/object/public/${MEDIA_BUCKET}/${storagePath}`;
-  return { publicUrl, storagePath };
+  const publicUrl = await objectStorage.uploadPublicAsset(buffer, objectKey, contentType);
+  return { publicUrl, storagePath: objectKey };
 }
 
 /**
- * Download file dari Supabase Storage.
+ * Download file dari Replit Object Storage.
  * Returns Buffer.
  */
 export async function downloadFromSupabase(storagePath: string): Promise<Buffer> {
-  const supabaseUrl = getSupabaseUrl();
-  const serviceKey = getServiceKey();
-
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error("Supabase tidak dikonfigurasi");
-  }
-
-  const downloadUrl = `${supabaseUrl}/storage/v1/object/${MEDIA_BUCKET}/${storagePath}`;
-  const res = await fetch(downloadUrl, {
-    headers: getSupabaseHeaders(),
-  });
-  if (!res.ok) throw new Error(`Download gagal (${res.status})`);
-  const arrayBuffer = await res.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  const file = await objectStorage.searchPublicObject(storagePath);
+  if (!file) throw new Error(`Object not found: ${storagePath}`);
+  const [contents] = await file.download();
+  return contents as Buffer;
 }
 
 /**
- * Check apakah URL adalah Supabase URL
+ * Check apakah URL adalah Supabase URL (legacy — always false on Replit)
  */
 export function isSupabaseUrl(url: string): boolean {
-  return url.startsWith("https://") && url.includes("supabase.co/storage");
+  return url.includes("supabase.co/storage");
 }

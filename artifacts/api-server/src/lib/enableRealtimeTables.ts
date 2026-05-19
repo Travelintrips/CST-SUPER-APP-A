@@ -1,25 +1,10 @@
 import { logger } from "./logger";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
 
-const TABLES = ["driver_jobs", "driver_job_logs", "vendor_responses"];
-
+/**
+ * Supabase Realtime table enablement — no-op on Replit.
+ * Previously used to enable Supabase Realtime publications.
+ * On Replit, the database is Replit PostgreSQL which does not use Supabase publications.
+ */
 export async function enableRealtimeTables(): Promise<void> {
-  for (const table of TABLES) {
-    try {
-      await db.execute(sql.raw(`
-        DO $$ BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM pg_publication_tables
-            WHERE pubname = 'supabase_realtime' AND tablename = '${table}'
-          ) THEN
-            ALTER PUBLICATION supabase_realtime ADD TABLE ${table};
-          END IF;
-        END $$;
-      `));
-      logger.info(`Supabase Realtime: table '${table}' enabled`);
-    } catch (err) {
-      logger.warn({ err }, `Supabase Realtime: could not enable table '${table}' (non-fatal)`);
-    }
-  }
+  logger.info("enableRealtimeTables: skipped (not using Supabase Realtime)");
 }
