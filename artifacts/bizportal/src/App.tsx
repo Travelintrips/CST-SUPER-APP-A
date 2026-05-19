@@ -1,5 +1,5 @@
 import React from "react";
-import { Router as WouterRouter, Redirect } from "wouter";
+import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,6 +15,7 @@ import ApprovalsPage from "@/pages/approvals/index";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
+import KatalogTerpaduPage from "@/pages/katalog-terpadu";
 import LogisticsPage from "@/pages/logistics";
 import LogisticsFreightPage from "@/pages/logistics-freight";
 import LogisticsFreightEditorPage from "@/pages/logistics-freight-editor";
@@ -278,6 +279,7 @@ function Router() {
         <Route path="/approvals" component={() => <ProtectedRoute component={ApprovalsPage} />} />
         <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
+        <Route path="/katalog-terpadu" component={() => <ProtectedRoute component={KatalogTerpaduPage} />} />
         <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
         {/* Logistics */}
         <Route path="/logistics" component={() => <ProtectedRoute component={LogisticsPage} />} />
