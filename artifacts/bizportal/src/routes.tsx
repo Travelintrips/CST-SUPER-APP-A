@@ -8,6 +8,7 @@ import TradingPage from "@/pages/trading";
 import WelcomePage from "@/pages/welcome";
 import ApprovalsPage from "@/pages/approvals/index";
 // Logistics
+import KatalogTerpaduPage from "@/pages/katalog-terpadu";
 import LogisticsPage from "@/pages/logistics";
 import LogisticsFreightPage from "@/pages/logistics-freight";
 import LogisticsFreightEditorPage from "@/pages/logistics-freight-editor";
@@ -144,6 +145,25 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/trading" component={PR(TradingPage)} />
 
       {/* ── Logistics ──────────────────────────────────────────────────── */}
+      <Route path="/katalog-terpadu" component={PR(KatalogTerpaduPage)} />
+      <Route path="/pos" component={PR(PosPage)} />
+      <Route path="/pos-kasir" component={PR(PosKasirAdminPage)} />
+      <Route path="/pos-inventory/branches" component={PR(PosBranchesPage)} />
+      <Route path="/pos-inventory/warehouses" component={PR(PosWarehousesPage)} />
+      <Route path="/pos-inventory/racks" component={PR(PosRacksPage)} />
+      <Route path="/pos-inventory/items" component={PR(PosInventoryItemsPage)} />
+      <Route path="/pos-inventory/stocks" component={PR(PosInventoryStocksPage)} />
+      <Route path="/pos-inventory/recipes" component={PR(PosRecipesPage)} />
+      <Route path="/products/items" component={PR(ProductItemsPage)} />
+      <Route path="/products/recipes" component={PR(ProductRecipesPage)} />
+      <Route path="/pos-inventory/transfers" component={PR(PosStockTransfersPage)} />
+      <Route path="/pos-inventory/returns" component={PR(PosStockReturnsPage)} />
+      <Route path="/pos-inventory/losses" component={PR(PosStockLossesPage)} />
+      <Route path="/pos-inventory/opname" component={PR(PosStockOpnamePage)} />
+      <Route path="/pos-inventory/mutations" component={PR(PosStockMutationsPage)} />
+      <Route path="/pos-inventory/dashboard" component={PR(PosInventoryDashboardPage)} />
+      <Route path="/pos-inventory/qr-generator" component={PR(PosQrGeneratorPage)} />
+      <Route path="/pos-inventory/qr-scanner" component={PR(PosQrScannerPage)} />
       <Route path="/logistics" component={PR(LogisticsPage)} />
       <Route path="/logistics/freight/new" component={PR(LogisticsFreightEditorPage)} />
       <Route path="/logistics/freight/:id/bl" component={PR(LogisticsFreightBLPage)} />
