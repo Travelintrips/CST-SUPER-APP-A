@@ -12,8 +12,13 @@ import {
   purchaseDocumentsTable,
   purchaseDocumentLinesTable,
   accountingTaxesTable,
+  goodsReceiptsTable,
+  vendorInvoicesTable,
+  accountingEntriesTable,
+  accountingEntryLinesTable,
+  chartOfAccountsTable,
 } from "@workspace/db";
-import { eq, sql, desc, and, type SQL } from "drizzle-orm";
+import { eq, sql, desc, and, or, inArray, type SQL } from "drizzle-orm";
 
 async function computeTax(subtotal: number, taxRateId: number | null | undefined): Promise<{ taxAmount: number; grandTotal: number }> {
   if (!taxRateId) return { taxAmount: 0, grandTotal: subtotal };
@@ -561,6 +566,112 @@ router.post("/documents/:id/email", async (req, res): Promise<void> => {
   });
 
   res.json({ message: "Email berhasil dikirim", to, filename });
+});
+
+router.get("/po-detail/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+  const doc = await loadDocWithLines(id);
+  if (!doc) return res.status(404).json({ message: "Not found" });
+
+  const grs = await db.select().from(goodsReceiptsTable)
+    .where(eq(goodsReceiptsTable.poId, id))
+    .orderBy(desc(goodsReceiptsTable.createdAt));
+
+  const vis = await db.select().from(vendorInvoicesTable)
+    .where(eq(vendorInvoicesTable.poId, id))
+    .orderBy(desc(vendorInvoicesTable.createdAt));
+
+  const grIds = grs.map((g) => g.id);
+  const viIds = vis.map((v) => v.id);
+
+  let journalEntries: object[] = [];
+  const entryConds: ReturnType<typeof and>[] = [];
+  if (viIds.length > 0) {
+    entryConds.push(and(
+      sql`${accountingEntriesTable.source} = 'purchase_bill'`,
+      inArray(accountingEntriesTable.sourceId, viIds),
+    )!);
+  }
+  entryConds.push(and(
+    sql`${accountingEntriesTable.source} = 'purchase_bill'`,
+    eq(accountingEntriesTable.sourceId, id),
+  )!);
+  if (grIds.length > 0) {
+    entryConds.push(and(
+      sql`${accountingEntriesTable.source} = 'grn_receipt'`,
+      inArray(accountingEntriesTable.sourceId, grIds),
+    )!);
+  }
+
+  const entries = await db.select().from(accountingEntriesTable)
+    .where(or(...entryConds))
+    .orderBy(desc(accountingEntriesTable.createdAt));
+
+  if (entries.length > 0) {
+    const entryIds = entries.map((e) => e.id);
+    const lines = await db.select({
+      id: accountingEntryLinesTable.id,
+      entryId: accountingEntryLinesTable.entryId,
+      description: accountingEntryLinesTable.description,
+      debit: accountingEntryLinesTable.debit,
+      credit: accountingEntryLinesTable.credit,
+      accountId: accountingEntryLinesTable.accountId,
+      accountCode: chartOfAccountsTable.code,
+      accountName: chartOfAccountsTable.name,
+    }).from(accountingEntryLinesTable)
+      .leftJoin(chartOfAccountsTable, eq(accountingEntryLinesTable.accountId, chartOfAccountsTable.id))
+      .where(inArray(accountingEntryLinesTable.entryId, entryIds));
+
+    journalEntries = entries.map((e) => ({
+      id: e.id,
+      entryNumber: e.entryNumber,
+      date: e.date ? String(e.date) : null,
+      description: e.description,
+      status: e.status,
+      source: e.source,
+      sourceId: e.sourceId,
+      totalDebit: Number(e.totalDebit ?? 0),
+      totalCredit: Number(e.totalCredit ?? 0),
+      createdAt: e.createdAt?.toISOString(),
+      lines: lines
+        .filter((l) => l.entryId === e.id)
+        .map((l) => ({
+          id: l.id,
+          entryId: l.entryId,
+          description: l.description,
+          debit: Number(l.debit ?? 0),
+          credit: Number(l.credit ?? 0),
+          accountId: l.accountId,
+          accountCode: l.accountCode,
+          accountName: l.accountName,
+        })),
+    }));
+  }
+
+  return res.json({
+    ...doc,
+    goodsReceipts: grs.map((g) => ({
+      ...g,
+      receivedAt: g.receivedAt instanceof Date ? g.receivedAt.toISOString() : (g.receivedAt ?? null),
+      createdAt: g.createdAt.toISOString(),
+      updatedAt: g.updatedAt.toISOString(),
+    })),
+    vendorInvoices: vis.map((v) => ({
+      ...v,
+      grandTotal: Number(v.grandTotal),
+      totalAmount: Number(v.totalAmount),
+      taxAmount: Number(v.taxAmount ?? 0),
+      amountPaid: Number(v.amountPaid ?? 0),
+      invoiceDate: v.invoiceDate instanceof Date ? v.invoiceDate.toISOString() : (v.invoiceDate ?? null),
+      dueDate: v.dueDate instanceof Date ? v.dueDate.toISOString() : (v.dueDate ?? null),
+      cancelledAt: v.cancelledAt instanceof Date ? v.cancelledAt.toISOString() : (v.cancelledAt ?? null),
+      createdAt: v.createdAt.toISOString(),
+      updatedAt: v.updatedAt.toISOString(),
+    })),
+    journalEntries,
+  });
 });
 
 export default router;

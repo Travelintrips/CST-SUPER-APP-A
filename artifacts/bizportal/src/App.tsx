@@ -43,6 +43,7 @@ import SalesInvoicesPage from "@/pages/sales/invoices";
 import SalesItemsPage from "@/pages/sales/items";
 import PurchaseDashboardPage from "@/pages/purchase/dashboard";
 import PurchaseDocumentsListPage from "@/pages/purchase/documents-list";
+import POOrdersPage from "@/pages/purchase/po-orders";
 import PurchaseDocumentEditorPage from "@/pages/purchase/rfq-editor";
 import VendorsPage from "@/pages/purchase/vendors";
 import VendorDetailPage from "@/pages/purchase/vendor-detail";
@@ -321,7 +322,7 @@ function Router() {
         <Route path="/purchase/rfq" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="rfq" />} />} />
         <Route path="/purchase/rfq/new" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/rfq/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
-        <Route path="/purchase/orders" component={() => <ProtectedRoute component={() => <PurchaseDocumentsListPage kind="order" />} />} />
+        <Route path="/purchase/orders" component={() => <ProtectedRoute component={POOrdersPage} />} />
         <Route path="/purchase/orders/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
         <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
