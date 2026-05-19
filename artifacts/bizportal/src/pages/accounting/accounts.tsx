@@ -217,15 +217,6 @@ export default function AccountsPage() {
               <Landmark className="h-6 w-6" /> Bagan Akun
             </h1>
             <p className="text-sm text-muted-foreground">Chart of Accounts (CoA) — hierarki akun buku besar</p>
-            {companies.length > 1 && (
-              <div className="mt-2 flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
-                <Select value={String(companyId)} onValueChange={(v) => setSelectedCompanyId(Number(v))}>
-                  <SelectTrigger className="h-7 text-xs w-48"><SelectValue /></SelectTrigger>
-                  <SelectContent>{companies.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.companyName}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
           <div className="flex items-center gap-2">
             {companies.length > 1 && (
