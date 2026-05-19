@@ -4,6 +4,7 @@ import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
+import KatalogTerpaduPage from "@/pages/katalog-terpadu";
 import LogisticsPage from "@/pages/logistics";
 import LogisticsFreightPage from "@/pages/logistics-freight";
 import LogisticsFreightEditorPage from "@/pages/logistics-freight-editor";
@@ -97,6 +98,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/dashboard" component={PR(DashboardPage)} />
       <Route path="/ecommerce" component={PR(EcommercePage)} />
       <Route path="/trading" component={PR(TradingPage)} />
+      <Route path="/katalog-terpadu" component={PR(KatalogTerpaduPage)} />
       <Route path="/pos" component={PR(PosPage)} />
       <Route path="/pos-kasir" component={PR(PosKasirAdminPage)} />
       <Route path="/pos-inventory/branches" component={PR(PosBranchesPage)} />

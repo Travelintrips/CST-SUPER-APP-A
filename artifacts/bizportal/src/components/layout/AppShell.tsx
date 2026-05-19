@@ -308,6 +308,7 @@ export function AppShell({ children }: AppShellProps) {
       ],
     },
     { type: "flat", titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
+    { type: "flat", titleKey: "Katalog Terpadu", href: "/katalog-terpadu", icon: Layers, roles: ["admin", "owner"] },
     {
       type: "group",
       titleKey: "expense",
