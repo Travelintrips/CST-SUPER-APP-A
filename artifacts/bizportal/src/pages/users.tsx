@@ -1,13 +1,14 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { getListUsersQueryKey, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Pencil, Users, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Pencil, Users, ShieldAlert, ShieldCheck, X, CheckCircle2, XCircle, Clock, CaseSensitive } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +52,13 @@ interface UserRow {
   sectionId: number | null; sectionName: string | null;
 }
 
+interface KasirRow {
+  id: number; name: string; email: string; phone: string | null;
+  status: "pending" | "approved" | "rejected";
+  branchId: number | null; branchName: string | null;
+  createdAt: string;
+}
+
 interface CustomRole { id: number; name: string; color: string }
 interface OrgItem    { id: number; name: string; code?: string; companyId: number }
 
@@ -64,6 +72,14 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
+const kasirStatusBadge = (status: KasirRow["status"]) => {
+  switch (status) {
+    case "approved": return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1"><CheckCircle2 className="h-3 w-3" />Aktif</Badge>;
+    case "pending":  return <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1"><Clock className="h-3 w-3" />Menunggu</Badge>;
+    case "rejected": return <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20 gap-1"><XCircle className="h-3 w-3" />Ditolak</Badge>;
+  }
+};
+
 export default function UsersPage() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -73,6 +89,22 @@ export default function UsersPage() {
     queryKey: getListUsersQueryKey(),
     queryFn: () => apiFetch("/users"),
     retry: false,
+  });
+
+  const { data: kasirs = [], isLoading: kasirLoading } = useQuery<KasirRow[]>({
+    queryKey: ["pos-kasir-admin-cashiers"],
+    queryFn: () => apiFetch("/pos-kasir/admin/cashiers"),
+    retry: false,
+  });
+
+  const kasirStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      apiFetch(`/pos-kasir/admin/cashiers/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pos-kasir-admin-cashiers"] });
+      toast({ title: "Status kasir diperbarui" });
+    },
+    onError: () => toast({ title: "Gagal memperbarui status", variant: "destructive" }),
   });
 
   const { data: customRoles = [] } = useQuery<CustomRole[]>({
@@ -157,7 +189,6 @@ export default function UsersPage() {
         }),
       });
 
-      // Handle custom role assignment via separate endpoint if changed
       const prevCrId = editing.customRoleId != null ? String(editing.customRoleId) : "none";
       if (editCustomRoleId !== prevCrId) {
         if (prevCrId !== "none") {
@@ -184,6 +215,7 @@ export default function UsersPage() {
   };
 
   const isForbidden = (error as any)?.status === 403 || (error as any)?.message?.includes("403");
+  const pendingCount = kasirs.filter(k => k.status === "pending").length;
 
   return (
     <AppShell>
@@ -200,113 +232,243 @@ export default function UsersPage() {
             <p className="text-sm text-muted-foreground">{t.users.adminOnly}</p>
           </CardContent></Card>
         ) : (
-          <>
-            {/* Desktop table */}
-            <Card className="hidden md:block">
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t.common.name}</TableHead>
-                      <TableHead>{t.common.email}</TableHead>
-                      <TableHead>{t.users.role}</TableHead>
-                      <TableHead>Custom Role</TableHead>
-                      <TableHead>Perusahaan</TableHead>
-                      <TableHead>Divisi / Dept</TableHead>
-                      <TableHead className="text-right w-[80px]">{t.common.actions}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isLoading ? (
-                      Array.from({ length: 4 }).map((_, i) => (
-                        <TableRow key={i}>
-                          {Array.from({ length: 7 }).map((__, j) => (
-                            <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                          ))}
-                        </TableRow>
-                      ))
-                    ) : users?.length === 0 ? (
+          <Tabs defaultValue="bizportal">
+            <TabsList>
+              <TabsTrigger value="bizportal">
+                <Users className="h-4 w-4 mr-1.5" />
+                Pengguna BizPortal
+              </TabsTrigger>
+              <TabsTrigger value="kasir" className="relative">
+                <CaseSensitive className="h-4 w-4 mr-1.5" />
+                Kasir POS
+                {pendingCount > 0 && (
+                  <span className="ml-1.5 bg-amber-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                    {pendingCount}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ── Tab 1: BizPortal users ── */}
+            <TabsContent value="bizportal" className="mt-4">
+              {/* Desktop table */}
+              <Card className="hidden md:block">
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center">
-                          <div className="flex flex-col items-center justify-center text-muted-foreground">
-                            <Users className="h-8 w-8 mb-2 opacity-50" />
-                            <p>{t.users.noUsers}</p>
-                          </div>
-                        </TableCell>
+                        <TableHead>{t.common.name}</TableHead>
+                        <TableHead>{t.common.email}</TableHead>
+                        <TableHead>{t.users.role}</TableHead>
+                        <TableHead>Custom Role</TableHead>
+                        <TableHead>Perusahaan</TableHead>
+                        <TableHead>Divisi / Dept</TableHead>
+                        <TableHead className="text-right w-[80px]">{t.common.actions}</TableHead>
                       </TableRow>
-                    ) : (
-                      users?.map((u) => (
-                        <TableRow key={u.id}>
-                          <TableCell className="font-medium">{u.name}</TableCell>
-                          <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={roleColor(u.role)}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            {u.customRoleName ? (
-                              <Badge variant="outline" className="gap-1 border" style={{ borderColor: u.customRoleColor ?? "#6366f1", color: u.customRoleColor ?? "#6366f1" }}>
-                                <ShieldCheck className="h-3 w-3" />{u.customRoleName}
-                              </Badge>
-                            ) : <span className="text-xs text-muted-foreground">—</span>}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {u.companyCode
-                              ? <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>
-                              : <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            <div className="text-xs">
-                              {u.divisionName && <div>{u.divisionName}</div>}
-                              {u.departmentName && <div className="text-muted-foreground/70">{u.departmentName}</div>}
-                              {!u.divisionName && !u.departmentName && (u.division || "—")}
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        Array.from({ length: 4 }).map((_, i) => (
+                          <TableRow key={i}>
+                            {Array.from({ length: 7 }).map((__, j) => (
+                              <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                            ))}
+                          </TableRow>
+                        ))
+                      ) : users?.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-24 text-center">
+                            <div className="flex flex-col items-center justify-center text-muted-foreground">
+                              <Users className="h-8 w-8 mb-2 opacity-50" />
+                              <p>{t.users.noUsers}</p>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={t.common.edit}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
+                        </TableRow>
+                      ) : (
+                        users?.map((u) => (
+                          <TableRow key={u.id}>
+                            <TableCell className="font-medium">{u.name}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={roleColor(u.role)}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              {u.customRoleName ? (
+                                <Badge variant="outline" className="gap-1 border" style={{ borderColor: u.customRoleColor ?? "#6366f1", color: u.customRoleColor ?? "#6366f1" }}>
+                                  <ShieldCheck className="h-3 w-3" />{u.customRoleName}
+                                </Badge>
+                              ) : <span className="text-xs text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {u.companyCode
+                                ? <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>
+                                : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              <div className="text-xs">
+                                {u.divisionName && <div>{u.divisionName}</div>}
+                                {u.departmentName && <div className="text-muted-foreground/70">{u.departmentName}</div>}
+                                {!u.divisionName && !u.departmentName && (u.division || "—")}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={t.common.edit}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-3">
+                {isLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <Card key={i}><CardContent className="p-4 space-y-2">
+                      <Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/3" />
+                    </CardContent></Card>
+                  ))
+                ) : users?.map((u) => (
+                  <Card key={u.id}><CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{u.name}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
+                      </div>
+                      <Badge variant="outline" className={`shrink-0 ${roleColor(u.role)}`}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {u.companyCode && <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>}
+                      {u.divisionName && <span className="text-xs text-muted-foreground">{u.divisionName}</span>}
+                      {u.departmentName && <span className="text-xs text-muted-foreground">/ {u.departmentName}</span>}
+                    </div>
+                    <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)}>
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
+                    </Button>
+                  </CardContent></Card>
+                ))}
+              </div>
+            </TabsContent>
+
+            {/* ── Tab 2: Kasir POS ── */}
+            <TabsContent value="kasir" className="mt-4">
+              <Card className="hidden md:block">
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t.common.name}</TableHead>
+                        <TableHead>{t.common.email}</TableHead>
+                        <TableHead>Telepon</TableHead>
+                        <TableHead>Cabang</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Terdaftar</TableHead>
+                        <TableHead className="text-right w-[140px]">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {kasirLoading ? (
+                        Array.from({ length: 3 }).map((_, i) => (
+                          <TableRow key={i}>
+                            {Array.from({ length: 7 }).map((__, j) => (
+                              <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                            ))}
+                          </TableRow>
+                        ))
+                      ) : kasirs.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                            Belum ada kasir terdaftar
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                      ) : kasirs.map((k) => (
+                        <TableRow key={k.id}>
+                          <TableCell className="font-medium">{k.name}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{k.email}</TableCell>
+                          <TableCell className="text-sm">{k.phone ?? "—"}</TableCell>
+                          <TableCell className="text-sm">{k.branchName ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                          <TableCell>{kasirStatusBadge(k.status)}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {new Date(k.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {k.status !== "approved" && (
+                                <Button size="sm" variant="outline"
+                                  className="text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 h-7 px-2 text-xs"
+                                  onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
+                                  disabled={kasirStatusMutation.isPending}>
+                                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
+                                </Button>
+                              )}
+                              {k.status !== "rejected" && (
+                                <Button size="sm" variant="outline"
+                                  className="text-red-500 border-red-500/30 hover:bg-red-500/10 h-7 px-2 text-xs"
+                                  onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
+                                  disabled={kasirStatusMutation.isPending}>
+                                  <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
 
-            {/* Mobile cards */}
-            <div className="md:hidden space-y-3">
-              {isLoading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <Card key={i}><CardContent className="p-4 space-y-2">
-                    <Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/3" />
-                  </CardContent></Card>
-                ))
-              ) : users?.map((u) => (
-                <Card key={u.id}><CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium truncate">{u.name}</p>
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
+              {/* Mobile kasir cards */}
+              <div className="md:hidden space-y-3">
+                {kasirLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <Card key={i}><CardContent className="p-4 space-y-2">
+                      <Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-1/3" />
+                    </CardContent></Card>
+                  ))
+                ) : kasirs.map((k) => (
+                  <Card key={k.id}><CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{k.name}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{k.email}</p>
+                        {k.phone && <p className="text-xs text-muted-foreground">{k.phone}</p>}
+                      </div>
+                      {kasirStatusBadge(k.status)}
                     </div>
-                    <Badge variant="outline" className={`shrink-0 ${roleColor(u.role)}`}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {u.companyCode && <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>}
-                    {u.divisionName && <span className="text-xs text-muted-foreground">{u.divisionName}</span>}
-                    {u.departmentName && <span className="text-xs text-muted-foreground">/ {u.departmentName}</span>}
-                  </div>
-                  <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(u)}>
-                    <Pencil className="h-3.5 w-3.5 mr-1.5" /> {t.common.edit}
-                  </Button>
-                </CardContent></Card>
-              ))}
-            </div>
-          </>
+                    <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                      {k.branchName && <span>Cabang: {k.branchName}</span>}
+                      <span>Daftar: {new Date(k.createdAt).toLocaleDateString("id-ID")}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {k.status !== "approved" && (
+                        <Button size="sm" variant="outline" className="flex-1 text-emerald-600 border-emerald-500/30"
+                          onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "approved" })}
+                          disabled={kasirStatusMutation.isPending}>
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Setujui
+                        </Button>
+                      )}
+                      {k.status !== "rejected" && (
+                        <Button size="sm" variant="outline" className="flex-1 text-red-500 border-red-500/30"
+                          onClick={() => kasirStatusMutation.mutate({ id: k.id, status: "rejected" })}
+                          disabled={kasirStatusMutation.isPending}>
+                          <XCircle className="h-3.5 w-3.5 mr-1" />Tolak
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent></Card>
+                ))}
+              </div>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
 
-      {/* Edit dialog */}
+      {/* Edit dialog (BizPortal users) */}
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           {editing && (
@@ -316,7 +478,6 @@ export default function UsersPage() {
                 <DialogDescription>{t.users.editDesc}</DialogDescription>
               </DialogHeader>
               <div className="grid gap-3 py-4">
-                {/* Basic info */}
                 <div className="grid gap-1.5">
                   <Label className="text-xs text-muted-foreground">{t.common.email}</Label>
                   <Input value={editing.email} disabled className="text-sm" />
@@ -355,7 +516,6 @@ export default function UsersPage() {
 
                 <div className="border-t pt-3 mt-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Penugasan Organisasi</p>
-                  {/* Company */}
                   <div className="grid gap-1.5 mb-2">
                     <Label className="text-xs">Perusahaan</Label>
                     <Select value={editCompanyId} onValueChange={v => { setEditCompanyId(v); setEditBranchId("none"); setEditDivisionId("none"); setEditDepartmentId("none"); setEditSectionId("none"); }}>
@@ -367,7 +527,6 @@ export default function UsersPage() {
                     </Select>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    {/* Branch */}
                     <div className="grid gap-1.5">
                       <Label className="text-xs">Cabang</Label>
                       <Select value={editBranchId} onValueChange={setEditBranchId}>
@@ -378,7 +537,6 @@ export default function UsersPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    {/* Division */}
                     <div className="grid gap-1.5">
                       <Label className="text-xs">Divisi</Label>
                       <Select value={editDivisionId} onValueChange={v => { setEditDivisionId(v); setEditDepartmentId("none"); setEditSectionId("none"); }}>
@@ -389,7 +547,6 @@ export default function UsersPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    {/* Department */}
                     <div className="grid gap-1.5">
                       <Label className="text-xs">Departemen</Label>
                       <Select value={editDepartmentId} onValueChange={v => { setEditDepartmentId(v); setEditSectionId("none"); }}>
@@ -400,7 +557,6 @@ export default function UsersPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    {/* Section */}
                     <div className="grid gap-1.5">
                       <Label className="text-xs">Seksi/Tim</Label>
                       <Select value={editSectionId} onValueChange={setEditSectionId}>
@@ -414,7 +570,6 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Legacy text division field */}
                 <div className="grid gap-1.5">
                   <Label htmlFor="user-division" className="text-xs">{t.users.divisionOptional} <span className="text-muted-foreground">(teks bebas, opsional)</span></Label>
                   <Input id="user-division" value={editDivision} onChange={(e) => setEditDivision(e.target.value)} placeholder="cth. Jakarta Pusat" className="text-sm" />
