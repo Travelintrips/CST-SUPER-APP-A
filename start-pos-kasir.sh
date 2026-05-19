@@ -18,7 +18,7 @@ cd /home/runner/workspace
 
 echo "==> Starting POS Kasir (Customer Portal) on port 5000..."
 cd artifacts/customer-portal
-PORT=5000 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
+PORT=5000 BASE_PATH=/ VITE_POS_MODE=true pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
 PORTAL_PID=$!
 
 echo "==> POS Kasir started. API=$APISERVER_PID Portal=$PORTAL_PID"
