@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import {
   CheckCircle, AlertCircle, Calendar, Clock, User,
   Phone, Mail, FileText, Printer, RotateCcw, Home,
-  CreditCard, Building2, Smartphone,
+  CreditCard, Building2, Smartphone, Loader2,
 } from "lucide-react";
-import { facilities, timeOptions } from "@/data/dummyData";
+import { timeOptions } from "@/data/dummyData";
 import { useBookings } from "@/hooks/useBookings";
+import { useServices } from "@/hooks/useServices";
 import { formatCurrency, formatDate, calculateTotalHours } from "@/utils/bookingCode";
 import type { Booking } from "@/types";
 
@@ -155,6 +156,7 @@ function ConfirmationPage({ booking, onReset }: { booking: Booking; onReset: () 
 
 export default function BookingForm({ preselectedFacilityId }: BookingFormProps) {
   const { addBooking } = useBookings();
+  const { services, loading: servicesLoading } = useServices();
   const [success, setSuccess] = useState<Booking | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -170,7 +172,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
     notes: "",
   });
 
-  const selectedFacility = facilities.find((f) => f.id === form.facilityId);
+  const selectedFacility = services.find((f) => f.id === form.facilityId);
   const totalHours = calculateTotalHours(form.startTime, form.endTime);
   const totalPrice = selectedFacility ? totalHours * selectedFacility.pricePerHour : 0;
 
@@ -276,20 +278,27 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
           <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center justify-center">1</span>
           Pilih Fasilitas
         </h2>
-        <select
-          value={form.facilityId}
-          onChange={(e) => update("facilityId", e.target.value)}
-          className={`w-full border rounded-xl px-4 py-3 text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.facilityId ? "border-red-400 bg-red-50" : "border-slate-300"
-          }`}
-        >
-          <option value="">-- Pilih fasilitas --</option>
-          {facilities.filter((f) => f.available).map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name} — {formatCurrency(f.pricePerHour)}/jam
-            </option>
-          ))}
-        </select>
+        {servicesLoading ? (
+          <div className="flex items-center gap-2 text-slate-400 text-sm py-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Memuat daftar fasilitas...
+          </div>
+        ) : (
+          <select
+            value={form.facilityId}
+            onChange={(e) => update("facilityId", e.target.value)}
+            className={`w-full border rounded-xl px-4 py-3 text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.facilityId ? "border-red-400 bg-red-50" : "border-slate-300"
+            }`}
+          >
+            <option value="">-- Pilih fasilitas --</option>
+            {services.filter((f) => f.available).map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} — {formatCurrency(f.pricePerHour)}/{f.unit ?? "jam"}
+              </option>
+            ))}
+          </select>
+        )}
         {errors.facilityId && (
           <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
             <AlertCircle className="w-3 h-3" />{errors.facilityId}
@@ -300,7 +309,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
             <img src={selectedFacility.image} alt={selectedFacility.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
             <div>
               <p className="font-bold text-slate-800">{selectedFacility.name}</p>
-              <p className="text-blue-600 font-semibold text-sm">{formatCurrency(selectedFacility.pricePerHour)}/jam</p>
+              <p className="text-blue-600 font-semibold text-sm">{formatCurrency(selectedFacility.pricePerHour)}/{selectedFacility.unit ?? "jam"}</p>
               <p className="text-xs text-slate-500 mt-0.5">Kapasitas: maks. {selectedFacility.capacity} orang</p>
               {!selectedFacility.available && (
                 <p className="text-xs text-red-600 font-semibold mt-1">⚠ Fasilitas ini tidak tersedia</p>
@@ -451,7 +460,7 @@ export default function BookingForm({ preselectedFacilityId }: BookingFormProps)
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || servicesLoading}
         className="w-full bg-gradient-to-r from-blue-600 to-emerald-500 text-white py-4 rounded-full font-bold text-lg hover:shadow-lg hover:scale-[1.01] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         {submitting ? (

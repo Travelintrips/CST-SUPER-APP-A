@@ -38,12 +38,12 @@ function buildConfirmationMessage(booking: {
 }
 
 const DEFAULT_SERVICES = [
-  { name: "Lapangan Futsal", category: "Futsal", description: "Lapangan futsal standar FIFA dengan rumput sintetis premium. Dilengkapi pencahayaan LED profesional dan sistem ventilasi modern.", pricePerHour: 150000, capacity: 14, unit: "jam", sortOrder: 1 },
-  { name: "Lapangan Badminton", category: "Badminton", description: "Lapangan indoor dengan lantai vinyl profesional berstandar BWF. Tersedia 4 lapangan dengan net premium.", pricePerHour: 75000, capacity: 8, unit: "jam", sortOrder: 2 },
-  { name: "Lapangan Basket", category: "Basket", description: "Lapangan basket indoor dengan lantai parket resmi NBA. Dilengkapi papan skor digital dan sistem tata suara.", pricePerHour: 200000, capacity: 20, unit: "jam", sortOrder: 3 },
-  { name: "Fitness Center", category: "Gym", description: "Pusat kebugaran lengkap dengan peralatan cardio dan beban terkini. Tersedia personal trainer berpengalaman.", pricePerHour: 35000, capacity: 40, unit: "sesi", sortOrder: 4 },
-  { name: "Studio Yoga", category: "Yoga", description: "Studio yoga ber-AC dengan lantai kayu hangat dan perlengkapan yoga lengkap. Cocok untuk semua level.", pricePerHour: 50000, capacity: 20, unit: "sesi", sortOrder: 5 },
-  { name: "Studio Zumba & Aerobik", category: "Aerobik", description: "Studio dance dan aerobik dengan lantai sprung, cermin full-wall, dan sound system bertenaga untuk sesi yang menyenangkan.", pricePerHour: 60000, capacity: 25, unit: "sesi", sortOrder: 6 },
+  { code: "futsal-01",   name: "Lapangan Futsal",       category: "Futsal",   description: "Lapangan futsal standar FIFA dengan rumput sintetis premium. Dilengkapi pencahayaan LED profesional dan sistem ventilasi modern.", pricePerHour: 150000, capacity: 14, unit: "jam",  sortOrder: 1, imageUrl: "https://placehold.co/600x400/2563EB/white?text=Futsal",   amenities: ["Rumput Sintetis","Lighting LED","Ruang Ganti","Parkir"] },
+  { code: "badminton-01",name: "Lapangan Badminton",    category: "Badminton",description: "Lapangan indoor dengan lantai vinyl profesional berstandar BWF. Tersedia 4 lapangan dengan net premium.", pricePerHour: 75000,  capacity: 8,  unit: "jam",  sortOrder: 2, imageUrl: "https://placehold.co/600x400/10B981/white?text=Badminton", amenities: ["Indoor","Vinyl Floor","Shuttlecock Available","Sewa Raket"] },
+  { code: "basket-01",   name: "Lapangan Basket",       category: "Basket",   description: "Lapangan basket indoor dengan lantai parket resmi NBA. Dilengkapi papan skor digital dan sistem tata suara.", pricePerHour: 200000, capacity: 20, unit: "jam",  sortOrder: 3, imageUrl: "https://placehold.co/600x400/F97316/white?text=Basket",   amenities: ["Papan Skor Digital","Sound System","Ruang Ganti","Parkir"] },
+  { code: "fitness-01",  name: "Fitness Center",        category: "Gym",      description: "Pusat kebugaran lengkap dengan peralatan cardio dan beban terkini. Tersedia personal trainer berpengalaman.", pricePerHour: 35000,  capacity: 40, unit: "sesi", sortOrder: 4, imageUrl: "https://placehold.co/600x400/8B5CF6/white?text=Fitness",  amenities: ["Personal Trainer","Locker Room","Shower","WiFi","Juice Bar"] },
+  { code: "yoga-01",     name: "Studio Yoga",           category: "Yoga",     description: "Studio yoga ber-AC dengan lantai kayu hangat dan perlengkapan yoga lengkap. Cocok untuk semua level.", pricePerHour: 50000,  capacity: 20, unit: "sesi", sortOrder: 5, imageUrl: "https://placehold.co/600x400/EC4899/white?text=Yoga",    amenities: ["AC","Matras Yoga","Loker","Shower","Instruktur Tersedia"] },
+  { code: "zumba-01",    name: "Studio Zumba & Aerobik",category: "Aerobik",  description: "Studio dance dan aerobik dengan lantai sprung, cermin full-wall, dan sound system bertenaga untuk sesi yang menyenangkan.", pricePerHour: 60000,  capacity: 25, unit: "sesi", sortOrder: 6, imageUrl: "https://placehold.co/600x400/EF4444/white?text=Zumba",   amenities: ["Sound System","Cermin Full-Wall","AC","Loker","Shower"] },
 ];
 
 async function ensureTables() {
@@ -62,6 +62,10 @@ async function ensureTables() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Tambah kolom baru jika belum ada (idempotent)
+  await db.execute(sql`ALTER TABLE sport_center_services ADD COLUMN IF NOT EXISTS code TEXT UNIQUE`);
+  await db.execute(sql`ALTER TABLE sport_center_services ADD COLUMN IF NOT EXISTS image_url TEXT`);
+  await db.execute(sql`ALTER TABLE sport_center_services ADD COLUMN IF NOT EXISTS amenities JSONB NOT NULL DEFAULT '[]'`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS sport_center_purchase_requests (
       id SERIAL PRIMARY KEY,
@@ -88,11 +92,20 @@ async function ensureTables() {
   if (count === 0) {
     for (const s of DEFAULT_SERVICES) {
       await db.execute(sql`
-        INSERT INTO sport_center_services (name, category, description, price_per_hour, capacity, unit, is_active, sort_order)
-        VALUES (${s.name}, ${s.category}, ${s.description}, ${s.pricePerHour}, ${s.capacity}, ${s.unit}, true, ${s.sortOrder})
+        INSERT INTO sport_center_services (code, name, category, description, price_per_hour, capacity, unit, image_url, amenities, is_active, sort_order)
+        VALUES (${s.code}, ${s.name}, ${s.category}, ${s.description}, ${s.pricePerHour}, ${s.capacity}, ${s.unit}, ${s.imageUrl}, ${JSON.stringify(s.amenities)}, true, ${s.sortOrder})
       `);
     }
     console.log("[sportCenter] Default services seeded (6 fasilitas)");
+  } else {
+    // Update code/image_url/amenities untuk services yang belum punya code (idempotent)
+    for (const s of DEFAULT_SERVICES) {
+      await db.execute(sql`
+        UPDATE sport_center_services
+        SET code = ${s.code}, image_url = ${s.imageUrl}, amenities = ${JSON.stringify(s.amenities)}
+        WHERE name = ${s.name} AND code IS NULL
+      `);
+    }
   }
 }
 

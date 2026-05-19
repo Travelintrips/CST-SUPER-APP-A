@@ -6,6 +6,35 @@ import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 
 export const sportCenterRouter = Router();
 
+export const sportCenterPublicRouter = Router();
+
+sportCenterPublicRouter.get("/services", async (_req: Request, res: Response) => {
+  const result = await db.execute(sql`
+    SELECT id, code, name, category, description, price_per_hour, capacity, unit,
+           image_url, amenities, is_active, sort_order
+    FROM sport_center_services
+    ORDER BY sort_order, id
+  `);
+  const rows = result.rows as {
+    id: number; code: string | null; name: string; category: string;
+    description: string | null; price_per_hour: number; capacity: number;
+    unit: string; image_url: string | null; amenities: unknown; is_active: boolean; sort_order: number;
+  }[];
+  res.json(rows.map((r) => ({
+    id: r.code ?? String(r.id),
+    name: r.name,
+    category: r.category,
+    description: r.description ?? "",
+    pricePerHour: r.price_per_hour,
+    capacity: r.capacity,
+    unit: r.unit,
+    image: r.image_url ?? `https://placehold.co/600x400/2563EB/white?text=${encodeURIComponent(r.name)}`,
+    amenities: Array.isArray(r.amenities) ? r.amenities : [],
+    available: r.is_active,
+    rating: 4.7,
+  })));
+});
+
 function buildAdminBookingMessage(b: {
   bookingCode: string;
   customerName: string;
