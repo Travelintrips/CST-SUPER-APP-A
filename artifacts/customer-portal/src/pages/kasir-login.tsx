@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { setKasirToken, setKasirProfile } from "@/lib/kasirAuth";
+import { setKasirToken, setKasirProfile, getKasirToken, removeKasirToken } from "@/lib/kasirAuth";
 
 interface Branch { id: number; name: string; address?: string; phone?: string; }
 
@@ -9,11 +9,30 @@ export default function KasirLoginPage() {
   const [tab, setTab] = useState<"login" | "register">("login");
   const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", branchId: "" });
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [msg, setMsg] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const [showPw, setShowPw] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
 
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Auto-redirect jika sesi kasir masih aktif
+  useEffect(() => {
+    const token = getKasirToken();
+    if (!token) { setChecking(false); return; }
+    fetch("/api/pos-kasir/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => {
+        if (r.ok) {
+          setLocation("/kasir");
+        } else {
+          removeKasirToken();
+          setChecking(false);
+        }
+      })
+      .catch(() => setChecking(false));
+  }, [setLocation]);
 
   useEffect(() => {
     fetch("/api/pos-kasir/branches")
@@ -21,6 +40,18 @@ export default function KasirLoginPage() {
       .then((data) => setBranches(data as Branch[]))
       .catch(() => {});
   }, []);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center"
+        style={{ background: "linear-gradient(135deg, #ff8c00 0%, #ff6b00 40%, #e05500 100%)" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin" />
+          <p className="text-white text-sm font-medium">Memeriksa sesi...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
