@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11", "python3", "postgresql-16"]
+modules = ["nodejs-20", "web", "bash", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -103,10 +103,13 @@ externalPort = 3000
 
 [[ports]]
 localPort = 3002
+<<<<<<< HEAD
 externalPort = 80
 
 [[ports]]
 localPort = 5000
+=======
+>>>>>>> daa17beb1dc9668bdda63c0e91163ed2929e2200
 externalPort = 9000
 
 [[ports]]
