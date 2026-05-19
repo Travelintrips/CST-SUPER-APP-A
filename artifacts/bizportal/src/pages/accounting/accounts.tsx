@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useCodeCheck } from "@/hooks/useCodeCheck";
+import { CodeCheckIndicator } from "@/components/ui/code-check-indicator";
 import { AppShell } from "@/components/layout/AppShell";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -145,6 +147,11 @@ export default function AccountsPage() {
     });
   };
 
+  const codeCheckUrl = open && form.code.trim()
+    ? `/api/accounting/accounts/check-code?code=${encodeURIComponent(form.code)}&companyId=${companyId}${editing ? `&excludeId=${editing.id}` : ""}`
+    : null;
+  const { checking: codeChecking, taken: codeTaken } = useCodeCheck(codeCheckUrl, form.code);
+
   const submit = async () => {
     if (!form.code.trim() || !form.name.trim()) {
       toast({ title: t.common.error, variant: "destructive" }); return;
@@ -254,7 +261,9 @@ export default function AccountsPage() {
                     <Label>Kode</Label>
                     <Input data-testid="input-account-code" value={form.code}
                       onChange={(e) => setForm({ ...form, code: e.target.value })}
-                      placeholder="5-2010" />
+                      placeholder="5-2010"
+                      className={codeTaken === true ? "border-destructive focus-visible:ring-destructive" : ""} />
+                    <CodeCheckIndicator checking={codeChecking} taken={codeTaken} />
                   </div>
                   <div>
                     <Label>Nama</Label>

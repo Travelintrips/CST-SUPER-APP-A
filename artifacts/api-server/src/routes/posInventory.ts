@@ -49,19 +49,27 @@ function makeLossNumber(): string {
 
 // ── CABANG ───────────────────────────────────────────────────────────────────
 
-router.get("/branches", async (_req: Request, res: Response) => {
-  const rows = await db.execute(sql`
-    SELECT * FROM pos_branches ORDER BY id ASC
-  `);
+router.get("/branches", async (req: Request, res: Response) => {
+  const businessUnit = req.query.businessUnit as string | undefined;
+  let query = sql`SELECT * FROM pos_branches WHERE 1=1`;
+  if (businessUnit && businessUnit !== "all") {
+    if (businessUnit === "none") {
+      query = sql`${query} AND (business_unit IS NULL OR business_unit = '')`;
+    } else {
+      query = sql`${query} AND business_unit = ${businessUnit}`;
+    }
+  }
+  query = sql`${query} ORDER BY name ASC`;
+  const rows = await db.execute(query);
   res.json(rows.rows);
 });
 
 router.post("/branches", async (req: Request, res: Response) => {
-  const { name, address, phone, isActive } = req.body as { name: string; address?: string; phone?: string; isActive?: boolean };
+  const { name, address, phone, isActive, businessUnit } = req.body as { name: string; address?: string; phone?: string; isActive?: boolean; businessUnit?: string };
   if (!name) { res.status(400).json({ message: "name wajib diisi" }); return; }
   const result = await db.execute(sql`
-    INSERT INTO pos_branches (name, address, phone, is_active)
-    VALUES (${name}, ${address ?? null}, ${phone ?? null}, ${isActive ?? true})
+    INSERT INTO pos_branches (name, address, phone, is_active, business_unit)
+    VALUES (${name}, ${address ?? null}, ${phone ?? null}, ${isActive ?? true}, ${businessUnit ?? null})
     RETURNING *
   `);
   res.json(result.rows[0]);
@@ -69,13 +77,14 @@ router.post("/branches", async (req: Request, res: Response) => {
 
 router.put("/branches/:id", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const { name, address, phone, isActive } = req.body as { name?: string; address?: string; phone?: string; isActive?: boolean };
+  const { name, address, phone, isActive, businessUnit } = req.body as { name?: string; address?: string; phone?: string; isActive?: boolean; businessUnit?: string | null };
   await db.execute(sql`
     UPDATE pos_branches
     SET name = COALESCE(${name ?? null}, name),
         address = COALESCE(${address ?? null}, address),
         phone = COALESCE(${phone ?? null}, phone),
-        is_active = COALESCE(${isActive ?? null}, is_active)
+        is_active = COALESCE(${isActive ?? null}, is_active),
+        business_unit = CASE WHEN ${businessUnit !== undefined} THEN ${businessUnit ?? null} ELSE business_unit END
     WHERE id = ${id}
   `);
   const result = await db.execute(sql`SELECT * FROM pos_branches WHERE id = ${id}`);
@@ -92,20 +101,23 @@ router.delete("/branches/:id", async (req: Request, res: Response) => {
 
 router.get("/warehouses", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
-  const rows = branchId
-    ? await db.execute(sql`
-        SELECT w.*, b.name as branch_name
-        FROM pos_warehouses w
-        JOIN pos_branches b ON b.id = w.branch_id
-        WHERE w.branch_id = ${branchId}
-        ORDER BY w.id ASC
-      `)
-    : await db.execute(sql`
-        SELECT w.*, b.name as branch_name
-        FROM pos_warehouses w
-        JOIN pos_branches b ON b.id = w.branch_id
-        ORDER BY b.name, w.id ASC
-      `);
+  const businessUnit = req.query.businessUnit as string | undefined;
+  let query = sql`
+    SELECT w.*, b.name as branch_name, b.business_unit
+    FROM pos_warehouses w
+    JOIN pos_branches b ON b.id = w.branch_id
+    WHERE 1=1
+  `;
+  if (branchId) query = sql`${query} AND w.branch_id = ${branchId}`;
+  if (businessUnit && businessUnit !== "all") {
+    if (businessUnit === "none") {
+      query = sql`${query} AND (b.business_unit IS NULL OR b.business_unit = '')`;
+    } else {
+      query = sql`${query} AND b.business_unit = ${businessUnit}`;
+    }
+  }
+  query = sql`${query} ORDER BY b.name, w.id ASC`;
+  const rows = await db.execute(query);
   res.json(rows.rows);
 });
 
@@ -161,6 +173,19 @@ router.get("/racks", async (req: Request, res: Response) => {
         ORDER BY b.name, w.name, r.code ASC
       `);
   res.json(rows.rows);
+});
+
+router.get("/racks/check-code", async (req: Request, res: Response) => {
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) { res.json({ taken: false }); return; }
+  const result = await db.execute(sql`
+    SELECT id FROM pos_racks
+    WHERE UPPER(code) = ${code}
+    ${excludeId && !Number.isNaN(excludeId) ? sql`AND id != ${excludeId}` : sql``}
+    LIMIT 1
+  `);
+  res.json({ taken: result.rows.length > 0 });
 });
 
 router.post("/racks", async (req: Request, res: Response) => {
@@ -248,11 +273,12 @@ router.delete("/inventory-items/:id", async (req: Request, res: Response) => {
 router.get("/inventory-stocks", async (req: Request, res: Response) => {
   const branchId = req.query.branchId ? Number(req.query.branchId) : null;
   const warehouseId = req.query.warehouseId ? Number(req.query.warehouseId) : null;
+  const businessUnit = req.query.businessUnit as string | undefined;
 
   let query = sql`
     SELECT s.*,
            i.name as item_name, i.sku, i.unit, i.min_stock,
-           b.name as branch_name,
+           b.name as branch_name, b.business_unit,
            w.name as warehouse_name,
            r.code as rack_code, r.name as rack_name
     FROM pos_inventory_stocks s
@@ -265,6 +291,13 @@ router.get("/inventory-stocks", async (req: Request, res: Response) => {
 
   if (branchId) query = sql`${query} AND s.branch_id = ${branchId}`;
   if (warehouseId) query = sql`${query} AND s.warehouse_id = ${warehouseId}`;
+  if (businessUnit && businessUnit !== "all") {
+    if (businessUnit === "none") {
+      query = sql`${query} AND (b.business_unit IS NULL OR b.business_unit = '')`;
+    } else {
+      query = sql`${query} AND b.business_unit = ${businessUnit}`;
+    }
+  }
   query = sql`${query} ORDER BY b.name, i.name ASC`;
 
   const rows = await db.execute(query);

@@ -1,33 +1,32 @@
 /**
  * /api/thai-tea — Manajemen Bahan Thai Tea & Inventori CST
  *
- * Products:
- * GET  /products          — daftar produk bahan thai tea
- * POST /products          — tambah produk bahan thai tea
- * PUT  /products/:id      — update produk
- * DELETE /products/:id    — hapus produk
- * POST /seed              — seed bahan default thai tea
+ * Sistem stok DIMERGE ke pos_inventory_stocks (sistem tunggal Inventory CST).
+ * Bahan Thai Tea diidentifikasi via SKU prefix "BTT-" di pos_inventory_items.
+ * Cabang Thai Tea = pos_branches dengan business_unit = 'THAI_TEA'.
  *
- * Stock & Purchase:
+ * Products (ERP - untuk integrasi Purchase Order):
+ * GET  /products          — daftar produk bahan thai tea
+ * POST /products          — tambah produk + sync ke pos_inventory_items
+ * PUT  /products/:id      — update produk + sync ke pos_inventory_items
+ * DELETE /products/:id    — hapus produk
+ * POST /seed              — seed bahan default ke products + pos_inventory_items
+ *
+ * Stock (POS Inventory system):
  * GET  /purchases         — daftar PO yang berisi bahan thai tea
- * GET  /stock             — stok CST (wh_stock) untuk bahan thai tea
- * POST /receive           — terima bahan thai tea → update wh_stock + inventory_stock + stock_movements
+ * GET  /stock             — stok dari pos_inventory_stocks (item SKU 'BTT-%')
+ * POST /receive           — terima bahan → update pos_inventory_stocks + mutasi
  *
  * Recipes / BOM:
- * GET  /recipes           — daftar recipe bahan thai tea (product_recipes)
- * POST /recipes           — upsert recipe untuk produk Thai Tea
- * DELETE /recipes/:id     — hapus recipe
+ * GET  /recipes / POST /recipes / DELETE /recipes/:id
  *
- * Warehouse Links:
- * GET  /warehouse-links   — mapping pos_warehouse ↔ erp_warehouse untuk Thai Tea
- * POST /warehouse-links   — buat/update mapping
- * DELETE /warehouse-links/:id — hapus mapping
+ * Warehouses (via POS system):
+ * GET  /warehouses        — pos_warehouses dari cabang business_unit='THAI_TEA'
  */
 import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../lib/requireAdmin.js";
 import { db, productsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { postStockIn } from "../lib/inventoryStock.js";
 
 const router = Router();
 router.use(async (req, res, next) => {
@@ -59,57 +58,34 @@ const DEFAULT_BAHAN: Array<{ name: string; sku: string; unit: string; price: num
   { name: "Plastik Sealer Roll", sku: "BTT-PKG-004", unit: "roll", price: 45000, description: "Plastik sealer untuk mesin cup sealer" },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function grnNo(): string {
   const now = new Date();
   const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
   return `BTT-GRN/${ymd}/${now.getTime().toString().slice(-5)}`;
 }
 
-/** Tambah stok ke wh_stock (POS system) + wh_movements */
-async function addWhStock(
-  productId: number,
-  posWarehouseId: number,
-  qty: number,
-  unitCost: number,
-  refType: string,
-  refId: number | null,
-  note: string,
-): Promise<void> {
-  const cur = (await db.execute(sql`
-    SELECT id, qty::float, cost_price::float FROM wh_stock
-    WHERE product_id = ${productId} AND warehouse_id = ${posWarehouseId}
-    FOR UPDATE
-  `)).rows[0] as { id: number; qty: number; cost_price: number } | undefined;
+// ── Sync helper: upsert bahan ke pos_inventory_items ─────────────────────────
 
-  const prevQty = Number(cur?.qty ?? 0);
-  const newQty = prevQty + qty;
-  // Weighted average cost
-  const prevCost = Number(cur?.cost_price ?? 0);
-  const newCost = newQty > 0 ? (prevQty * prevCost + qty * unitCost) / newQty : unitCost;
+async function syncToInventoryItem(sku: string, name: string, unit: string, price: number): Promise<number> {
+  const existing = (await db.execute(sql`
+    SELECT id FROM pos_inventory_items WHERE sku = ${sku}
+  `)).rows[0] as { id: number } | undefined;
 
-  if (cur) {
+  if (existing) {
     await db.execute(sql`
-      UPDATE wh_stock
-      SET qty = ${String(newQty)}, cost_price = ${String(newCost)}, updated_at = NOW()
-      WHERE id = ${cur.id}
+      UPDATE pos_inventory_items
+      SET name = ${name}, unit = ${unit}, cost_price = ${price}, updated_at = NOW()
+      WHERE id = ${existing.id}
     `);
-  } else {
-    await db.execute(sql`
-      INSERT INTO wh_stock (product_id, warehouse_id, qty, cost_price, updated_at)
-      VALUES (${productId}, ${posWarehouseId}, ${String(newQty)}, ${String(newCost)}, NOW())
-    `);
+    return existing.id;
   }
 
-  await db.execute(sql`
-    INSERT INTO wh_movements
-      (product_id, warehouse_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note, created_at)
-    VALUES
-      (${productId}, ${posWarehouseId}, 'po_receipt', ${String(qty)},
-       ${String(prevQty)}, ${String(newQty)}, ${String(unitCost)},
-       ${refType}, ${refId}, ${note}, NOW())
-  `);
+  const row = (await db.execute(sql`
+    INSERT INTO pos_inventory_items (name, sku, unit, cost_price, min_stock, is_active)
+    VALUES (${name}, ${sku}, ${unit}, ${price}, 0, TRUE)
+    RETURNING id
+  `)).rows[0] as { id: number };
+  return row.id;
 }
 
 // ── GET /products ────────────────────────────────────────────────────────────
@@ -133,9 +109,10 @@ router.post("/products", async (req: Request, res: Response) => {
     res.status(400).json({ message: "name dan sku wajib diisi" });
     return;
   }
+  const skuUpper = sku.toUpperCase();
   const [row] = await db.insert(productsTable).values({
     name,
-    sku: sku.toUpperCase(),
+    sku: skuUpper,
     unit: unit ?? "kg",
     price: String(price ?? 0),
     description: description ?? null,
@@ -143,6 +120,7 @@ router.post("/products", async (req: Request, res: Response) => {
     itemType: "barang",
     isActive: true,
   }).returning();
+  await syncToInventoryItem(skuUpper, name, unit ?? "kg", price ?? 0);
   res.status(201).json(row);
 });
 
@@ -165,6 +143,10 @@ router.put("/products/:id", async (req: Request, res: Response) => {
 
   const [row] = await db.update(productsTable).set(patch).where(eq(productsTable.id, id)).returning();
   if (!row) { res.status(404).json({ message: "Produk tidak ditemukan" }); return; }
+
+  if (row.sku) {
+    await syncToInventoryItem(row.sku, row.name, row.unit ?? "kg", Number(row.price ?? 0));
+  }
   res.json(row);
 });
 
@@ -175,6 +157,36 @@ router.delete("/products/:id", async (req: Request, res: Response) => {
   if (Number.isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
   await db.delete(productsTable).where(eq(productsTable.id, id));
   res.json({ ok: true });
+});
+
+// ── POST /seed ────────────────────────────────────────────────────────────────
+
+router.post("/seed", async (_req: Request, res: Response) => {
+  const existing = await db.select({ id: productsTable.id }).from(productsTable).where(eq(productsTable.subcategory, SUBCATEGORY));
+  if (existing.length > 0) {
+    // Masih sync ke pos_inventory_items meskipun products sudah ada
+    for (const b of DEFAULT_BAHAN) {
+      await syncToInventoryItem(b.sku, b.name, b.unit, b.price);
+    }
+    res.json({ message: `${existing.length} bahan sudah ada, sync pos_inventory_items selesai`, seeded: 0 });
+    return;
+  }
+  const rows = await db.insert(productsTable).values(
+    DEFAULT_BAHAN.map((b) => ({
+      name: b.name,
+      sku: b.sku,
+      unit: b.unit,
+      price: String(b.price),
+      description: b.description,
+      subcategory: SUBCATEGORY,
+      itemType: "barang" as const,
+      isActive: true,
+    }))
+  ).returning();
+  for (const b of DEFAULT_BAHAN) {
+    await syncToInventoryItem(b.sku, b.name, b.unit, b.price);
+  }
+  res.status(201).json({ message: `${rows.length} bahan berhasil di-seed`, seeded: rows.length });
 });
 
 // ── GET /purchases ───────────────────────────────────────────────────────────
@@ -196,281 +208,175 @@ router.get("/purchases", async (_req: Request, res: Response) => {
   res.json(rows.rows);
 });
 
-// ── GET /stock ───────────────────────────────────────────────────────────────
+// ── GET /stock ────────────────────────────────────────────────────────────────
+// Stok dari pos_inventory_stocks — item SKU prefix 'BTT-' (sistem tunggal)
 
 router.get("/stock", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT
-      p.id AS product_id,
-      p.name AS product_name,
-      p.sku,
-      p.unit,
-      COALESCE(SUM(ws.qty::float), 0) AS total_qty,
-      AVG(ws.cost_price::float) AS avg_cost,
-      COUNT(DISTINCT ws.warehouse_id) AS warehouse_count,
-      json_agg(
-        json_build_object(
-          'warehouse_id', pw.id,
-          'warehouse_name', pw.name,
-          'branch_name', pb.name,
-          'qty', ws.qty::float,
-          'cost_price', ws.cost_price::float
-        ) ORDER BY pw.name
-      ) FILTER (WHERE ws.id IS NOT NULL) AS warehouses
-    FROM products p
-    LEFT JOIN wh_stock ws ON ws.product_id = p.id
-    LEFT JOIN pos_warehouses pw ON pw.id = ws.warehouse_id
-    LEFT JOIN pos_branches pb ON pb.id = pw.branch_id
-    WHERE p.subcategory = ${SUBCATEGORY} AND p.is_active = TRUE
-    GROUP BY p.id, p.name, p.sku, p.unit
-    ORDER BY p.name
-  `);
-  res.json(rows.rows);
-});
-
-// ── GET /inventory-stock ──────────────────────────────────────────────────────
-// Stok dari sisi ERP (inventory_stock) untuk bahan thai tea
-
-router.get("/inventory-stock", async (_req: Request, res: Response) => {
-  const rows = await db.execute(sql`
-    SELECT
-      p.id AS product_id,
-      p.name AS product_name,
-      p.sku,
-      p.unit,
-      COALESCE(SUM(ist.stock_on_hand::float), 0) AS total_on_hand,
-      COALESCE(SUM(ist.stock_available::float), 0) AS total_available,
-      AVG(ist.average_cost::float) AS avg_cost,
-      json_agg(
-        json_build_object(
-          'warehouse_id', w.id,
-          'warehouse_name', w.warehouse_name,
-          'warehouse_code', w.warehouse_code,
-          'stock_on_hand', ist.stock_on_hand::float,
-          'stock_available', ist.stock_available::float
-        ) ORDER BY w.warehouse_name
-      ) FILTER (WHERE ist.id IS NOT NULL) AS erp_warehouses
-    FROM products p
-    LEFT JOIN inventory_stock ist ON ist.product_id = p.id
-    LEFT JOIN warehouses w ON w.id = ist.warehouse_id
-    WHERE p.subcategory = ${SUBCATEGORY} AND p.is_active = TRUE
-    GROUP BY p.id, p.name, p.sku, p.unit
-    ORDER BY p.name
+      i.id AS item_id,
+      i.name AS item_name,
+      i.sku,
+      i.unit,
+      i.cost_price::float AS cost_price,
+      COALESCE(SUM(s.qty::float), 0) AS total_qty,
+      COUNT(DISTINCT s.branch_id) AS branch_count,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'stock_id', s.id,
+            'branch_id', b.id,
+            'branch_name', b.name,
+            'business_unit', b.business_unit,
+            'warehouse_id', w.id,
+            'warehouse_name', w.name,
+            'qty', COALESCE(s.qty::float, 0)
+          ) ORDER BY b.name, w.name
+        ) FILTER (WHERE s.id IS NOT NULL),
+        '[]'
+      ) AS branches
+    FROM pos_inventory_items i
+    LEFT JOIN pos_inventory_stocks s ON s.item_id = i.id
+    LEFT JOIN pos_branches b ON b.id = s.branch_id
+    LEFT JOIN pos_warehouses w ON w.id = s.warehouse_id
+    WHERE i.sku LIKE 'BTT-%' AND i.is_active = TRUE
+    GROUP BY i.id, i.name, i.sku, i.unit, i.cost_price
+    ORDER BY i.name
   `);
   res.json(rows.rows);
 });
 
 // ── POST /receive ─────────────────────────────────────────────────────────────
-// Terima bahan Thai Tea: update wh_stock (POS) + inventory_stock (ERP) + movements
+// Terima bahan Thai Tea → update pos_inventory_stocks + mutasi
 
 router.post("/receive", async (req: Request, res: Response) => {
-  const { posWarehouseId, erpWarehouseId, poId, notes, receivedBy, lines } = req.body as {
-    posWarehouseId: number;
-    erpWarehouseId: number;
-    poId?: number | null;
+  const { branchId, warehouseId, notes, receivedBy, lines } = req.body as {
+    branchId: number;
+    warehouseId?: number | null;
     notes?: string;
     receivedBy?: string;
     lines: Array<{
-      productId: number;
+      itemId?: number;
+      productId?: number;
       qty: number;
-      unitCost: number;
+      unitCost?: number;
     }>;
   };
 
-  if (!posWarehouseId || !erpWarehouseId || !lines?.length) {
-    res.status(400).json({ message: "posWarehouseId, erpWarehouseId, dan lines wajib diisi" });
+  if (!branchId || !lines?.length) {
+    res.status(400).json({ message: "branchId dan lines wajib diisi" });
     return;
   }
 
-  const validLines = lines.filter(l => l.qty > 0 && l.productId);
+  const validLines = lines.filter(l => l.qty > 0 && (l.itemId || l.productId));
   if (!validLines.length) {
     res.status(400).json({ message: "Minimal satu item dengan qty > 0" });
     return;
   }
 
-  // Validasi: semua produk harus bahan_thai_tea
-  for (const line of validLines) {
-    const prodRow = (await db.execute(sql`
-      SELECT subcategory FROM products WHERE id = ${line.productId}
-    `)).rows[0] as { subcategory: string | null } | undefined;
-    if (!prodRow) {
-      res.status(400).json({ message: `Produk #${line.productId} tidak ditemukan` });
-      return;
-    }
-    if (prodRow.subcategory !== SUBCATEGORY) {
-      res.status(400).json({ message: `Produk #${line.productId} bukan bahan thai tea` });
-      return;
-    }
+  // Validasi cabang
+  const branchRow = (await db.execute(sql`SELECT id, name FROM pos_branches WHERE id = ${branchId}`)).rows[0] as { id: number; name: string } | undefined;
+  if (!branchRow) {
+    res.status(400).json({ message: `Cabang #${branchId} tidak ditemukan` });
+    return;
   }
 
   const receiptNo = grnNo();
-  const results: Array<{ productId: number; productName: string; qty: number; whStockAfter: number; erpStockAfter: number }> = [];
+  const results: Array<{ itemId: number; itemName: string; qty: number; qtyAfter: number }> = [];
 
-  await db.transaction(async (tx) => {
-    for (const line of validLines) {
-      const prodRow = (await tx.execute(sql`SELECT name, unit FROM products WHERE id = ${line.productId}`)).rows[0] as { name: string; unit: string };
-
-      // 1. Update wh_stock (POS system)
-      const whCur = (await tx.execute(sql`
-        SELECT id, qty::float, cost_price::float FROM wh_stock
-        WHERE product_id = ${line.productId} AND warehouse_id = ${posWarehouseId}
-        FOR UPDATE
-      `)).rows[0] as { id: number; qty: number; cost_price: number } | undefined;
-
-      const whPrev = Number(whCur?.qty ?? 0);
-      const whNew = whPrev + line.qty;
-      const prevCost = Number(whCur?.cost_price ?? 0);
-      const newCost = whNew > 0 ? (whPrev * prevCost + line.qty * line.unitCost) / whNew : line.unitCost;
-
-      if (whCur) {
-        await tx.execute(sql`
-          UPDATE wh_stock
-          SET qty = ${String(whNew)}, cost_price = ${String(newCost)}, updated_at = NOW()
-          WHERE id = ${whCur.id}
-        `);
-      } else {
-        await tx.execute(sql`
-          INSERT INTO wh_stock (product_id, warehouse_id, qty, cost_price, updated_at)
-          VALUES (${line.productId}, ${posWarehouseId}, ${String(whNew)}, ${String(newCost)}, NOW())
-        `);
-      }
-
-      // 2. Log wh_movements
-      await tx.execute(sql`
-        INSERT INTO wh_movements
-          (product_id, warehouse_id, type, qty, qty_before, qty_after, cost_price,
-           ref_type, ref_id, note, created_at)
-        VALUES
-          (${line.productId}, ${posWarehouseId}, 'po_receipt', ${String(line.qty)},
-           ${String(whPrev)}, ${String(whNew)}, ${String(line.unitCost)},
-           ${'thai_tea_receive'}, ${poId ?? null},
-           ${`${receiptNo} — ${prodRow.name}`}, NOW())
-      `);
-
-      results.push({
-        productId: line.productId,
-        productName: prodRow.name,
-        qty: line.qty,
-        whStockAfter: whNew,
-        erpStockAfter: 0,
-      });
-    }
-  });
-
-  // 3. Update inventory_stock + stock_movements (ERP system) — setelah transaksi wh agar tidak nested
   for (const line of validLines) {
-    const prodRow = (await db.execute(sql`SELECT name FROM products WHERE id = ${line.productId}`)).rows[0] as { name: string };
-    const r = await postStockIn({
-      productId: line.productId,
-      warehouseId: erpWarehouseId,
-      qty: line.qty,
-      unitCost: line.unitCost,
-      movementType: "PURCHASE_RECEIPT",
-      referenceType: poId ? "PURCHASE_ORDER" : "MANUAL",
-      referenceId: poId ?? null,
-      notes: `${receiptNo} — Thai Tea — ${prodRow.name} — ${notes ?? ""}`.trim(),
-      createdBy: receivedBy ?? null,
-    });
-    const entry = results.find(x => x.productId === line.productId);
-    if (entry) entry.erpStockAfter = r.balanceAfter;
+    let itemId = line.itemId;
+    let itemName = "";
+
+    // Bridge: jika pakai productId (legacy), cari di pos_inventory_items via SKU
+    if (!itemId && line.productId) {
+      const prodRow = (await db.execute(sql`SELECT sku, name FROM products WHERE id = ${line.productId}`)).rows[0] as { sku: string; name: string } | undefined;
+      if (!prodRow) { res.status(400).json({ message: `Produk #${line.productId} tidak ditemukan` }); return; }
+      const invRow = (await db.execute(sql`SELECT id, name FROM pos_inventory_items WHERE sku = ${prodRow.sku}`)).rows[0] as { id: number; name: string } | undefined;
+      if (!invRow) {
+        // Auto-seed ke pos_inventory_items
+        const newId = await syncToInventoryItem(prodRow.sku, prodRow.name, "kg", line.unitCost ?? 0);
+        itemId = newId;
+        itemName = prodRow.name;
+      } else {
+        itemId = invRow.id;
+        itemName = invRow.name;
+      }
+    } else if (itemId) {
+      const invRow = (await db.execute(sql`SELECT name FROM pos_inventory_items WHERE id = ${itemId}`)).rows[0] as { name: string } | undefined;
+      if (!invRow) { res.status(400).json({ message: `Item #${itemId} tidak ditemukan di inventory` }); return; }
+      itemName = invRow.name;
+    }
+
+    if (!itemId) { res.status(400).json({ message: "itemId tidak valid" }); return; }
+
+    // Upsert pos_inventory_stocks
+    const existing = (await db.execute(sql`
+      SELECT id, qty FROM pos_inventory_stocks
+      WHERE item_id = ${itemId} AND branch_id = ${branchId}
+        AND warehouse_id IS NOT DISTINCT FROM ${warehouseId ?? null}
+    `)).rows[0] as { id: number; qty: string } | undefined;
+
+    const qtyBefore = existing ? Number(existing.qty) : 0;
+    const qtyAfter = qtyBefore + line.qty;
+
+    if (existing) {
+      await db.execute(sql`
+        UPDATE pos_inventory_stocks SET qty = ${qtyAfter}, updated_at = NOW()
+        WHERE id = ${existing.id}
+      `);
+    } else {
+      await db.execute(sql`
+        INSERT INTO pos_inventory_stocks (item_id, branch_id, warehouse_id, qty)
+        VALUES (${itemId}, ${branchId}, ${warehouseId ?? null}, ${qtyAfter})
+      `);
+    }
+
+    // Catat mutasi
+    await db.execute(sql`
+      INSERT INTO pos_stock_mutations (item_id, branch_id, warehouse_id, type, qty, qty_before, qty_after, ref_type, note)
+      VALUES (${itemId}, ${branchId}, ${warehouseId ?? null}, 'in', ${line.qty}, ${qtyBefore}, ${qtyAfter}, 'receipt', ${`${receiptNo}${notes ? ` — ${notes}` : ""}${receivedBy ? ` — ${receivedBy}` : ""}`})
+    `);
+
+    results.push({ itemId, itemName, qty: line.qty, qtyAfter });
   }
 
   res.status(201).json({
     receiptNo,
     businessUnit: BUSINESS_UNIT,
-    posWarehouseId,
-    erpWarehouseId,
+    branchId,
+    branchName: branchRow.name,
     lines: results,
-    message: `${validLines.length} item berhasil diterima ke gudang Thai Tea`,
+    message: `${validLines.length} item berhasil diterima ke cabang ${branchRow.name}`,
   });
 });
 
 // ── GET /warehouses ───────────────────────────────────────────────────────────
+// Daftar pos_warehouses dari cabang THAI_TEA (bisa difilter)
 
 router.get("/warehouses", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
-    SELECT pw.id, pw.name, pw.type, pw.is_active, pb.name AS branch_name, pb.business_unit
-    FROM pos_warehouses pw
-    LEFT JOIN pos_branches pb ON pb.id = pw.branch_id
-    WHERE pw.is_active = TRUE
-    ORDER BY pw.name
+    SELECT w.id, w.name AS warehouse_name, w.type AS warehouse_type, w.is_active,
+           b.id AS branch_id, b.name AS branch_name, b.business_unit
+    FROM pos_warehouses w
+    JOIN pos_branches b ON b.id = w.branch_id
+    WHERE b.business_unit = ${BUSINESS_UNIT} AND w.is_active = TRUE
+    ORDER BY b.name, w.name
   `);
   res.json(rows.rows);
 });
 
-// ── GET /erp-warehouses ───────────────────────────────────────────────────────
+// ── GET /branches ─────────────────────────────────────────────────────────────
+// Daftar cabang Thai Tea (business_unit = 'THAI_TEA')
 
-router.get("/erp-warehouses", async (_req: Request, res: Response) => {
+router.get("/branches", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
-    SELECT id, warehouse_code, warehouse_name, warehouse_type
-    FROM warehouses WHERE is_active = TRUE ORDER BY warehouse_name
+    SELECT * FROM pos_branches WHERE business_unit = ${BUSINESS_UNIT} ORDER BY name
   `);
   res.json(rows.rows);
-});
-
-// ── GET /warehouse-links ──────────────────────────────────────────────────────
-
-router.get("/warehouse-links", async (_req: Request, res: Response) => {
-  const rows = await db.execute(sql`
-    SELECT
-      ttl.id, ttl.pos_warehouse_id, ttl.erp_warehouse_id, ttl.is_active, ttl.note,
-      pw.name AS pos_warehouse_name,
-      pb.name AS branch_name, pb.business_unit,
-      w.warehouse_name AS erp_warehouse_name, w.warehouse_code
-    FROM thai_tea_warehouse_links ttl
-    JOIN pos_warehouses pw ON pw.id = ttl.pos_warehouse_id
-    LEFT JOIN pos_branches pb ON pb.id = pw.branch_id
-    JOIN warehouses w ON w.id = ttl.erp_warehouse_id
-    ORDER BY ttl.id
-  `);
-  res.json(rows.rows);
-});
-
-// ── POST /warehouse-links ─────────────────────────────────────────────────────
-
-router.post("/warehouse-links", async (req: Request, res: Response) => {
-  const { posWarehouseId, erpWarehouseId, note } = req.body as {
-    posWarehouseId: number; erpWarehouseId: number; note?: string;
-  };
-  if (!posWarehouseId || !erpWarehouseId) {
-    res.status(400).json({ message: "posWarehouseId dan erpWarehouseId wajib diisi" });
-    return;
-  }
-
-  // Upsert by pos_warehouse_id
-  const existing = (await db.execute(sql`
-    SELECT id FROM thai_tea_warehouse_links WHERE pos_warehouse_id = ${posWarehouseId}
-  `)).rows[0] as { id: number } | undefined;
-
-  if (existing) {
-    await db.execute(sql`
-      UPDATE thai_tea_warehouse_links
-      SET erp_warehouse_id = ${erpWarehouseId}, note = ${note ?? null}, is_active = TRUE
-      WHERE id = ${existing.id}
-    `);
-    const row = (await db.execute(sql`SELECT * FROM thai_tea_warehouse_links WHERE id = ${existing.id}`)).rows[0];
-    res.json(row);
-  } else {
-    const row = (await db.execute(sql`
-      INSERT INTO thai_tea_warehouse_links (pos_warehouse_id, erp_warehouse_id, is_active, note)
-      VALUES (${posWarehouseId}, ${erpWarehouseId}, TRUE, ${note ?? null})
-      RETURNING *
-    `)).rows[0];
-    res.status(201).json(row);
-  }
-});
-
-// ── DELETE /warehouse-links/:id ───────────────────────────────────────────────
-
-router.delete("/warehouse-links/:id", async (req: Request, res: Response) => {
-  const id = Number(req.params.id);
-  if (Number.isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
-  await db.execute(sql`DELETE FROM thai_tea_warehouse_links WHERE id = ${id}`);
-  res.json({ ok: true });
 });
 
 // ── GET /recipes ──────────────────────────────────────────────────────────────
-// Daftar product_recipes untuk produk yang menggunakan bahan_thai_tea
 
 router.get("/recipes", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
@@ -505,7 +411,6 @@ router.get("/recipes", async (_req: Request, res: Response) => {
 });
 
 // ── POST /recipes ─────────────────────────────────────────────────────────────
-// Upsert recipe untuk produk Thai Tea (product_type = RECIPE)
 
 router.post("/recipes", async (req: Request, res: Response) => {
   const { productId, yieldQty, yieldUnit, note, isActive, ingredients } = req.body as {
@@ -522,7 +427,6 @@ router.post("/recipes", async (req: Request, res: Response) => {
     return;
   }
 
-  // Validasi: semua ingredients harus bahan_thai_tea
   for (const ing of ingredients) {
     if (!ing.qty || ing.qty <= 0) {
       res.status(400).json({ message: "qty ingredient harus > 0" });
@@ -532,34 +436,31 @@ router.post("/recipes", async (req: Request, res: Response) => {
       SELECT subcategory FROM products WHERE id = ${ing.ingredientProductId}
     `)).rows[0] as { subcategory: string | null } | undefined;
     if (!ingRow) {
-      res.status(400).json({ message: `Ingredient #${ing.ingredientProductId} tidak ditemukan` });
+      res.status(400).json({ message: `Bahan #${ing.ingredientProductId} tidak ditemukan` });
       return;
     }
     if (ingRow.subcategory !== SUBCATEGORY) {
-      res.status(400).json({ message: `Ingredient #${ing.ingredientProductId} bukan bahan thai tea` });
+      res.status(400).json({ message: `Bahan #${ing.ingredientProductId} bukan bahan thai tea` });
       return;
     }
   }
 
-  const existing = (await db.execute(sql`
-    SELECT id FROM product_recipes WHERE product_id = ${productId}
-  `)).rows[0] as { id: number } | undefined;
-
+  const existing = (await db.execute(sql`SELECT id FROM product_recipes WHERE product_id = ${productId}`)).rows[0] as { id: number } | undefined;
   let recipeId: number;
+
   if (existing) {
+    recipeId = existing.id;
     await db.execute(sql`
       UPDATE product_recipes
-      SET yield_qty = ${String(yieldQty ?? 1)}, yield_unit = ${yieldUnit ?? "cup"},
-          note = ${note ?? null}, is_active = ${isActive !== false},
-          updated_at = NOW()
-      WHERE id = ${existing.id}
+      SET yield_qty = ${yieldQty ?? 1}, yield_unit = ${yieldUnit ?? "pcs"},
+          note = ${note ?? null}, is_active = ${isActive ?? true}, updated_at = NOW()
+      WHERE id = ${recipeId}
     `);
-    recipeId = existing.id;
     await db.execute(sql`DELETE FROM product_recipe_items WHERE recipe_id = ${recipeId}`);
   } else {
     const r = (await db.execute(sql`
       INSERT INTO product_recipes (product_id, yield_qty, yield_unit, note, is_active)
-      VALUES (${productId}, ${String(yieldQty ?? 1)}, ${yieldUnit ?? "cup"}, ${note ?? null}, ${isActive !== false})
+      VALUES (${productId}, ${yieldQty ?? 1}, ${yieldUnit ?? "pcs"}, ${note ?? null}, ${isActive ?? true})
       RETURNING id
     `)).rows[0] as { id: number };
     recipeId = r.id;
@@ -568,36 +469,22 @@ router.post("/recipes", async (req: Request, res: Response) => {
   for (const ing of ingredients) {
     await db.execute(sql`
       INSERT INTO product_recipe_items (recipe_id, ingredient_product_id, qty, unit, note)
-      VALUES (${recipeId}, ${ing.ingredientProductId}, ${String(ing.qty)}, ${ing.unit}, ${ing.note ?? null})
+      VALUES (${recipeId}, ${ing.ingredientProductId}, ${ing.qty}, ${ing.unit}, ${ing.note ?? null})
     `);
   }
 
-  // Tandai produk sebagai RECIPE di pos_products (jika ada linked product)
-  await db.execute(sql`
-    UPDATE pos_products
-    SET product_type = 'RECIPE', linked_product_id = ${productId}
-    WHERE linked_product_id = ${productId}
-  `);
-
   const result = (await db.execute(sql`
-    SELECT
-      pr.id, pr.product_id, p.name AS product_name,
-      pr.yield_qty::float, pr.yield_unit, pr.note, pr.is_active,
-      json_agg(
-        json_build_object(
-          'id', ri.id, 'ingredient_product_id', ri.ingredient_product_id,
-          'ingredient_name', ip.name, 'unit', ri.unit, 'qty', ri.qty::float
-        )
-      ) AS ingredients
-    FROM product_recipes pr
-    JOIN products p ON p.id = pr.product_id
-    LEFT JOIN product_recipe_items ri ON ri.recipe_id = pr.id
-    LEFT JOIN products ip ON ip.id = ri.ingredient_product_id
+    SELECT pr.*, p.name AS product_name,
+      (SELECT json_agg(i) FROM (
+        SELECT ri.*, ri.qty::float, ip.name AS ingredient_name
+        FROM product_recipe_items ri JOIN products ip ON ip.id = ri.ingredient_product_id
+        WHERE ri.recipe_id = pr.id
+      ) i) AS ingredients
+    FROM product_recipes pr JOIN products p ON p.id = pr.product_id
     WHERE pr.id = ${recipeId}
-    GROUP BY pr.id, pr.product_id, p.name, pr.yield_qty, pr.yield_unit, pr.note, pr.is_active
   `)).rows[0];
 
-  res.status(existing ? 200 : 201).json(result);
+  res.status(201).json(result);
 });
 
 // ── DELETE /recipes/:id ───────────────────────────────────────────────────────
@@ -607,191 +494,6 @@ router.delete("/recipes/:id", async (req: Request, res: Response) => {
   if (Number.isNaN(id)) { res.status(400).json({ message: "Invalid id" }); return; }
   await db.execute(sql`DELETE FROM product_recipes WHERE id = ${id}`);
   res.json({ ok: true });
-});
-
-// ── POST /production ─────────────────────────────────────────────────────────
-// Catat produksi/racikan: deduct bahan baku dari wh_stock + inventory_stock (ERP)
-
-router.post("/production", async (req: Request, res: Response) => {
-  const { recipeId, qty, posWarehouseId, notes, batchNo } = req.body as {
-    recipeId: number;
-    qty: number;
-    posWarehouseId: number;
-    notes?: string;
-    batchNo?: string;
-  };
-  if (!recipeId || !qty || qty <= 0 || !posWarehouseId) {
-    res.status(400).json({ message: "recipeId, qty > 0, dan posWarehouseId wajib diisi" });
-    return;
-  }
-
-  const recipe = (await db.execute(sql`
-    SELECT pr.id, pr.yield_qty::float, pr.yield_unit, p.name AS product_name
-    FROM product_recipes pr
-    JOIN products p ON p.id = pr.product_id
-    WHERE pr.id = ${recipeId} AND pr.is_active = TRUE
-  `)).rows[0] as { id: number; yield_qty: number; yield_unit: string; product_name: string } | undefined;
-
-  if (!recipe) {
-    res.status(404).json({ message: "Recipe tidak ditemukan atau tidak aktif" });
-    return;
-  }
-
-  const ingredients = (await db.execute(sql`
-    SELECT ri.ingredient_product_id, ri.qty::float, ri.unit, p.name AS ingredient_name
-    FROM product_recipe_items ri
-    JOIN products p ON p.id = ri.ingredient_product_id
-    WHERE ri.recipe_id = ${recipeId}
-  `)).rows as Array<{ ingredient_product_id: number; qty: number; unit: string; ingredient_name: string }>;
-
-  if (!ingredients.length) {
-    res.status(400).json({ message: "Recipe tidak memiliki bahan baku" });
-    return;
-  }
-
-  // Cek ERP warehouse link untuk pos_warehouse ini
-  const erpLink = (await db.execute(sql`
-    SELECT erp_warehouse_id FROM thai_tea_warehouse_links
-    WHERE pos_warehouse_id = ${posWarehouseId} AND is_active = TRUE
-    LIMIT 1
-  `)).rows[0] as { erp_warehouse_id: number } | undefined;
-
-  const batchId = batchNo ?? `PROD/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}/${Date.now().toString().slice(-5)}`;
-  const deductions: Array<{ ingredientName: string; unit: string; requiredQty: number; deductedQty: number; whBefore: number; whAfter: number }> = [];
-
-  await db.transaction(async (tx) => {
-    for (const ing of ingredients) {
-      const required = ing.qty * qty;
-
-      const cur = (await tx.execute(sql`
-        SELECT id, qty::float, cost_price::float FROM wh_stock
-        WHERE product_id = ${ing.ingredient_product_id} AND warehouse_id = ${posWarehouseId}
-        FOR UPDATE
-      `)).rows[0] as { id: number; qty: number; cost_price: number } | undefined;
-
-      const whBefore = Number(cur?.qty ?? 0);
-      const whAfter = Math.max(0, whBefore - required);
-      const costPrice = Number(cur?.cost_price ?? 0);
-
-      if (cur) {
-        await tx.execute(sql`
-          UPDATE wh_stock SET qty = ${String(whAfter)}, updated_at = NOW()
-          WHERE id = ${cur.id}
-        `);
-      } else {
-        await tx.execute(sql`
-          INSERT INTO wh_stock (product_id, warehouse_id, qty, cost_price, updated_at)
-          VALUES (${ing.ingredient_product_id}, ${posWarehouseId}, 0, 0, NOW())
-        `);
-      }
-
-      await tx.execute(sql`
-        INSERT INTO wh_movements
-          (product_id, warehouse_id, type, qty, qty_before, qty_after, cost_price, ref_type, ref_id, note, created_at)
-        VALUES
-          (${ing.ingredient_product_id}, ${posWarehouseId}, 'production_consumption',
-           ${String(-required)}, ${String(whBefore)}, ${String(whAfter)}, ${String(costPrice)},
-           ${'thai_tea_production'}, ${null},
-           ${`${batchId} — ${recipe.product_name} ×${qty} — ${notes ?? ""}`}, NOW())
-      `);
-
-      deductions.push({
-        ingredientName: ing.ingredient_name,
-        unit: ing.unit,
-        requiredQty: required,
-        deductedQty: Math.min(required, whBefore),
-        whBefore,
-        whAfter,
-      });
-    }
-  });
-
-  // Sync ke ERP inventory_stock
-  if (erpLink?.erp_warehouse_id) {
-    for (const ing of ingredients) {
-      const required = ing.qty * qty;
-      try {
-        await postStockIn({
-          productId: ing.ingredient_product_id,
-          warehouseId: erpLink.erp_warehouse_id,
-          qty: -required,
-          unitCost: 0,
-          movementType: "PRODUCTION_CONSUMPTION",
-          referenceType: "MANUAL",
-          referenceId: null,
-          notes: `${batchId} — Thai Tea Produksi — ${recipe.product_name} ×${qty}`,
-          createdBy: null,
-        });
-      } catch (_) { /* non-fatal */ }
-    }
-  }
-
-  res.status(201).json({
-    batchId,
-    recipeId,
-    productName: recipe.product_name,
-    qty,
-    posWarehouseId,
-    deductions,
-    message: `Produksi ${recipe.product_name} ×${qty} berhasil dicatat`,
-  });
-});
-
-// ── GET /movements ────────────────────────────────────────────────────────────
-// Riwayat gerakan stok untuk bahan Thai Tea (wh_movements)
-
-router.get("/movements", async (req: Request, res: Response) => {
-  const limit = Math.min(Number(req.query.limit ?? 200), 500);
-  const type = req.query.type as string | undefined;
-  const productId = req.query.product_id ? Number(req.query.product_id) : undefined;
-
-  const rows = await db.execute(sql`
-    SELECT
-      wm.id, wm.type, wm.qty::float, wm.qty_before::float, wm.qty_after::float,
-      wm.cost_price::float, wm.ref_type, wm.ref_id, wm.note, wm.created_at,
-      p.name AS product_name, p.sku AS product_sku, p.unit,
-      pw.name AS warehouse_name, pb.name AS branch_name
-    FROM wh_movements wm
-    JOIN products p ON p.id = wm.product_id
-    LEFT JOIN pos_warehouses pw ON pw.id = wm.warehouse_id
-    LEFT JOIN pos_branches pb ON pb.id = pw.branch_id
-    WHERE p.subcategory = 'bahan_thai_tea'
-      ${type ? sql`AND wm.type = ${type}` : sql``}
-      ${productId ? sql`AND wm.product_id = ${productId}` : sql``}
-    ORDER BY wm.created_at DESC
-    LIMIT ${limit}
-  `);
-  res.json(rows.rows);
-});
-
-// ── POST /seed ───────────────────────────────────────────────────────────────
-
-router.post("/seed", async (_req: Request, res: Response) => {
-  const seeded: string[] = [];
-  const skipped: string[] = [];
-  for (const bahan of DEFAULT_BAHAN) {
-    const existing = await db
-      .select({ id: productsTable.id })
-      .from(productsTable)
-      .where(eq(productsTable.sku, bahan.sku.toUpperCase()))
-      .limit(1);
-    if (existing.length > 0) {
-      skipped.push(bahan.sku);
-      continue;
-    }
-    await db.insert(productsTable).values({
-      name: bahan.name,
-      sku: bahan.sku.toUpperCase(),
-      unit: bahan.unit,
-      price: String(bahan.price),
-      description: bahan.description,
-      subcategory: SUBCATEGORY,
-      itemType: "barang",
-      isActive: true,
-    });
-    seeded.push(bahan.sku);
-  }
-  res.json({ seeded: seeded.length, skipped: skipped.length, items: seeded });
 });
 
 export default router;

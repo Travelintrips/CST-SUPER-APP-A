@@ -11,10 +11,21 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
-import { checkPosStock, deductPosStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
+import { checkPosStock, deductPosStock, checkPosBomStock, deductPosBomStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
 import { postPosTransaction, postPosCogs } from "../lib/accounting.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { writeAuditLog } from "../lib/auditLog.js";
+
+/** Blokir role gudang dari semua route admin POS (PATCH/POST/DELETE) */
+function assertNotGudangAdmin(req: Request, res: Response): boolean {
+  const role = (req.user as { role?: string | null } | undefined)?.role ?? "";
+  if (role === "gudang") {
+    res.status(403).json({ message: "Petugas gudang tidak diizinkan mengakses administrasi POS" });
+    return false;
+  }
+  return true;
+}
 
 // ── POS image upload (Replit Object Storage) ──────────────────────────────────
 const posImageUpload = multer({
@@ -75,7 +86,16 @@ function parseCashierToken(token: string): { id: number; email: string; exp: num
   }
 }
 
-async function requireCashierAuth(req: Request, res: Response): Promise<{ id: number; name: string; email: string; branchId?: number | null } | null> {
+interface CashierContext {
+  id: number;
+  name: string;
+  email: string;
+  branchId: number | null;
+  companyId: number | null;
+  posRole: string;
+}
+
+async function requireCashierAuth(req: Request, res: Response): Promise<CashierContext | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     res.status(401).json({ message: "Unauthorized" });
@@ -93,7 +113,14 @@ async function requireCashierAuth(req: Request, res: Response): Promise<{ id: nu
     res.status(403).json({ message: "Akun kasir belum disetujui atau tidak ditemukan" });
     return null;
   }
-  return { id: cashier.id, name: cashier.name, email: cashier.email, branchId: cashier.branchId };
+  return {
+    id: cashier.id,
+    name: cashier.name,
+    email: cashier.email,
+    branchId: cashier.branchId ?? null,
+    companyId: cashier.companyId ?? null,
+    posRole: cashier.posRole ?? "kasir",
+  };
 }
 
 // Helper: ubah snake_case row dari raw SQL jadi camelCase untuk response
@@ -192,6 +219,21 @@ router.post("/login", async (req, res) => {
   }
 
   const token = makeCashierToken(cashier.id, cashier.email);
+  // Audit log: POS kasir login berhasil
+  const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "unknown";
+  const userAgent = (req.headers["user-agent"] as string) ?? "unknown";
+  writeAuditLog({
+    companyId: cashier.companyId ?? null,
+    branchId: cashier.branchId ?? null,
+    userId: String(cashier.id),
+    userEmail: cashier.email,
+    action: "login",
+    module: "pos",
+    referenceId: `kasir-${cashier.id}`,
+    newData: { email: cashier.email, branchId: cashier.branchId, branchName },
+    ipAddress,
+    userAgent,
+  });
   return res.json({
     token,
     cashier: {
@@ -200,6 +242,7 @@ router.post("/login", async (req, res) => {
       email: cashier.email,
       branchId: cashier.branchId,
       branchName,
+      companyId: cashier.companyId ?? null,
     },
   });
 });
@@ -218,9 +261,11 @@ router.get("/me", async (req, res) => {
 
 // ── Products (public read, admin write) ─────────────────────────────────────
 
-// GET /api/pos-kasir/products
+// GET /api/pos-kasir/products — requires cashier auth; company isolated to cashier's company
 router.get("/products", async (req, res) => {
-  const companyId = resolveCompanyId(req);
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  const companyId = cashier.companyId ?? resolveCompanyId(req);
   const rows = await db.execute(sql`
     SELECT * FROM pos_products
     WHERE is_active = TRUE AND company_id = ${companyId}
@@ -350,20 +395,30 @@ router.delete("/products/:id", async (req, res) => {
 router.post("/orders", async (req, res) => {
   const cashier = await requireCashierAuth(req, res);
   if (!cashier) return;
-  const { items, discount, note, branchId } = req.body ?? {};
+
+  // branchId WAJIB dari cashier record — tidak bisa di-override dari body
+  if (!cashier.branchId) {
+    return res.status(403).json({ message: "Kasir belum memiliki cabang. Hubungi admin untuk mengatur cabang." });
+  }
+  const effectiveBranchId = cashier.branchId;
+  const effectiveCompanyId = cashier.companyId ?? resolveCompanyId(req);
+
+  const { items, discount, note } = req.body ?? {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "Items tidak boleh kosong" });
   }
 
-  const productIds: number[] = items.map((i: { productId: number }) => i.productId);
+  const productIds: number[] = items.map((i: { productId: number }) => Number(i.productId));
 
-  // Load products with product_type and linked_product_id
+  // Load products — sekaligus validasi company_id agar kasir tidak bisa order produk perusahaan lain
   const posProds = (await db.execute(sql`
-    SELECT id, name, price, is_active, product_type, linked_product_id
+    SELECT id, name, price, is_active, product_type, linked_product_id, company_id
     FROM pos_products WHERE id = ANY(${sql.raw(`ARRAY[${productIds.join(",")}]::int[]`)})
+      AND company_id = ${effectiveCompanyId}
+      AND is_active = TRUE
   `)).rows as Array<{
     id: number; name: string; price: string; is_active: boolean;
-    product_type: string | null; linked_product_id: number | null;
+    product_type: string | null; linked_product_id: number | null; company_id: number;
   }>;
   const productMap = new Map(posProds.map((p) => [p.id, p]));
 
@@ -372,8 +427,8 @@ router.post("/orders", async (req, res) => {
   const stockItems: PosProductStock[] = [];
 
   for (const item of items as Array<{ productId: number; qty: number }>) {
-    const p = productMap.get(item.productId);
-    if (!p) return res.status(400).json({ message: `Produk ID ${item.productId} tidak ditemukan` });
+    const p = productMap.get(Number(item.productId));
+    if (!p) return res.status(400).json({ message: `Produk ID ${item.productId} tidak ditemukan atau tidak aktif` });
     const price = Number(p.price);
     const qty = Number(item.qty) || 1;
     const sub = price * qty;
@@ -388,22 +443,18 @@ router.post("/orders", async (req, res) => {
     });
   }
 
-  // Cek ketersediaan stok sebelum membuat order
-  const effectiveBranchId = branchId ? Number(branchId) : (cashier.branchId ?? null);
-  if (effectiveBranchId) {
-    const shortages = await checkPosStock(stockItems, effectiveBranchId);
-    if (shortages.length > 0) {
-      return res.status(422).json({
-        message: "Stok tidak cukup untuk menyelesaikan order.",
-        shortages,
-      });
-    }
+  // Cek ketersediaan stok sebelum membuat order (gunakan cabang kasir)
+  const shortages = await checkPosStock(stockItems, effectiveBranchId);
+  if (shortages.length > 0) {
+    return res.status(422).json({
+      message: "Stok tidak cukup untuk menyelesaikan order.",
+      shortages,
+    });
   }
 
   const discountAmt = Number(discount) || 0;
   const total = subtotal - discountAmt;
 
-  const effectiveCompanyId = resolveCompanyId(req);
   const [order] = await db.insert(posOrdersTable).values({
     companyId: effectiveCompanyId,
     orderNumber: orderNumber(),
@@ -420,6 +471,19 @@ router.post("/orders", async (req, res) => {
     lineItems.map((l) => ({ ...l, orderId: order!.id }))
   );
 
+  const ipPOS = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "unknown";
+  writeAuditLog({
+    companyId: effectiveCompanyId ?? null,
+    branchId: effectiveBranchId ?? null,
+    userId: String(cashier.id),
+    userEmail: cashier.email,
+    action: "create",
+    module: "pos",
+    referenceId: order!.orderNumber,
+    newData: { orderNumber: order!.orderNumber, total: order!.total, itemCount: lineItems.length },
+    ipAddress: ipPOS,
+    userAgent: (req.headers["user-agent"] as string) ?? "unknown",
+  });
   return res.status(201).json({ ...order, items: lineItems });
 });
 
@@ -434,6 +498,10 @@ router.patch("/orders/:id/pay", async (req, res) => {
   const [order] = await db.select().from(posOrdersTable).where(eq(posOrdersTable.id, id));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
   if (order.cashierId !== cashier.id) return res.status(403).json({ message: "Bukan order Anda" });
+  // Validasi branch: order harus dari cabang yang sama dengan kasir
+  if (cashier.branchId && order.branchId && order.branchId !== cashier.branchId) {
+    return res.status(403).json({ message: "Order bukan dari cabang Anda" });
+  }
   if (order.status !== "open") return res.status(400).json({ message: "Order sudah diproses" });
 
   const orderItems = await db.select().from(posOrderItemsTable).where(eq(posOrderItemsTable.orderId, id));
@@ -470,19 +538,57 @@ router.patch("/orders/:id/pay", async (req, res) => {
     }
   }
 
+  // ── Cek stok bahan baku BOM (pos_recipes) sebelum bayar ───────────────────────
+  const bomItems = orderItems.map((i) => ({
+    productId: i.productId,
+    productName: i.productName,
+    qty: i.qty,
+  }));
+  if (cashier.branchId) {
+    const bomShortages = await checkPosBomStock(bomItems, cashier.branchId);
+    if (bomShortages.length > 0) {
+      return res.status(422).json({
+        message: "Stok bahan baku tidak cukup untuk menyelesaikan transaksi.",
+        shortages: bomShortages,
+      });
+    }
+  }
+
   const paid = Number(amountPaid) || Number(order.total);
   const change = paid - Number(order.total);
 
-  // ── Update order status ───────────────────────────────────────────────────────
-  const [updated] = await db.update(posOrdersTable).set({
-    status: "paid",
-    paymentMethod,
-    amountPaid: String(paid),
-    change: String(Math.max(0, change)),
-    paidAt: new Date(),
-  }).where(eq(posOrdersTable.id, id)).returning();
+  // ── Update order status + deduct BOM stock (1 transaksi atomik) ───────────────
+  // Jika deduction BOM gagal (misal race condition), order update ikut dibatalkan.
+  let updated: typeof posOrdersTable.$inferSelect | undefined;
+  try {
+    await db.transaction(async (tx) => {
+      const [upd] = await tx
+        .update(posOrdersTable)
+        .set({
+          status: "paid",
+          paymentMethod,
+          amountPaid: String(paid),
+          change: String(Math.max(0, change)),
+          paidAt: new Date(),
+        })
+        .where(eq(posOrdersTable.id, id))
+        .returning();
+      updated = upd;
 
-  // ── Deduct stok via wh_stock + wh_movements (atomic DB transaction + FOR UPDATE)
+      // Deduct bahan baku via pos_inventory_stocks + pos_stock_mutations
+      if (cashier.branchId && bomItems.length > 0) {
+        await deductPosBomStock(bomItems, cashier.branchId, order.id, tx);
+      }
+    });
+  } catch (txErr) {
+    return res.status(422).json({
+      message: `Checkout gagal: ${(txErr as Error).message}`,
+    });
+  }
+
+  if (!updated) return res.status(500).json({ message: "Order update gagal" });
+
+  // ── Deduct stok via wh_stock + wh_movements (existing POS stock logic) ────────
   if (cashier.branchId && stockItems.length > 0) {
     const { warnings } = await deductPosStock(
       stockItems,
@@ -539,6 +645,19 @@ router.patch("/orders/:id/pay", async (req, res) => {
     }
   } catch (e) { console.error("[pos-cogs]", e); }
 
+  const ipPay = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "unknown";
+  writeAuditLog({
+    companyId: order.companyId ?? null,
+    branchId: cashier.branchId ?? null,
+    userId: String(cashier.id),
+    userEmail: cashier.email,
+    action: "pay",
+    module: "pos",
+    referenceId: order.orderNumber,
+    newData: { orderNumber: order.orderNumber, total: order.total, paymentMethod, amountPaid: paid, change: Math.max(0, change) },
+    ipAddress: ipPay,
+    userAgent: (req.headers["user-agent"] as string) ?? "unknown",
+  });
   return res.json({ ...updated, items: orderItems });
 });
 
@@ -651,6 +770,7 @@ router.get("/admin/branches", async (req, res) => {
 // POST /api/pos-kasir/admin/branches
 router.post("/admin/branches", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
+  if (!assertNotGudangAdmin(req, res)) return;
   const { name, address, phone, isActive } = req.body ?? {};
   if (!name?.trim()) return res.status(400).json({ message: "Nama cabang wajib diisi" });
   const [created] = await db.insert(posBranchesTable).values({
@@ -665,6 +785,7 @@ router.post("/admin/branches", async (req, res) => {
 // PATCH /api/pos-kasir/admin/branches/:id
 router.patch("/admin/branches/:id", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
+  if (!assertNotGudangAdmin(req, res)) return;
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
   const patch: Record<string, unknown> = {};

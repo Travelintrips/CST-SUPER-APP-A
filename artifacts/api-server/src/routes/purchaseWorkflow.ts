@@ -31,7 +31,6 @@ import {
   accountingSettingsTable,
   whStockTable,
   whMovementsTable,
-  posWarehousesTable,
 } from "@workspace/db";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 

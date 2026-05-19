@@ -114,6 +114,11 @@ if (h.indexOf('access_token') !== -1 || h.indexOf('error=') !== -1 ||
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      "/sport-center": {
+        target: "http://localhost:8082",
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   preview: {

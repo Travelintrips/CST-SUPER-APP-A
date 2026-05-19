@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { getKasirProfile, isKasirLoggedIn, removeKasirToken, kasirFetch, type KasirProfile } from "@/lib/kasirAuth";
+import { getKasirProfile, setKasirProfile, isKasirLoggedIn, removeKasirToken, kasirFetch, type KasirProfile } from "@/lib/kasirAuth";
 
 interface Product {
   id: number;
@@ -207,24 +207,39 @@ export default function KasirPage() {
 
   useEffect(() => {
     if (!isKasirLoggedIn()) { setLocation("/kasir/login"); return; }
-    const p = getKasirProfile();
-    setProfile(p);
+    // Sync profil dari server agar branchId/companyId selalu fresh (admin mungkin ubah branch)
+    kasirFetch("/api/pos-kasir/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((me: (KasirProfile & { branchName?: string | null; companyId?: number | null }) | null) => {
+        if (me) {
+          const updated: KasirProfile = {
+            id: me.id, name: me.name, email: me.email,
+            branchId: me.branchId ?? null, branchName: me.branchName ?? null,
+            companyId: me.companyId ?? null,
+          };
+          setKasirProfile(updated);
+          setProfile(updated);
+          if (me.branchId) {
+            fetch("/api/pos-kasir/branches")
+              .then((r) => r.ok ? r.json() : [])
+              .then((branches: BranchInfo[]) => {
+                const found = branches.find((b) => b.id === me.branchId);
+                if (found) setBranchInfo(found);
+              })
+              .catch(() => {});
+          }
+        } else {
+          const p = getKasirProfile();
+          setProfile(p);
+        }
+      })
+      .catch(() => { setProfile(getKasirProfile()); });
     loadProducts();
     loadCurrentShift();
     fetch("/api/pos-kasir/settings")
       .then((r) => r.ok ? r.json() : null)
       .then((s: Record<string, string> | null) => { if (s?.logoUrl) setLogoUrl(s.logoUrl); })
       .catch(() => {});
-    // Load branch info (nama + alamat) untuk header & struk
-    if (p?.branchId) {
-      fetch("/api/pos-kasir/branches")
-        .then((r) => r.ok ? r.json() : [])
-        .then((branches: BranchInfo[]) => {
-          const found = branches.find((b) => b.id === p.branchId);
-          if (found) setBranchInfo(found);
-        })
-        .catch(() => {});
-    }
   }, [setLocation, loadCurrentShift]);
 
   const loadProducts = useCallback(async () => {
@@ -305,13 +320,22 @@ export default function KasirPage() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+    // Guard: kasir harus punya cabang sebelum bisa checkout
+    if (!profile?.branchId) {
+      alert("⚠️ Akun Anda belum memiliki cabang. Hubungi admin untuk mengatur cabang kasir Anda.");
+      return;
+    }
     setCheckingOut(true);
     try {
       const orderRes = await kasirFetch("/api/pos-kasir/orders", {
         method: "POST",
         body: JSON.stringify({ items: cart.map((c) => ({ productId: c.product.id, qty: c.qty })), discount: discountAmt }),
       });
-      if (!orderRes.ok) { alert("Gagal membuat order"); return; }
+      if (!orderRes.ok) {
+        const errData = await orderRes.json() as { message?: string };
+        alert(errData.message ?? "Gagal membuat order");
+        return;
+      }
       const order = await orderRes.json() as Order & { items: Array<{ productName: string; qty: number; price: string; subtotal: string }> };
 
       const payRes = await kasirFetch(`/api/pos-kasir/orders/${order.id}/pay`, {
@@ -705,6 +729,14 @@ export default function KasirPage() {
 
       {/* ── POS Tab ─────────────────────────────────────────────────────── */}
       {activeTab === "pos" && (
+        <>
+        {/* Banner: kasir belum punya cabang */}
+        {profile !== null && !profile?.branchId && (
+          <div className="mx-3 mt-3 p-3.5 rounded-2xl bg-red-50 border border-red-200 flex items-start gap-2 text-sm text-red-700">
+            <span className="text-base flex-shrink-0">⚠️</span>
+            <span><strong>Cabang belum diatur.</strong> Akun Anda belum memiliki cabang. Hubungi admin untuk mengatur cabang kasir Anda sebelum bisa melakukan transaksi.</span>
+          </div>
+        )}
         <div className="flex flex-1 overflow-hidden" style={{ height: "calc(100vh - 112px)" }}>
           {/* Product panel */}
           <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
@@ -802,6 +834,7 @@ export default function KasirPage() {
             />
           </div>
         </div>
+        </>
       )}
 
       {/* ── History Tab ──────────────────────────────────────────────────── */}

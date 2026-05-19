@@ -23,6 +23,7 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
+import { writeAuditLog, extractRequestMeta } from "../lib/auditLog.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -354,6 +355,19 @@ router.get("/callback/google", async (req: Request, res: Response) => {
 
     const sid = await createSession(sessionData);
     setSessionCookie(res, sid);
+    // Audit log: login berhasil via Google OAuth
+    const _meta = extractRequestMeta(req);
+    writeAuditLog({
+      companyId: dbUser.companyId ?? null,
+      userId: dbUser.id,
+      userEmail: dbUser.email ?? null,
+      action: "login",
+      module: "auth",
+      referenceId: "google-oauth",
+      newData: { email: dbUser.email, role: dbUser.role },
+      ipAddress: _meta.ipAddress,
+      userAgent: _meta.userAgent,
+    });
     // If returnTo is the sentinel value "popup", render a page that signals
     // the parent window via postMessage then closes itself.
     if (returnTo === "popup") {
@@ -418,6 +432,19 @@ router.post("/dev-login", async (req: Request, res: Response) => {
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
   req.log.info({ email }, "[Dev Login] session created");
+  // Audit log: dev login
+  const _devMeta = extractRequestMeta(req);
+  writeAuditLog({
+    companyId: dbUser.companyId ?? null,
+    userId: dbUser.id,
+    userEmail: dbUser.email ?? null,
+    action: "login",
+    module: "auth",
+    referenceId: "dev-login",
+    newData: { email: dbUser.email, role: dbUser.role },
+    ipAddress: _devMeta.ipAddress,
+    userAgent: _devMeta.userAgent,
+  });
 
   const redirectTo = typeof req.query.redirect === "string" ? req.query.redirect : null;
   if (redirectTo) {

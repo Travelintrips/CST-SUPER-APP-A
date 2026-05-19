@@ -175,6 +175,24 @@ router.delete("/companies/:id", async (req, res) => {
 });
 
 // ============ Chart of Accounts ============
+router.get("/accounts/check-code", async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  const code = String(req.query.code ?? "").trim();
+  const excludeId = req.query.excludeId ? Number(req.query.excludeId) : null;
+  if (!code) return res.json({ taken: false });
+  const conditions: SQL[] = [
+    or(isNull(chartOfAccountsTable.companyId), eq(chartOfAccountsTable.companyId, companyId))!,
+    eq(chartOfAccountsTable.code, code),
+  ];
+  if (excludeId && !Number.isNaN(excludeId)) conditions.push(ne(chartOfAccountsTable.id, excludeId));
+  const rows = await db
+    .select({ id: chartOfAccountsTable.id })
+    .from(chartOfAccountsTable)
+    .where(and(...conditions))
+    .limit(1);
+  return res.json({ taken: rows.length > 0 });
+});
+
 router.get("/accounts", async (req, res) => {
   const companyId = resolveCompanyId(req);
   const rows = await db

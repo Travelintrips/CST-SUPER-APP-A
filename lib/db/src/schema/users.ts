@@ -5,7 +5,7 @@ import { companiesTable } from "./companies";
 import { branchesTable, divisionsTable, departmentsTable, sectionsTable } from "./orgStructure";
 import { customRolesTable } from "./customRoles";
 
-export const userRoleEnum = pgEnum("user_role", ["admin", "ecommerce", "trading", "logistics", "pos"]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "ecommerce", "trading", "logistics", "pos", "pos-kasir", "pos-inventory"]);
 
 export const usersTable = pgTable("users", {
   id: text("id").primaryKey(),
@@ -23,6 +23,7 @@ export const usersTable = pgTable("users", {
   departmentId: integer("department_id").references(() => departmentsTable.id, { onDelete: "set null" }),
   sectionId: integer("section_id").references(() => sectionsTable.id, { onDelete: "set null" }),
   customRoleId: integer("custom_role_id").references(() => customRolesTable.id, { onDelete: "set null" }),
+  defaultBranchId: integer("default_branch_id").references(() => branchesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

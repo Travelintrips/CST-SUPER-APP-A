@@ -8,7 +8,7 @@ import { requireRole } from "../lib/requireAdmin.js";
 const router = Router();
 
 router.use(async (req, res, next) => {
-  if (!(await requireRole(req, res, ["admin", "pos"]))) return;
+  if (!(await requireRole(req, res, ["admin", "pos", "pos-kasir", "pos-inventory"]))) return;
   next();
 });
 const objectStorageService = new ObjectStorageService();

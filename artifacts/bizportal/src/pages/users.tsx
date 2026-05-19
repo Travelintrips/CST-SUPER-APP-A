@@ -15,17 +15,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-const ROLES = ["admin", "ecommerce", "trading", "logistics", "pos"] as const;
+const ROLES = ["admin", "ecommerce", "trading", "logistics", "pos", "pos-kasir", "pos-inventory"] as const;
 type Role = typeof ROLES[number];
+
+const ROLE_LABELS: Record<string, string> = {
+  admin:           "Admin",
+  ecommerce:       "E-Commerce",
+  trading:         "Trading",
+  logistics:       "Logistik",
+  pos:             "POS Kasir",
+  "pos-kasir":     "Kasir Thai Tea",
+  "pos-inventory": "Inventori POS",
+};
 
 const roleColor = (role: string) => {
   switch (role) {
-    case "admin":      return "bg-violet-500/10 text-violet-500 border-violet-500/20";
-    case "ecommerce":  return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-    case "trading":    return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
-    case "logistics":  return "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
-    case "pos":        return "bg-amber-500/10 text-amber-500 border-amber-500/20";
-    default:           return "bg-muted text-muted-foreground";
+    case "admin":          return "bg-violet-500/10 text-violet-500 border-violet-500/20";
+    case "ecommerce":      return "bg-blue-500/10 text-blue-500 border-blue-500/20";
+    case "trading":        return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+    case "logistics":      return "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
+    case "pos":            return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+    case "pos-kasir":      return "bg-orange-500/10 text-orange-500 border-orange-500/20";
+    case "pos-inventory":  return "bg-yellow-500/10 text-yellow-600 border-yellow-500/20";
+    default:               return "bg-muted text-muted-foreground";
   }
 };
 
@@ -228,7 +240,7 @@ export default function UsersPage() {
                           <TableCell className="font-medium">{u.name}</TableCell>
                           <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={`capitalize ${roleColor(u.role)}`}>{u.role}</Badge>
+                            <Badge variant="outline" className={roleColor(u.role)}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
                           </TableCell>
                           <TableCell>
                             {u.customRoleName ? (
@@ -277,7 +289,7 @@ export default function UsersPage() {
                       <p className="font-medium truncate">{u.name}</p>
                       <p className="text-xs text-muted-foreground truncate mt-0.5">{u.email}</p>
                     </div>
-                    <Badge variant="outline" className={`capitalize shrink-0 ${roleColor(u.role)}`}>{u.role}</Badge>
+                    <Badge variant="outline" className={`shrink-0 ${roleColor(u.role)}`}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {u.companyCode && <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{u.companyCode}</code>}
@@ -319,7 +331,7 @@ export default function UsersPage() {
                     <Select value={editRole} onValueChange={(v) => setEditRole(v as Role)}>
                       <SelectTrigger id="user-role" className="text-sm"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize">{r}</SelectItem>)}
+                        {ROLES.map((r) => <SelectItem key={r} value={r}>{ROLE_LABELS[r] ?? r}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

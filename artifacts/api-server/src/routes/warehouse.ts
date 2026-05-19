@@ -32,17 +32,18 @@ router.get("/stock", async (req: Request, res: Response) => {
       ws.id, ws.product_id, ws.warehouse_id, ws.rack_id,
       ws.qty::float, ws.cost_price::float, ws.updated_at,
       p.name AS product_name, p.sku, p.unit,
-      pw.name AS warehouse_name,
+      w.warehouse_name,
+      w.warehouse_code,
       pb.name AS branch_name,
-      pr.code AS rack_code, pr.name AS rack_name
+      wr.rack_code, wr.rack_name
     FROM wh_stock ws
     JOIN products p ON p.id = ws.product_id
-    JOIN pos_warehouses pw ON pw.id = ws.warehouse_id
-    JOIN pos_branches pb ON pb.id = pw.branch_id
-    LEFT JOIN pos_racks pr ON pr.id = ws.rack_id
+    JOIN warehouses w ON w.id = ws.warehouse_id
+    LEFT JOIN pos_branches pb ON pb.id = w.branch_id
+    LEFT JOIN warehouse_racks wr ON wr.id = ws.rack_id
     WHERE ws.company_id = ${companyId}
       ${warehouseId ? sql`AND ws.warehouse_id = ${warehouseId}` : sql``}
-    ORDER BY pb.name, pw.name, p.name
+    ORDER BY pb.name, w.warehouse_name, p.name
   `);
   res.json(rows.rows);
 });
@@ -74,7 +75,6 @@ router.post("/stock/adjust", async (req: Request, res: Response) => {
     res.status(400).json({ message: "productId, warehouseId, qty wajib diisi" }); return;
   }
   const rack = rackId ?? null;
-  // Get current stock
   const cur = await db.execute(sql`
     SELECT qty::float FROM wh_stock
     WHERE product_id = ${productId} AND warehouse_id = ${warehouseId}
@@ -82,7 +82,6 @@ router.post("/stock/adjust", async (req: Request, res: Response) => {
   `);
   const qtyBefore = Number(cur.rows[0]?.qty ?? 0);
   const qtyAfter = qtyBefore + qty;
-  // Upsert stock
   await db.execute(sql`
     INSERT INTO wh_stock (product_id, warehouse_id, rack_id, qty, cost_price, updated_at)
     VALUES (${productId}, ${warehouseId}, ${rack}, ${qtyAfter}, ${costPrice ?? 0}, NOW())
@@ -91,7 +90,6 @@ router.post("/stock/adjust", async (req: Request, res: Response) => {
       cost_price = COALESCE(NULLIF(${costPrice ?? null}, 0), wh_stock.cost_price),
       updated_at = NOW()
   `);
-  // Log movement
   const type = qty >= 0 ? "manual_in" : "manual_out";
   await db.execute(sql`
     INSERT INTO wh_movements (product_id, warehouse_id, rack_id, type, qty, qty_before, qty_after, cost_price, note)
@@ -112,10 +110,10 @@ router.get("/movements", async (req: Request, res: Response) => {
       wm.*,
       wm.qty::float, wm.qty_before::float, wm.qty_after::float, wm.cost_price::float,
       p.name AS product_name, p.sku, p.unit,
-      pw.name AS warehouse_name
+      w.warehouse_name
     FROM wh_movements wm
     JOIN products p ON p.id = wm.product_id
-    JOIN pos_warehouses pw ON pw.id = wm.warehouse_id
+    JOIN warehouses w ON w.id = wm.warehouse_id
     WHERE wm.company_id = ${companyId}
       ${warehouseId ? sql`AND wm.warehouse_id = ${warehouseId}` : sql``}
       ${productId ? sql`AND wm.product_id = ${productId}` : sql``}
@@ -132,7 +130,7 @@ router.get("/transfers", async (req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT
       wt.*,
-      fw.name AS from_warehouse_name, tw.name AS to_warehouse_name,
+      fw.warehouse_name AS from_warehouse_name, tw.warehouse_name AS to_warehouse_name,
       fb.name AS from_branch_name, tb.name AS to_branch_name,
       (SELECT json_agg(l ORDER BY l.id) FROM (
         SELECT tl.*, tl.qty_requested::float, tl.qty_sent::float, tl.qty_received::float,
@@ -141,10 +139,10 @@ router.get("/transfers", async (req: Request, res: Response) => {
         WHERE tl.transfer_id = wt.id
       ) l) AS lines
     FROM wh_transfers wt
-    JOIN pos_warehouses fw ON fw.id = wt.from_warehouse_id
-    JOIN pos_warehouses tw ON tw.id = wt.to_warehouse_id
-    JOIN pos_branches fb ON fb.id = fw.branch_id
-    JOIN pos_branches tb ON tb.id = tw.branch_id
+    JOIN warehouses fw ON fw.id = wt.from_warehouse_id
+    JOIN warehouses tw ON tw.id = wt.to_warehouse_id
+    LEFT JOIN pos_branches fb ON fb.id = fw.branch_id
+    LEFT JOIN pos_branches tb ON tb.id = tw.branch_id
     WHERE wt.company_id = ${companyId}
     ORDER BY wt.created_at DESC
   `);
@@ -184,7 +182,6 @@ router.post("/transfers/:id/action", async (req: Request, res: Response) => {
   if (!transfer) { res.status(404).json({ message: "Transfer tidak ditemukan" }); return; }
 
   if (action === "send") {
-    // Deduct from source warehouse
     const lines = await db.execute(sql`SELECT * FROM wh_transfer_lines WHERE transfer_id = ${id}`);
     for (const line of lines.rows as any[]) {
       const cur = await db.execute(sql`
@@ -211,7 +208,6 @@ router.post("/transfers/:id/action", async (req: Request, res: Response) => {
     await db.execute(sql`UPDATE wh_transfers SET status = 'in_transit', sent_at = NOW() WHERE id = ${id}`);
 
   } else if (action === "receive") {
-    // Add to destination warehouse
     const lines = await db.execute(sql`SELECT * FROM wh_transfer_lines WHERE transfer_id = ${id}`);
     for (const line of lines.rows as any[]) {
       const qtyToReceive = Number(line.qty_sent ?? line.qty_requested);
@@ -238,7 +234,6 @@ router.post("/transfers/:id/action", async (req: Request, res: Response) => {
     }
     await db.execute(sql`UPDATE wh_transfers SET status = 'received', received_at = NOW() WHERE id = ${id}`);
 
-    // ── Post accounting journal: DR Persediaan Tujuan / CR Persediaan Asal ────
     try {
       const transferLines = await db.execute(sql`
         SELECT tl.product_id, tl.qty_sent, p.name AS product_name,
@@ -289,14 +284,14 @@ router.get("/damage", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT
       dr.*,
-      pw.name AS warehouse_name,
+      w.warehouse_name,
       (SELECT json_agg(l ORDER BY l.id) FROM (
         SELECT dl.*, dl.qty::float, p.name AS product_name, p.sku, p.unit
         FROM wh_damage_lines dl JOIN products p ON p.id = dl.product_id
         WHERE dl.report_id = dr.id
       ) l) AS lines
     FROM wh_damage_reports dr
-    JOIN pos_warehouses pw ON pw.id = dr.warehouse_id
+    JOIN warehouses w ON w.id = dr.warehouse_id
     ORDER BY dr.created_at DESC
   `);
   res.json(rows.rows);
@@ -358,7 +353,6 @@ router.post("/damage/:id/confirm", async (req: Request, res: Response) => {
   }
   await db.execute(sql`UPDATE wh_damage_reports SET status = 'confirmed', confirmed_at = NOW() WHERE id = ${id}`);
 
-  // ── Post accounting journal: DR Beban Kerusakan / CR Persediaan ──────────────
   try {
     const valuation = await db.execute(sql`
       SELECT COALESCE(SUM(dl.qty::numeric * COALESCE(ws.cost_price::numeric, 0)), 0) AS total_value
@@ -390,14 +384,14 @@ router.get("/returns", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT
       wr.*,
-      pw.name AS warehouse_name,
+      w.warehouse_name,
       (SELECT json_agg(l ORDER BY l.id) FROM (
         SELECT rl.*, rl.qty::float, rl.unit_cost::float, p.name AS product_name, p.sku, p.unit
         FROM wh_return_lines rl JOIN products p ON p.id = rl.product_id
         WHERE rl.return_id = wr.id
       ) l) AS lines
     FROM wh_returns wr
-    JOIN pos_warehouses pw ON pw.id = wr.warehouse_id
+    JOIN warehouses w ON w.id = wr.warehouse_id
     ORDER BY wr.created_at DESC
   `);
   res.json(rows.rows);
@@ -444,8 +438,6 @@ router.post("/returns/:id/confirm", async (req: Request, res: Response) => {
       AND (rack_id = ${line.rack_id ?? null} OR (rack_id IS NULL AND ${line.rack_id ?? null} IS NULL))
     `);
     const qtyBefore = Number(cur.rows[0]?.qty ?? 0);
-    // Purchase return: stok keluar (barang dikembalikan ke supplier)
-    // Sales return: stok masuk (barang kembali dari customer)
     const delta = returnDoc.type === "sales" ? Number(line.qty) : -Number(line.qty);
     const qtyAfter = qtyBefore + delta;
     await db.execute(sql`
@@ -496,7 +488,6 @@ router.post("/recipes", async (req: Request, res: Response) => {
   if (!productId || !items?.length) {
     res.status(400).json({ message: "productId, items wajib diisi" }); return;
   }
-  // Upsert recipe
   const existing = await db.execute(sql`SELECT id FROM product_recipes WHERE product_id = ${productId}`);
   let recipeId: number;
   if (existing.rows.length > 0) {
@@ -547,7 +538,7 @@ router.get("/opnames", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
     SELECT
       wo.*,
-      pw.name AS warehouse_name,
+      w.warehouse_name,
       (SELECT json_agg(l ORDER BY l.id) FROM (
         SELECT ol.*, ol.system_qty::float, ol.actual_qty::float, ol.diff_qty::float,
                p.name AS product_name, p.sku, p.unit
@@ -555,7 +546,7 @@ router.get("/opnames", async (_req: Request, res: Response) => {
         WHERE ol.opname_id = wo.id
       ) l) AS lines
     FROM wh_opnames wo
-    JOIN pos_warehouses pw ON pw.id = wo.warehouse_id
+    JOIN warehouses w ON w.id = wo.warehouse_id
     ORDER BY wo.created_at DESC
   `);
   res.json(rows.rows);
@@ -565,7 +556,6 @@ router.post("/opnames", async (req: Request, res: Response) => {
   const { warehouseId, note } = req.body as { warehouseId: number; note?: string };
   if (!warehouseId) { res.status(400).json({ message: "warehouseId wajib diisi" }); return; }
   const opnameNumber = makeDocNumber("OPN");
-  // Populate lines from current stock
   const stock = await db.execute(sql`
     SELECT ws.product_id, ws.rack_id, ws.qty::float
     FROM wh_stock ws WHERE ws.warehouse_id = ${warehouseId}
@@ -623,7 +613,6 @@ router.post("/opnames/:id/confirm", async (req: Request, res: Response) => {
   }
   await db.execute(sql`UPDATE wh_opnames SET status = 'confirmed', confirmed_at = NOW() WHERE id = ${id}`);
 
-  // Auto-post accounting journal for opname adjustment
   try {
     const costRows = await db.execute(sql`
       SELECT ol.diff_qty::float, COALESCE(ws.cost_price::float, p.cost_price::float, 0) AS cost_price
@@ -649,15 +638,17 @@ router.post("/opnames/:id/confirm", async (req: Request, res: Response) => {
   res.json(updated.rows[0]);
 });
 
-// ── WAREHOUSES & BRANCHES (read-only for stock context) ───────────────────────
+// ── WAREHOUSES (unified ERP warehouses) ──────────────────────────────────────
 
 router.get("/warehouses", async (_req: Request, res: Response) => {
   const rows = await db.execute(sql`
-    SELECT pw.*, pb.name AS branch_name
-    FROM pos_warehouses pw
-    JOIN pos_branches pb ON pb.id = pw.branch_id
-    WHERE pw.is_active = TRUE
-    ORDER BY pb.name, pw.name
+    SELECT w.id, w.warehouse_code, w.warehouse_name, w.warehouse_type, w.is_active,
+           w.company_id, w.branch_id, w.address,
+           pb.name AS branch_name
+    FROM warehouses w
+    LEFT JOIN pos_branches pb ON pb.id = w.branch_id
+    WHERE w.is_active = TRUE
+    ORDER BY pb.name, w.warehouse_name
   `);
   res.json(rows.rows);
 });

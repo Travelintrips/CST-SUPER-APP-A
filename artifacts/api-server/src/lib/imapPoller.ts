@@ -10,6 +10,9 @@ import { eq, inArray } from "drizzle-orm";
 import { ObjectStorageService } from "./objectStorage.js";
 import { logger } from "./logger.js";
 import { processEmailForAiIntake } from "./aiOrderIntake.js";
+import { sendWhatsApp } from "./fonnte.js";
+import { getAdminWa, getAdminGroupWa } from "./adminWa.js";
+import { getPreferredDomain } from "./domain.js";
 
 function getImapConfig() {
   const host = process.env.IMAP_HOST;
@@ -25,6 +28,44 @@ function isImapConfigured(): boolean {
 }
 
 const _imapStorage = new ObjectStorageService();
+
+async function notifyNewEmailViaWhatsApp(
+  emailId: number,
+  subject: string,
+  fromEmail: string | null,
+): Promise<void> {
+  try {
+    const domain = getPreferredDomain();
+    const baseUrl = domain ? `https://${domain}` : "";
+
+    const emailLink = baseUrl ? `${baseUrl}/bizportal/correspondences` : "";
+    const approvalLink = baseUrl ? `${baseUrl}/bizportal/approvals` : "";
+
+    const fromLine = fromEmail ? `\nDari: ${fromEmail}` : "";
+    const emailLinkLine = emailLink ? `\n📧 Lihat email: ${emailLink}` : "";
+    const approvalLinkLine = approvalLink ? `\n✅ Halaman Approval: ${approvalLink}` : "";
+
+    const message =
+      `📬 *Email Baru Masuk*\n` +
+      `Subject: ${subject}` +
+      fromLine +
+      emailLinkLine +
+      approvalLinkLine;
+
+    const [adminWa, adminGroupWa] = await Promise.all([getAdminWa(), getAdminGroupWa()]);
+
+    const targets = [adminGroupWa, adminWa].filter(Boolean);
+    if (targets.length === 0) {
+      logger.debug({ emailId }, "No admin WA target configured — skipping email notification");
+      return;
+    }
+
+    await Promise.all(targets.map((t) => sendWhatsApp(t, message)));
+    logger.info({ emailId, targets }, "WA notification sent for new email");
+  } catch (err) {
+    logger.warn({ err, emailId }, "Failed to send WA notification for new email");
+  }
+}
 
 async function uploadAttachmentToStorage(
   buffer: Buffer,
@@ -173,6 +214,13 @@ export async function syncImapEmails(): Promise<{ synced: number; errors: number
             .returning();
 
           if (!saved) continue;
+
+          // Fire-and-forget WA notification for new email
+          notifyNewEmailViaWhatsApp(
+            saved.id,
+            parsed.subject ?? "(No Subject)",
+            fromEmail,
+          ).catch(() => {});
 
           // Async AI intake — fire-and-forget (don't block email sync)
           if (body && parsed.subject) {

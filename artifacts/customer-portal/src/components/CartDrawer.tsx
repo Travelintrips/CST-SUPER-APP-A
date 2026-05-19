@@ -4,6 +4,7 @@ import {
   X, Trash2, Plus, ShoppingCart, ArrowRight,
   Package, Truck, Ship, Plane, FileCheck, Warehouse, FileText, Zap,
 } from "lucide-react";
+
 import { useCart, CartItem } from "@/lib/logistic-cart";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -342,6 +343,25 @@ export function CartDrawer() {
             <Button className="w-full gap-2 h-11 text-sm font-semibold" onClick={handleCheckout}>
               Lanjutkan ke Checkout <ArrowRight className="w-4 h-4" />
             </Button>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                className="gap-1.5 text-sm h-10"
+                onClick={handleAddService}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                Pilih Layanan
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-1.5 text-sm h-10"
+                onClick={() => { close(); setLocation("/products"); }}
+              >
+                <Package className="w-3.5 h-3.5" />
+                Pilih Produk
+              </Button>
+            </div>
           </div>
         )}
       </div>

@@ -484,17 +484,160 @@ export async function runPosKasirMigration(): Promise<void> {
       ADD COLUMN IF NOT EXISTS business_unit TEXT
   `);
 
-  // thai_tea_warehouse_links: mapping pos_warehouse ↔ erp_warehouse untuk dual-stock sync
+  // ── AUTO-PROVISION WAREHOUSES (ERP) PER POS_BRANCH ───────────────────────
+  // Sistem gudang sudah dimerge: setiap pos_branches harus punya entry di warehouses
+  // agar POS/stock operations bisa resolve warehouse_id secara langsung.
+  const unlinkedBranches = await db.execute(sql`
+    SELECT pb.id, pb.name
+    FROM pos_branches pb
+    WHERE NOT EXISTS (
+      SELECT 1 FROM warehouses w WHERE w.branch_id = pb.id
+    )
+    ORDER BY pb.id
+  `);
+  for (const branch of unlinkedBranches.rows as { id: number; name: string }[]) {
+    await db.execute(sql`
+      INSERT INTO warehouses (warehouse_code, warehouse_name, warehouse_type, is_active, branch_id)
+      VALUES (
+        'WH-BR-' || ${branch.id},
+        ${branch.name + ' — Gudang Utama'},
+        'BRANCH',
+        TRUE,
+        ${branch.id}
+      )
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info(`Provisioned ERP warehouse for branch #${branch.id}: ${branch.name}`);
+  }
+
+  logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory + unified-warehouse)");
+
+  // ── POS MULTI-BRANCH ACCESS CONTROL MIGRATION ─────────────────────────────
+
+  // pos_role enum
   await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS thai_tea_warehouse_links (
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'pos_role') THEN
+        CREATE TYPE pos_role AS ENUM ('owner', 'admin', 'manager', 'kasir', 'gudang');
+      END IF;
+    END $$;
+  `);
+
+  // pos_roles: definisi role POS dengan permissions
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pos_roles (
       id SERIAL PRIMARY KEY,
-      pos_warehouse_id INTEGER NOT NULL REFERENCES pos_warehouses(id) ON DELETE CASCADE,
-      erp_warehouse_id INTEGER NOT NULL,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      note TEXT,
+      company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+      name pos_role NOT NULL,
+      display_name TEXT NOT NULL,
+      permissions JSONB NOT NULL DEFAULT '[]',
+      is_system_role BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_roles_company_name_unique ON pos_roles(company_id, name)
+  `);
+
+  // user_branch_access: cabang mana saja yang bisa diakses user/kasir
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS user_branch_access (
+      id SERIAL PRIMARY KEY,
+      company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      cashier_id INTEGER,
+      user_id TEXT,
+      branch_id INTEGER NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      pos_role pos_role NOT NULL DEFAULT 'kasir',
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS uba_company_idx ON user_branch_access(company_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS uba_cashier_idx ON user_branch_access(cashier_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS uba_user_idx ON user_branch_access(user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS uba_branch_idx ON user_branch_access(branch_id)`);
 
-  logger.info("POS Kasir migration: selesai (+ multi-cabang + gudang + rak + inventory + thai-tea)");
+  // Tambah pos_role ke pos_cashiers
+  await db.execute(sql`
+    ALTER TABLE pos_cashiers
+      ADD COLUMN IF NOT EXISTS pos_role pos_role NOT NULL DEFAULT 'kasir'
+  `);
+
+  // Tambah default_branch_id ke pos_cashiers
+  await db.execute(sql`
+    ALTER TABLE pos_cashiers
+      ADD COLUMN IF NOT EXISTS default_branch_id INTEGER REFERENCES pos_branches(id)
+  `);
+
+  // Tambah company_id ke pos_cashiers
+  await db.execute(sql`
+    ALTER TABLE pos_cashiers
+      ADD COLUMN IF NOT EXISTS company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL
+  `);
+
+  // Tambah default_warehouse_id ke pos_branches
+  await db.execute(sql`
+    ALTER TABLE pos_branches
+      ADD COLUMN IF NOT EXISTS default_warehouse_id INTEGER REFERENCES pos_warehouses(id)
+  `);
+
+  // Tambah default_branch_id ke users
+  await db.execute(sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS default_branch_id INTEGER REFERENCES branches(id) ON DELETE SET NULL
+  `);
+
+  // Seed default system roles jika belum ada
+  const roleCount = await db.execute(sql`SELECT COUNT(*) as cnt FROM pos_roles WHERE is_system_role = TRUE`);
+  const rCnt = Number((roleCount.rows[0] as { cnt: string }).cnt);
+  if (rCnt === 0) {
+    const ownerPerms = JSON.stringify([
+      "pos.*", "pos.orders.*", "pos.reports.*", "pos.inventory.*",
+      "pos.settings.*", "pos.users.*", "pos.branches.*", "pos.roles.*"
+    ]);
+    const adminPerms = JSON.stringify([
+      "pos.orders.*", "pos.reports.*", "pos.inventory.*",
+      "pos.settings.*", "pos.users.view", "pos.users.manage"
+    ]);
+    const managerPerms = JSON.stringify([
+      "pos.orders.*", "pos.reports.*", "pos.inventory.*", "pos.settings.view"
+    ]);
+    const kasirPerms = JSON.stringify([
+      "pos.orders.create", "pos.orders.view", "pos.orders.cancel"
+    ]);
+    const gudangPerms = JSON.stringify([
+      "pos.inventory.*", "pos.inventory.transfer", "pos.inventory.opname"
+    ]);
+
+    await db.execute(sql`
+      INSERT INTO pos_roles (company_id, name, display_name, permissions, is_system_role) VALUES
+        (NULL, 'owner',   'Owner',   ${ownerPerms}::jsonb,   TRUE),
+        (NULL, 'admin',   'Admin',   ${adminPerms}::jsonb,   TRUE),
+        (NULL, 'manager', 'Manager', ${managerPerms}::jsonb, TRUE),
+        (NULL, 'kasir',   'Kasir',   ${kasirPerms}::jsonb,   TRUE),
+        (NULL, 'gudang',  'Gudang',  ${gudangPerms}::jsonb,  TRUE)
+      ON CONFLICT DO NOTHING
+    `);
+    logger.info("POS system roles seeded (Owner, Admin, Manager, Kasir, Gudang)");
+  }
+
+  // Auto-populate user_branch_access dari data cashier yang sudah ada
+  await db.execute(sql`
+    INSERT INTO user_branch_access (company_id, cashier_id, branch_id, pos_role, is_default)
+    SELECT
+      COALESCE(c.company_id, (SELECT id FROM companies ORDER BY id LIMIT 1)),
+      c.id,
+      c.branch_id,
+      c.pos_role,
+      TRUE
+    FROM pos_cashiers c
+    WHERE c.branch_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM user_branch_access uba
+      WHERE uba.cashier_id = c.id AND uba.branch_id = c.branch_id
+    )
+  `);
+
+  logger.info("POS Access Control migration: selesai (pos_roles, user_branch_access, new columns)");
 }

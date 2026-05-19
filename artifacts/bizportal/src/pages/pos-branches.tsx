@@ -8,9 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, GitBranch } from "lucide-react";
+
+const BU_LABELS: Record<string, string> = {
+  THAI_TEA: "Thai Tea CST",
+  CST: "CST Logistics",
+};
 
 interface Branch {
   id: number;
@@ -18,6 +24,7 @@ interface Branch {
   address: string | null;
   phone: string | null;
   is_active: boolean;
+  business_unit: string | null;
 }
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -35,19 +42,27 @@ export default function PosBranchesPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
-  const [form, setForm] = useState({ name: "", address: "", phone: "", isActive: true });
+  const [filterBU, setFilterBU] = useState<string>("all");
+  const [form, setForm] = useState({ name: "", address: "", phone: "", isActive: true, businessUnit: "" });
 
   const { data: branches = [], isLoading } = useQuery<Branch[]>({
-    queryKey: ["pos-branches"],
-    queryFn: () => apiFetch("/pos-inventory/branches"),
+    queryKey: ["pos-branches", filterBU],
+    queryFn: () => apiFetch(`/pos-inventory/branches${filterBU !== "all" ? `?businessUnit=${filterBU}` : ""}`),
   });
 
   const saveMutation = useMutation({
     mutationFn: (data: typeof form & { id?: number }) => {
+      const payload = {
+        name: data.name,
+        address: data.address || null,
+        phone: data.phone || null,
+        isActive: data.isActive,
+        businessUnit: data.businessUnit || null,
+      };
       if (data.id) {
-        return apiFetch(`/pos-inventory/branches/${data.id}`, { method: "PUT", body: JSON.stringify(data) });
+        return apiFetch(`/pos-inventory/branches/${data.id}`, { method: "PUT", body: JSON.stringify(payload) });
       }
-      return apiFetch("/pos-inventory/branches", { method: "POST", body: JSON.stringify(data) });
+      return apiFetch("/pos-inventory/branches", { method: "POST", body: JSON.stringify(payload) });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pos-branches"] });
@@ -68,13 +83,13 @@ export default function PosBranchesPage() {
 
   function openNew() {
     setEditing(null);
-    setForm({ name: "", address: "", phone: "", isActive: true });
+    setForm({ name: "", address: "", phone: "", isActive: true, businessUnit: "" });
     setOpen(true);
   }
 
   function openEdit(b: Branch) {
     setEditing(b);
-    setForm({ name: b.name, address: b.address ?? "", phone: b.phone ?? "", isActive: b.is_active });
+    setForm({ name: b.name, address: b.address ?? "", phone: b.phone ?? "", isActive: b.is_active, businessUnit: b.business_unit ?? "" });
     setOpen(true);
   }
 
@@ -93,12 +108,25 @@ export default function PosBranchesPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">Master Cabang</h1>
-              <p className="text-sm text-muted-foreground">Kelola cabang Thai Tea CST</p>
+              <p className="text-sm text-muted-foreground">Kelola cabang semua unit bisnis</p>
             </div>
           </div>
           <Button onClick={openNew} className="gap-2">
             <Plus className="h-4 w-4" /> Tambah Cabang
           </Button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Label className="text-sm">Filter Unit Bisnis:</Label>
+          <Select value={filterBU} onValueChange={setFilterBU}>
+            <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Unit Bisnis</SelectItem>
+              <SelectItem value="THAI_TEA">Thai Tea CST</SelectItem>
+              <SelectItem value="CST">CST Logistics</SelectItem>
+              <SelectItem value="none">Tanpa Unit Bisnis</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Card>
@@ -114,6 +142,7 @@ export default function PosBranchesPage() {
                   <TableRow>
                     <TableHead>#</TableHead>
                     <TableHead>Nama Cabang</TableHead>
+                    <TableHead>Unit Bisnis</TableHead>
                     <TableHead>Alamat</TableHead>
                     <TableHead>Telepon</TableHead>
                     <TableHead>Status</TableHead>
@@ -125,6 +154,15 @@ export default function PosBranchesPage() {
                     <TableRow key={b.id}>
                       <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="font-medium">{b.name}</TableCell>
+                      <TableCell>
+                        {b.business_unit ? (
+                          <Badge variant="outline" className={b.business_unit === "THAI_TEA" ? "border-amber-500 text-amber-400" : "border-blue-500 text-blue-400"}>
+                            {BU_LABELS[b.business_unit] ?? b.business_unit}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{b.address ?? "-"}</TableCell>
                       <TableCell className="text-muted-foreground">{b.phone ?? "-"}</TableCell>
                       <TableCell>
@@ -150,7 +188,7 @@ export default function PosBranchesPage() {
                   ))}
                   {branches.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         Belum ada data cabang
                       </TableCell>
                     </TableRow>
@@ -171,6 +209,17 @@ export default function PosBranchesPage() {
             <div className="space-y-2">
               <Label>Nama Cabang *</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Contoh: TOD M1 Bandara" />
+            </div>
+            <div className="space-y-2">
+              <Label>Unit Bisnis</Label>
+              <Select value={form.businessUnit || "none"} onValueChange={v => setForm(f => ({ ...f, businessUnit: v === "none" ? "" : v }))}>
+                <SelectTrigger><SelectValue placeholder="Pilih unit bisnis" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Tanpa unit bisnis —</SelectItem>
+                  <SelectItem value="THAI_TEA">Thai Tea CST</SelectItem>
+                  <SelectItem value="CST">CST Logistics</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Alamat</Label>

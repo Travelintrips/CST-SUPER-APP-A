@@ -1,5 +1,7 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { useState } from "react";
+import { useCodeCheck } from "@/hooks/useCodeCheck";
+import { CodeCheckIndicator } from "@/components/ui/code-check-indicator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,11 @@ export default function PosRacksPage() {
   const [editing, setEditing] = useState<Rack | null>(null);
   const [filterWh, setFilterWh] = useState<string>("all");
   const [form, setForm] = useState({ code: "", name: "", warehouseId: "", isActive: true });
+
+  const codeCheckUrl = open && form.code.trim()
+    ? `/api/pos-inventory/racks/check-code?code=${encodeURIComponent(form.code)}${editing ? `&excludeId=${editing.id}` : ""}`
+    : null;
+  const { checking: codeChecking, taken: codeTaken } = useCodeCheck(codeCheckUrl, form.code);
 
   const { data: warehouses = [] } = useQuery<Wh[]>({
     queryKey: ["pos-warehouses"],
@@ -163,7 +170,9 @@ export default function PosRacksPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Kode Rak *</Label>
-                <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="A1" />
+                <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="A1"
+                  className={codeTaken === true ? "border-destructive focus-visible:ring-destructive" : ""} />
+                <CodeCheckIndicator checking={codeChecking} taken={codeTaken} />
               </div>
               <div className="space-y-2">
                 <Label>Nama Rak *</Label>

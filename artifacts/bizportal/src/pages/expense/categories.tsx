@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useCodeCheck } from "@/hooks/useCodeCheck";
+import { CodeCheckIndicator } from "@/components/ui/code-check-indicator";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,6 +62,11 @@ export default function ExpenseCategoriesPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const reset = () => { setEditing(null); setForm({ ...EMPTY_FORM }); };
+
+  const codeCheckUrl = open && form.code.trim()
+    ? `/api/expenses/categories/check-code?code=${encodeURIComponent(form.code)}${editing ? `&excludeId=${editing.id}` : ""}`
+    : null;
+  const { checking: codeChecking, taken: codeTaken } = useCodeCheck(codeCheckUrl, form.code);
 
   const startEdit = (c: ExpenseCategory) => {
     setEditing(c);
@@ -219,7 +226,9 @@ export default function ExpenseCategoriesPage() {
               <div className="space-y-1.5">
                 <Label>Kode <span className="text-destructive">*</span></Label>
                 <Input placeholder="TRUCKING" value={form.code}
-                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} />
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                  className={codeTaken === true ? "border-destructive focus-visible:ring-destructive" : ""} />
+                <CodeCheckIndicator checking={codeChecking} taken={codeTaken} />
               </div>
             </div>
             <div className="space-y-1.5">

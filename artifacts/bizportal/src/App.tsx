@@ -11,6 +11,7 @@ import { AppRoutes } from "@/routes";
 import { OrderNotificationsProvider } from "@/contexts/OrderNotificationsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
+import ApprovalsPage from "@/pages/approvals/index";
 import DashboardPage from "@/pages/dashboard";
 import EcommercePage from "@/pages/ecommerce";
 import TradingPage from "@/pages/trading";
@@ -50,6 +51,8 @@ import ReportsSalesPage from "@/pages/reports/sales";
 import ReportsPurchasePage from "@/pages/reports/purchase";
 import ReportsArAgingPage from "@/pages/reports/ar-aging";
 import ReportsApAgingPage from "@/pages/reports/ap-aging";
+import ReportsMainPage from "@/pages/reports/main";
+import AuditLogPage from "@/pages/reports/audit-log";
 import AccountingAccountsPage from "@/pages/accounting/accounts";
 import AccountingJournalsPage from "@/pages/accounting/journals";
 import AccountingTaxesPage from "@/pages/accounting/taxes";
@@ -84,6 +87,14 @@ import WarehouseDamagePage from "@/pages/warehouse/damage";
 import WarehouseReturnsPage from "@/pages/warehouse/returns";
 import WarehouseRecipesPage from "@/pages/warehouse/recipes";
 import WarehouseOpnamePage from "@/pages/warehouse/opname";
+import InvWarehousesPage from "@/pages/inventory/warehouses";
+import InvRacksPage from "@/pages/inventory/racks";
+import InvStockPage from "@/pages/inventory/stock";
+import InvTransfersPage from "@/pages/inventory/transfers";
+import InvReturnsPage from "@/pages/inventory/returns";
+import InvDamagePage from "@/pages/inventory/damage";
+import InvOpnamePage from "@/pages/inventory/opname";
+import InvMovementsPage from "@/pages/inventory/movements";
 import PurchaseReceivePage from "@/pages/purchase/receive";
 import ThaiTeaPurchasePage from "@/pages/purchase/thai-tea";
 import ThaiTeaDashboardPage from "@/pages/thai-tea/dashboard";
@@ -104,9 +115,12 @@ import PosBranchesPage from "@/pages/pos-branches";
 import PosWarehousesPage from "@/pages/pos-warehouses";
 import PosRacksPage from "@/pages/pos-racks";
 import PosRecipesPage from "@/pages/pos-recipes";
+import ProductItemsPage from "@/pages/products/items";
+import ProductRecipesPage from "@/pages/products/recipes";
 import PosQrGeneratorPage from "@/pages/pos-qr-generator";
 import PosQrScannerPage from "@/pages/pos-qr-scanner";
 import SettingsRolesPage from "@/pages/settings-roles";
+import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import PurchaseRequestListPage from "@/pages/purchase/pr-list";
 import PurchaseRequestEditorPage from "@/pages/purchase/pr-editor";
 import GoodsReceiptListPage from "@/pages/purchase/gr-list";
@@ -268,6 +282,7 @@ function Router() {
         <Route path="/" component={AuthRouteGuard} />
         <Route path="/welcome" component={() => <ProtectedRoute component={WelcomePage} />} />
         <Route path="/dashboard" component={() => <ProtectedRoute component={DashboardPage} />} />
+        <Route path="/approvals" component={() => <ProtectedRoute component={ApprovalsPage} />} />
         <Route path="/ecommerce" component={() => <ProtectedRoute component={EcommercePage} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={TradingPage} />} />
         <Route path="/pos" component={() => <ProtectedRoute component={PosPage} />} />
@@ -347,6 +362,8 @@ function Router() {
         <Route path="/reports/purchase" component={() => <ProtectedRoute component={ReportsPurchasePage} />} />
         <Route path="/reports/ar-aging" component={() => <ProtectedRoute component={ReportsArAgingPage} />} />
         <Route path="/reports/ap-aging" component={() => <ProtectedRoute component={ReportsApAgingPage} />} />
+        <Route path="/reports/operasional" component={() => <ProtectedRoute component={ReportsMainPage} />} />
+        <Route path="/reports/audit-log" component={() => <ProtectedRoute component={AuditLogPage} />} />
         {/* Accounting */}
         <Route path="/accounting/accounts" component={() => <ProtectedRoute component={AccountingAccountsPage} />} />
         <Route path="/accounting/journals" component={() => <ProtectedRoute component={AccountingJournalsPage} />} />
@@ -381,6 +398,7 @@ function Router() {
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
         <Route path="/settings/roles" component={() => <ProtectedRoute component={SettingsRolesPage} />} />
+        <Route path="/settings/approval-rules" component={() => <ProtectedRoute component={SettingsApprovalRulesPage} />} />
         <Route path="/users" component={() => <ProtectedRoute component={UsersPage} />} />
         <Route path="/media" component={() => <ProtectedRoute component={MediaManagerPage} />} />
         {/* Holding */}
@@ -401,6 +419,9 @@ function Router() {
         <Route path="/thai-tea/branches" component={() => <ProtectedRoute component={ThaiTeaBranchesPage} />} />
         <Route path="/thai-tea/production" component={() => <ProtectedRoute component={ThaiTeaProductionPage} />} />
         <Route path="/thai-tea/reports" component={() => <ProtectedRoute component={ThaiTeaReportsPage} />} />
+        {/* Products & BOM */}
+        <Route path="/products/items" component={() => <ProtectedRoute component={ProductItemsPage} />} />
+        <Route path="/products/recipes" component={() => <ProtectedRoute component={ProductRecipesPage} />} />
         {/* POS Inventory */}
         <Route path="/pos-inventory/dashboard" component={() => <ProtectedRoute component={PosInventoryDashboardPage} />} />
         <Route path="/pos-inventory/branches" component={() => <ProtectedRoute component={PosBranchesPage} />} />
@@ -416,7 +437,7 @@ function Router() {
         <Route path="/pos-inventory/transfers" component={() => <ProtectedRoute component={PosStockTransfersPage} />} />
         <Route path="/pos-inventory/qr-generator" component={() => <ProtectedRoute component={PosQrGeneratorPage} />} />
         <Route path="/pos-inventory/qr-scanner" component={() => <ProtectedRoute component={PosQrScannerPage} />} />
-        {/* Warehouse */}
+        {/* Warehouse (legacy) */}
         <Route path="/warehouse/stock" component={() => <ProtectedRoute component={WarehouseStockPage} />} />
         <Route path="/warehouse/movements" component={() => <ProtectedRoute component={WarehouseMovementsPage} />} />
         <Route path="/warehouse/transfers" component={() => <ProtectedRoute component={WarehouseTransfersPage} />} />
@@ -424,6 +445,15 @@ function Router() {
         <Route path="/warehouse/returns" component={() => <ProtectedRoute component={WarehouseReturnsPage} />} />
         <Route path="/warehouse/recipes" component={() => <ProtectedRoute component={WarehouseRecipesPage} />} />
         <Route path="/warehouse/opname" component={() => <ProtectedRoute component={WarehouseOpnamePage} />} />
+        {/* Inventory — modul berbasis cabang & gudang */}
+        <Route path="/inventory/warehouses" component={() => <ProtectedRoute component={InvWarehousesPage} />} />
+        <Route path="/inventory/racks" component={() => <ProtectedRoute component={InvRacksPage} />} />
+        <Route path="/inventory/stock" component={() => <ProtectedRoute component={InvStockPage} />} />
+        <Route path="/inventory/transfers" component={() => <ProtectedRoute component={InvTransfersPage} />} />
+        <Route path="/inventory/returns" component={() => <ProtectedRoute component={InvReturnsPage} />} />
+        <Route path="/inventory/damage" component={() => <ProtectedRoute component={InvDamagePage} />} />
+        <Route path="/inventory/opname" component={() => <ProtectedRoute component={InvOpnamePage} />} />
+        <Route path="/inventory/movements" component={() => <ProtectedRoute component={InvMovementsPage} />} />
         <Route component={NotFound} />
       </Switch>
     </WouterRouter>

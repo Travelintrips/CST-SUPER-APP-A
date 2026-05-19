@@ -501,9 +501,9 @@ router.post("/documents/:id/action", async (req, res) => {
     const productLines = lines.filter((l) => l.productId != null);
 
     if (productLines.length > 0) {
-      // Gunakan gudang POS pertama yang aktif (wh_stock FK ke pos_warehouses)
+      // Gunakan gudang ERP pertama yang aktif (sistem gudang tunggal)
       const posWh = (await db.execute(sql`
-        SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
+        SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1
       `)).rows[0] as { id: number } | undefined;
 
       if (posWh) {
@@ -544,8 +544,8 @@ router.post("/documents/:id/action", async (req, res) => {
       if (productLines.length === 0) {
         // nothing to deduct, fall through
       } else {
-        // ── Legacy wh_stock deduction (backward compat) ─────────────────────
-        const [defaultWh] = await db.execute(sql`SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
+        // ── wh_stock deduction (gudang ERP — sistem tunggal) ─────────────────
+        const [defaultWh] = await db.execute(sql`SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id LIMIT 1`);
         const wh = (defaultWh as any)?.rows?.[0] ?? (defaultWh as any);
         const legacyWhId: number | undefined = wh?.id;
         const cogsLines: Array<{ name: string; qty: number; costPrice: number }> = [];
@@ -767,9 +767,9 @@ router.post("/documents/:id/return", async (req, res) => {
     erpWhId = r?.id ?? null;
   }
 
-  // ── Resolve POS warehouse (untuk wh_stock) ────────────────────────────────
+  // ── Resolve gudang ERP (sistem tunggal) ──────────────────────────────────
   const posWhRow = (await db.execute(sql`
-    SELECT id FROM pos_warehouses WHERE is_active = TRUE ORDER BY id ASC LIMIT 1
+    SELECT id FROM warehouses WHERE is_active = TRUE ORDER BY id ASC LIMIT 1
   `)).rows[0] as { id: number } | undefined;
   const posWhId = posWhRow?.id ?? null;
 

@@ -21,6 +21,8 @@ import PosRacksPage from "@/pages/pos-racks";
 import PosInventoryItemsPage from "@/pages/pos-inventory-items";
 import PosInventoryStocksPage from "@/pages/pos-inventory-stocks";
 import PosRecipesPage from "@/pages/pos-recipes";
+import ProductItemsPage from "@/pages/products/items";
+import ProductRecipesPage from "@/pages/products/recipes";
 import PosStockTransfersPage from "@/pages/pos-stock-transfers";
 import PosStockReturnsPage from "@/pages/pos-stock-returns";
 import PosStockLossesPage from "@/pages/pos-stock-losses";
@@ -97,6 +99,8 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/pos-inventory/items" component={PR(PosInventoryItemsPage)} />
       <Route path="/pos-inventory/stocks" component={PR(PosInventoryStocksPage)} />
       <Route path="/pos-inventory/recipes" component={PR(PosRecipesPage)} />
+      <Route path="/products/items" component={PR(ProductItemsPage)} />
+      <Route path="/products/recipes" component={PR(ProductRecipesPage)} />
       <Route path="/pos-inventory/transfers" component={PR(PosStockTransfersPage)} />
       <Route path="/pos-inventory/returns" component={PR(PosStockReturnsPage)} />
       <Route path="/pos-inventory/losses" component={PR(PosStockLossesPage)} />

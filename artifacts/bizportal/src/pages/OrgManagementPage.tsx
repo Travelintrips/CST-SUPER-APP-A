@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useCodeCheck } from "@/hooks/useCodeCheck";
+import { CodeCheckIndicator } from "@/components/ui/code-check-indicator";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +15,7 @@ import { toast } from "@/hooks/use-toast";
 import {
   Building2, GitBranch, LayoutList, FolderOpen, Users2, Network,
   Plus, Pencil, Trash2, ChevronRight, CheckCircle2, XCircle,
-  RefreshCw, Shield,
+  RefreshCw, Shield, AlertCircle,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -21,13 +23,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface Company { id: number; companyName: string; companyCode: string; isActive: boolean; isHolding?: boolean; address?: string; phone?: string; email?: string; npwp?: string }
 interface Branch  { id: number; companyId: number; name: string; code?: string; address?: string; phone?: string; isActive: boolean; company_name?: string; company_code?: string }
-interface Division { id: number; companyId: number; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; company_code?: string }
-interface Department { id: number; companyId: number; divisionId?: number | null; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; division_name?: string }
+interface Division { id: number; companyId: number; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; company_code?: string; branch_name?: string; manager_name?: string }
+interface Department { id: number; companyId: number; divisionId?: number | null; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; company_code?: string; division_name?: string; branch_name?: string; manager_name?: string }
 interface Section { id: number; companyId: number; departmentId?: number | null; name: string; code?: string; description?: string; isActive: boolean; company_name?: string; department_name?: string }
 
 interface HierarchySection { id: number; name: string; code?: string; isActive: boolean }
-interface HierarchyDept  { id: number; name: string; code?: string; isActive: boolean; sections: HierarchySection[]; userCount: number }
-interface HierarchyDiv   { id: number; name: string; code?: string; isActive: boolean; departments: HierarchyDept[]; userCount: number }
+interface HierarchyDept  { id: number; name: string; code?: string; isActive: boolean; sections: HierarchySection[]; userCount: number; manager_name?: string }
+interface HierarchyDiv   { id: number; name: string; code?: string; isActive: boolean; departments: HierarchyDept[]; userCount: number; manager_name?: string; branch_name?: string }
 interface HierarchyBranch { id: number; name: string; code?: string; isActive: boolean; userCount: number }
 interface HierarchyCompany { id: number; name: string; code: string; isActive: boolean; userCount: number; branches: HierarchyBranch[]; divisions: HierarchyDiv[] }
 
@@ -35,11 +37,21 @@ interface HierarchyCompany { id: number; name: string; code: string; isActive: b
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api${path}`, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
-  if (!res.ok) { const txt = await res.text(); throw new Error(txt || res.statusText); }
+  if (!res.ok) {
+    const txt = await res.text();
+    let message = txt || res.statusText;
+    try { const parsed = JSON.parse(txt); if (parsed?.message) message = parsed.message; } catch {}
+    const err = Object.assign(new Error(message), { status: res.status });
+    throw err;
+  }
   return res.json();
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
+
+function resolveActive(row: any): boolean {
+  return row.isActive ?? row.is_active ?? true;
+}
 
 function ActiveBadge({ active }: { active: boolean }) {
   return active
@@ -67,14 +79,20 @@ function CompaniesTab() {
   const qc = useQueryClient();
   const { data: companies = [], isLoading } = useQuery<Company[]>({ queryKey: ["companies"], queryFn: () => apiFetch("/companies") });
   const [dialog, setDialog] = useState<{ open: boolean; mode: "add" | "edit"; item: Partial<Company> }>({ open: false, mode: "add", item: {} });
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function openDialog(mode: "add" | "edit", item: Partial<Company>) {
+    setFormError(null);
+    setDialog({ open: true, mode, item });
+  }
 
   const save = useMutation({
     mutationFn: async (item: Partial<Company>) => {
       if (item.id) return apiFetch(`/companies/${item.id}`, { method: "PATCH", body: JSON.stringify({ companyName: item.companyName, companyCode: item.companyCode, address: item.address, phone: item.phone, email: item.email, npwp: item.npwp, isActive: item.isActive }) });
       return apiFetch("/companies", { method: "POST", body: JSON.stringify({ companyName: item.companyName, companyCode: item.companyCode, address: item.address, phone: item.phone, email: item.email, npwp: item.npwp }) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["companies"] }); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["companies"] }); setFormError(null); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
+    onError: (e: Error) => { setFormError(e.message); toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }); },
   });
 
   const del = useMutation({
@@ -87,7 +105,7 @@ function CompaniesTab() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted-foreground">{companies.length} perusahaan terdaftar</p>
-        <Button size="sm" onClick={() => setDialog({ open: true, mode: "add", item: { isActive: true } })}>
+        <Button size="sm" onClick={() => openDialog("add", { isActive: true })}>
           <Plus className="h-4 w-4 mr-1" />Tambah Perusahaan
         </Button>
       </div>
@@ -112,10 +130,10 @@ function CompaniesTab() {
                 <TableCell className="font-medium">{c.companyName}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{c.npwp ?? "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{c.email ?? c.phone ?? "—"}</TableCell>
-                <TableCell><ActiveBadge active={c.isActive} /></TableCell>
+                <TableCell><ActiveBadge active={resolveActive(c)} /></TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDialog({ open: true, mode: "edit", item: { ...c } })}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog("edit", { ...c })}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     {c.id > 4 && (
@@ -131,7 +149,7 @@ function CompaniesTab() {
         </Table>
       </div>
 
-      <Dialog open={dialog.open} onOpenChange={o => setDialog(d => ({ ...d, open: o }))}>
+      <Dialog open={dialog.open} onOpenChange={o => { if (!o) setFormError(null); setDialog(d => ({ ...d, open: o })); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{dialog.mode === "add" ? "Tambah Perusahaan" : "Edit Perusahaan"}</DialogTitle>
@@ -145,7 +163,13 @@ function CompaniesTab() {
               </div>
               <div>
                 <Label className="text-xs">Kode Perusahaan *</Label>
-                <Input className="mt-1" value={dialog.item.companyCode ?? ""} onChange={e => setDialog(d => ({ ...d, item: { ...d.item, companyCode: e.target.value.toUpperCase() } }))} placeholder="CMJ" maxLength={8} />
+                <Input
+                  className={`mt-1 ${formError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  value={dialog.item.companyCode ?? ""}
+                  onChange={e => { setFormError(null); setDialog(d => ({ ...d, item: { ...d.item, companyCode: e.target.value.toUpperCase() } })); }}
+                  placeholder="CMJ"
+                  maxLength={8}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -160,9 +184,15 @@ function CompaniesTab() {
                 <Label htmlFor="isActive" className="text-xs">Aktif</Label>
               </div>
             )}
+            {formError && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(d => ({ ...d, open: false }))}>Batal</Button>
+            <Button variant="outline" onClick={() => { setFormError(null); setDialog(d => ({ ...d, open: false })); }}>Batal</Button>
             <Button disabled={save.isPending} onClick={() => save.mutate(dialog.item)}>{save.isPending ? "Menyimpan..." : "Simpan"}</Button>
           </DialogFooter>
         </DialogContent>
@@ -191,6 +221,15 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
   const qc = useQueryClient();
   const [companyFilter, setCompanyFilter] = useState<string>("all");
   const [dialog, setDialog] = useState<{ open: boolean; mode: "add" | "edit"; item: Record<string, unknown> }>({ open: false, mode: "add", item: {} });
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const dialogCode = String(dialog.item.code ?? "");
+  const dialogCompanyId = dialog.item.companyId ? Number(dialog.item.companyId) : null;
+  const dialogExcludeId = dialog.mode === "edit" && dialog.item.id ? Number(dialog.item.id) : null;
+  const codeCheckUrl = dialog.open && dialogCode.trim() && dialogCompanyId
+    ? `${endpoint}/check-code?code=${encodeURIComponent(dialogCode)}&companyId=${dialogCompanyId}${dialogExcludeId ? `&excludeId=${dialogExcludeId}` : ""}`
+    : null;
+  const { checking: codeChecking, taken: codeTaken } = useCodeCheck(codeCheckUrl, dialogCode);
 
   const url = companyFilter !== "all" ? `${endpoint}?companyId=${companyFilter}` : `${endpoint}?companyId=all`;
   const { data: rows = [], isLoading } = useQuery<T[]>({ queryKey: [queryKey, companyFilter], queryFn: () => apiFetch(url) });
@@ -202,8 +241,8 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
       if (item.id) return apiFetch(`${endpoint}/${item.id}`, { method: "PATCH", body: JSON.stringify(item) });
       return apiFetch(endpoint, { method: "POST", body: JSON.stringify(item) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); setFormError(null); setDialog(d => ({ ...d, open: false })); toast({ title: "Berhasil disimpan" }); },
+    onError: (e: Error) => { setFormError(e.message); toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }); },
   });
 
   const del = useMutation({
@@ -215,6 +254,7 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
   function openAdd() {
     const init: Record<string, unknown> = { isActive: true };
     if (companyFilter !== "all") init.companyId = Number(companyFilter);
+    setFormError(null);
     setDialog({ open: true, mode: "add", item: init });
   }
 
@@ -247,12 +287,13 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
                 <TableCell className="font-medium">{row.name}</TableCell>
                 {extraColumns.map(ec => <TableCell key={ec.label} className="text-sm text-muted-foreground">{ec.render(row)}</TableCell>)}
                 <TableCell className="text-sm text-muted-foreground">{row.company_code ? `${row.company_code}` : "—"}</TableCell>
-                <TableCell><ActiveBadge active={row.isActive} /></TableCell>
+                <TableCell><ActiveBadge active={resolveActive(row)} /></TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
-                      const item: Record<string, unknown> = { ...row };
+                      const item: Record<string, unknown> = { ...row, isActive: resolveActive(row) };
                       if (parentKey && (row as any)[parentKey]) item[parentKey] = (row as any)[parentKey];
+                      setFormError(null);
                       setDialog({ open: true, mode: "edit", item });
                     }}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -268,7 +309,7 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
         </Table>
       </div>
 
-      <Dialog open={dialog.open} onOpenChange={o => setDialog(d => ({ ...d, open: o }))}>
+      <Dialog open={dialog.open} onOpenChange={o => { if (!o) setFormError(null); setDialog(d => ({ ...d, open: o })); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{dialog.mode === "add" ? `Tambah ${label}` : `Edit ${label}`}</DialogTitle>
@@ -286,10 +327,10 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
             {parentKey && parentLabel && (
               <div>
                 <Label className="text-xs">{parentLabel}</Label>
-                <Select value={String(dialog.item[parentKey] ?? "")} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, [parentKey!]: v ? Number(v) : null } }))}>
+                <Select value={String(dialog.item[parentKey] ?? "__none__")} onValueChange={v => setDialog(d => ({ ...d, item: { ...d.item, [parentKey!]: v === "__none__" ? null : Number(v) } }))}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder={`Pilih ${parentLabel}`} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— Tidak ada —</SelectItem>
+                    <SelectItem value="__none__">— Tidak ada —</SelectItem>
                     {filteredParents.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.code ? `[${p.code}] ` : ""}{p.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -302,7 +343,12 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
               </div>
               <div>
                 <Label className="text-xs">Kode</Label>
-                <Input className="mt-1" value={String(dialog.item.code ?? "")} onChange={e => setDialog(d => ({ ...d, item: { ...d.item, code: e.target.value.toUpperCase() } }))} />
+                <Input
+                  className={`mt-1 ${codeTaken === true ? "border-destructive focus-visible:ring-destructive" : formError ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  value={String(dialog.item.code ?? "")}
+                  onChange={e => { setFormError(null); setDialog(d => ({ ...d, item: { ...d.item, code: e.target.value.toUpperCase() } })); }}
+                />
+                <CodeCheckIndicator checking={codeChecking} taken={codeTaken} />
               </div>
             </div>
             <div>
@@ -315,9 +361,15 @@ function GenericTab<T extends { id: number; companyId: number; name: string; cod
                 <Label htmlFor="isActiveGeneric" className="text-xs">Aktif</Label>
               </div>
             )}
+            {formError && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(d => ({ ...d, open: false }))}>Batal</Button>
+            <Button variant="outline" onClick={() => { setFormError(null); setDialog(d => ({ ...d, open: false })); }}>Batal</Button>
             <Button disabled={save.isPending} onClick={() => save.mutate(dialog.item)}>{save.isPending ? "Menyimpan..." : "Simpan"}</Button>
           </DialogFooter>
         </DialogContent>
@@ -418,11 +470,12 @@ function HierarchyView({ companies }: { companies: Company[] }) {
                                   className="w-full flex items-center justify-between px-3 py-2.5 text-sm hover:bg-muted/40 transition-colors"
                                   onClick={() => toggle(divKey)}
                                 >
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${divOpen ? "rotate-90" : ""}`} />
                                     <span className="font-medium">{div.name}</span>
                                     {div.code && <code className="text-xs bg-muted px-1 rounded font-mono">{div.code}</code>}
                                     <span className="text-xs text-muted-foreground">({div.departments.length} dept)</span>
+                                    {div.manager_name && <span className="text-xs text-muted-foreground">· Mgr: {div.manager_name}</span>}
                                   </div>
                                   <span className="text-xs text-muted-foreground flex items-center gap-0.5"><Users2 className="h-3 w-3" />{div.userCount}</span>
                                 </button>
@@ -437,13 +490,14 @@ function HierarchyView({ companies }: { companies: Company[] }) {
                                             className="w-full flex items-center justify-between py-1.5 text-xs hover:text-foreground text-muted-foreground"
                                             onClick={() => dep.sections.length > 0 && toggle(depKey)}
                                           >
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                               {dep.sections.length > 0 && <ChevronRight className={`h-3 w-3 transition-transform ${depOpen ? "rotate-90" : ""}`} />}
                                               {dep.sections.length === 0 && <div className="w-3" />}
                                               <FolderOpen className="h-3.5 w-3.5" />
                                               <span className="font-medium text-foreground">{dep.name}</span>
                                               {dep.code && <code className="text-xs bg-background px-1 rounded font-mono">{dep.code}</code>}
                                               {dep.sections.length > 0 && <span className="text-muted-foreground">({dep.sections.length} seksi)</span>}
+                                              {dep.manager_name && <span className="text-muted-foreground text-xs">· Mgr: {dep.manager_name}</span>}
                                             </div>
                                             <span className="flex items-center gap-0.5"><Users2 className="h-3 w-3" />{dep.userCount}</span>
                                           </button>
@@ -543,6 +597,10 @@ export default function OrgManagementPage() {
               endpoint="/org/divisions"
               queryKey="org/divisions"
               companies={companies}
+              extraColumns={[
+                { label: "Manager", render: (r: any) => <span className="text-xs">{r.manager_name ?? "—"}</span> },
+                { label: "Cabang", render: (r: any) => <span className="text-xs">{r.branch_name ?? "—"}</span> },
+              ]}
             />
           </TabsContent>
 
@@ -555,7 +613,10 @@ export default function OrgManagementPage() {
               parentLabel="Divisi"
               parentItems={divParents}
               parentKey="divisionId"
-              extraColumns={[{ label: "Divisi", render: (r: any) => <span>{r.division_name ?? "—"}</span> }]}
+              extraColumns={[
+                { label: "Divisi", render: (r: any) => <span>{r.division_name ?? "—"}</span> },
+                { label: "Manager", render: (r: any) => <span className="text-xs">{r.manager_name ?? "—"}</span> },
+              ]}
             />
           </TabsContent>
 
