@@ -162,6 +162,7 @@ export async function autoCreateRfqAndNotifyVendors(
         .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
       const orderToken = orderTokenRow?.publicRfqToken ?? "";
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken);
+      const nonTruckingItems = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
       sendVendorWhatsApp({
         vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
         rfqNumber, orderId, orderNumber: order.orderNumber, longUrl: formUrl,
@@ -170,6 +171,8 @@ export async function autoCreateRfqAndNotifyVendors(
         volumeCbm: order.volumeCbm, requiredDate: order.requiredDate,
         notes: order.notes, vendorBasePrice, createdAt: order.createdAt,
         jamOrder: order.jamOrder,
+        orderItems: nonTruckingItems,
+        isTrucking: false,
       }).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "autoRFQ WA vendor failed")
       );
@@ -785,6 +788,8 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
         : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
 
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken2);
+      const isTruckingOrder2 = !!truckingItem;
+      const waItems2 = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
       sendVendorWhatsApp({
         vendorPhone: vendor.phone, vendorName: vendor.name, vendorId: vendor.id,
         rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
@@ -793,6 +798,8 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
         grossWeight: orderData.grossWeight, volumeCbm: orderData.volumeCbm,
         requiredDate: orderData.requiredDate, notes: orderData.notes,
         vendorBasePrice, createdAt: orderData.createdAt, jamOrder: orderData.jamOrder,
+        orderItems: waItems2,
+        isTrucking: isTruckingOrder2,
       }).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA RFQ send failed")
       );
@@ -990,7 +997,7 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     .where(eq(suppliersTable.id, vendorId));
   if (!vendor) return res.status(404).json({ error: "Not found" });
 
-  const [existing, catalogItems] = await Promise.all([
+  const [existing, catalogItems, orderItemRows] = await Promise.all([
     db.select().from(logisticOrderQuotesTable)
       .where(and(
         eq(logisticOrderQuotesTable.rfqId, rfq.id),
@@ -998,6 +1005,9 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
       )),
     db.select().from(vendorCatalogItemsTable)
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendorId), eq(vendorCatalogItemsTable.isActive, true))),
+    db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType })
+      .from(logisticOrderItemsTable)
+      .where(eq(logisticOrderItemsTable.orderId, rfq.orderId)),
   ]);
 
   const vt = order.vehicleType ?? (order as any).truckType ?? null;
@@ -1007,6 +1017,10 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
   const vendorBasePrice = matchingCatalog
     ? Number(matchingCatalog.priceBase)
     : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
+
+  const isTrucking = orderItemRows.some((it) => it.calculatorType === "trucking")
+    || order.shipmentType?.toLowerCase().includes("trucking")
+    || false;
 
   return res.json({
     rfqNumber: rfq.rfqNumber,
@@ -1023,6 +1037,10 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     vehicleType: vt?.trim() || null,
     vendorBasePrice,
     alreadySubmitted: existing.length > 0,
+    orderItems: orderItemRows.map((it) => ({ serviceName: it.serviceName, category: it.category })),
+    createdAt: order.createdAt.toISOString(),
+    jamOrder: order.jamOrder ?? null,
+    isTrucking,
   });
 });
 
@@ -1079,6 +1097,11 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
 
   await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
 
+  const manualOrderItems = await db.select({ serviceName: logisticOrderItemsTable.serviceName, category: logisticOrderItemsTable.category, calculatorType: logisticOrderItemsTable.calculatorType })
+    .from(logisticOrderItemsTable)
+    .where(eq(logisticOrderItemsTable.orderId, orderId));
+  const isTruckingManual = manualOrderItems.some((it) => it.calculatorType === "trucking");
+
   const orderData = {
     orderNumber: order.orderNumber,
     shipmentType: finalShipmentType,
@@ -1103,6 +1126,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
     const vendorBasePrice = catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
     const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken3);
+    const waItemsManual = manualOrderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
     sendVendorWhatsApp({
       vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
       rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
@@ -1111,6 +1135,8 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       volumeCbm: orderData.volumeCbm, requiredDate: orderData.requiredDate,
       notes: orderData.notes, vendorBasePrice, createdAt: orderData.createdAt,
       jamOrder: orderData.jamOrder,
+      orderItems: waItemsManual,
+      isTrucking: isTruckingManual,
     }).catch((err: unknown) =>
       logger.error({ err, vendorId: vendor.id }, "manualRFQ WA vendor failed")
     );

@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
-import { Truck, MapPin, Package, Weight, CheckCircle2, AlertCircle, Loader2, CalendarDays, ClipboardList, DollarSign, FileText } from "lucide-react";
+import { Truck, MapPin, Package, Weight, CheckCircle2, AlertCircle, Loader2, CalendarDays, ClipboardList, DollarSign, FileText, ShoppingCart, Clock } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) {
   return `${BASE}${path}`;
+}
+
+interface OrderItem {
+  serviceName: string;
+  category: string;
 }
 
 interface RfqFormData {
@@ -21,6 +26,10 @@ interface RfqFormData {
   vehicleType: string | null;
   vendorBasePrice: number | null;
   alreadySubmitted: boolean;
+  orderItems?: OrderItem[] | null;
+  createdAt?: string | null;
+  jamOrder?: string | null;
+  isTrucking?: boolean;
 }
 
 function fmt(label: string, value: string | null | undefined) {
@@ -215,16 +224,45 @@ export default function VendorQuoteFormPage() {
                 <p className="text-sm text-white font-mono font-medium">{data.orderNumber || data.rfqNumber}</p>
               </div>
             </div>
-            {/* Jenis Layanan — selalu tampil */}
+            {/* Jenis Layanan — selalu tampil + produk yang dipesan */}
             <div className="flex items-start gap-3">
               <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
                 <Truck className="w-4 h-4" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="text-xs text-slate-400">Jenis Layanan</p>
                 <p className="text-sm text-white font-medium">{data.shipmentType || "—"}</p>
+                {data.orderItems && data.orderItems.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {data.orderItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <ShoppingCart className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                        <span className="text-xs text-blue-300">{item.serviceName || item.category}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
+            {/* Tanggal & Jam Order — hanya untuk trucking */}
+            {data.isTrucking && (data.createdAt || data.jamOrder) && (
+              <div className="flex items-start gap-3">
+                <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Tanggal &amp; Jam Order</p>
+                  <p className="text-sm text-white font-medium">
+                    {data.createdAt
+                      ? new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "long", year: "numeric" }).format(new Date(data.createdAt))
+                      : ""}
+                    {data.jamOrder ? ` · ${data.jamOrder}` : data.createdAt
+                      ? ` · ${new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(data.createdAt)).replace(":", ".")}`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+            )}
             {/* Rute — selalu tampil */}
             <div className="flex items-start gap-3">
               <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">

@@ -38,6 +38,8 @@ export interface VendorQuoteMessageInput {
   createdAt?: Date | string | null;
   jamOrder?: string | null;
   shortLinkUrl: string;
+  orderItems?: Array<{ serviceName: string; category: string }> | null;
+  isTrucking?: boolean;
 }
 
 /**
@@ -61,6 +63,18 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
     input.notes ? `📝 Catatan    : ${input.notes}\n` : "",
   ].join("");
 
+  // Produk/layanan yang dipesan customer dari web
+  const itemsBlock = input.orderItems && input.orderItems.length > 0
+    ? `\n🛒 *Produk Dipesan:*\n` +
+      input.orderItems.map((it) => `   • ${it.serviceName}`).join("\n") + "\n"
+    : "";
+
+  // Untuk trucking: tampilkan tanggal & jam order customer
+  const truckingDateBlock = input.isTrucking && (tgl || jam)
+    ? `📅 Tgl Order  : ${tgl}\n` +
+      (jam ? `🕐 Jam Order  : ${jam}\n` : "")
+    : "";
+
   const priceBlock = input.vendorBasePrice != null
     ? `\n💰 *Harga Vendor:*\n${fmtRp(input.vendorBasePrice)}\n`
     : "";
@@ -71,11 +85,13 @@ export function generateVendorQuoteMessage(input: VendorQuoteMessageInput): stri
     `Kepada Yth. *${input.vendorName}*,\n\n` +
     `No. RFQ    : *${input.rfqNumber}*\n` +
     `No. Order  : ${input.orderNumber}\n` +
-    (tgl ? `Tanggal    : ${tgl}\n` : "") +
-    (jam ? `Jam        : ${jam}\n` : "") +
+    (!input.isTrucking && tgl ? `Tanggal    : ${tgl}\n` : "") +
+    (!input.isTrucking && jam ? `Jam        : ${jam}\n` : "") +
+    truckingDateBlock +
     routeLine +
     vehicleLine +
     cargoLines +
+    itemsBlock +
     priceBlock +
     `\n📝 Silakan isi harga & estimasi melalui tombol berikut.\n\n` +
     `🔗 *[ ISI PENAWARAN VENDOR ]*\n` +
@@ -105,6 +121,8 @@ export interface SendVendorWhatsAppInput {
   vendorBasePrice?: number | null;
   createdAt?: Date | string | null;
   jamOrder?: string | null;
+  orderItems?: Array<{ serviceName: string; category: string }> | null;
+  isTrucking?: boolean;
 }
 
 /**
