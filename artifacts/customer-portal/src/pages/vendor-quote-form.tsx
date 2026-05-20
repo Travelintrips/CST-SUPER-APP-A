@@ -63,6 +63,7 @@ export default function VendorQuoteFormPage() {
       .then((r) => r.ok ? r.json() : r.json().then((e: { message: string }) => Promise.reject(e.message)))
       .then((d: RfqFormData) => {
         setData(d);
+        if (d.vendorBasePrice != null) setVendorPrice(String(Math.round(d.vendorBasePrice)));
         if (d.alreadySubmitted) setSuccess(true);
       })
       .catch((msg: unknown) => setError(typeof msg === "string" ? msg : "Gagal memuat data RFQ"))
