@@ -27,6 +27,9 @@ function calcTypeToServiceKeyword(calcType: string): string | null {
     case "sea_fcl":
     case "sea_lcl":
     case "sea_freight": return "Sea Freight";
+    case "product":
+    case "product_delivery":
+    case "courier":   return "Trucking";
     default: return null;
   }
 }
