@@ -36,6 +36,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
   RefreshCw, MessageCircle, Trash2, ListChecks, Link, Link2, Copy, ExternalLink, Loader2, Eye,
+  Clock, Truck, Package, DollarSign, Activity,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -176,6 +177,37 @@ export default function LogisticsPortalOrderDetailPage() {
   const [linkDialog, setLinkDialog] = useState(false);
   const [vendorFormLinks, setVendorFormLinks] = useState<VendorFormLink[]>([]);
   const [linksLoading, setLinksLoading] = useState(false);
+
+  // ── Operational/Payment Status ──────────────────────────────────────────
+  interface OpStatus { operationalStatus: string | null; paymentStatus: string }
+  const { data: opStatus, refetch: refetchOpStatus } = useQuery<OpStatus>({
+    queryKey: ["op-status", orderId],
+    queryFn: async () => {
+      const res = await fetch(`/api/logistic/orders/${orderId}/operational-status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Gagal memuat status");
+      return res.json() as Promise<OpStatus>;
+    },
+  });
+  const [opStatusLoading, setOpStatusLoading] = useState(false);
+
+  async function updateOpStatus(field: "operationalStatus" | "paymentStatus", value: string) {
+    setOpStatusLoading(true);
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/operational-status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) throw new Error("Gagal update");
+      await refetchOpStatus();
+      toast({ title: "Status diperbarui" });
+    } catch {
+      toast({ title: "Gagal update status", variant: "destructive" });
+    } finally {
+      setOpStatusLoading(false);
+    }
+  }
 
   // [NEW-RFQ-FLOW] Blast V2 dialog state
   const [blastV2Dialog, setBlastV2Dialog] = useState(false);
@@ -629,6 +661,10 @@ export default function LogisticsPortalOrderDetailPage() {
                   {vendorOffers.length}
                 </span>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="status" className="gap-1.5">
+              <Activity className="h-3.5 w-3.5" />
+              Status
             </TabsTrigger>
             {isAiOrder && (
               <TabsTrigger value="chat-ai" className="gap-1.5">
@@ -1120,6 +1156,194 @@ export default function LogisticsPortalOrderDetailPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* ── Tab Status: Timeline + Operational/Payment ── */}
+          <TabsContent value="status" className="space-y-4 mt-4">
+            {/* Order Status Timeline */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-indigo-600" />
+                  Timeline Status Order
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const ORDER_STEPS = [
+                    { key: "New Order",        label: "Order Masuk",         icon: <Package className="h-4 w-4" /> },
+                    { key: "Under Review",     label: "Sedang Review",       icon: <Clock className="h-4 w-4" /> },
+                    { key: "Quotation Sent",   label: "Quotation Terkirim",  icon: <Send className="h-4 w-4" /> },
+                    { key: "Confirmed",        label: "Dikonfirmasi",        icon: <CheckCircle className="h-4 w-4" /> },
+                    { key: "In Progress",      label: "Dalam Proses",        icon: <Truck className="h-4 w-4" /> },
+                    { key: "Completed",        label: "Selesai",             icon: <Star className="h-4 w-4" /> },
+                  ];
+                  const STATUS_ORDER = ORDER_STEPS.map(s => s.key);
+                  const currentIdx = STATUS_ORDER.indexOf(order.status ?? "");
+                  const isCancelled = order.status === "Cancelled";
+                  return (
+                    <div className="relative">
+                      {/* Connector line */}
+                      <div className="absolute top-5 left-5 right-5 h-0.5 bg-gray-200 z-0" style={{ marginLeft: "24px", marginRight: "24px" }} />
+                      <div className="flex justify-between relative z-10">
+                        {ORDER_STEPS.map((step, i) => {
+                          const done = !isCancelled && currentIdx >= i;
+                          const active = !isCancelled && currentIdx === i;
+                          return (
+                            <div key={step.key} className="flex flex-col items-center gap-1.5 flex-1">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all
+                                ${isCancelled ? "bg-gray-100 border-gray-200 text-gray-400" :
+                                  done ? (active ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200 scale-110" : "bg-green-500 border-green-500 text-white") :
+                                  "bg-white border-gray-200 text-gray-400"}`}>
+                                {step.icon}
+                              </div>
+                              <span className={`text-[10px] text-center font-medium leading-tight max-w-[60px] ${
+                                active ? "text-indigo-700" : done ? "text-green-700" : "text-gray-400"
+                              }`}>{step.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {isCancelled && (
+                        <div className="mt-4 flex items-center gap-2 text-red-600 text-sm font-medium">
+                          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                          Order dibatalkan
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            {/* Operational + Payment Status */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-orange-500" />
+                    Status Operasional
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { value: "pending",     label: "Menunggu Penjemputan", color: "bg-gray-100 text-gray-700",   dot: "bg-gray-400" },
+                    { value: "picking_up",  label: "Sedang Dijemput",      color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-500" },
+                    { value: "in_transit",  label: "Dalam Pengiriman",     color: "bg-blue-100 text-blue-700",   dot: "bg-blue-500" },
+                    { value: "delivered",   label: "Terkirim",             color: "bg-green-100 text-green-700",  dot: "bg-green-500" },
+                    { value: "cancelled",   label: "Dibatalkan",           color: "bg-red-100 text-red-700",     dot: "bg-red-500" },
+                  ].map(opt => {
+                    const isActive = (opStatus?.operationalStatus ?? "pending") === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        disabled={opStatusLoading}
+                        onClick={() => updateOpStatus("operationalStatus", opt.value)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-all text-left
+                          ${isActive ? `${opt.color} border-current` : "border-transparent hover:bg-gray-50"}`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isActive ? opt.dot : "bg-gray-300"}`} />
+                        {opt.label}
+                        {isActive && <CheckCircle className="h-3.5 w-3.5 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    Status Pembayaran
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { value: "unpaid",  label: "Belum Dibayar", color: "bg-red-100 text-red-700",    dot: "bg-red-500" },
+                    { value: "partial", label: "Sebagian",      color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-500" },
+                    { value: "paid",    label: "Lunas",         color: "bg-green-100 text-green-700", dot: "bg-green-500" },
+                  ].map(opt => {
+                    const isActive = (opStatus?.paymentStatus ?? "unpaid") === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        disabled={opStatusLoading}
+                        onClick={() => updateOpStatus("paymentStatus", opt.value)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-all text-left
+                          ${isActive ? `${opt.color} border-current` : "border-transparent hover:bg-gray-50"}`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isActive ? opt.dot : "bg-gray-300"}`} />
+                        {opt.label}
+                        {isActive && <CheckCircle className="h-3.5 w-3.5 ml-auto" />}
+                      </button>
+                    );
+                  })}
+
+                  {/* Summary */}
+                  <div className="mt-3 pt-3 border-t space-y-1">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Nilai Order</span>
+                      <span className="font-medium text-foreground">{idr(order.grandTotal)}</span>
+                    </div>
+                    {order.finalSellingPrice != null && (
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Harga Jual Final</span>
+                        <span className="font-semibold text-green-700">{idr(order.finalSellingPrice)}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Status Summary Card */}
+            <Card className="bg-gradient-to-r from-slate-50 to-indigo-50 border-indigo-100">
+              <CardContent className="p-4 flex flex-wrap gap-6">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Status Order</p>
+                  <Badge className={`${STATUS_COLORS[order.status] ?? "bg-gray-100 text-gray-800"} border text-xs`}>
+                    {order.status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Status Operasional</p>
+                  <Badge className={`text-xs ${
+                    opStatus?.operationalStatus === "delivered" ? "bg-green-100 text-green-700 border-green-200 border" :
+                    opStatus?.operationalStatus === "in_transit" ? "bg-blue-100 text-blue-700 border-blue-200 border" :
+                    opStatus?.operationalStatus === "picking_up" ? "bg-yellow-100 text-yellow-700 border-yellow-200 border" :
+                    opStatus?.operationalStatus === "cancelled" ? "bg-red-100 text-red-700 border-red-200 border" :
+                    "bg-gray-100 text-gray-700 border-gray-200 border"
+                  }`}>
+                    {opStatus?.operationalStatus === "delivered" ? "Terkirim" :
+                     opStatus?.operationalStatus === "in_transit" ? "Dalam Pengiriman" :
+                     opStatus?.operationalStatus === "picking_up" ? "Sedang Dijemput" :
+                     opStatus?.operationalStatus === "cancelled" ? "Dibatalkan" : "Menunggu"}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Pembayaran</p>
+                  <Badge className={`text-xs ${
+                    opStatus?.paymentStatus === "paid" ? "bg-green-100 text-green-700 border-green-200 border" :
+                    opStatus?.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-700 border-yellow-200 border" :
+                    "bg-red-100 text-red-700 border-red-200 border"
+                  }`}>
+                    {opStatus?.paymentStatus === "paid" ? "Lunas" :
+                     opStatus?.paymentStatus === "partial" ? "Sebagian" : "Belum Dibayar"}
+                  </Badge>
+                </div>
+                {order.approvedAt && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Dikonfirmasi</p>
+                    <span className="text-xs font-medium">{new Date(order.approvedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Order Dibuat</p>
+                  <span className="text-xs font-medium">{new Date(order.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ── Tab 4: Chat AI ── */}

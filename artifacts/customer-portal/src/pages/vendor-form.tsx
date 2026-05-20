@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 
@@ -43,6 +43,33 @@ interface FormData {
   currentNotes: string | null;
 }
 
+function useCountdown(targetIso: string | null | undefined) {
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!targetIso) return;
+    const target = new Date(targetIso).getTime();
+    const tick = () => setRemaining(Math.max(0, target - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [targetIso]);
+
+  return remaining;
+}
+
+function formatCountdown(ms: number) {
+  if (ms <= 0) return "EXPIRED";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}h ${h}j ${m}m`;
+  if (h > 0) return `${h}j ${m}m ${sec}d`;
+  return `${m}m ${sec}d`;
+}
+
 export default function VendorFormPage() {
   const { token } = useParams<{ token: string }>();
   const [mode, setMode] = useState<"select" | "accept" | "counter" | "reject" | "done" | null>(null);
@@ -68,6 +95,9 @@ export default function VendorFormPage() {
     enabled: !!token,
   });
 
+  const countdown = useCountdown(data?.responseDeadline);
+  const isExpired = countdown !== null && countdown <= 0;
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -90,6 +120,7 @@ export default function VendorFormPage() {
 
   async function handleSubmit() {
     if (!mode || mode === "select" || mode === "done") return;
+    if (isExpired) { setError("Batas waktu RFQ sudah berakhir."); return; }
     if (mode === "counter") {
       if (!offeredPrice || Number(offeredPrice) <= 0) { setError("Harga penawaran harus diisi"); return; }
       if (!eta) { setError("Estimasi waktu harus diisi"); return; }
@@ -198,6 +229,33 @@ export default function VendorFormPage() {
           </p>
         </div>
 
+        {/* Countdown Timer */}
+        {data.responseDeadline && countdown !== null && (
+          <div className={`rounded-2xl p-4 ${isExpired ? "bg-red-50 border border-red-300" : countdown < 3600000 ? "bg-orange-50 border border-orange-300" : "bg-amber-50 border border-amber-200"}`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-sm font-medium ${isExpired ? "text-red-700" : "text-amber-800"}`}>
+                {isExpired ? "⛔ Batas Waktu Sudah Berakhir" : "⏰ Sisa Waktu Respon"}
+              </span>
+              <span className={`font-mono font-bold text-lg ${isExpired ? "text-red-700" : countdown < 3600000 ? "text-orange-700" : "text-amber-700"}`}>
+                {isExpired ? "EXPIRED" : formatCountdown(countdown)}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Deadline: {new Date(data.responseDeadline).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+            </p>
+            {!isExpired && (
+              <div className="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${countdown < 3600000 ? "bg-orange-500" : "bg-amber-500"}`}
+                  style={{
+                    width: `${Math.min(100, (countdown / (7 * 24 * 3600000)) * 100)}%`
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* RFQ Details */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h3 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide text-blue-600">
@@ -217,21 +275,20 @@ export default function VendorFormPage() {
                 <span className="font-bold text-blue-600 text-base">{idr(data.basicPrice)}</span>
               </div>
             )}
-            {data.responseDeadline && (
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-500">Batas Waktu</span>
-                <span className="text-orange-600 font-medium">
-                  {new Date(data.responseDeadline).toLocaleString("id-ID", {
-                    dateStyle: "medium", timeStyle: "short",
-                  })}
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
+        {/* Expired notice */}
+        {isExpired && (
+          <div className="bg-red-50 border border-red-300 rounded-2xl p-5 text-center">
+            <p className="text-2xl mb-2">⛔</p>
+            <p className="font-bold text-red-700 mb-1">Batas Waktu Telah Berakhir</p>
+            <p className="text-sm text-red-600">RFQ ini sudah tidak dapat direspon. Silakan hubungi tim CST Logistics jika ada pertanyaan.</p>
+          </div>
+        )}
+
         {/* Already submitted notice */}
-        {alreadySubmitted && (
+        {!isExpired && alreadySubmitted && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm">
             <p className="font-semibold text-amber-800 mb-1">⚡ Anda sudah mengirim penawaran</p>
             <p className="text-amber-700">
@@ -246,7 +303,7 @@ export default function VendorFormPage() {
         )}
 
         {/* Action selection */}
-        {(mode === "select" || mode === null) && (
+        {!isExpired && (mode === "select" || mode === null) && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 className="font-semibold text-gray-800 mb-4">Pilih Tindakan</h3>
             <div className="space-y-3">
@@ -276,7 +333,7 @@ export default function VendorFormPage() {
         )}
 
         {/* Accept form */}
-        {mode === "accept" && (
+        {!isExpired && mode === "accept" && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center gap-2 mb-4">
               <button onClick={() => setMode("select")} className="text-gray-400 hover:text-gray-600 text-sm">← Kembali</button>
@@ -296,7 +353,7 @@ export default function VendorFormPage() {
         )}
 
         {/* Counter offer form */}
-        {mode === "counter" && (
+        {!isExpired && mode === "counter" && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center gap-2 mb-4">
               <button onClick={() => setMode("select")} className="text-gray-400 hover:text-gray-600 text-sm">← Kembali</button>
@@ -333,7 +390,7 @@ export default function VendorFormPage() {
         )}
 
         {/* Reject form */}
-        {mode === "reject" && (
+        {!isExpired && mode === "reject" && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center gap-2 mb-4">
               <button onClick={() => setMode("select")} className="text-gray-400 hover:text-gray-600 text-sm">← Kembali</button>

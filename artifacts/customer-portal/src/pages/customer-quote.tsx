@@ -16,10 +16,37 @@ type QuoteData = {
   termsConditions: string | null;
   quoteNotes: string | null;
   validUntil: string | null;
+  quotationPdfUrl?: string | null;
+  quotationNumber?: string | null;
 };
 
 const idr = (n: number | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+
+function useCountdown(targetIso: string | null | undefined) {
+  const [remaining, setRemaining] = useState<number | null>(null);
+  useEffect(() => {
+    if (!targetIso) return;
+    const target = new Date(targetIso).getTime();
+    const tick = () => setRemaining(Math.max(0, target - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [targetIso]);
+  return remaining;
+}
+
+function formatCountdown(ms: number) {
+  if (ms <= 0) return "EXPIRED";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}h ${h}j ${m}m`;
+  if (h > 0) return `${h}j ${m}m ${sec}d`;
+  return `${m}m ${sec}d`;
+}
 
 export default function CustomerQuotePage() {
   const { token } = useParams<{ token: string }>();
@@ -33,6 +60,8 @@ export default function CustomerQuotePage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const countdown = useCountdown(data?.validUntil);
 
   useEffect(() => {
     if (!token) return;
@@ -99,6 +128,9 @@ export default function CustomerQuotePage() {
     return <ErrorPage message={statusMap[data.status] ?? "Penawaran ini sudah dijawab."} type="info" />;
   }
 
+  const countdownExpired = countdown !== null && countdown <= 0;
+  const countdownUrgent = countdown !== null && countdown > 0 && countdown < 86400000; // < 1 day
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 py-10 px-4">
       <div className="max-w-lg mx-auto space-y-4">
@@ -108,7 +140,9 @@ export default function CustomerQuotePage() {
             <span className="text-3xl">📋</span>
             <div>
               <h1 className="text-xl font-bold text-slate-800">Penawaran Harga</h1>
-              <p className="text-sm text-slate-500">Nomor: {data.rfqNumber}</p>
+              <p className="text-sm text-slate-500">
+                {data.quotationNumber ? `No: ${data.quotationNumber}` : `Ref: ${data.rfqNumber}`}
+              </p>
             </div>
           </div>
           {data.quoteNotes && (
@@ -116,7 +150,43 @@ export default function CustomerQuotePage() {
               {data.quoteNotes}
             </div>
           )}
+          {/* PDF Download */}
+          {data.quotationPdfUrl && (
+            <a
+              href={data.quotationPdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              📄 Unduh Surat Penawaran (PDF)
+            </a>
+          )}
         </div>
+
+        {/* Validity Countdown */}
+        {data.validUntil && countdown !== null && (
+          <div className={`rounded-2xl p-4 ${countdownExpired ? "bg-red-50 border border-red-300" : countdownUrgent ? "bg-orange-50 border border-orange-300" : "bg-green-50 border border-green-200"}`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-sm font-medium ${countdownExpired ? "text-red-700" : countdownUrgent ? "text-orange-800" : "text-green-800"}`}>
+                {countdownExpired ? "⛔ Penawaran sudah kadaluarsa" : "⏰ Penawaran berlaku"}
+              </span>
+              <span className={`font-mono font-bold text-lg ${countdownExpired ? "text-red-700" : countdownUrgent ? "text-orange-700" : "text-green-700"}`}>
+                {countdownExpired ? "EXPIRED" : formatCountdown(countdown)}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Berlaku hingga: {new Date(data.validUntil).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+            </p>
+            {!countdownExpired && (
+              <div className="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${countdownUrgent ? "bg-orange-500" : "bg-green-500"}`}
+                  style={{ width: `${Math.min(100, (countdown / (7 * 24 * 3600000)) * 100)}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Detail */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -135,7 +205,7 @@ export default function CustomerQuotePage() {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Harga Final</span>
-              <span className="text-xl font-bold text-blue-700">{idr(data.finalCustomerPrice)}</span>
+              <span className="text-2xl font-bold text-blue-700">{idr(data.finalCustomerPrice)}</span>
             </div>
             {data.etaFinal && <Row label="Estimasi Waktu" value={data.etaFinal} />}
             {data.validUntil && (
@@ -230,7 +300,7 @@ export default function CustomerQuotePage() {
               <h2 className="text-lg font-bold text-slate-800 mb-2">Konfirmasi Persetujuan</h2>
               <p className="text-sm text-slate-600 mb-1">Anda akan menyetujui penawaran berikut:</p>
               <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm mb-4">
-                <p className="font-semibold text-green-800">{data.rfqNumber}</p>
+                <p className="font-semibold text-green-800">{data.quotationNumber ?? data.rfqNumber}</p>
                 <p className="text-green-700">{data.origin} → {data.destination}</p>
                 <p className="text-lg font-bold text-green-700 mt-1">{idr(data.finalCustomerPrice)}</p>
               </div>

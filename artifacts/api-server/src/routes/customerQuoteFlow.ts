@@ -624,3 +624,99 @@ customerOrderPublicRouter.get("/:token", async (req: Request, res: Response) => 
     return res.status(500).json({ error: "Gagal memuat status order" });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF GENERATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/logistic/rfq/:rfqId/generate-quotation-pdf  (admin)
+customerQuoteAdminRouter.post("/rfq/:rfqId/generate-quotation-pdf", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const rfqId = Number(req.params["rfqId"]);
+  if (isNaN(rfqId)) return res.status(400).json({ message: "rfqId tidak valid" });
+
+  try {
+    const { buildQuotationPdf } = await import("../lib/quotationPdf.js");
+
+    const [rfq] = await db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.id, rfqId));
+    if (!rfq) return res.status(404).json({ message: "RFQ tidak ditemukan" });
+
+    const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, rfq.orderId));
+    if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+    const [link] = await db.select().from(customerQuoteLinksTable)
+      .where(eq(customerQuoteLinksTable.rfqId, rfqId))
+      .orderBy(desc(customerQuoteLinksTable.createdAt)).limit(1);
+
+    const quotationNumber = link?.quotationNumber
+      ?? `QUO/${new Date().getFullYear()}/${String(rfqId).padStart(5, "0")}`;
+
+    const orderAny = order as any;
+
+    const pdfData = {
+      quotationNumber,
+      customerName: order.customerName ?? "Customer",
+      customerPhone: order.phone ?? null,
+      companyName: orderAny.companyName ?? null,
+      serviceType: order.shipmentType ?? "Logistik",
+      origin: order.origin ?? "—",
+      destination: order.destination ?? "—",
+      commodity: order.commodity ?? null,
+      cargoDescription: order.cargoDescription ?? null,
+      grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
+      volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
+      etaFinal: link?.etaFinal ?? orderAny.etaFinal ?? null,
+      finalCustomerPrice: link?.finalCustomerPrice
+        ? Number(link.finalCustomerPrice)
+        : order.finalSellingPrice ? Number(order.finalSellingPrice) : 0,
+      termsConditions: link?.termsConditions ?? null,
+      quoteNotes: link?.quoteNotes ?? null,
+      validUntil: link?.validUntil ?? null,
+      rfqNumber: rfq.rfqNumber,
+      orderNumber: order.orderNumber,
+    };
+
+    const pdfBuffer = buildQuotationPdf(pdfData);
+
+    // Update link with quotation number
+    if (link?.id) {
+      await db.execute(sql`
+        UPDATE customer_quote_links
+        SET quotation_number = ${quotationNumber}
+        WHERE id = ${link.id}
+      `);
+    }
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="Quotation-${quotationNumber.replace(/\//g, "-")}.pdf"`,
+      "Content-Length": String(pdfBuffer.length),
+    });
+    return res.send(pdfBuffer);
+  } catch (err) {
+    logger.error({ err }, "generate-quotation-pdf error");
+    return res.status(500).json({ message: "Gagal generate PDF" });
+  }
+});
+
+// GET /api/logistic/orders/:orderId/audit-trail  (admin)
+customerQuoteAdminRouter.get("/orders/:orderId/audit-trail", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  try {
+    const logs = await db.execute(sql`
+      SELECT * FROM activity_logs WHERE order_id = ${orderId}
+      ORDER BY created_at DESC LIMIT 100
+    `);
+    const updates = await db.select().from(orderUpdatesTable)
+      .where(eq(orderUpdatesTable.orderId, orderId))
+      .orderBy(desc(orderUpdatesTable.createdAt));
+
+    return res.json({ activityLogs: logs.rows, orderUpdates: updates });
+  } catch (err) {
+    logger.error({ err }, "audit-trail error");
+    return res.status(500).json({ message: "Gagal memuat audit trail" });
+  }
+});

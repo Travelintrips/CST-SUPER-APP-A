@@ -21,6 +21,8 @@ export const customerQuoteLinksTable = pgTable("customer_quote_links", {
   openedAt: timestamp("opened_at"),
   respondedAt: timestamp("responded_at"),
   sentAt: timestamp("sent_at").defaultNow(),
+  quotationPdfUrl: text("quotation_pdf_url"),
+  quotationNumber: text("quotation_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

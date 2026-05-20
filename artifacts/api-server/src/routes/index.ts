@@ -57,6 +57,7 @@ import {
   orderTaskPublicRouter,
   customerOrderPublicRouter,
 } from "./customerQuoteFlow";
+import { marginRulesRouter } from "./marginRules";
 
 const router: IRouter = Router();
 
@@ -119,4 +120,5 @@ router.use("/logistic", customerQuoteAdminRouter);
 router.use("/customer-quote", customerQuotePublicRouter);
 router.use("/order-task", orderTaskPublicRouter);
 router.use("/customer-order", customerOrderPublicRouter);
+router.use("/margin-rules", marginRulesRouter);
 export default router;

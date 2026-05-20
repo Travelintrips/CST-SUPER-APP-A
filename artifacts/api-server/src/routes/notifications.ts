@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
+import { registerAdminConnection, unregisterAdminConnection } from "../lib/sseManager.js";
 
 const router = Router();
 // Wrapper requireAdmin menjadi Express middleware yang benar
@@ -80,6 +81,25 @@ router.delete("/:id", async (req, res) => {
 router.delete("/", async (_req, res) => {
   await db.execute(sql`DELETE FROM admin_notifications`);
   return res.json({ ok: true });
+});
+
+// GET /api/notifications/events — SSE realtime stream
+router.get("/events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.write(": connected\n\n");
+  registerAdminConnection(res);
+  const keepAlive = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(keepAlive); }
+  }, 25_000);
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    unregisterAdminConnection(res);
+  });
 });
 
 export default router;
