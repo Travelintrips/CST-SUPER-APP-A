@@ -321,6 +321,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Overview Perusahaan", href: "/holding", icon: LayoutDashboard },
         { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2 },
         { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp },
+        { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet },
       ],
     },
 

@@ -80,6 +80,7 @@ import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
+import HoldingCashflowReportPage from "@/pages/accounting/holding-cashflow-report";
 import OrgManagementPage from "@/pages/OrgManagementPage";
 import PosKasirAdminPage from "@/pages/pos-kasir-admin";
 import PurchaseReceivePage from "@/pages/purchase/receive";
@@ -404,6 +405,7 @@ function Router() {
         {/* Holding */}
         <Route path="/holding/dashboard" component={() => <ProtectedRoute component={HoldingDashboardPage} />} />
         <Route path="/holding/pl-report" component={() => <ProtectedRoute component={HoldingPLReportPage} />} />
+        <Route path="/holding/cashflow-report" component={() => <ProtectedRoute component={HoldingCashflowReportPage} />} />
         <Route path="/holding" component={() => <ProtectedRoute component={HoldingPage} />} />
         <Route path="/org" component={() => <ProtectedRoute component={OrgManagementPage} />} />
         {/* POS Kasir Thai Tea */}
