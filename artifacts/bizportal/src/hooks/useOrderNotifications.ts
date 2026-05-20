@@ -28,6 +28,35 @@ function playNotificationChime() {
   }
 }
 
+const NOTIF_TITLES: Record<string, string> = {
+  logistic: "🚢 Order Logistik Baru",
+  portal_sales: "🛍️ Order Portal",
+  product: "📦 Order Produk",
+  sales_update: "📄 Update Sales Order",
+  logistic_status: "🔄 Update Status Logistik",
+  freight_new: "🚢 Freight Shipment Baru",
+  freight_status: "🔄 Update Status Shipment",
+  freight_stage: "📋 Update Stage Shipment",
+};
+
+function showBrowserNotification(notification: OrderNotification) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  const title = NOTIF_TITLES[notification.type] ?? "🔔 Notifikasi Baru";
+  const body = `${notification.orderNumber} — ${notification.customerName}${
+    notification.companyName ? ` (${notification.companyName})` : ""
+  }`;
+  try {
+    new Notification(title, {
+      body,
+      icon: "/bizportal/icon-192.png",
+      tag: notification.id,
+      requireInteraction: false,
+    });
+  } catch {
+    // Notification API not available in this context
+  }
+}
+
 export interface OrderNotification {
   id: string;
   type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status" | "freight_new" | "freight_status" | "freight_stage";
@@ -63,6 +92,9 @@ export function useOrderNotifications() {
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    typeof Notification !== "undefined" ? Notification.permission : "denied"
+  );
   const esRef = useRef<EventSource | null>(null);
   const onNewOrderRef = useRef<((n: OrderNotification) => void) | null>(null);
 
@@ -82,6 +114,13 @@ export function useOrderNotifications() {
     onNewOrderRef.current = fn;
   }, []);
 
+  const requestNotifPermission = useCallback(async () => {
+    if (typeof Notification === "undefined") return "denied" as NotificationPermission;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+    return result;
+  }, []);
+
   function pushNotification(notification: OrderNotification) {
     setNotifications((prev) =>
       [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
@@ -90,6 +129,7 @@ export function useOrderNotifications() {
       setLastFreightEventAt(Date.now());
     }
     playNotificationChime();
+    showBrowserNotification(notification);
     onNewOrderRef.current?.(notification);
   }
 
@@ -106,7 +146,6 @@ export function useOrderNotifications() {
         if (mounted) setConnected(true);
       });
 
-      // Portal orders (existing)
       es.addEventListener("new_order", (e: MessageEvent) => {
         if (!mounted) return;
         try {
@@ -130,7 +169,6 @@ export function useOrderNotifications() {
         }
       });
 
-      // New logistic order from customer portal ordering system
       es.addEventListener("new_logistic_order", (e: MessageEvent) => {
         if (!mounted) return;
         try {
@@ -153,7 +191,6 @@ export function useOrderNotifications() {
         }
       });
 
-      // Logistic order status change (admin action)
       es.addEventListener("logistic_order_status_changed", (e: MessageEvent) => {
         if (!mounted) return;
         try {
@@ -173,7 +210,6 @@ export function useOrderNotifications() {
         }
       });
 
-      // Sales order action (confirm, send, invoice, etc.)
       es.addEventListener("sales_order_update", (e: MessageEvent) => {
         if (!mounted) return;
         try {
@@ -194,7 +230,6 @@ export function useOrderNotifications() {
         }
       });
 
-      // New freight shipment created
       es.addEventListener("freight_shipment_created", (e: MessageEvent) => {
         if (!mounted) return;
         try {
@@ -217,7 +252,6 @@ export function useOrderNotifications() {
         }
       });
 
-      // Freight shipment status changed
       es.addEventListener("freight_shipment_status", (e: MessageEvent) => {
         if (!mounted) return;
         try {
@@ -239,7 +273,6 @@ export function useOrderNotifications() {
         }
       });
 
-      // Freight shipment stage updated
       es.addEventListener("freight_stage_update", (e: MessageEvent) => {
         if (!mounted) return;
         try {
@@ -280,5 +313,15 @@ export function useOrderNotifications() {
     };
   }, []);
 
-  return { notifications, unreadCount, connected, markAllRead, clearAll, setOnNewOrder, lastFreightEventAt };
+  return {
+    notifications,
+    unreadCount,
+    connected,
+    markAllRead,
+    clearAll,
+    setOnNewOrder,
+    lastFreightEventAt,
+    notifPermission,
+    requestNotifPermission,
+  };
 }
