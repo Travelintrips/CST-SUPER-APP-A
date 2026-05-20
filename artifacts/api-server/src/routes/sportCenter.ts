@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa, getAdminGroupWa } from "../lib/adminWa.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 
 export const sportCenterRouter = Router();
 
@@ -182,6 +183,20 @@ sportCenterRouter.post("/", async (req: Request, res: Response) => {
 
   const booking = toBooking(result.rows[0] as BookingRow);
   res.status(201).json(booking);
+
+  // Simpan ke DB + broadcast SSE realtime ke admin
+  saveAndBroadcast("new_sport_booking", {
+    type: "sport_booking",
+    orderId: booking.id,
+    orderNumber: booking.bookingCode,
+    customerName: booking.customerName,
+    companyName: null,
+    facilityName: booking.facilityName,
+    bookingDate: booking.date,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    grandTotal: booking.totalPrice,
+  }).catch(() => {});
 
   // Notifikasi WA ke admin & grup — fire-and-forget
   const msg = buildAdminBookingMessage({

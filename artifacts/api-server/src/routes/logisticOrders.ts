@@ -18,7 +18,7 @@ import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
-import { broadcastToAdmins } from "../lib/sseManager";
+import { saveAndBroadcast } from "../lib/notificationStore";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -250,7 +250,8 @@ sendLogisticOrderNotification({
     req.log.error({ err }, "autoCreateRfqAndNotifyVendors failed");
   });
 
-  broadcastToAdmins("new_logistic_order", {
+  saveAndBroadcast("new_logistic_order", {
+    type: "logistic",
     orderId: order.id,
     orderNumber,
     customerName: body.customerName,
@@ -260,7 +261,7 @@ sendLogisticOrderNotification({
     destination: body.destination,
     grandTotal: Number(body.grandTotal),
     createdAt: order.createdAt.toISOString(),
-  });
+  }).catch(() => {});
 
   return res.status(201).json({
     ...toOrder(order),
@@ -665,14 +666,15 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     sendWhatsApp(updated.phone, msg).catch(() => undefined);
   }
 
-  broadcastToAdmins("logistic_order_status_changed", {
+  saveAndBroadcast("logistic_order_status_changed", {
+    type: "logistic_status",
     orderId: updated.id,
     orderNumber: updated.orderNumber,
     customerName: updated.customerName,
     companyName: updated.companyName ?? null,
     status: updated.status,
     updatedAt: new Date().toISOString(),
-  });
+  }).catch(() => {});
 
   return res.json(toOrder(updated));
 });

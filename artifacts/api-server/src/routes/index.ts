@@ -46,6 +46,7 @@ import productBomRouter from "./productBom";
 import auditLogRouter from "./auditLog";
 import { sportCenterRouter, sportCenterPublicRouter } from "./sportCenter";
 import { sportCenterAdminRouter } from "./sportCenterAdmin";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -99,4 +100,5 @@ router.use("/audit-logs", auditLogRouter);
 router.use("/sport-center", sportCenterPublicRouter);
 router.use("/sport-center/bookings", sportCenterRouter);
 router.use("/sport-center/admin", sportCenterAdminRouter);
+router.use("/notifications", notificationsRouter);
 export default router;

@@ -1,6 +1,5 @@
 import React from "react";
 import { Router as WouterRouter, Switch, Route, Redirect } from "wouter";
-import { Router as WouterRouter, Redirect, Switch, Route } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -127,6 +126,7 @@ import SportCenterPurchaseRequestsPage from "@/pages/sport-center/purchase-reque
 import InventoryValuationPage from "@/pages/reports/inventory-valuation";
 import SportCenterSchedulePage from "@/pages/sport-center-schedule";
 import SportCenterReportPage from "@/pages/sport-center-report";
+import NotificationsPage from "@/pages/notifications";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -445,6 +445,7 @@ function Router() {
         <Route path="/sport-center/services" component={() => <ProtectedRoute component={SportCenterServicesPage} />} />
         <Route path="/sport-center/purchase-requests" component={() => <ProtectedRoute component={SportCenterPurchaseRequestsPage} />} />
         <Route path="/sport-center/reports" component={() => <ProtectedRoute component={SportCenterReportPage} />} />
+        <Route path="/notifications" component={() => <ProtectedRoute component={NotificationsPage} />} />
         {/* Legacy /expenses/* → /expense/* */}
         <Route path="/expenses" component={() => <Redirect to="/expense" />} />
         <Route path="/expenses/new" component={() => <Redirect to="/expense/new" />} />
