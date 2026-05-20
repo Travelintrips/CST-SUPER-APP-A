@@ -38,6 +38,8 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Cell,
+  PieChart,
+  Pie,
 } from "recharts";
 
 function fmt(n: number) {
@@ -516,6 +518,124 @@ export default function HoldingCashflowReportPage() {
             </Card>
 
           </div>
+        )}
+
+        {/* Donut Chart — Kontribusi per Perusahaan */}
+        {!isLoading && companies.length > 1 && companyTotals.some((t) => t.opNet !== 0) && (
+          <Card className="border-border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Kontribusi Arus Kas Operasi per Perusahaan</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Porsi masing-masing perusahaan terhadap total net arus operasi periode · {applied.from} s/d {applied.to}
+              </p>
+            </CardHeader>
+            <CardContent className="pb-5">
+              <div className="flex flex-col lg:flex-row items-center gap-6">
+                {/* Donut */}
+                <div className="shrink-0">
+                  <ResponsiveContainer width={260} height={260}>
+                    <PieChart>
+                      <Pie
+                        data={(() => {
+                          const raw = companies.map((c, i) => ({
+                            name: c.companyCode,
+                            fullName: c.companyName,
+                            value: Math.abs(companyTotals[i]?.opNet ?? 0),
+                            raw: companyTotals[i]?.opNet ?? 0,
+                            color: COMPANY_PALETTE[i % COMPANY_PALETTE.length]!.dot,
+                          })).filter((d) => d.value > 0);
+                          return raw;
+                        })()}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={72}
+                        outerRadius={110}
+                        paddingAngle={3}
+                        dataKey="value"
+                        strokeWidth={0}
+                      >
+                        {companies.map((c, i) => (
+                          <Cell
+                            key={c.companyId}
+                            fill={COMPANY_PALETTE[i % COMPANY_PALETTE.length]!.dot}
+                            fillOpacity={0.9}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0]!.payload as {
+                            name: string; fullName: string; value: number; raw: number; color: string;
+                          };
+                          const totalAbs = companyTotals.reduce((s, t) => s + Math.abs(t.opNet), 0);
+                          const pct = totalAbs > 0 ? ((d.value / totalAbs) * 100).toFixed(1) : "0";
+                          return (
+                            <div className="rounded-lg border border-border bg-popover/95 backdrop-blur-sm p-3 shadow-xl text-xs min-w-[180px]">
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                                <span className="font-semibold text-foreground">{d.name} — {d.fullName}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-muted-foreground">Net Operasi</span>
+                                <span className={`font-mono font-semibold ${d.raw >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                  {fmt(d.raw)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between gap-4 mt-1">
+                                <span className="text-muted-foreground">Kontribusi</span>
+                                <span className="font-mono font-bold text-foreground">{pct}%</span>
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Legend + stats */}
+                <div className="flex-1 w-full space-y-2">
+                  {(() => {
+                    const totalAbs = companyTotals.reduce((s, t) => s + Math.abs(t.opNet), 0);
+                    const sorted = companies
+                      .map((c, i) => ({ c, t: companyTotals[i]!, i }))
+                      .filter(({ t }) => t.opNet !== 0)
+                      .sort((a, b) => Math.abs(b.t.opNet) - Math.abs(a.t.opNet));
+                    return sorted.map(({ c, t, i }) => {
+                      const pct = totalAbs > 0 ? (Math.abs(t.opNet) / totalAbs) * 100 : 0;
+                      const pal = COMPANY_PALETTE[i % COMPANY_PALETTE.length]!;
+                      return (
+                        <div key={c.companyId} className="flex items-center gap-3">
+                          <span
+                            className={`inline-flex shrink-0 items-center justify-center rounded-md px-1.5 py-0.5 text-xs font-mono font-semibold border ${pal.bg} ${pal.text} ${pal.border}`}
+                          >
+                            {c.companyCode}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-0.5 gap-2">
+                              <span className="text-xs text-muted-foreground truncate">{c.companyName}</span>
+                              <span className={`text-xs font-mono font-semibold shrink-0 ${t.opNet >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                {fmtShort(t.opNet)}
+                              </span>
+                            </div>
+                            {/* Progress bar */}
+                            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${pct.toFixed(1)}%`, backgroundColor: pal.dot, opacity: 0.85 }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{pct.toFixed(1)}%</p>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Tabel Konsolidasi Bulanan */}
