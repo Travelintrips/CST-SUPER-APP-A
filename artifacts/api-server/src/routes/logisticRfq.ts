@@ -990,11 +990,23 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     .where(eq(suppliersTable.id, vendorId));
   if (!vendor) return res.status(404).json({ error: "Not found" });
 
-  const existing = await db.select().from(logisticOrderQuotesTable)
-    .where(and(
-      eq(logisticOrderQuotesTable.rfqId, rfq.id),
-      eq(logisticOrderQuotesTable.vendorId, vendorId),
-    ));
+  const [existing, catalogItems] = await Promise.all([
+    db.select().from(logisticOrderQuotesTable)
+      .where(and(
+        eq(logisticOrderQuotesTable.rfqId, rfq.id),
+        eq(logisticOrderQuotesTable.vendorId, vendorId),
+      )),
+    db.select().from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, vendorId), eq(vendorCatalogItemsTable.isActive, true))),
+  ]);
+
+  const vt = order.vehicleType ?? (order as any).truckType ?? null;
+  const matchingCatalog = vt
+    ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
+    : null;
+  const vendorBasePrice = matchingCatalog
+    ? Number(matchingCatalog.priceBase)
+    : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
 
   return res.json({
     rfqNumber: rfq.rfqNumber,
@@ -1004,9 +1016,12 @@ logisticRfqRouter.get("/rfq-form", rfqRateLimit, async (req: Request, res: Respo
     origin: order.origin,
     destination: order.destination,
     commodity: order.commodity ?? null,
+    cargoDescription: (order as any).cargoDescription ?? null,
     grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
     volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
     requiredDate: order.requiredDate ?? null,
+    vehicleType: vt,
+    vendorBasePrice,
     alreadySubmitted: existing.length > 0,
   });
 });

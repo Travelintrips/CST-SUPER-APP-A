@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Truck, MapPin, Package, Weight, CheckCircle2, AlertCircle, Loader2, CalendarDays, ClipboardList } from "lucide-react";
+import { Truck, MapPin, Package, Weight, CheckCircle2, AlertCircle, Loader2, CalendarDays, ClipboardList, DollarSign, FileText } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) {
@@ -14,9 +14,12 @@ interface RfqFormData {
   origin: string;
   destination: string;
   commodity: string | null;
+  cargoDescription: string | null;
   grossWeight: number | null;
   volumeCbm: number | null;
   requiredDate: string | null;
+  vehicleType: string | null;
+  vendorBasePrice: number | null;
   alreadySubmitted: boolean;
 }
 
@@ -166,11 +169,17 @@ export default function VendorQuoteFormPage() {
     );
   }
 
+  const ruteValue = (data.origin || data.destination)
+    ? `${data.origin || "-"} → ${data.destination || "-"}`
+    : null;
+
   const infoRows = [
     fmt("Jenis", data.shipmentType),
-    fmt("Rute", `${data.origin} → ${data.destination}`),
+    fmt("Rute", ruteValue),
+    fmt("Tipe Kendaraan", data.vehicleType),
     fmt("Komoditi", data.commodity),
-    fmt("Berat", data.grossWeight ? `${data.grossWeight} kg` : null),
+    fmt("Deskripsi Muatan", data.cargoDescription),
+    fmt("Berat", data.grossWeight ? `${data.grossWeight.toLocaleString("id-ID")} kg` : null),
     fmt("Volume", data.volumeCbm ? `${data.volumeCbm} CBM` : null),
     fmt("Tgl Butuh", data.requiredDate),
   ].filter(Boolean) as { label: string; value: string }[];
@@ -206,7 +215,9 @@ export default function VendorQuoteFormPage() {
                 <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
                   {label === "Jenis" && <Truck className="w-4 h-4" />}
                   {label === "Rute" && <MapPin className="w-4 h-4" />}
+                  {label === "Tipe Kendaraan" && <Truck className="w-4 h-4" />}
                   {label === "Komoditi" && <Package className="w-4 h-4" />}
+                  {label === "Deskripsi Muatan" && <FileText className="w-4 h-4" />}
                   {(label === "Berat" || label === "Volume") && <Weight className="w-4 h-4" />}
                   {label === "Tgl Butuh" && <CalendarDays className="w-4 h-4" />}
                 </div>
@@ -216,6 +227,20 @@ export default function VendorQuoteFormPage() {
                 </div>
               </div>
             ))}
+            {data.vendorBasePrice != null && (
+              <div className="flex items-start gap-3 mt-1 pt-2.5 border-t border-slate-700">
+                <div className="w-4 mt-0.5 flex-shrink-0 text-emerald-400">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Harga Referensi Vendor</p>
+                  <p className="text-sm font-bold text-emerald-400">
+                    Rp {Math.round(data.vendorBasePrice).toLocaleString("id-ID")}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">Berdasarkan katalog vendor — dapat disesuaikan</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
