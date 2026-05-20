@@ -57,6 +57,7 @@ import {
   CalendarDays,
   Dumbbell,
   Search,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -81,6 +82,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { useCompany } from "@/contexts/CompanyContext";
@@ -130,6 +132,7 @@ export function AppShell({ children }: AppShellProps) {
       staleTime: Infinity,
     },
   });
+  const { unreadCount } = useOrderNotificationsContext();
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -153,6 +156,15 @@ export function AppShell({ children }: AppShellProps) {
       href: "/pos-kasir",
       icon: Calculator,
       roles: ["kasir", "manager", "admin", "owner", "pos"],
+    },
+
+    // ── NOTIFIKASI ────────────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Notifikasi",
+      href: "/notifications",
+      icon: Bell,
+      roles: ["admin", "owner"],
     },
 
     // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
@@ -434,7 +446,7 @@ export function AppShell({ children }: AppShellProps) {
 
   // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
   const MAIN_PATHS = [
-    "/dashboard", "/pos-kasir", "/products", "/pos-inventory",
+    "/dashboard", "/pos-kasir", "/notifications", "/products", "/pos-inventory",
     "/users", "/reports", "/settings",
   ];
   const mainNav = filteredNav.filter((item) => {
@@ -483,6 +495,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const renderNavItem = (item: NavItem) => {
     if (item.type === "flat") {
+      const isNotif = item.href === "/notifications";
       return (
         <SidebarMenuItem key={item.href}>
           <SidebarMenuButton
@@ -492,7 +505,12 @@ export function AppShell({ children }: AppShellProps) {
           >
             <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
               <item.icon size={18} />
-              <span>{getNavTitle(item.titleKey)}</span>
+              <span className="flex-1">{getNavTitle(item.titleKey)}</span>
+              {isNotif && unreadCount > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
