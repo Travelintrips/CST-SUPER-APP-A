@@ -502,7 +502,8 @@ router.patch("/orders/:id/pay", async (req, res) => {
 
   const [order] = await db.select().from(posOrdersTable).where(eq(posOrdersTable.id, id));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
-  if (order.cashierId !== cashier.id) return res.status(403).json({ message: "Bukan order Anda" });
+  // QR orders (cashierId = null) boleh diproses kasir manapun dari cabang yang sama
+  if (order.cashierId !== null && order.cashierId !== cashier.id) return res.status(403).json({ message: "Bukan order Anda" });
   // Validasi branch: order harus dari cabang yang sama dengan kasir
   if (cashier.branchId && order.branchId && order.branchId !== cashier.branchId) {
     return res.status(403).json({ message: "Order bukan dari cabang Anda" });
@@ -1284,6 +1285,38 @@ router.get("/admin/notification-logs", async (req, res) => {
     .limit(limit);
 
   return res.json(rows);
+});
+
+// GET /api/pos-kasir/orders/open — semua order open untuk branch kasir (termasuk QR orders)
+router.get("/orders/open", async (req, res) => {
+  const cashier = await requireCashierAuth(req, res);
+  if (!cashier) return;
+  if (!cashier.branchId) return res.json([]);
+  const result = await db.execute(sql`
+    SELECT
+      o.id, o.order_number, o.status, o.subtotal, o.discount, o.total,
+      o.note, o.table_number, o.source, o.customer_note, o.created_at,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id',          i.id,
+            'productId',   i.product_id,
+            'productName', i.product_name,
+            'price',       i.price,
+            'qty',         i.qty,
+            'subtotal',    i.subtotal
+          ) ORDER BY i.id
+        ) FILTER (WHERE i.id IS NOT NULL),
+        '[]'::json
+      ) AS items
+    FROM pos_orders o
+    LEFT JOIN pos_order_items i ON i.order_id = o.id
+    WHERE o.branch_id = ${cashier.branchId}
+      AND o.status = 'open'
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+  `);
+  return res.json(result.rows);
 });
 
 export default router;

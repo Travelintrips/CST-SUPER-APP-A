@@ -22,11 +22,7 @@ args = "POS"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Sport Center"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "BizPortal"
+args = "artifacts/qr-menu: web"
 
 [[workflows.workflow]]
 name = "POS"
@@ -40,28 +36,16 @@ task = "shell.exec"
 args = "bash start-pos-kasir.sh"
 
 [[workflows.workflow]]
-name = "Sport Center"
+name = "artifacts/qr-menu: web"
 author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/qr-menu run dev"
+waitForPort = 3003
 
 [workflows.workflow.metadata]
 outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
-waitForPort = 3002
-
-[[workflows.workflow]]
-name = "BizPortal"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash start-all.sh"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -160,3 +144,7 @@ externalPort = 5173
 [[ports]]
 localPort = 23435
 externalPort = 8081
+
+[[ports]]
+localPort = 3003
+externalPort = 3003

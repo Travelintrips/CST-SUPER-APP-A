@@ -48,6 +48,7 @@ import { sportCenterRouter, sportCenterPublicRouter } from "./sportCenter";
 import { sportCenterAdminRouter } from "./sportCenterAdmin";
 import navPreferencesRouter from "./navPreferences";
 import notificationsRouter from "./notifications";
+import qrMenuRouter from "./qrMenu";
 
 const router: IRouter = Router();
 
@@ -103,4 +104,5 @@ router.use("/sport-center/bookings", sportCenterRouter);
 router.use("/sport-center/admin", sportCenterAdminRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
+router.use("/qr-menu", qrMenuRouter);
 export default router;

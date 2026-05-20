@@ -30,6 +30,7 @@ import { runSportCenterMigration } from "./lib/sportCenterMigration";
 import { runNavPreferencesMigration } from "./lib/navPreferencesMigration";
 import { runNotificationLogMigration } from "./lib/notificationLogMigration";
 import { runAdminNotificationsMigration } from "./lib/adminNotificationsMigration";
+import { runQrMenuMigration } from "./lib/qrMenuMigration";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -183,6 +184,7 @@ async function startServer() {
     .then(() => runWithRetry("Notification log migration", runNotificationLogMigration))
     .then(() => runWithRetry("Admin notifications migration", runAdminNotificationsMigration))
     .then(() => runWithRetry("Nav preferences migration", runNavPreferencesMigration))
+    .then(() => runWithRetry("QR menu migration", runQrMenuMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))
