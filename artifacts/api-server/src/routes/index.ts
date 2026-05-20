@@ -58,7 +58,7 @@ import {
   customerOrderPublicRouter,
 } from "./customerQuoteFlow";
 
-port { vendorPerformanceRouter } from "./vendorPerformance";
+import { vendorPerformanceRouter } from "./vendorPerformance";
 import { internalTasksRouter } from "./internalTasks";
 import { podOcrRouter } from "./podOcr";
 import { marginRulesRouter } from "./marginRules";

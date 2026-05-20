@@ -8,7 +8,7 @@ import {
   suppliersTable,
   driverJobsTable,
   driverJobLogsTable,
-  driverPhotosTab
+  driverPhotosTable,
   logisticOrderRfqsTable,
   driverLocationsTable,
 } from "@workspace/db";
