@@ -77,6 +77,7 @@ import ExpenseCategoriesPage from "@/pages/expense/categories";
 import ExpenseReportsPage from "@/pages/expense/reports";
 import PortalProductOrdersPage from "@/pages/portal-product-orders";
 import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
+import PortalCustomersPage from "@/pages/portal-customers";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
@@ -303,6 +304,7 @@ function Router() {
         <Route path="/logistics/freight/:id/bl" component={() => <ProtectedRoute component={LogisticsFreightBLPage} />} />
         <Route path="/logistics/freight/:id" component={() => <ProtectedRoute component={LogisticsFreightDetailPage} />} />
         <Route path="/logistics/portal-orders" component={() => <ProtectedRoute component={LogisticsPortalOrdersPage} />} />
+        <Route path="/portal/customers" component={() => <ProtectedRoute component={PortalCustomersPage} />} />
         <Route path="/logistics/portal-orders/:id" component={() => <ProtectedRoute component={LogisticsPortalOrderDetailPage} />} />
         <Route path="/logistics/drivers" component={() => <ProtectedRoute component={LogisticsDriversPage} />} />
         <Route path="/logistics/drivers/:id/performance" component={() => <ProtectedRoute component={LogisticsDriverPerformancePage} />} />

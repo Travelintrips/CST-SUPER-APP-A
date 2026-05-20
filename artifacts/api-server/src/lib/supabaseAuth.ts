@@ -118,6 +118,17 @@ export async function requirePortalAuth(req: Request, res: Response, next: NextF
 }
 
 export async function requirePortalAdmin(req: Request, res: Response, next: NextFunction) {
+  // Allow BizPortal internal staff session (cookie-based) as admin too
+  if (req.isAuthenticated && req.isAuthenticated() && (req as Request & { isInternalSession?: boolean }).isInternalSession) {
+    const u = req.user as { id?: string; role?: string | null } | undefined;
+    if (u && (u.role === "admin" || u.role === "owner" || u.role === "staff" || u.role === "manager")) {
+      (req as PortalAuthReq).portalCustomerId = 0;
+      (req as PortalAuthReq).portalRole = "admin";
+      next();
+      return;
+    }
+  }
+
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     res.status(401).json({ message: "Unauthorized" });

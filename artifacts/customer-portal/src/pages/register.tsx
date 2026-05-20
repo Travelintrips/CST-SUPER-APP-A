@@ -160,9 +160,8 @@ export default function Register() {
       }
       setAuthToken(json.token);
       setPortalProfile({ customerId: json.user.id, role: json.user.role, name: json.user.name, email: json.user.email });
-      if (returnTo) setLocation(returnTo);
-      else if (json.user.role === "vendor") setLocation("/vendor-dashboard");
-      else setLocation("/dashboard");
+      // WA-registered users: force complete profile (KTP/alamat/dll) sebelum lanjut
+      setLocation("/onboarding");
     } catch {
       setErrorMsg("Gagal menghubungi server.");
     }

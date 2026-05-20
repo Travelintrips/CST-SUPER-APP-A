@@ -2232,6 +2232,89 @@ router.get("/admin/approvals/stats", requirePortalAdmin, async (_req, res): Prom
   res.json(stats);
 });
 
+// GET /api/portal/admin/customers — list all portal customers (with onboarding status)
+router.get("/admin/customers", requirePortalAdmin, async (req, res): Promise<void> => {
+  const { role, q } = req.query;
+  const conds = [];
+  if (role) conds.push(eq(portalCustomersTable.role, String(role)));
+
+  const rows = await db
+    .select({
+      id: portalCustomersTable.id,
+      name: portalCustomersTable.name,
+      email: portalCustomersTable.email,
+      phone: portalCustomersTable.phone,
+      company: portalCustomersTable.company,
+      role: portalCustomersTable.role,
+      oauthProvider: portalCustomersTable.oauthProvider,
+      createdAt: portalCustomersTable.createdAt,
+      profileStatus: userProfilesTable.status,
+      profileAccountType: userProfilesTable.accountType,
+      profileFullName: userProfilesTable.fullName,
+      profileAddress: userProfilesTable.address,
+    })
+    .from(portalCustomersTable)
+    .leftJoin(userProfilesTable, eq(userProfilesTable.customerId, portalCustomersTable.id))
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(portalCustomersTable.createdAt));
+
+  const search = q ? String(q).toLowerCase().trim() : "";
+  const filtered = search
+    ? rows.filter((r) =>
+        (r.name ?? "").toLowerCase().includes(search) ||
+        (r.email ?? "").toLowerCase().includes(search) ||
+        (r.phone ?? "").toLowerCase().includes(search) ||
+        (r.company ?? "").toLowerCase().includes(search))
+    : rows;
+
+  // Derive registration source: WA (email ends with @wa.local), OAuth, or email/password
+  const enriched = filtered.map((r) => {
+    let source: "wa" | "oauth" | "email" = "email";
+    if (r.email && r.email.endsWith("@wa.local")) source = "wa";
+    else if (r.oauthProvider) source = "oauth";
+    const profileState = r.profileStatus ?? "not_started";
+    return {
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      company: r.company,
+      role: r.role,
+      source,
+      createdAt: r.createdAt,
+      profileStatus: profileState,
+      profileAccountType: r.profileAccountType,
+      profileFullName: r.profileFullName,
+      profileAddress: r.profileAddress,
+    };
+  });
+
+  res.json({ items: enriched, total: enriched.length });
+});
+
+// GET /api/portal/admin/customers/stats — quick stats
+router.get("/admin/customers/stats", requirePortalAdmin, async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: portalCustomersTable.id,
+      role: portalCustomersTable.role,
+      email: portalCustomersTable.email,
+      profileStatus: userProfilesTable.status,
+    })
+    .from(portalCustomersTable)
+    .leftJoin(userProfilesTable, eq(userProfilesTable.customerId, portalCustomersTable.id));
+  const stats = {
+    total: rows.length,
+    wa: rows.filter((r) => r.email?.endsWith("@wa.local")).length,
+    customer: rows.filter((r) => r.role === "customer").length,
+    vendor: rows.filter((r) => r.role === "vendor").length,
+    profileIncomplete: rows.filter((r) => !r.profileStatus || r.profileStatus === "incomplete" || r.profileStatus === "not_started").length,
+    profilePending: rows.filter((r) => r.profileStatus === "pending").length,
+    profileActive: rows.filter((r) => r.profileStatus === "active").length,
+  };
+  res.json(stats);
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // CALCULATOR RATES
 // ════════════════════════════════════════════════════════════════════════════
