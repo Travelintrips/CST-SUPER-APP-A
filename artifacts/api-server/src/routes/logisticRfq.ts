@@ -8,6 +8,7 @@ import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { sendVendorWhatsApp } from "../lib/vendorQuoteWa.js";
+import { generateShortLink } from "../lib/shortLink.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
@@ -145,8 +146,13 @@ export async function autoCreateRfqAndNotifyVendors(
         markupPercentage: "20",
       } as any);
 
-      const confirmUrl = getVendorConfirmUrl(orderId, vendorToken);
-      const msg = buildTruckingRfqWaMessage(order, rfqNumber, vendor.name, confirmUrl, confirmUrl + "&reject=1", vendorBasePrice);
+      const confirmLongUrl = getVendorConfirmUrl(orderId, vendorToken);
+      const rejectLongUrl = confirmLongUrl + "&reject=1";
+      const [confirmUrl, rejectUrl] = await Promise.all([
+        generateShortLink(confirmLongUrl, { context: "vendor_confirm", refType: "rfq", refId: rfqNumber }),
+        generateShortLink(rejectLongUrl, { context: "vendor_confirm_reject", refType: "rfq", refId: rfqNumber }),
+      ]);
+      const msg = buildTruckingRfqWaMessage(order, rfqNumber, vendor.name, confirmUrl, rejectUrl, vendorBasePrice);
       sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "autoRFQ trucking WA vendor failed")
       );

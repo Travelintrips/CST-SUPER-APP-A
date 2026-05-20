@@ -5,6 +5,7 @@ import { getAdminWa, getAdminGroupWa } from "./adminWa";
 import { getPreferredDomain } from "./domain";
 import { sendMail, isSmtpConfigured } from "./mailer";
 import { logger } from "./logger";
+import { generateShortLink } from "./shortLink";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admcst001@gmail.com";
 
@@ -169,6 +170,7 @@ function getVendorResponseUrl(orderNumber: string): string {
 function buildTruckingVendorWaMessage(
   order: LogisticOrderData,
   vendorName: string,
+  responseUrl: string,
   contractRate?: number | null,
 ): string {
   const pickupDate = order.requiredDate ? formatISODate(order.requiredDate) : "";
@@ -184,8 +186,6 @@ function buildTruckingVendorWaMessage(
   const contractRateStr = contractRate
     ? `Rp ${Math.round(contractRate).toLocaleString("id-ID")}`
     : null;
-
-  const responseUrl = getVendorResponseUrl(order.orderNumber);
 
   return (
     `🚛 *TRUCKING REQUEST — CST LOGISTICS*\n` +
@@ -441,8 +441,12 @@ async function notifyVendors(order: LogisticOrderData): Promise<void> {
     }
 
     if (vendor.phone) {
+      const longResponseUrl = getVendorResponseUrl(order.orderNumber);
+      const responseUrl = isTrucking
+        ? await generateShortLink(longResponseUrl, { context: "vendor_response", refType: "order", refId: order.orderNumber })
+        : longResponseUrl;
       const msg = isTrucking
-        ? buildTruckingVendorWaMessage(order, vendor.name, contractRate)
+        ? buildTruckingVendorWaMessage(order, vendor.name, responseUrl, contractRate)
         : buildVendorWaMessage(order, vendor.name);
       sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA vendor notification failed")
