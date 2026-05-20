@@ -54,6 +54,7 @@ import KasirPage from "@/pages/kasir";
 import MenuBoardPage from "@/pages/menu-board";
 import OnboardingPage from "@/pages/onboarding";
 import PendingApprovalPage from "@/pages/pending-approval";
+import VendorMiniFormPage from "@/pages/vendor-mini-form";
 
 const queryClient = new QueryClient();
 
@@ -77,6 +78,7 @@ if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
 const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval", "/vendor-form"]; // [TRUCKING-FIX] [MULTI-MODE]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -178,6 +180,7 @@ function AppShell() {
       <Route path="/menu-board" component={MenuBoardPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/pending-approval" component={PendingApprovalPage} />
+      <Route path="/vendor-form/:token" component={VendorMiniFormPage} />
       <Route path="/approve/:orderNumber" component={ApprovePage} />
       <Route path="/confirm/:token" component={ConfirmPage} />
       <Route component={NotFound} />

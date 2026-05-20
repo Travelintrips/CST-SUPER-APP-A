@@ -132,6 +132,7 @@ import InventoryValuationPage from "@/pages/reports/inventory-valuation";
 import SportCenterSchedulePage from "@/pages/sport-center-schedule";
 import SportCenterReportPage from "@/pages/sport-center-report";
 import NotificationsPage from "@/pages/notifications";
+import VendorFormsPage from "@/pages/purchase/vendor-forms";
 
 
 const queryClient = new QueryClient({
@@ -347,6 +348,7 @@ function Router() {
         <Route path="/purchase/orders/:id" component={() => <ProtectedRoute component={PurchaseDocumentEditorPage} />} />
         <Route path="/purchase/vendors" component={() => <ProtectedRoute component={VendorsPage} />} />
         <Route path="/purchase/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
+        <Route path="/purchase/vendor-forms" component={() => <ProtectedRoute component={VendorFormsPage} />} />
         <Route path="/purchase/bills" component={() => <ProtectedRoute component={PurchaseBillsPage} />} />
         {/* Purchase Workflow */}
         <Route path="/purchase/pr" component={() => <ProtectedRoute component={PurchaseRequestListPage} />} />
