@@ -48,4 +48,5 @@ export * from "./productBom";
 export * from "./posAccess";
 export * from "./sportCenter";
 export * from "./notificationLogs";
+export * from "./shortLinks";
 

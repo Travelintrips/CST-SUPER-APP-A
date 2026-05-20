@@ -7,6 +7,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { logger } from "../lib/logger.js";
 import { getPreferredDomain } from "../lib/domain.js";
+import { sendVendorWhatsApp } from "../lib/vendorQuoteWa.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 
@@ -148,8 +149,15 @@ export async function autoCreateRfqAndNotifyVendors(
         .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
       const orderToken = orderTokenRow?.publicRfqToken ?? "";
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken);
-      const msg = buildRfqWaMessage(order, rfqNumber, vendor.name, formUrl, vendorBasePrice);
-      sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
+      sendVendorWhatsApp({
+        vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
+        rfqNumber, orderId, orderNumber: order.orderNumber, longUrl: formUrl,
+        origin: order.origin, destination: order.destination,
+        commodity: order.commodity, grossWeight: order.grossWeight,
+        volumeCbm: order.volumeCbm, requiredDate: order.requiredDate,
+        notes: order.notes, vendorBasePrice, createdAt: order.createdAt,
+        jamOrder: order.jamOrder,
+      }).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "autoRFQ WA vendor failed")
       );
     }
@@ -764,8 +772,15 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
         : (catalogItems[0] ? Number(catalogItems[0].priceBase) : null);
 
       const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken2);
-      const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl, vendorBasePrice);
-      sendWhatsApp(vendor.phone, msg).catch((err: unknown) =>
+      sendVendorWhatsApp({
+        vendorPhone: vendor.phone, vendorName: vendor.name, vendorId: vendor.id,
+        rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
+        origin: orderData.origin, destination: orderData.destination,
+        vehicleType: vehicleType ?? null, commodity: orderData.commodity,
+        grossWeight: orderData.grossWeight, volumeCbm: orderData.volumeCbm,
+        requiredDate: orderData.requiredDate, notes: orderData.notes,
+        vendorBasePrice, createdAt: orderData.createdAt, jamOrder: orderData.jamOrder,
+      }).catch((err: unknown) =>
         logger.error({ err, vendorId: vendor.id }, "WA RFQ send failed")
       );
     }
@@ -1059,8 +1074,15 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
       .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
     const vendorBasePrice = catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
     const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken3);
-    const msg = buildRfqWaMessage(orderData, rfqNumber, vendor.name, formUrl, vendorBasePrice);
-    sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
+    sendVendorWhatsApp({
+      vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
+      rfqNumber, orderId, orderNumber: orderData.orderNumber, longUrl: formUrl,
+      origin: orderData.origin, destination: orderData.destination,
+      commodity: orderData.commodity, grossWeight: orderData.grossWeight,
+      volumeCbm: orderData.volumeCbm, requiredDate: orderData.requiredDate,
+      notes: orderData.notes, vendorBasePrice, createdAt: orderData.createdAt,
+      jamOrder: orderData.jamOrder,
+    }).catch((err: unknown) =>
       logger.error({ err, vendorId: vendor.id }, "manualRFQ WA vendor failed")
     );
   }

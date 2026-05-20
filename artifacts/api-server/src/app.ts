@@ -9,6 +9,7 @@ import { pinoHttp } from "pino-http";
 import router from "./routes";
 import authRouter from "./routes/auth";
 import companiesRouter from "./routes/companies";
+import { shortLinkRedirectRouter } from "./routes/shortLinkRedirect";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { bearerRateLimiter } from "./middlewares/bearerRateLimiter";
 import { logger } from "./lib/logger";
@@ -187,6 +188,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+app.use(shortLinkRedirectRouter);
 app.use("/api/companies", companiesRouter);
 app.use("/api", router);
 
