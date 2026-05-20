@@ -5,7 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, RefreshCw, Navigation } from "lucide-react";
+import { MapPin, RefreshCw, Navigation, AlertTriangle } from "lucide-react";
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -27,6 +27,18 @@ type GpsPoint = {
 type LocationsResponse = {
   locations: GpsPoint[];
   total: number;
+};
+
+type GeofenceAlert = {
+  id: number;
+  order_id: number;
+  actor_name: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+type GeofenceAlertsResponse = {
+  alerts: GeofenceAlert[];
 };
 
 const CHECKPOINT_LABELS: Record<string, string> = {
@@ -84,7 +96,19 @@ export default function GpsTrackingPanel({ orderId, orderNumber }: GpsTrackingPa
     staleTime: 25_000,
   });
 
+  const { data: alertsData, refetch: refetchAlerts } = useQuery<GeofenceAlertsResponse>({
+    queryKey: ["order-geofence-alerts", orderId],
+    queryFn: () => fetch(`/api/logistic/orders/${orderId}/geofence-alerts`).then(r => r.json()),
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+  });
+
   const locations = data?.locations ?? [];
+  const alerts = alertsData?.alerts ?? [];
+  const hasAlerts = alerts.length > 0;
+
+  const THIRTY_MIN_MS = 30 * 60 * 1000;
+  const recentAlert = alerts.find(a => Date.now() - new Date(a.created_at).getTime() < THIRTY_MIN_MS);
 
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return;
@@ -180,7 +204,13 @@ export default function GpsTrackingPanel({ orderId, orderNumber }: GpsTrackingPa
             <MapPin className="w-4 h-4 text-emerald-500" />
             Pelacakan GPS — {orderNumber}
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {hasAlerts && (
+              <Badge className="bg-red-50 text-red-700 border-red-200 gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {alerts.length} geofence alert
+              </Badge>
+            )}
             {locations.length > 0 && (
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
                 <Navigation className="w-3 h-3" />
@@ -190,7 +220,7 @@ export default function GpsTrackingPanel({ orderId, orderNumber }: GpsTrackingPa
             {lastUpdated && (
               <span className="text-xs text-slate-400">Diperbarui {lastUpdated}</span>
             )}
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => refetch()} disabled={isLoading}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { void refetch(); void refetchAlerts(); }} disabled={isLoading}>
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
             {locations.length > 1 && (
@@ -200,6 +230,17 @@ export default function GpsTrackingPanel({ orderId, orderNumber }: GpsTrackingPa
             )}
           </div>
         </div>
+
+        {recentAlert && (
+          <div className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+            <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs font-semibold text-red-700">Geofence Alert Aktif</p>
+              <p className="text-xs text-red-600">{recentAlert.notes}</p>
+              <p className="text-xs text-red-400 mt-0.5">{fmtTime(recentAlert.created_at)}</p>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="p-0">
         {isLoading ? (
@@ -265,6 +306,25 @@ export default function GpsTrackingPanel({ orderId, orderNumber }: GpsTrackingPa
                 </div>
               </div>
             </div>
+
+            {hasAlerts && (
+              <div className="border-t border-red-100 bg-red-50/40">
+                <div className="px-4 py-3">
+                  <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Riwayat Geofence Alert ({alerts.length})
+                  </p>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {alerts.map(a => (
+                      <div key={a.id} className="text-xs bg-white border border-red-100 rounded-md px-2.5 py-1.5">
+                        <p className="text-red-700 font-medium">{a.notes}</p>
+                        <p className="text-slate-400 mt-0.5">{fmtTime(a.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

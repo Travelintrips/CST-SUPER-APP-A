@@ -13,6 +13,7 @@ import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
 import { getPreferredDomain } from "../lib/domain.js";
 import { logger } from "../lib/logger.js";
+import { checkOrderGeofence } from "../lib/orderGeofenceChecker.js";
 
 const tok = () => randomBytes(24).toString("hex");
 const fmtRp = (n: number | null | undefined) =>
@@ -212,7 +213,8 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
 
     // Fetch extra columns added via migration (not in Drizzle schema)
     const extraRows = await db.execute(sql`
-      SELECT customer_quote_status, eta_final, terms_conditions, quote_notes, vendor_cost, order_margin
+      SELECT customer_quote_status, eta_final, terms_conditions, quote_notes, vendor_cost, order_margin,
+        geofence_enabled, geofence_radius_km
       FROM logistic_orders WHERE id = ${orderId}
     `);
     const extra = (extraRows as any).rows?.[0] ?? (extraRows as any)[0] ?? {};
@@ -224,6 +226,8 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
       quoteNotes: extra.quote_notes ?? null,
       vendorCost: extra.vendor_cost ?? null,
       orderMargin: extra.order_margin ?? null,
+      geofenceEnabled: extra.geofence_enabled ?? true,
+      geofenceRadiusKm: extra.geofence_radius_km ?? 75,
     };
 
     const [vendor] = order.approvedVendorId
@@ -262,6 +266,53 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
   } catch (err) {
     logger.error({ err }, "order-detail error");
     return res.status(500).json({ message: "Gagal memuat detail order" });
+  }
+});
+
+// PATCH /api/logistic/orders/:orderId/geofence  (admin update geofence config)
+customerQuoteAdminRouter.patch("/orders/:orderId/geofence", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  const { geofenceEnabled, geofenceRadiusKm } = req.body as { geofenceEnabled?: boolean; geofenceRadiusKm?: number };
+
+  try {
+    await db.execute(sql`
+      UPDATE logistic_orders
+      SET
+        geofence_enabled = COALESCE(${geofenceEnabled ?? null}::boolean, geofence_enabled),
+        geofence_radius_km = COALESCE(${geofenceRadiusKm != null ? Math.max(1, Math.round(geofenceRadiusKm)) : null}::integer, geofence_radius_km)
+      WHERE id = ${orderId}
+    `);
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "update-geofence-config error");
+    return res.status(500).json({ message: "Gagal update geofence config" });
+  }
+});
+
+// GET /api/logistic/orders/:orderId/geofence-alerts  (admin — recent geofence alerts)
+customerQuoteAdminRouter.get("/orders/:orderId/geofence-alerts", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = Number(req.params["orderId"]);
+  if (isNaN(orderId)) return res.status(400).json({ message: "orderId tidak valid" });
+
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, order_id, actor_name, notes, created_at
+      FROM order_updates
+      WHERE order_id = ${orderId} AND actor_type = 'geofence_alert'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+    const alerts = ((rows as any).rows ?? rows) as Array<{
+      id: number; order_id: number; actor_name: string | null; notes: string | null; created_at: string;
+    }>;
+    return res.json({ alerts });
+  } catch (err) {
+    logger.error({ err }, "geofence-alerts fetch error");
+    return res.status(500).json({ message: "Gagal memuat geofence alerts" });
   }
 });
 
@@ -552,6 +603,8 @@ orderTaskPublicRouter.post("/:token/location", async (req: Request, res: Respons
       accuracy: accuracy != null ? String(accuracy) : null,
       checkpointType: "order_task",
     });
+
+    void checkOrderGeofence(link.orderId, lat, lng, link.label ?? "Vendor/Driver");
 
     return res.json({ ok: true });
   } catch (err) {

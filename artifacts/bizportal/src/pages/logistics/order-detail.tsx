@@ -15,9 +15,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
-  Package, Truck, User, ClipboardList, Clock,
+  Package, Truck, User, ClipboardList, Clock, ShieldAlert,
 } from "lucide-react";
 import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 
