@@ -46,6 +46,7 @@ import productBomRouter from "./productBom";
 import auditLogRouter from "./auditLog";
 import { sportCenterRouter, sportCenterPublicRouter } from "./sportCenter";
 import { sportCenterAdminRouter } from "./sportCenterAdmin";
+import navPreferencesRouter from "./navPreferences";
 import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
@@ -101,4 +102,5 @@ router.use("/sport-center", sportCenterPublicRouter);
 router.use("/sport-center/bookings", sportCenterRouter);
 router.use("/sport-center/admin", sportCenterAdminRouter);
 router.use("/notifications", notificationsRouter);
+router.use("/nav-preferences", navPreferencesRouter);
 export default router;

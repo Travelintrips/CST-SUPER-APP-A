@@ -27,6 +27,7 @@ import { runOrgRoleMigration } from "./lib/orgRoleMigration";
 import { runUserRoleMigration } from "./lib/userRoleMigration";
 import { runAuditLogMigration } from "./lib/auditLogMigration";
 import { runSportCenterMigration } from "./lib/sportCenterMigration";
+import { runNavPreferencesMigration } from "./lib/navPreferencesMigration";
 import { runNotificationLogMigration } from "./lib/notificationLogMigration";
 import { runAdminNotificationsMigration } from "./lib/adminNotificationsMigration";
 import { db } from "@workspace/db";
@@ -181,6 +182,7 @@ async function startServer() {
     .then(() => runWithRetry("Sport Center migration", runSportCenterMigration))
     .then(() => runWithRetry("Notification log migration", runNotificationLogMigration))
     .then(() => runWithRetry("Admin notifications migration", runAdminNotificationsMigration))
+    .then(() => runWithRetry("Nav preferences migration", runNavPreferencesMigration))
     .then(() => enableRealtimeTables().catch((err) => {
       logger.warn({ err }, "Supabase Realtime table enable failed (non-fatal)");
     }))

@@ -59,6 +59,9 @@ import {
   Dumbbell,
   Search,
   Bell,
+  Eye,
+  EyeOff,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -87,6 +90,8 @@ import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsConte
 import { useLanguage } from "@/contexts/LanguageContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { useCompany } from "@/contexts/CompanyContext";
+import { cn } from "@/lib/utils";
+import { useNavPreferences } from "@/hooks/useNavPreferences";
 
 interface AppShellProps {
   children: ReactNode;
@@ -418,6 +423,9 @@ export function AppShell({ children }: AppShellProps) {
 
   const customRolePermissions = (dbUser as any)?.customRolePermissions as string[] | null | undefined;
 
+  const { hiddenItems, toggle: toggleHidden, reset: resetHidden } = useNavPreferences();
+  const [customizeMode, setCustomizeMode] = useState(false);
+
   const filteredNav = navItems.filter((item) => {
     if (!dbUser?.role) return false;
 
@@ -450,16 +458,24 @@ export function AppShell({ children }: AppShellProps) {
     return item.roles.includes(dbUser.role);
   });
 
+  // Per-user hidden items filter (bypass in customize mode to show all)
+  const visibleNav = customizeMode
+    ? filteredNav
+    : filteredNav.filter((item) => {
+        const key = item.type === "group" ? item.basePath : item.href;
+        return !hiddenItems.includes(key);
+      });
+
   // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
   const MAIN_PATHS = [
     "/dashboard", "/pos-kasir", "/notifications", "/products", "/pos-inventory",
     "/users", "/reports", "/settings",
   ];
-  const mainNav = filteredNav.filter((item) => {
+  const mainNav = visibleNav.filter((item) => {
     const p = item.type === "group" ? item.basePath : item.href;
     return MAIN_PATHS.includes(p) || p === "/pos-inventory/branches";
   });
-  const erpNav = filteredNav.filter((item) => {
+  const erpNav = visibleNav.filter((item) => {
     const p = item.type === "group" ? item.basePath : item.href;
     return !MAIN_PATHS.includes(p) && p !== "/pos-inventory/branches";
   });
@@ -523,25 +539,40 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const renderNavItem = (item: NavItem) => {
+    const itemKey = item.type === "group" ? item.basePath : item.href;
+    const isHidden = hiddenItems.includes(itemKey);
+
     if (item.type === "flat") {
       const isNotif = item.href === "/notifications";
       return (
-        <SidebarMenuItem key={item.href}>
-          <SidebarMenuButton
-            asChild
-            isActive={location === item.href || location.startsWith(`${item.href}/`)}
-            tooltip={getNavTitle(item.titleKey)}
-          >
-            <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
-              <item.icon size={18} />
-              <span className="flex-1">{getNavTitle(item.titleKey)}</span>
-              {isNotif && unreadCount > 0 && (
-                <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </Link>
-          </SidebarMenuButton>
+        <SidebarMenuItem key={item.href} className={cn(customizeMode && isHidden && "opacity-40")}>
+          <div className="flex items-center">
+            <SidebarMenuButton
+              asChild
+              isActive={location === item.href || location.startsWith(`${item.href}/`)}
+              tooltip={getNavTitle(item.titleKey)}
+              className="flex-1"
+            >
+              <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
+                <item.icon size={18} />
+                <span className="flex-1">{getNavTitle(item.titleKey)}</span>
+                {isNotif && unreadCount > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            </SidebarMenuButton>
+            {customizeMode && (
+              <button
+                onClick={() => toggleHidden(itemKey)}
+                className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground"
+                title={isHidden ? "Tampilkan" : "Sembunyikan"}
+              >
+                {isHidden ? <Eye size={13} /> : <EyeOff size={13} />}
+              </button>
+            )}
+          </div>
         </SidebarMenuItem>
       );
     }
@@ -552,28 +583,42 @@ export function AppShell({ children }: AppShellProps) {
     const ERP_MODULE_PATHS = ["/accounting", "/sales", "/purchase", "/logistics", "/expense"];
     const isErpModule = ERP_MODULE_PATHS.includes(item.basePath);
 
-    const visibleChildren = item.children.filter((c) =>
+    const roleFilteredChildren = item.children.filter((c) =>
       (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) && filterChild(c)
     );
+    const visibleChildren = customizeMode
+      ? roleFilteredChildren
+      : roleFilteredChildren.filter((c) => !hiddenItems.includes(c.href));
 
     return (
-      <SidebarMenuItem key={item.basePath}>
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={getNavTitle(item.titleKey)}
-          onClick={() => toggleGroup(item.basePath)}
-          data-testid={`nav-group-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}
-          className="flex items-center gap-3"
-        >
-          <item.icon size={18} />
-          <span className="flex-1">{getNavTitle(item.titleKey)}</span>
-          {isErpModule && open && (
-            <span className="shrink-0 max-w-[64px] truncate rounded-sm bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase leading-none text-primary">
-              {isConsolidated ? "Holding" : (activeCompany?.companyCode ?? "")}
-            </span>
+      <SidebarMenuItem key={item.basePath} className={cn(customizeMode && isHidden && "opacity-40")}>
+        <div className="flex items-center">
+          <SidebarMenuButton
+            isActive={active}
+            tooltip={getNavTitle(item.titleKey)}
+            onClick={() => toggleGroup(item.basePath)}
+            data-testid={`nav-group-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}
+            className="flex items-center gap-3 flex-1"
+          >
+            <item.icon size={18} />
+            <span className="flex-1">{getNavTitle(item.titleKey)}</span>
+            {isErpModule && open && (
+              <span className="shrink-0 max-w-[64px] truncate rounded-sm bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase leading-none text-primary">
+                {isConsolidated ? "Holding" : (activeCompany?.companyCode ?? "")}
+              </span>
+            )}
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </SidebarMenuButton>
+          {customizeMode && (
+            <button
+              onClick={() => toggleHidden(itemKey)}
+              className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground"
+              title={isHidden ? "Tampilkan" : "Sembunyikan"}
+            >
+              {isHidden ? <Eye size={13} /> : <EyeOff size={13} />}
+            </button>
           )}
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </SidebarMenuButton>
+        </div>
         {open && (
           <SidebarMenuSub>
             {isErpModule && (
@@ -584,21 +629,35 @@ export function AppShell({ children }: AppShellProps) {
                 </span>
               </div>
             )}
-            {visibleChildren.map((c) => (
-              <SidebarMenuSubItem key={c.href}>
-                <SidebarMenuSubButton asChild isActive={isChildActive(c.href)}>
-                  <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
-                    <c.icon size={14} />
-                    <span className="flex-1">{getNavTitle(c.titleKey)}</span>
-                    {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
-                      <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
-                        {aiDraftCount}
-                      </span>
+            {visibleChildren.map((c) => {
+              const childHidden = hiddenItems.includes(c.href);
+              return (
+                <SidebarMenuSubItem key={c.href} className={cn(customizeMode && childHidden && "opacity-40")}>
+                  <div className="flex items-center">
+                    <SidebarMenuSubButton asChild isActive={isChildActive(c.href)} className="flex-1">
+                      <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <c.icon size={14} />
+                        <span className="flex-1">{getNavTitle(c.titleKey)}</span>
+                        {c.href === "/sales/ai-drafts" && aiDraftCount > 0 && (
+                          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                            {aiDraftCount}
+                          </span>
+                        )}
+                      </Link>
+                    </SidebarMenuSubButton>
+                    {customizeMode && (
+                      <button
+                        onClick={() => toggleHidden(c.href)}
+                        className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground"
+                        title={childHidden ? "Tampilkan" : "Sembunyikan"}
+                      >
+                        {childHidden ? <Eye size={11} /> : <EyeOff size={11} />}
+                      </button>
                     )}
-                  </Link>
-                </SidebarMenuSubButton>
-              </SidebarMenuSubItem>
-            ))}
+                  </div>
+                </SidebarMenuSubItem>
+              );
+            })}
           </SidebarMenuSub>
         )}
       </SidebarMenuItem>
@@ -614,8 +673,29 @@ export function AppShell({ children }: AppShellProps) {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Building2 size={18} />
               </div>
-              <span className="text-lg font-bold tracking-tight">BizPortal</span>
+              <span className="text-lg font-bold tracking-tight flex-1">BizPortal</span>
+              <button
+                onClick={() => setCustomizeMode((m) => !m)}
+                className={cn(
+                  "p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors",
+                  customizeMode && "bg-accent text-foreground"
+                )}
+                title="Sesuaikan tampilan menu"
+              >
+                <SlidersHorizontal size={14} />
+              </button>
             </div>
+            {customizeMode && (
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-accent/60 px-2 py-1.5 text-[11px] text-muted-foreground">
+                <span>Klik <EyeOff size={10} className="inline -mt-px" /> untuk sembunyikan item</span>
+                <button
+                  onClick={resetHidden}
+                  className="shrink-0 font-medium text-destructive hover:text-destructive/80"
+                >
+                  Reset
+                </button>
+              </div>
+            )}
           </SidebarHeader>
 
           <SidebarContent>
