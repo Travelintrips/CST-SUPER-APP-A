@@ -261,3 +261,20 @@ export const posStockOpnameItemsTable = pgTable("pos_stock_opname_items", {
   diffQty: numeric("diff_qty", { precision: 12, scale: 3 }).notNull().default("0"),
   note: text("note"),
 });
+
+export const posQrOrdersTable = pgTable("pos_qr_orders", {
+  id: serial("id").primaryKey(),
+  branchId: integer("branch_id").notNull().references(() => posBranchesTable.id),
+  companyId: integer("company_id").references(() => companiesTable.id, { onDelete: "set null" }),
+  tableNumber: text("table_number"),
+  customerName: text("customer_name"),
+  items: text("items").notNull(),
+  note: text("note"),
+  status: text("status").notNull().default("pending"),
+  reviewedById: integer("reviewed_by_id").references(() => posCashiersTable.id),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("pos_qr_orders_branch_idx").on(t.branchId),
+  index("pos_qr_orders_status_idx").on(t.status),
+]);

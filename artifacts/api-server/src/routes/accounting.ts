@@ -1959,4 +1959,133 @@ router.get("/holding/pl-monthly", async (req, res) => {
   });
 });
 
+/** GET /accounting/holding/cashflow-monthly — arus kas konsolidasi per bulan per perusahaan */
+router.get("/holding/cashflow-monthly", async (req, res) => {
+  const holdingId = Number(req.query["holdingId"] ?? 1);
+  const dateRange = parseDateRange(req);
+  if (dateRange.error) return res.status(400).json({ message: dateRange.error });
+
+  const members = await db.execute(sql`
+    SELECT chm.company_id, c.company_name, c.company_code
+    FROM company_holding_members chm
+    JOIN companies c ON c.id = chm.company_id
+    WHERE chm.holding_group_id = ${holdingId}
+    ORDER BY c.company_code
+  `);
+  if (members.rows.length === 0) return res.json({ companies: [], months: [] });
+
+  const companyIds = (members.rows as { company_id: number }[]).map((r) => r.company_id);
+  const companyIdsArr = sql`ARRAY[${sql.join(companyIds.map((id) => sql`${id}`), sql`, `)}]`;
+
+  const dateFilter =
+    dateRange.from && dateRange.to
+      ? sql`AND ae.entry_date BETWEEN ${dateRange.from.toISOString().slice(0, 10)} AND ${dateRange.to.toISOString().slice(0, 10)}`
+      : dateRange.from
+        ? sql`AND ae.entry_date >= ${dateRange.from.toISOString().slice(0, 10)}`
+        : dateRange.to
+          ? sql`AND ae.entry_date <= ${dateRange.to.toISOString().slice(0, 10)}`
+          : sql``;
+
+  // Cashflow per bulan per perusahaan — klasifikasi berdasarkan tipe & nama COA:
+  // Operasi : revenue (credit-debit) & expense (debit-credit)
+  // Investasi: fixed asset accounts (aset tetap, peralatan, kendaraan, bangunan, tanah, investasi jangka panjang)
+  // Pendanaan: equity & long-term debt (modal, pinjaman, hutang bank)
+  // Kas bersih: perubahan saldo akun kas & bank
+  const result = await db.execute(sql`
+    SELECT
+      TO_CHAR(ae.entry_date, 'YYYY-MM') AS month,
+      ael.company_id,
+      -- Arus Operasi: penerimaan dari pendapatan
+      COALESCE(SUM(CASE WHEN coa.type = 'revenue'
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS op_inflow,
+      -- Arus Operasi: pembayaran untuk beban
+      COALESCE(SUM(CASE WHEN coa.type = 'expense'
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS op_outflow,
+      -- Arus Investasi: perubahan aset tetap & investasi
+      COALESCE(SUM(CASE
+        WHEN coa.type = 'asset' AND (
+          lower(coa.name) LIKE '%aset tetap%' OR lower(coa.name) LIKE '%fixed asset%'
+          OR lower(coa.name) LIKE '%peralatan%' OR lower(coa.name) LIKE '%kendaraan%'
+          OR lower(coa.name) LIKE '%bangunan%' OR lower(coa.name) LIKE '%tanah%'
+          OR lower(coa.name) LIKE '%mesin%' OR lower(coa.name) LIKE '%inventaris%'
+          OR lower(coa.name) LIKE '%investasi%' OR lower(coa.name) LIKE '%penyertaan%'
+        )
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS inv_net,
+      -- Arus Pendanaan: perubahan modal & pinjaman jangka panjang
+      COALESCE(SUM(CASE
+        WHEN (coa.type = 'equity')
+          OR (coa.type = 'liability' AND (
+            lower(coa.name) LIKE '%pinjaman%' OR lower(coa.name) LIKE '%hutang bank%'
+            OR lower(coa.name) LIKE '%utang bank%' OR lower(coa.name) LIKE '%kredit bank%'
+            OR lower(coa.name) LIKE '%modal%' OR lower(coa.name) LIKE '%saham%'
+          ))
+        THEN COALESCE(ael.credit, 0) - COALESCE(ael.debit, 0) ELSE 0 END), 0) AS fin_net,
+      -- Perubahan kas & bank bersih
+      COALESCE(SUM(CASE
+        WHEN coa.type = 'asset' AND (
+          lower(coa.name) LIKE '%kas%' OR lower(coa.name) LIKE '%cash%' OR lower(coa.name) LIKE '%bank%'
+        )
+        THEN COALESCE(ael.debit, 0) - COALESCE(ael.credit, 0) ELSE 0 END), 0) AS cash_change
+    FROM accounting_entry_lines ael
+    JOIN chart_of_accounts coa ON coa.id = ael.account_id
+    JOIN accounting_entries ae ON ae.id = ael.entry_id
+    WHERE ae.status = 'posted'
+      AND ael.company_id = ANY(${companyIdsArr})
+      ${dateFilter}
+    GROUP BY month, ael.company_id
+    ORDER BY month, ael.company_id
+  `);
+
+  type Row = {
+    month: string;
+    company_id: number;
+    op_inflow: string;
+    op_outflow: string;
+    inv_net: string;
+    fin_net: string;
+    cash_change: string;
+  };
+  const rows = result.rows as Row[];
+
+  const companiesMeta = members.rows as { company_id: number; company_name: string; company_code: string }[];
+  const allMonths = [...new Set(rows.map((r) => r.month))].sort();
+
+  // Hitung kumulatif saldo kas per perusahaan
+  const cumulativeCash: Record<number, number> = {};
+  companiesMeta.forEach((c) => { cumulativeCash[c.company_id] = 0; });
+
+  const monthData = allMonths.map((month) => {
+    const byCompany: Record<number, {
+      opInflow: number; opOutflow: number; opNet: number;
+      invNet: number; finNet: number; cashChange: number; endingCash: number;
+    }> = {};
+
+    companiesMeta.forEach((c) => {
+      const row = rows.find((r) => r.month === month && r.company_id === c.company_id);
+      const opInflow = Number(row?.op_inflow ?? 0);
+      const opOutflow = Number(row?.op_outflow ?? 0);
+      const invNet = Number(row?.inv_net ?? 0);
+      const finNet = Number(row?.fin_net ?? 0);
+      const cashChange = Number(row?.cash_change ?? 0);
+      cumulativeCash[c.company_id] = (cumulativeCash[c.company_id] ?? 0) + cashChange;
+      byCompany[c.company_id] = {
+        opInflow, opOutflow, opNet: opInflow - opOutflow,
+        invNet, finNet, cashChange,
+        endingCash: cumulativeCash[c.company_id],
+      };
+    });
+    return { month, byCompany };
+  });
+
+  return res.json({
+    companies: companiesMeta.map((c) => ({
+      companyId: c.company_id,
+      companyName: c.company_name,
+      companyCode: c.company_code,
+    })),
+    months: monthData,
+  });
+});
+
 export default router;
+

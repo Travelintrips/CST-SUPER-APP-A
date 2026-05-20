@@ -76,6 +76,7 @@ import AccountingReconciliationPage from "@/pages/accounting/reconciliation";
 import HoldingPage from "@/pages/HoldingPage";
 import HoldingDashboardPage from "@/pages/accounting/holding-dashboard";
 import HoldingPLReportPage from "@/pages/accounting/holding-pl-report";
+import HoldingCashflowReportPage from "@/pages/accounting/holding-cashflow-report";
 // Expenses
 import ExpenseListPage from "@/pages/expense/index";
 import ExpenseEditorPage from "@/pages/expense/editor";
@@ -263,6 +264,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/accounting/reports/balance-sheet" component={PR(AccountingBalanceSheetPage)} />
       <Route path="/holding/dashboard" component={PR(HoldingDashboardPage)} />
       <Route path="/holding/pl-report" component={PR(HoldingPLReportPage)} />
+      <Route path="/holding/cashflow-report" component={PR(HoldingCashflowReportPage)} />
       <Route path="/holding" component={PR(HoldingPage)} />
 
       {/* ── Expenses ───────────────────────────────────────────────────── */}

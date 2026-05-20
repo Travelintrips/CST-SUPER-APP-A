@@ -157,7 +157,7 @@ export function AppShell({ children }: AppShellProps) {
       staleTime: Infinity,
     },
   });
-  const { unreadCount } = useOrderNotificationsContext();
+  const { dbUnreadTotal } = useOrderNotificationsContext();
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -351,6 +351,21 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
       ],
     },
+    // ── HOLDING ────────────────────────────────────────────────────────
+    {
+      type: "group",
+      titleKey: "Holding",
+      basePath: "/holding",
+      icon: Building2,
+      roles: ["admin", "owner"],
+      children: [
+        { titleKey: "Overview Perusahaan", href: "/holding", icon: LayoutDashboard },
+        { titleKey: "Dashboard Holding", href: "/holding/dashboard", icon: BarChart2 },
+        { titleKey: "Laporan L/R Holding", href: "/holding/pl-report", icon: TrendingUp },
+        { titleKey: "Laporan Arus Kas", href: "/holding/cashflow-report", icon: Wallet },
+      ],
+    },
+
     { type: "flat", titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
     { type: "flat", titleKey: "Katalog Terpadu", href: "/katalog-terpadu", icon: Layers, roles: ["admin", "owner"] },
     {
@@ -647,6 +662,22 @@ export function AppShell({ children }: AppShellProps) {
               </button>
             )}
           </div>
+        <SidebarMenuItem key={item.href}>
+          <SidebarMenuButton
+            asChild
+            isActive={location === item.href || location.startsWith(`${item.href}/`)}
+            tooltip={getNavTitle(item.titleKey)}
+          >
+            <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
+              <item.icon size={18} />
+              <span className="flex-1">{getNavTitle(item.titleKey)}</span>
+              {isNotif && dbUnreadTotal > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                  {dbUnreadTotal > 99 ? "99+" : dbUnreadTotal}
+                </span>
+              )}
+            </Link>
+          </SidebarMenuButton>
         </SidebarMenuItem>
       );
     }

@@ -4,7 +4,11 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router = Router();
-router.use(requireAdmin);
+// Wrapper requireAdmin menjadi Express middleware yang benar
+router.use(async (req, res, next) => {
+  const ok = await requireAdmin(req, res);
+  if (ok) next();
+});
 
 // GET /api/notifications?type=all&read=all&limit=50&offset=0
 router.get("/", async (req, res) => {
@@ -19,7 +23,7 @@ router.get("/", async (req, res) => {
     read === "read"   ? sql`read_at IS NOT NULL` :
                         sql`TRUE`;
 
-  const [rows, countRows] = await Promise.all([
+  const [rows, countRows, unreadRows] = await Promise.all([
     db.execute(sql`
       SELECT * FROM admin_notifications
       WHERE ${typeFilter} AND ${readFilter}
@@ -30,12 +34,24 @@ router.get("/", async (req, res) => {
       SELECT COUNT(*)::int AS count FROM admin_notifications
       WHERE ${typeFilter} AND ${readFilter}
     `),
+    db.execute(sql`
+      SELECT COUNT(*)::int AS count FROM admin_notifications WHERE read_at IS NULL
+    `),
   ]);
 
   return res.json({
     data: rows.rows,
     total: (countRows.rows[0] as { count: number }).count,
+    unreadTotal: (unreadRows.rows[0] as { count: number }).count,
   });
+});
+
+// GET /api/notifications/unread-count
+router.get("/unread-count", async (_req, res) => {
+  const [row] = (await db.execute(sql`
+    SELECT COUNT(*)::int AS count FROM admin_notifications WHERE read_at IS NULL
+  `)).rows;
+  return res.json({ count: (row as { count: number }).count });
 });
 
 // POST /api/notifications/mark-all-read

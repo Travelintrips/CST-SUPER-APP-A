@@ -25,6 +25,35 @@ function playNotificationChime() {
   }
 }
 
+const NOTIF_TITLES: Record<string, string> = {
+  logistic: "🚢 Order Logistik Baru",
+  portal_sales: "🛍️ Order Portal",
+  product: "📦 Order Produk",
+  sales_update: "📄 Update Sales Order",
+  logistic_status: "🔄 Update Status Logistik",
+  freight_new: "🚢 Freight Shipment Baru",
+  freight_status: "🔄 Update Status Shipment",
+  freight_stage: "📋 Update Stage Shipment",
+};
+
+function showBrowserNotification(notification: OrderNotification) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  const title = NOTIF_TITLES[notification.type] ?? "🔔 Notifikasi Baru";
+  const body = `${notification.orderNumber} — ${notification.customerName}${
+    notification.companyName ? ` (${notification.companyName})` : ""
+  }`;
+  try {
+    new Notification(title, {
+      body,
+      icon: "/bizportal/icon-192.png",
+      tag: notification.id,
+      requireInteraction: false,
+    });
+  } catch {
+    // Notification API not available in this context
+  }
+}
+
 export interface OrderNotification {
   id: string;
   dbId?: number | null;
@@ -56,6 +85,7 @@ export interface OrderNotification {
 }
 
 const MAX_NOTIFICATIONS = 50;
+const POLL_INTERVAL_MS = 60_000;
 
 function generateId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -99,6 +129,11 @@ export function useOrderNotifications() {
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
+  const [dbUnreadTotal, setDbUnreadTotal] = useState<number>(0);
+  const [dbUnreadTotal, setDbUnreadTotal] = useState(0);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    typeof Notification !== "undefined" ? Notification.permission : "denied"
+  );
   const esRef = useRef<EventSource | null>(null);
   const onNewOrderRef = useRef<((n: OrderNotification) => void) | null>(null);
   const initializedRef = useRef(false);
@@ -115,14 +150,55 @@ export function useOrderNotifications() {
         if (json?.data && Array.isArray(json.data)) {
           setNotifications(json.data.map(dbRowToNotif));
         }
+        if (typeof json?.total === "number") {
+          // count unread dari initial fetch
+          const unread = (json.data as Record<string, unknown>[]).filter((r) => !r.read_at).length;
+          setDbUnreadTotal(unread);
+        if (typeof json?.unreadTotal === "number") {
+          setDbUnreadTotal(json.unreadTotal);
+        }
       })
       .catch(() => {});
+  }, []);
+
+  // Polling setiap 60 detik — sync unread count dari DB
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/notifications/unread-count", { credentials: "include" });
+        if (!r.ok) return;
+        const { count } = await r.json() as { count: number };
+        setDbUnreadTotal(count);
+
+        // Jika DB punya lebih banyak unread dari state lokal, re-fetch daftar notifikasi
+        setNotifications((prev) => {
+          const localUnread = prev.filter((n) => n.readAt === null).length;
+          if (count > localUnread) {
+            fetch("/api/notifications?limit=50&read=all", { credentials: "include" })
+              .then((res) => res.ok ? res.json() : null)
+              .then((json) => {
+                if (json?.data && Array.isArray(json.data)) {
+                  setNotifications(json.data.map(dbRowToNotif));
+                }
+              })
+              .catch(() => {});
+          }
+          return prev;
+        });
+      } catch {
+        // jaringan gagal — abaikan, coba lagi di interval berikutnya
+      }
+    };
+
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
   }, []);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) =>
       prev.map((n) => (n.readAt === null ? { ...n, readAt: Date.now() } : n))
     );
+    setDbUnreadTotal(0);
     fetch("/api/notifications/mark-all-read", {
       method: "POST",
       credentials: "include",
@@ -133,6 +209,12 @@ export function useOrderNotifications() {
     setNotifications((prev) =>
       prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n))
     );
+    setDbUnreadTotal((prev) => Math.max(0, prev - 1));
+    setNotifications((prev) => {
+      const wasUnread = prev.some((n) => n.dbId === dbId && n.readAt === null);
+      if (wasUnread) setDbUnreadTotal((t) => Math.max(0, t - 1));
+      return prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n));
+    });
     fetch(`/api/notifications/${dbId}/read`, {
       method: "POST",
       credentials: "include",
@@ -141,20 +223,31 @@ export function useOrderNotifications() {
 
   const clearAll = useCallback(() => {
     setNotifications([]);
+    setDbUnreadTotal(0);
   }, []);
 
   const setOnNewOrder = useCallback((fn: (n: OrderNotification) => void) => {
     onNewOrderRef.current = fn;
   }, []);
 
+  const requestNotifPermission = useCallback(async () => {
+    if (typeof Notification === "undefined") return "denied" as NotificationPermission;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+    return result;
+  }, []);
+
   function pushNotification(notification: OrderNotification) {
     setNotifications((prev) =>
       [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
     );
+    setDbUnreadTotal((prev) => prev + 1);
+    setDbUnreadTotal((t) => t + 1);
     if (FREIGHT_TYPES.includes(notification.type)) {
       setLastFreightEventAt(Date.now());
     }
     playNotificationChime();
+    showBrowserNotification(notification);
     onNewOrderRef.current?.(notification);
   }
 
@@ -381,5 +474,18 @@ export function useOrderNotifications() {
     };
   }, []);
 
-  return { notifications, unreadCount, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
+  return { notifications, unreadCount, dbUnreadTotal, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
+  return {
+    notifications,
+    unreadCount,
+    dbUnreadTotal,
+    connected,
+    markAllRead,
+    markSingleRead,
+    clearAll,
+    setOnNewOrder,
+    lastFreightEventAt,
+    notifPermission,
+    requestNotifPermission,
+  };
 }
