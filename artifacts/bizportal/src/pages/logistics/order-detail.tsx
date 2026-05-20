@@ -19,6 +19,7 @@ import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
   Package, Truck, User, ClipboardList, Clock,
 } from "lucide-react";
+import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 
 const idr = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -579,6 +580,9 @@ export default function LogisticOrderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* GPS Tracking Panel — full width below main grid */}
+      <GpsTrackingPanel orderId={orderId} orderNumber={order.orderNumber} />
     </AppShell>
   );
 }
