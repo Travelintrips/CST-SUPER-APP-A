@@ -65,6 +65,7 @@ export default function ConfirmPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<"confirmed" | "rejected" | null>(null);
+  const [salesOrderNumber, setSalesOrderNumber] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -95,8 +96,9 @@ export default function ConfirmPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
-      const json = await res.json() as { message?: string };
+      const json = await res.json() as { message?: string; salesOrderNumber?: string };
       if (!res.ok) { alert(json.message ?? "Terjadi kesalahan"); return; }
+      if (json.salesOrderNumber) setSalesOrderNumber(json.salesOrderNumber);
       setDone(action);
     } catch {
       alert("Gagal mengirim konfirmasi. Periksa koneksi internet Anda.");
@@ -141,16 +143,30 @@ export default function ConfirmPage() {
           <p className="text-sm text-slate-500 mb-4">
             Terima kasih, <strong>{data.customerName}</strong>. Anda telah menyetujui penawaran harga untuk order <strong>{data.orderNumber}</strong>.
           </p>
-          <div className="bg-green-50 rounded-xl p-4 text-green-800 font-bold text-lg mb-3">
-            {fmt(data.finalSellingPrice)}
+
+          {/* Nomor Sales Order */}
+          {salesOrderNumber && (
+            <div className="bg-blue-600 rounded-2xl p-4 mb-3 text-white text-center">
+              <p className="text-xs opacity-80 mb-1 flex items-center justify-center gap-1">
+                <FileText className="h-3 w-3" /> Nomor Sales Order Anda
+              </p>
+              <p className="text-2xl font-bold tracking-wide">{salesOrderNumber}</p>
+              <p className="text-xs opacity-70 mt-1">Catat nomor ini sebagai referensi pemesanan Anda</p>
+            </div>
+          )}
+
+          <div className="bg-slate-50 rounded-xl p-3 mb-3">
+            <p className="text-xs text-slate-500 mb-0.5">Total yang Disetujui</p>
+            <p className="text-lg font-bold text-green-700">{fmt(data.finalSellingPrice)}</p>
           </div>
-          <div className="bg-blue-50 rounded-xl p-3 flex items-start gap-2 text-left mb-4">
-            <FileText className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-            <p className="text-xs text-blue-700">
-              <strong>Sales Order telah dibuat.</strong> Tim kami akan segera menghubungi Anda untuk konfirmasi jadwal pengiriman.
+
+          <div className="bg-amber-50 rounded-xl p-3 flex items-start gap-2 text-left mb-4">
+            <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Tim kami akan menghubungi Anda dalam waktu dekat untuk konfirmasi jadwal pengiriman.
             </p>
           </div>
-          <p className="text-xs text-slate-400">Simpan halaman ini sebagai bukti konfirmasi Anda.</p>
+          <p className="text-xs text-slate-400">Screenshot halaman ini sebagai bukti konfirmasi Anda.</p>
         </div>
       </div>
     );
