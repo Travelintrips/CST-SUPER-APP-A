@@ -85,6 +85,7 @@ export interface OrderNotification {
 }
 
 const MAX_NOTIFICATIONS = 50;
+const POLL_INTERVAL_MS = 60_000;
 
 function generateId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -128,6 +129,7 @@ export function useOrderNotifications() {
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
+  const [dbUnreadTotal, setDbUnreadTotal] = useState<number>(0);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "denied"
   );
@@ -147,14 +149,53 @@ export function useOrderNotifications() {
         if (json?.data && Array.isArray(json.data)) {
           setNotifications(json.data.map(dbRowToNotif));
         }
+        if (typeof json?.total === "number") {
+          // count unread dari initial fetch
+          const unread = (json.data as Record<string, unknown>[]).filter((r) => !r.read_at).length;
+          setDbUnreadTotal(unread);
+        }
       })
       .catch(() => {});
+  }, []);
+
+  // Polling setiap 60 detik — sync unread count dari DB
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/notifications/unread-count", { credentials: "include" });
+        if (!r.ok) return;
+        const { count } = await r.json() as { count: number };
+        setDbUnreadTotal(count);
+
+        // Jika DB punya lebih banyak unread dari state lokal, re-fetch daftar notifikasi
+        setNotifications((prev) => {
+          const localUnread = prev.filter((n) => n.readAt === null).length;
+          if (count > localUnread) {
+            fetch("/api/notifications?limit=50&read=all", { credentials: "include" })
+              .then((res) => res.ok ? res.json() : null)
+              .then((json) => {
+                if (json?.data && Array.isArray(json.data)) {
+                  setNotifications(json.data.map(dbRowToNotif));
+                }
+              })
+              .catch(() => {});
+          }
+          return prev;
+        });
+      } catch {
+        // jaringan gagal — abaikan, coba lagi di interval berikutnya
+      }
+    };
+
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
   }, []);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) =>
       prev.map((n) => (n.readAt === null ? { ...n, readAt: Date.now() } : n))
     );
+    setDbUnreadTotal(0);
     fetch("/api/notifications/mark-all-read", {
       method: "POST",
       credentials: "include",
@@ -165,6 +206,7 @@ export function useOrderNotifications() {
     setNotifications((prev) =>
       prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n))
     );
+    setDbUnreadTotal((prev) => Math.max(0, prev - 1));
     fetch(`/api/notifications/${dbId}/read`, {
       method: "POST",
       credentials: "include",
@@ -173,6 +215,7 @@ export function useOrderNotifications() {
 
   const clearAll = useCallback(() => {
     setNotifications([]);
+    setDbUnreadTotal(0);
   }, []);
 
   const setOnNewOrder = useCallback((fn: (n: OrderNotification) => void) => {
@@ -190,6 +233,7 @@ export function useOrderNotifications() {
     setNotifications((prev) =>
       [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
     );
+    setDbUnreadTotal((prev) => prev + 1);
     if (FREIGHT_TYPES.includes(notification.type)) {
       setLastFreightEventAt(Date.now());
     }
@@ -424,13 +468,14 @@ export function useOrderNotifications() {
   return {
     notifications,
     unreadCount,
+    dbUnreadTotal,
     connected,
     markAllRead,
+    markSingleRead,
     clearAll,
     setOnNewOrder,
     lastFreightEventAt,
     notifPermission,
     requestNotifPermission,
   };
-  return { notifications, unreadCount, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
 }
