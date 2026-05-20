@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CommandPalette, useCommandPalette, usePageTracker } from "@/components/CommandPalette";
 import { Link, useLocation } from "wouter";
 import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations, getListAiDraftQuotationsQueryKey } from "@workspace/api-client-react";
@@ -365,6 +366,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot },
         { titleKey: "aiKnowledgeBase", href: "/settings/ai-chatbot/knowledge", icon: BookOpen },
         { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
+        { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],
     },
@@ -474,6 +476,19 @@ export function AppShell({ children }: AppShellProps) {
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
   usePageTracker();
 
+  const { data: navConfig } = useQuery<Record<string, string[]>>({
+    queryKey: ["settings", "nav-company-config"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/settings/nav-company-config", { credentials: "include" });
+        if (!res.ok) return {};
+        return res.json();
+      } catch { return {}; }
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: dbUser?.role === "admin" || dbUser?.role === "owner",
+  });
+
   const companyKey = isConsolidated ? "__all__" : String(activeCompany?.id ?? 0);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -493,11 +508,12 @@ export function AppShell({ children }: AppShellProps) {
   const toggleGroup = (basePath: string) =>
     setOpenGroups((s) => ({ ...s, [`${companyKey}:${basePath}`]: !s[`${companyKey}:${basePath}`] }));
 
-  const filterChild = (c: { companyCodes?: string[] }) => {
-    if (!c.companyCodes || c.companyCodes.length === 0) return true;
-    if (c.companyCodes.includes("__holding__")) return isConsolidated;
+  const filterChild = (c: { href: string; companyCodes?: string[] }) => {
+    const effectiveCodes = c.href in (navConfig ?? {}) ? (navConfig ?? {})[c.href] : c.companyCodes;
+    if (!effectiveCodes || effectiveCodes.length === 0) return true;
+    if (effectiveCodes.includes("__holding__")) return isConsolidated;
     if (isConsolidated) return false;
-    return activeCompany ? c.companyCodes.includes(activeCompany.companyCode) : false;
+    return activeCompany ? effectiveCodes.includes(activeCompany.companyCode) : false;
   };
 
   const isChildActive = (href: string) => {

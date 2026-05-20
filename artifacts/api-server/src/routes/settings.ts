@@ -126,4 +126,34 @@ router.put("/ai-intake", async (req: Request, res: Response) => {
   return res.json({ message: "Pengaturan AI intake disimpan." });
 });
 
+const NAV_COMPANY_CONFIG_KEY = "nav_company_config";
+
+// GET /api/settings/nav-company-config — load nav item company restrictions (admin)
+router.get("/nav-company-config", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  try {
+    const [row] = await db.select().from(portalContentTable).where(eq(portalContentTable.key, NAV_COMPANY_CONFIG_KEY));
+    return res.json(row ? JSON.parse(row.value) : {});
+  } catch {
+    return res.json({});
+  }
+});
+
+// PUT /api/settings/nav-company-config — save nav item company restrictions (admin)
+router.put("/nav-company-config", async (req: Request, res: Response) => {
+  if (!(await requireAdmin(req, res))) return;
+  const config = req.body;
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return res.status(400).json({ message: "Payload harus berupa object" });
+  }
+  await db
+    .insert(portalContentTable)
+    .values({ key: NAV_COMPANY_CONFIG_KEY, value: JSON.stringify(config), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: portalContentTable.key,
+      set: { value: JSON.stringify(config), updatedAt: new Date() },
+    });
+  return res.json({ ok: true });
+});
+
 export default router;
