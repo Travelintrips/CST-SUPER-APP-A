@@ -106,7 +106,7 @@ interface GroupItem {
   basePath: string;
   icon: LucideIcon;
   roles: string[];
-  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[] }[];
+  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[]; companyCodes?: string[] }[];
   companyCodes?: string[];
 }
 
@@ -305,6 +305,8 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
+        { titleKey: "Holding Dashboard", href: "/holding/dashboard", icon: LayoutDashboard, companyCodes: ["__holding__"] },
+        { titleKey: "Holding P&L", href: "/holding/pl-report", icon: TrendingUp, companyCodes: ["__holding__"] },
       ],
     },
     {
@@ -470,6 +472,8 @@ export function AppShell({ children }: AppShellProps) {
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
   usePageTracker();
 
+  const companyKey = isConsolidated ? "__all__" : String(activeCompany?.id ?? 0);
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     for (const item of navItems) {
@@ -478,14 +482,21 @@ export function AppShell({ children }: AppShellProps) {
           location === item.basePath ||
           location.startsWith(`${item.basePath}/`) ||
           item.children.some((c) => location === c.href || location.startsWith(`${c.href}/`));
-        if (active) initial[item.basePath] = true;
+        if (active) initial[`${companyKey}:${item.basePath}`] = true;
       }
     }
     return initial;
   });
 
   const toggleGroup = (basePath: string) =>
-    setOpenGroups((s) => ({ ...s, [basePath]: !s[basePath] }));
+    setOpenGroups((s) => ({ ...s, [`${companyKey}:${basePath}`]: !s[`${companyKey}:${basePath}`] }));
+
+  const filterChild = (c: { companyCodes?: string[] }) => {
+    if (!c.companyCodes || c.companyCodes.length === 0) return true;
+    if (c.companyCodes.includes("__holding__")) return isConsolidated;
+    if (isConsolidated) return false;
+    return activeCompany ? c.companyCodes.includes(activeCompany.companyCode) : false;
+  };
 
   const isChildActive = (href: string) => {
     if (location === href) return true;
@@ -517,8 +528,13 @@ export function AppShell({ children }: AppShellProps) {
       );
     }
 
-    const open = openGroups[item.basePath] ?? false;
+    const open = openGroups[`${companyKey}:${item.basePath}`] ?? false;
     const active = isGroupActive(item);
+    const isAccounting = item.basePath === "/accounting";
+
+    const visibleChildren = item.children.filter((c) =>
+      (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) && filterChild(c)
+    );
 
     return (
       <SidebarMenuItem key={item.basePath}>
@@ -531,11 +547,24 @@ export function AppShell({ children }: AppShellProps) {
         >
           <item.icon size={18} />
           <span className="flex-1">{getNavTitle(item.titleKey)}</span>
+          {isAccounting && open && (
+            <span className="shrink-0 max-w-[64px] truncate rounded-sm bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase leading-none text-primary">
+              {isConsolidated ? "Holding" : (activeCompany?.companyCode ?? "")}
+            </span>
+          )}
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </SidebarMenuButton>
         {open && (
           <SidebarMenuSub>
-            {item.children.filter((c) => !c.roles || (dbUser?.role && c.roles.includes(dbUser.role))).map((c) => (
+            {isAccounting && (
+              <div className="mx-2 mb-1 flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1">
+                <Building2 size={11} className="shrink-0 text-muted-foreground" />
+                <span className="truncate text-[10px] font-medium text-muted-foreground">
+                  {isConsolidated ? "Holding Consolidated" : (activeCompany?.companyName ?? "—")}
+                </span>
+              </div>
+            )}
+            {visibleChildren.map((c) => (
               <SidebarMenuSubItem key={c.href}>
                 <SidebarMenuSubButton asChild isActive={isChildActive(c.href)}>
                   <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
