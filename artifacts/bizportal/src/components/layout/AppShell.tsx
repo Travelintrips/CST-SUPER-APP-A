@@ -265,6 +265,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "aiDrafts", href: "/sales/ai-drafts", icon: Bot },
         { titleKey: "customers", href: "/sales/customers", icon: UserCircle },
         { titleKey: "invoices", href: "/sales/invoices", icon: Receipt },
+        { titleKey: "Portal Product Orders", href: "/portal-product-orders", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
     {
@@ -285,6 +286,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Thai Tea Procurement", href: "/purchase/thai-tea", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
     {
@@ -317,11 +319,11 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin", "owner", "logistics"],
       children: [
         { titleKey: "shipments", href: "/logistics", icon: Truck },
-        { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship },
-        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
-        { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2 },
-        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText },
-        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
+        { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
+        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
+        { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
+        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
+        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
       ],
     },
     { type: "flat", titleKey: "trading", href: "/trading", icon: Package, roles: ["admin", "owner", "trading"] },
@@ -530,7 +532,9 @@ export function AppShell({ children }: AppShellProps) {
 
     const open = openGroups[`${companyKey}:${item.basePath}`] ?? false;
     const active = isGroupActive(item);
-    const isAccounting = item.basePath === "/accounting";
+
+    const ERP_MODULE_PATHS = ["/accounting", "/sales", "/purchase", "/logistics", "/expense"];
+    const isErpModule = ERP_MODULE_PATHS.includes(item.basePath);
 
     const visibleChildren = item.children.filter((c) =>
       (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) && filterChild(c)
@@ -547,7 +551,7 @@ export function AppShell({ children }: AppShellProps) {
         >
           <item.icon size={18} />
           <span className="flex-1">{getNavTitle(item.titleKey)}</span>
-          {isAccounting && open && (
+          {isErpModule && open && (
             <span className="shrink-0 max-w-[64px] truncate rounded-sm bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase leading-none text-primary">
               {isConsolidated ? "Holding" : (activeCompany?.companyCode ?? "")}
             </span>
@@ -556,7 +560,7 @@ export function AppShell({ children }: AppShellProps) {
         </SidebarMenuButton>
         {open && (
           <SidebarMenuSub>
-            {isAccounting && (
+            {isErpModule && (
               <div className="mx-2 mb-1 flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1">
                 <Building2 size={11} className="shrink-0 text-muted-foreground" />
                 <span className="truncate text-[10px] font-medium text-muted-foreground">
