@@ -157,7 +157,7 @@ export function AppShell({ children }: AppShellProps) {
       staleTime: Infinity,
     },
   });
-  const { dbUnreadTotal } = useOrderNotificationsContext();
+  const { unreadCount, dbUnreadTotal } = useOrderNotificationsContext();
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
