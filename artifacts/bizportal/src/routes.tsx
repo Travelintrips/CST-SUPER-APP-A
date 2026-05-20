@@ -22,6 +22,7 @@ import LogisticsQuoteRequestsPage from "@/pages/logistics-quote-requests";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
+import LogisticsMarginRulesPage from "@/pages/logistics-margin-rules";
 import PortalProductOrdersPage from "@/pages/portal-product-orders";
 // Sales
 import SalesDashboardPage from "@/pages/sales/dashboard";
@@ -180,6 +181,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/logistics/quote-requests" component={PR(LogisticsQuoteRequestsPage)} />
       <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
       <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
+      <Route path="/logistics/margin-rules" component={PR(LogisticsMarginRulesPage)} />
       <Route path="/portal-product-orders" component={PR(PortalProductOrdersPage)} />
 
       {/* ── Sales ──────────────────────────────────────────────────────── */}

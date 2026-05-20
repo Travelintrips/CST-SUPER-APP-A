@@ -73,6 +73,45 @@ interface VendorRow {
   formUrl: string;
 }
 
+interface RankingBadge {
+  label: string;
+  color: string;
+}
+
+function getRankingBadges(vendor: VendorRow, allVendors: VendorRow[]): RankingBadge[] {
+  const badges: RankingBadge[] = [];
+  const answered = allVendors.filter(v => v.offeredPrice != null || v.basicPrice != null);
+  if (answered.length < 2) return badges;
+
+  const prices = answered.map(v => v.offeredPrice ?? v.basicPrice ?? Infinity);
+  const minPrice = Math.min(...prices);
+  const myPrice = vendor.offeredPrice ?? vendor.basicPrice;
+
+  if (myPrice != null && myPrice === minPrice) {
+    badges.push({ label: "💰 Best Price", color: "bg-green-100 text-green-700 border-green-200" });
+  }
+
+  const answeredWithEta = answered.filter(v => v.eta);
+  if (answeredWithEta.length > 0 && vendor.eta) {
+    const sortedEtas = [...answeredWithEta].sort((a, b) => (a.eta ?? "").localeCompare(b.eta ?? ""));
+    if (sortedEtas[0]?.vendorId === vendor.vendorId) {
+      badges.push({ label: "⚡ Tercepat", color: "bg-blue-100 text-blue-700 border-blue-200" });
+    }
+  }
+
+  if (vendor.submittedAt) {
+    const answeredWithTime = answered.filter(v => v.submittedAt);
+    const sortedByTime = [...answeredWithTime].sort((a, b) =>
+      new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime()
+    );
+    if (sortedByTime[0]?.vendorId === vendor.vendorId) {
+      badges.push({ label: "🏃 Respon Tercepat", color: "bg-purple-100 text-purple-700 border-purple-200" });
+    }
+  }
+
+  return badges;
+}
+
 interface ComparisonData {
   rfqId: number;
   rfqNumber: string;
@@ -257,6 +296,7 @@ export default function LogisticsRfqComparisonPage() {
                   key={v.linkId}
                   vendor={v}
                   rank={idx + 1}
+                  rankingBadges={getRankingBadges(v, data.vendors)}
                   hasSelected={hasSelected}
                   onSelect={() => {
                     setSelectDialog({ linkId: v.linkId, vendorName: v.vendorName, price: v.offeredPrice ?? v.basicPrice });
@@ -392,9 +432,9 @@ function StatCard({ label, value, icon, color }: {
 }
 
 function VendorCard({
-  vendor, rank, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink,
+  vendor, rank, rankingBadges, hasSelected, onSelect, onRevision, onReject, onMarkRead, onCopyLink,
 }: {
-  vendor: VendorRow; rank: number; hasSelected: boolean;
+  vendor: VendorRow; rank: number; rankingBadges?: RankingBadge[]; hasSelected: boolean;
   onSelect: () => void; onRevision: () => void;
   onReject: () => void; onMarkRead: () => void; onCopyLink: () => void;
 }) {
@@ -410,12 +450,15 @@ function VendorCard({
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-600 text-xs font-bold flex items-center justify-center">{rank}</span>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-gray-800">{vendor.vendorName}</span>
                 {vendor.isNewUpdate && (
                   <Badge className="bg-blue-100 text-blue-700 text-xs animate-pulse">NEW</Badge>
                 )}
                 {isSelected && <Badge className="bg-teal-100 text-teal-700 text-xs">★ Dipilih</Badge>}
+                {rankingBadges?.map((b, i) => (
+                  <span key={i} className={`text-xs px-1.5 py-0.5 rounded border font-medium ${b.color}`}>{b.label}</span>
+                ))}
               </div>
               {vendor.phone && <p className="text-xs text-gray-400">{vendor.phone}</p>}
             </div>

@@ -683,12 +683,14 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
   const orderId = parseInt(String(req.params.id), 10);
   if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
 
-  const { vendorIds, notes } = req.body as { vendorIds: number[]; notes?: string };
+  const { vendorIds, notes, responseDeadline } = req.body as { vendorIds: number[]; notes?: string; responseDeadline?: string };
   if (!Array.isArray(vendorIds) || vendorIds.length === 0)
     return res.status(400).json({ message: "Pilih minimal satu vendor" });
 
   const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const deadlineDate = responseDeadline ? new Date(responseDeadline) : null;
 
   const rfqNumber = generateRfqNumber();
   const [rfq] = await db.insert(logisticOrderRfqsTable).values({
@@ -697,7 +699,8 @@ logisticRfqRouter.post("/:id/rfq", async (req: Request, res: Response) => {
     vendorIds,
     notes: notes ?? null,
     status: "open",
-  }).returning();
+    ...(deadlineDate ? { responseDeadline: deadlineDate } : {}),
+  } as any).returning();
 
   await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
 
@@ -2024,5 +2027,175 @@ logisticRfqRouter.get("/estimate-price", async (req: Request, res: Response) => 
   } catch (e: unknown) {
     logger.error({ e }, "[estimate-price] Error querying vendor_rates");
     return res.json({ estimated_price: null, disclaimer: DISCLAIMER });
+  }
+});
+
+// POST /api/logistic/orders/:id/duplicate-rfq — duplicate RFQ to new vendors (staff only)
+logisticRfqRouter.post("/:id/duplicate-rfq", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const { newVendorIds, notes, responseDeadline } = req.body as {
+    newVendorIds?: number[]; notes?: string; responseDeadline?: string;
+  };
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  // Get the latest existing RFQ to duplicate from
+  const [existingRfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.orderId, orderId))
+    .orderBy(sql`created_at desc`).limit(1);
+
+  const vendorIds: number[] = newVendorIds?.length
+    ? newVendorIds
+    : (existingRfq?.vendorIds as number[] ?? []);
+
+  if (!vendorIds.length) return res.status(400).json({ message: "Tidak ada vendor untuk RFQ baru" });
+
+  const deadlineDate = responseDeadline ? new Date(responseDeadline) : null;
+  const rfqNumber = generateRfqNumber();
+
+  const [newRfq] = await db.insert(logisticOrderRfqsTable).values({
+    orderId,
+    rfqNumber,
+    vendorIds,
+    notes: notes ?? existingRfq?.notes ?? null,
+    status: "open",
+    ...(deadlineDate ? { responseDeadline: deadlineDate } : {}),
+  } as any).returning();
+
+  const vendors = await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds));
+  const eligible = vendors.filter((v) => v.phone);
+
+  const orderToken = order.publicRfqToken ?? "";
+  const orderItems = await db.select().from(logisticOrderItemsTable).where(eq(logisticOrderItemsTable.orderId, orderId));
+  const isTrucking = orderItems.some((it) => it.calculatorType === "trucking");
+  const waItems = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
+
+  for (const vendor of eligible) {
+    const catalogItems = await db.select().from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+    const vendorBasePrice = catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
+    const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken);
+    sendVendorWhatsApp({
+      vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
+      rfqNumber, orderId, orderNumber: order.orderNumber, longUrl: formUrl,
+      origin: order.origin, destination: order.destination,
+      commodity: order.commodity ?? null,
+      grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
+      volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
+      requiredDate: order.requiredDate ?? null,
+      notes: notes ?? order.notes ?? null,
+      vendorBasePrice,
+      createdAt: order.createdAt,
+      jamOrder: order.jamOrder ?? null,
+      orderItems: waItems,
+      isTrucking,
+    }).catch((err: unknown) => logger.error({ err, vendorId: vendor.id }, "duplicate-rfq WA vendor failed"));
+  }
+
+  logger.info({ rfqNumber, orderId, vendorCount: eligible.length }, "Duplicate RFQ created and sent");
+  return res.status(201).json({ ok: true, rfqNumber, rfqId: newRfq.id, vendorCount: eligible.length });
+});
+
+// GET /api/logistic/orders/:id/activity-log — get activity log for an order (staff only)
+logisticRfqRouter.get("/:id/activity-log", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+  try {
+    const result = await db.execute(sql`
+      SELECT * FROM activity_logs WHERE order_id = ${orderId} ORDER BY created_at DESC LIMIT 100
+    `);
+    return res.json(result.rows);
+  } catch {
+    return res.json([]);
+  }
+});
+
+// GET /api/logistic/orders/:id/operational-status — get current operational+payment status
+logisticRfqRouter.get("/:id/operational-status", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const orderAny = order as any;
+  return res.json({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    operationalStatus: orderAny.operationalStatus ?? null,
+    paymentStatus: orderAny.paymentStatus ?? "unpaid",
+    adminApprovalStatus: order.adminApprovalStatus ?? "pending",
+  });
+});
+
+// PUT /api/logistic/orders/:id/operational-status — update operational + payment status
+logisticRfqRouter.put("/:id/operational-status", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const { operationalStatus, paymentStatus } = req.body as { operationalStatus?: string; paymentStatus?: string };
+  const patch: Record<string, unknown> = {};
+  if (operationalStatus !== undefined) patch.operationalStatus = operationalStatus;
+  if (paymentStatus !== undefined) patch.paymentStatus = paymentStatus;
+  if (!Object.keys(patch).length) return res.status(400).json({ message: "Tidak ada field yang diupdate" });
+
+  try {
+    const orderRows = await db.execute(sql`
+      SELECT order_number, customer_name, phone, company_name FROM logistic_orders WHERE id = ${orderId}
+    `);
+    const order = orderRows.rows[0] as { order_number: string; customer_name: string; phone: string | null; company_name: string | null } | undefined;
+
+    await db.execute(sql`
+      UPDATE logistic_orders SET
+        ${operationalStatus !== undefined ? sql`operational_status = ${operationalStatus},` : sql``}
+        ${paymentStatus !== undefined ? sql`payment_status = ${paymentStatus},` : sql``}
+        updated_at = NOW()
+      WHERE id = ${orderId}
+    `);
+
+    // WA milestone notification
+    if (order && operationalStatus) {
+      const OP_LABEL: Record<string, string> = {
+        pending: "Menunggu Penjemputan",
+        picking_up: "Sedang Dijemput",
+        in_transit: "Dalam Pengiriman",
+        delivered: "Terkirim",
+        cancelled: "Dibatalkan",
+      };
+      const label = OP_LABEL[operationalStatus] ?? operationalStatus;
+      const emoji = operationalStatus === "delivered" ? "✅" : operationalStatus === "cancelled" ? "❌" : operationalStatus === "in_transit" ? "🚚" : operationalStatus === "picking_up" ? "📦" : "🕐";
+      const msg =
+        `${emoji} *Update Status Pengiriman*\n\n` +
+        `No. Order: *${order.order_number}*\n` +
+        `Customer: ${order.customer_name}${order.company_name ? ` (${order.company_name})` : ""}\n` +
+        `Status Operasional: *${label}*\n\n` +
+        `CST Logistics — Terima kasih telah menggunakan layanan kami.`;
+
+      if (order.phone) {
+        sendWhatsApp(order.phone, msg).catch((err: unknown) =>
+          logger.error({ err }, "WA milestone notification to customer failed")
+        );
+      }
+
+      const adminWa = await getAdminWa();
+      if (adminWa) {
+        sendWhatsApp(adminWa,
+          `${emoji} *Status Update* — ${order.order_number}\nCustomer: ${order.customer_name}\nStatus: *${label}*`
+        ).catch(() => {});
+      }
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "update operational status failed");
+    return res.status(500).json({ message: "Gagal update status" });
   }
 });

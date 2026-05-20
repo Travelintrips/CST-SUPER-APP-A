@@ -57,9 +57,11 @@ import {
   orderTaskPublicRouter,
   customerOrderPublicRouter,
 } from "./customerQuoteFlow";
-import { vendorPerformanceRouter } from "./vendorPerformance";
+
+port { vendorPerformanceRouter } from "./vendorPerformance";
 import { internalTasksRouter } from "./internalTasks";
 import { podOcrRouter } from "./podOcr";
+import { marginRulesRouter } from "./marginRules";
 
 const router: IRouter = Router();
 
@@ -125,4 +127,5 @@ router.use("/customer-order", customerOrderPublicRouter);
 router.use("/vendor-performance", vendorPerformanceRouter);
 router.use("/internal-tasks", internalTasksRouter);
 router.use("/pod-ocr", podOcrRouter);
+router.use("/margin-rules", marginRulesRouter);
 export default router;

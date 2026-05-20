@@ -99,6 +99,9 @@ export const logisticOrderRfqsTable = pgTable("logistic_order_rfqs", {
   openedVendorIds: integer("opened_vendor_ids").array().notNull().default([]),
   notes: text("notes"),
   status: text("status").notNull().default("open"),
+  responseDeadline: timestamp("response_deadline", { withTimezone: true }),
+  createdByUserId: text("created_by_user_id"),
+  createdByUserName: text("created_by_user_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -119,7 +122,10 @@ export const logisticOrderQuotesTable = pgTable("logistic_order_quotes", {
   quoteStatus: text("quote_status").notNull().default("pending"),
   replySource: text("reply_source").notNull().default("manual"),
   replyTimestamp: timestamp("reply_timestamp"),
-  vendorConfirmToken: text("vendor_confirm_token").unique(),                                   // [TRUCKING-FIX]
+  vendorConfirmToken: text("vendor_confirm_token").unique(),
+  // Enterprise: ranking & scoring
+  rankScore: numeric("rank_score", { precision: 6, scale: 2 }),
+  rankBadges: text("rank_badges").array().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

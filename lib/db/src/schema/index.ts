@@ -60,3 +60,6 @@ export * from "./vendorPerformance";
 export * from "./driverLocations";
 export * from "./podOcrResults";
 export * from "./internalTasks";
+
+export * from "./marginRules";
+export * from "./activityLogs";
