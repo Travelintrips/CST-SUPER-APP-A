@@ -90,6 +90,7 @@ export default function VendorResponsePage() {
   const [driverPhone, setDriverPhone] = useState("");
   const [plateNumber, setPlateNumber] = useState("");
   const [vehicleType, setVehicleType] = useState("");
+  const [quotedPrice, setQuotedPrice] = useState("");
   const [notes, setNotes] = useState("");
 
   const [photo, setPhoto] = useState<File | null>(null);
@@ -194,6 +195,7 @@ export default function VendorResponsePage() {
         driverPhone: driverPhone.trim() || null,
         plateNumber: plateNumber.trim() || null,
         vehicleType: vehicleType.trim() || null,
+        quotedPrice: quotedPrice ? parseFloat(quotedPrice) : null,
         notes: notes.trim() || null,
         unitPhotoUrl,
         token: vrToken || undefined,
@@ -317,6 +319,12 @@ export default function VendorResponsePage() {
                   <span className={`text-sm font-bold px-3 py-0.5 rounded-full ${isReady ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                     {isReady ? "✅ READY" : "❌ NOT READY"}
                   </span>
+                </div>
+              )}
+              {quotedPrice && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-sm">Harga Penawaran</span>
+                  <span className="text-emerald-400 text-sm font-bold">Rp {parseFloat(quotedPrice).toLocaleString("id-ID")}</span>
                 </div>
               )}
               {driverName && (
@@ -493,6 +501,23 @@ export default function VendorResponsePage() {
                       placeholder="Contoh: B 1234 XYZ"
                       required
                     />
+                    <div className="space-y-1.5">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                        <span className="text-blue-400">💰</span>
+                        Harga Penawaran
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">Rp</span>
+                        <input
+                          type="number"
+                          value={quotedPrice}
+                          onChange={(e) => setQuotedPrice(e.target.value)}
+                          placeholder="0"
+                          min="0"
+                          className="w-full bg-slate-800 border border-slate-600 rounded-xl pl-10 pr-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                        />
+                      </div>
+                    </div>
                     <InputField
                       label="Jenis Kendaraan"
                       icon={<Truck className="w-3.5 h-3.5" />}

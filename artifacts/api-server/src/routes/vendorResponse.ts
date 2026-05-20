@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import { db } from "@workspace/db";
@@ -19,6 +19,8 @@ import { getPreferredDomain } from "../lib/domain";
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const objectStorage = new ObjectStorageService();
+
+db.execute(sql`ALTER TABLE vendor_responses ADD COLUMN IF NOT EXISTS quoted_price NUMERIC(14, 2)`).catch(() => {});
 
 function nowWIB(): string {
   const now = new Date();
@@ -44,6 +46,7 @@ function formatWaAdminNotification(response: {
   plateNumber: string | null;
   vehicleType: string | null;
   notes: string | null;
+  quotedPrice?: string | null;
   orderId: number | null;
 }): string {
   const statusEmoji = response.status === "READY" ? "✅" : "❌";
@@ -59,6 +62,7 @@ function formatWaAdminNotification(response: {
   ];
 
   if (response.status === "READY") {
+    if (response.quotedPrice) lines.push(`💰 Harga Penawaran: Rp ${Number(response.quotedPrice).toLocaleString("id-ID")}`);
     if (response.estimatedPickupTime) lines.push(`Est. Pickup: ${response.estimatedPickupTime}`);
     if (response.driverName) lines.push(`Driver: ${response.driverName}`);
     if (response.driverPhone) lines.push(`Phone: ${response.driverPhone}`);
@@ -196,6 +200,7 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
     vehicleType,
     notes,
     unitPhotoUrl,
+    quotedPrice,
   } = req.body as Record<string, string>;
 
   if (!status || !["READY", "NOT_READY"].includes(status)) {
@@ -226,6 +231,7 @@ router.post("/:orderNumber", async (req: Request, res: Response) => {
       vehicleType: vehicleType ?? null,
       notes: notes ?? null,
       unitPhotoUrl: unitPhotoUrl ?? null,
+      quotedPrice: quotedPrice ? String(quotedPrice) : null,
       submittedAt: new Date(),
     };
 

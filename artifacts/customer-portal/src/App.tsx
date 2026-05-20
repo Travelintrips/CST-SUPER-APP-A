@@ -42,6 +42,7 @@ import Calculator from "@/pages/calculator";
 import ResetPassword from "@/pages/reset-password";
 import ProductOrder from "@/pages/product-order";
 import VendorResponsePage from "@/pages/vendor-response";
+import VendorProductApprovalPage from "@/pages/vendor-product-approval";
 import ApprovePage from "@/pages/approve";
 import ConfirmPage from "@/pages/confirm";
 import VendorQuoteFormPage from "@/pages/vendor-quote-form";
@@ -72,7 +73,7 @@ if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board"]; // [TRUCKING-FIX] [MULTI-MODE]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board"]; // [TRUCKING-FIX] [MULTI-MODE]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -146,6 +147,7 @@ function AppShell() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/order-produk" component={ProductOrder} />
       <Route path="/vendor-response/:orderNumber" component={VendorResponsePage} />
+      <Route path="/vendor-product-approval/:orderNumber" component={VendorProductApprovalPage} />
       <Route path="/vendor-quote" component={VendorQuoteFormPage} />
       <Route path="/vendor-confirm" component={VendorConfirmPage} />    {/* [TRUCKING-FIX] */}
       <Route path="/choose-option/:token" component={ChooseOptionPage} />   {/* [MULTI-MODE] */}
