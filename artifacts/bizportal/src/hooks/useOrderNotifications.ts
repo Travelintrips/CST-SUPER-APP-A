@@ -130,6 +130,7 @@ export function useOrderNotifications() {
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
   const [dbUnreadTotal, setDbUnreadTotal] = useState<number>(0);
+  const [dbUnreadTotal, setDbUnreadTotal] = useState(0);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "denied"
   );
@@ -153,6 +154,8 @@ export function useOrderNotifications() {
           // count unread dari initial fetch
           const unread = (json.data as Record<string, unknown>[]).filter((r) => !r.read_at).length;
           setDbUnreadTotal(unread);
+        if (typeof json?.unreadTotal === "number") {
+          setDbUnreadTotal(json.unreadTotal);
         }
       })
       .catch(() => {});
@@ -207,6 +210,11 @@ export function useOrderNotifications() {
       prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n))
     );
     setDbUnreadTotal((prev) => Math.max(0, prev - 1));
+    setNotifications((prev) => {
+      const wasUnread = prev.some((n) => n.dbId === dbId && n.readAt === null);
+      if (wasUnread) setDbUnreadTotal((t) => Math.max(0, t - 1));
+      return prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n));
+    });
     fetch(`/api/notifications/${dbId}/read`, {
       method: "POST",
       credentials: "include",
@@ -234,6 +242,7 @@ export function useOrderNotifications() {
       [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
     );
     setDbUnreadTotal((prev) => prev + 1);
+    setDbUnreadTotal((t) => t + 1);
     if (FREIGHT_TYPES.includes(notification.type)) {
       setLastFreightEventAt(Date.now());
     }
@@ -465,6 +474,7 @@ export function useOrderNotifications() {
     };
   }, []);
 
+  return { notifications, unreadCount, dbUnreadTotal, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
   return {
     notifications,
     unreadCount,

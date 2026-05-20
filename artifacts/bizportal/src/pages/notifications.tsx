@@ -135,6 +135,7 @@ const PAGE_SIZE = 20;
 export default function NotificationsPage() {
   const [data, setData] = useState<DbNotification[]>([]);
   const [total, setTotal] = useState(0);
+  const [unreadTotal, setUnreadTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState("all");
   const [readFilter, setReadFilter] = useState("all");
@@ -153,6 +154,7 @@ export default function NotificationsPage() {
       .then((json) => {
         setData(json.data ?? []);
         setTotal(json.total ?? 0);
+        setUnreadTotal(json.unreadTotal ?? 0);
       })
       .finally(() => setLoading(false));
   }, [typeFilter, readFilter, page]);
@@ -181,7 +183,6 @@ export default function NotificationsPage() {
       .then(() => { setPage(0); fetch_(); });
   }
 
-  const unread = data.filter((n) => !n.read_at).length;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
@@ -197,10 +198,13 @@ export default function NotificationsPage() {
             )}
           </div>
           <div className="flex gap-2">
-            {unread > 0 && (
+            {unreadTotal > 0 && (
               <Button size="sm" variant="outline" onClick={markAllRead} className="gap-1 text-xs h-8">
                 <CheckCheck size={13} />
                 Tandai semua dibaca
+                <span className="ml-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-full px-1.5 py-px text-[10px] font-semibold leading-none">
+                  {unreadTotal}
+                </span>
               </Button>
             )}
             {total > 0 && (

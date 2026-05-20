@@ -82,6 +82,7 @@ function notifDescription(n: OrderNotification): string {
 }
 
 export function NotificationBell() {
+  const { notifications, dbUnreadTotal, markAllRead, clearAll, setOnNewOrder } = useOrderNotificationsContext();
   const {
     notifications,
     unreadCount,
@@ -123,13 +124,13 @@ export function NotificationBell() {
   }
 
   return (
-    <Popover onOpenChange={(open) => { if (open && unreadCount > 0) markAllRead(); }}>
+    <Popover onOpenChange={(open) => { if (open && dbUnreadTotal > 0) markAllRead(); }}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative h-9 w-9" aria-label="Notifikasi">
           <Bell size={18} />
-          {unreadCount > 0 && (
+          {dbUnreadTotal > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white leading-none">
-              {unreadCount > 9 ? "9+" : unreadCount}
+              {dbUnreadTotal > 99 ? "99+" : dbUnreadTotal}
             </span>
           )}
         </Button>
