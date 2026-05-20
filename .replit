@@ -9,6 +9,7 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+<<<<<<< HEAD
 runButton = "Project"
 
 [[workflows.workflow]]
@@ -70,6 +71,8 @@ waitForPort = 3000
 
 [workflows.workflow.metadata]
 outputType = "console"
+=======
+>>>>>>> 0614167d81be15726025ac4352a11c7d52a534e4
 
 [[workflows.workflow]]
 name = "API Server"

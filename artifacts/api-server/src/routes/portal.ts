@@ -218,6 +218,9 @@ function genOtp(): string {
 
 // POST /api/portal/auth/wa-otp/send — kirim OTP via WhatsApp
 router.post("/auth/wa-otp/send", async (req, res) => {
+  if (!process.env.FONNTE_TOKEN) {
+    return res.status(503).json({ message: "Layanan OTP WhatsApp belum dikonfigurasi. Hubungi admin." });
+  }
   const { phone } = req.body ?? {};
   if (!phone) return res.status(400).json({ message: "Nomor HP diperlukan." });
   const normalized = normalizePhoneID(String(phone));
