@@ -662,22 +662,6 @@ export function AppShell({ children }: AppShellProps) {
               </button>
             )}
           </div>
-        <SidebarMenuItem key={item.href}>
-          <SidebarMenuButton
-            asChild
-            isActive={location === item.href || location.startsWith(`${item.href}/`)}
-            tooltip={getNavTitle(item.titleKey)}
-          >
-            <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
-              <item.icon size={18} />
-              <span className="flex-1">{getNavTitle(item.titleKey)}</span>
-              {isNotif && dbUnreadTotal > 0 && (
-                <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
-                  {dbUnreadTotal > 99 ? "99+" : dbUnreadTotal}
-                </span>
-              )}
-            </Link>
-          </SidebarMenuButton>
         </SidebarMenuItem>
       );
     }
