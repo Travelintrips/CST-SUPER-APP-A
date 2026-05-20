@@ -130,7 +130,6 @@ export function useOrderNotifications() {
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
   const [dbUnreadTotal, setDbUnreadTotal] = useState<number>(0);
-  const [dbUnreadTotal, setDbUnreadTotal] = useState(0);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "denied"
   );
@@ -150,12 +149,11 @@ export function useOrderNotifications() {
         if (json?.data && Array.isArray(json.data)) {
           setNotifications(json.data.map(dbRowToNotif));
         }
-        if (typeof json?.total === "number") {
-          // count unread dari initial fetch
-          const unread = (json.data as Record<string, unknown>[]).filter((r) => !r.read_at).length;
-          setDbUnreadTotal(unread);
         if (typeof json?.unreadTotal === "number") {
           setDbUnreadTotal(json.unreadTotal);
+        } else if (json?.data && Array.isArray(json.data)) {
+          const unread = (json.data as Record<string, unknown>[]).filter((r) => !r.read_at).length;
+          setDbUnreadTotal(unread);
         }
       })
       .catch(() => {});

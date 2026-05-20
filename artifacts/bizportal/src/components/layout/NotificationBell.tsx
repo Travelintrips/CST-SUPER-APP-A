@@ -82,9 +82,9 @@ function notifDescription(n: OrderNotification): string {
 }
 
 export function NotificationBell() {
-  const { notifications, dbUnreadTotal, markAllRead, clearAll, setOnNewOrder } = useOrderNotificationsContext();
   const {
     notifications,
+    dbUnreadTotal,
     unreadCount,
     markAllRead,
     clearAll,
