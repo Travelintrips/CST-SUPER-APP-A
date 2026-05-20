@@ -35,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
-  RefreshCw, MessageCircle, Trash2, ListChecks,
+  RefreshCw, MessageCircle, Trash2, ListChecks, Link, Copy, ExternalLink, Loader2,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -97,6 +97,21 @@ export default function LogisticsPortalOrderDetailPage() {
   const [rfqDialog, setRfqDialog] = useState(false);
   const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
   const [rfqNotes, setRfqNotes] = useState("");
+
+  // ── Lihat Link Form dialog ─────────────────────────────────────────────────
+  interface VendorFormLink {
+    vendorId: number;
+    vendorName: string;
+    phone: string | null;
+    hasPhone: boolean;
+    hasSubmitted: boolean;
+    formUrl: string | null;
+  }
+  const [linkFormDialog, setLinkFormDialog] = useState(false);
+  const [linkFormData, setLinkFormData] = useState<{ rfqNumber: string; vendors: VendorFormLink[] } | null>(null);
+  const [linkFormLoading, setLinkFormLoading] = useState(false);
+  const [resendingVendorIds, setResendingVendorIds] = useState<Set<number>>(new Set());
+  const [resendResults, setResendResults] = useState<Record<number, "ok" | "fail">>({});
 
   const [quoteDialog, setQuoteDialog] = useState<{ open: boolean; rfqId: number; vendorId?: number } | null>(null);
   const [quoteForm, setQuoteForm] = useState({
@@ -384,6 +399,45 @@ export default function LogisticsPortalOrderDetailPage() {
     return vp + (vp * mp / 100);
   }
 
+  async function openLinkFormDialog() {
+    setLinkFormDialog(true);
+    setLinkFormLoading(true);
+    setResendResults({});
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/vendor-form-links`, { credentials: "include" });
+      if (!res.ok) throw new Error((await res.json() as { message?: string }).message ?? "Gagal memuat link form");
+      setLinkFormData(await res.json() as { rfqNumber: string; vendors: VendorFormLink[] });
+    } catch (e: unknown) {
+      toast({ title: "Gagal memuat link form", description: e instanceof Error ? e.message : "Coba lagi", variant: "destructive" });
+      setLinkFormDialog(false);
+    } finally {
+      setLinkFormLoading(false);
+    }
+  }
+
+  async function handleResendVendorWa(vendorId: number) {
+    setResendingVendorIds((prev) => new Set(prev).add(vendorId));
+    setResendResults((prev) => { const n = { ...prev }; delete n[vendorId]; return n; });
+    try {
+      const res = await fetch(`/api/logistic/orders/${orderId}/resend-rfq`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ vendorIds: [vendorId] }),
+      });
+      const data = await res.json() as { ok?: boolean; sentCount?: number; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Gagal mengirim ulang");
+      setResendResults((prev) => ({ ...prev, [vendorId]: (data.sentCount ?? 0) > 0 ? "ok" : "fail" }));
+      if ((data.sentCount ?? 0) > 0) toast({ title: "WA berhasil dikirim ulang" });
+      else toast({ title: "Tidak ada WA terkirim", description: "Vendor mungkin tidak memiliki nomor WA", variant: "destructive" });
+    } catch (e: unknown) {
+      setResendResults((prev) => ({ ...prev, [vendorId]: "fail" }));
+      toast({ title: "Gagal kirim ulang", description: e instanceof Error ? e.message : "Coba lagi", variant: "destructive" });
+    } finally {
+      setResendingVendorIds((prev) => { const n = new Set(prev); n.delete(vendorId); return n; });
+    }
+  }
+
   // Filter vendors: active + serviceType compatible with order shipment type
   // Vendors with null/empty serviceType ("Semua tipe") always appear
   const activeVendors = vendors.filter((v) => {
@@ -572,6 +626,14 @@ export default function LogisticsPortalOrderDetailPage() {
               <Card>
                 <CardHeader className="pb-2 flex flex-row items-center justify-between">
                   <CardTitle className="text-sm">History RFQ</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={openLinkFormDialog}
+                  >
+                    <Link className="h-3.5 w-3.5" /> Lihat Link Form
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {rfqs.map((rfq) => (
@@ -1295,6 +1357,116 @@ export default function LogisticsPortalOrderDetailPage() {
             <Button variant="outline" onClick={() => setOfferDialog(false)}>Batal</Button>
             <Button onClick={() => void handleCreateOffer()}>Simpan Opsi</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Lihat Link Form Vendor ── */}
+      <Dialog open={linkFormDialog} onOpenChange={(open) => { if (!open) { setLinkFormDialog(false); setLinkFormData(null); setResendResults({}); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link className="h-5 w-5 text-blue-500" />
+              Link Form Vendor
+              {linkFormData && (
+                <span className="text-sm font-normal text-muted-foreground ml-1">— {linkFormData.rfqNumber}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {linkFormLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Memuat data vendor...</span>
+            </div>
+          ) : linkFormData ? (
+            <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+              {linkFormData.vendors.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Tidak ada vendor di RFQ ini.</p>
+              ) : (
+                linkFormData.vendors.map((v) => {
+                  const isResending = resendingVendorIds.has(v.vendorId);
+                  const result = resendResults[v.vendorId];
+                  return (
+                    <div
+                      key={v.vendorId}
+                      className={`rounded-lg border px-4 py-3 space-y-2 ${v.hasSubmitted ? "bg-green-50 border-green-200" : "bg-background"}`}
+                    >
+                      {/* Vendor header row */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{v.vendorName}</span>
+                            {v.hasSubmitted ? (
+                              <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1">
+                                <CheckCircle className="h-3 w-3" /> Sudah Submit
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                                Belum Submit
+                              </Badge>
+                            )}
+                            {!v.hasPhone && (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">No WA</Badge>
+                            )}
+                          </div>
+                          {v.phone && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{v.phone}</p>
+                          )}
+                        </div>
+
+                        {/* Resend WA button */}
+                        <Button
+                          size="sm"
+                          variant={result === "ok" ? "default" : result === "fail" ? "destructive" : "outline"}
+                          className={`h-7 gap-1.5 text-xs shrink-0 ${result === "ok" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                          disabled={isResending || !v.hasPhone}
+                          onClick={() => handleResendVendorWa(v.vendorId)}
+                          title={!v.hasPhone ? "Vendor tidak memiliki nomor WhatsApp" : "Kirim ulang WA dengan link form"}
+                        >
+                          {isResending
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : result === "ok"
+                            ? <CheckCircle className="h-3 w-3" />
+                            : <MessageCircle className="h-3 w-3" />}
+                          {isResending ? "Mengirim..." : result === "ok" ? "Terkirim!" : result === "fail" ? "Coba Lagi" : "Kirim Ulang WA"}
+                        </Button>
+                      </div>
+
+                      {/* Form URL row */}
+                      {v.formUrl ? (
+                        <div className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-1.5">
+                          <span className="text-xs font-mono text-muted-foreground truncate flex-1 min-w-0">
+                            {v.formUrl}
+                          </span>
+                          <button
+                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            title="Salin link"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(v.formUrl!);
+                              toast({ title: "Link disalin", description: v.vendorName });
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          <a
+                            href={v.formUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 text-muted-foreground hover:text-blue-600 transition-colors"
+                            title="Buka form"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Link tidak tersedia (token RFQ belum di-set).</p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 

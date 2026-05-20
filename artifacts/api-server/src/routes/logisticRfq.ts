@@ -1190,6 +1190,46 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
   });
 });
 
+// GET /api/logistic/orders/:id/vendor-form-links — return form URLs + status per vendor for latest RFQ (staff only)
+logisticRfqRouter.get("/:id/vendor-form-links", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [rfq] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.orderId, orderId))
+    .orderBy(sql`created_at desc`).limit(1);
+  if (!rfq) return res.status(404).json({ message: "RFQ belum dibuat untuk order ini" });
+
+  const rfqVendorIds = Array.isArray(rfq.vendorIds) ? (rfq.vendorIds as number[]) : [];
+
+  const submittedQuotes = await db.select({
+    vendorId: logisticOrderQuotesTable.vendorId,
+  }).from(logisticOrderQuotesTable)
+    .where(eq(logisticOrderQuotesTable.orderId, orderId));
+  const submittedVendorIds = new Set(submittedQuotes.map((q) => q.vendorId).filter(Boolean));
+
+  const vendors = rfqVendorIds.length > 0
+    ? await db.select().from(suppliersTable).where(inArray(suppliersTable.id, rfqVendorIds))
+    : [];
+
+  const token = order.publicRfqToken ?? "";
+
+  const result = vendors.map((v) => ({
+    vendorId: v.id,
+    vendorName: v.name,
+    phone: v.phone ?? null,
+    hasPhone: !!v.phone,
+    hasSubmitted: submittedVendorIds.has(v.id),
+    formUrl: token ? getVendorFormUrl(rfq.rfqNumber, v.id, token) : null,
+  }));
+
+  return res.json({ rfqNumber: rfq.rfqNumber, orderId, vendors: result });
+});
+
 // POST /api/logistic/orders/:id/resend-rfq — resend WA to vendors who haven't submitted quotes yet (staff only)
 logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) => {
   if (!(await requireClerkUser(req, res))) return;
