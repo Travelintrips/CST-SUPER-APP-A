@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ThumbsUp, ThumbsDown } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ThumbsUp, ThumbsDown, ArrowRight, FileText, Calendar, Clock, Weight, Info } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) { return `${BASE}${path}`; }
@@ -36,11 +36,26 @@ interface ConfirmData {
   finalSellingPrice: number;
   estimatedPickup: string | null;
   estimatedDelivery: string | null;
-  pickupDate: string | null;           // [TRUCKING-FIX]
-  pickupTime: string | null;           // [TRUCKING-FIX]
-  truckType: string | null;            // [TRUCKING-FIX]
+  pickupDate: string | null;
+  pickupTime: string | null;
+  truckType: string | null;
   vendorName: string | null;
   customerConfirmStatus: string;
+  weight?: number | null;
+  volume?: number | null;
+  notes?: string | null;
+}
+
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="mt-0.5 shrink-0 text-slate-400">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-slate-400 mb-0.5">{label}</p>
+        <p className="text-sm font-medium text-slate-700">{value}</p>
+      </div>
+    </div>
+  );
 }
 
 export default function ConfirmPage() {
@@ -126,10 +141,16 @@ export default function ConfirmPage() {
           <p className="text-sm text-slate-500 mb-4">
             Terima kasih, <strong>{data.customerName}</strong>. Anda telah menyetujui penawaran harga untuk order <strong>{data.orderNumber}</strong>.
           </p>
-          <div className="bg-green-50 rounded-xl p-4 text-sm text-green-800 font-semibold text-lg">
+          <div className="bg-green-50 rounded-xl p-4 text-green-800 font-bold text-lg mb-3">
             {fmt(data.finalSellingPrice)}
           </div>
-          <p className="text-xs text-slate-400 mt-4">Tim kami akan segera menghubungi Anda untuk langkah selanjutnya.</p>
+          <div className="bg-blue-50 rounded-xl p-3 flex items-start gap-2 text-left mb-4">
+            <FileText className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+            <p className="text-xs text-blue-700">
+              <strong>Sales Order telah dibuat.</strong> Tim kami akan segera menghubungi Anda untuk konfirmasi jadwal pengiriman.
+            </p>
+          </div>
+          <p className="text-xs text-slate-400">Simpan halaman ini sebagai bukti konfirmasi Anda.</p>
         </div>
       </div>
     );
@@ -155,6 +176,7 @@ export default function ConfirmPage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6">
       <div className="max-w-md mx-auto space-y-4">
+
         {/* Header */}
         <div className="flex items-center gap-3 bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
@@ -167,75 +189,130 @@ export default function ConfirmPage() {
         </div>
 
         {/* Detail Order */}
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
           <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Detail Order</h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-start gap-2">
-              <User className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-              <span className="text-slate-700">{data.customerName}</span>
-            </div>
+
+          <div className="space-y-3">
+            <DetailRow
+              icon={<User className="h-4 w-4" />}
+              label="Nama Pelanggan"
+              value={data.customerName}
+            />
             {data.phone && (
-              <div className="flex items-start gap-2">
-                <Phone className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-                <span className="text-slate-700">{data.phone}</span>
-              </div>
+              <DetailRow
+                icon={<Phone className="h-4 w-4" />}
+                label="No. Telepon"
+                value={
+                  <a href={`tel:${data.phone}`} className="text-blue-600 hover:underline">
+                    {data.phone}
+                  </a>
+                }
+              />
             )}
-            <div className="flex items-start gap-2">
-              <Truck className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-              <span className="text-slate-700">{data.shipmentType}</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <MapPin className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-              <span className="text-slate-700">{data.origin} → {data.destination}</span>
-            </div>
-            {data.commodity && (
-              <div className="flex items-start gap-2">
-                <Package className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-                <span className="text-slate-700">{data.commodity}</span>
-              </div>
+            <DetailRow
+              icon={<Truck className="h-4 w-4" />}
+              label="Jenis Pengiriman"
+              value={data.shipmentType}
+            />
+            {data.truckType && (
+              <DetailRow
+                icon={<Truck className="h-4 w-4" />}
+                label="Tipe Unit"
+                value={data.truckType}
+              />
             )}
           </div>
+
+          {/* Rute: Origin → Destination */}
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+              <MapPin className="h-3 w-3" /> Rute Pengiriman
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                <p className="text-xs text-slate-400 mb-0.5">Asal</p>
+                <p className="text-sm font-semibold text-slate-700">{data.origin}</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-blue-500 shrink-0" />
+              <div className="flex-1 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                <p className="text-xs text-slate-400 mb-0.5">Tujuan</p>
+                <p className="text-sm font-semibold text-slate-700">{data.destination}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Commodity + weight/volume */}
+          {(data.commodity || data.weight || data.volume) && (
+            <div className="space-y-2">
+              {data.commodity && (
+                <DetailRow
+                  icon={<Package className="h-4 w-4" />}
+                  label="Komoditi / Muatan"
+                  value={data.commodity}
+                />
+              )}
+              {(data.weight || data.volume) && (
+                <div className="flex gap-3">
+                  {data.weight && (
+                    <div className="flex-1 bg-slate-50 rounded-xl p-3">
+                      <p className="text-xs text-slate-400 mb-0.5 flex items-center gap-1"><Weight className="h-3 w-3" /> Berat</p>
+                      <p className="text-sm font-medium text-slate-700">{data.weight.toLocaleString("id-ID")} kg</p>
+                    </div>
+                  )}
+                  {data.volume && (
+                    <div className="flex-1 bg-slate-50 rounded-xl p-3">
+                      <p className="text-xs text-slate-400 mb-0.5">Volume</p>
+                      <p className="text-sm font-medium text-slate-700">{data.volume.toLocaleString("id-ID")} m³</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Notes */}
+          {data.notes && (
+            <DetailRow
+              icon={<FileText className="h-4 w-4" />}
+              label="Catatan"
+              value={data.notes}
+            />
+          )}
         </div>
 
-        {/* [TRUCKING-FIX] Jadwal Pickup (trucking) ATAU Estimasi (non-trucking) */}
+        {/* Jadwal Pickup (trucking) ATAU Estimasi (non-trucking) */}
         {(data.pickupDate || data.truckType) ? (
-          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
             <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Jadwal Pickup</h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
               {data.pickupDate && (
                 <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-xs text-slate-400 mb-1">Tanggal Pickup</p>
-                  <p className="font-medium text-slate-700">{formatTanggal(data.pickupDate)}</p>
+                  <p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Calendar className="h-3 w-3" /> Tanggal Pickup</p>
+                  <p className="font-semibold text-slate-700">{formatTanggal(data.pickupDate)}</p>
                 </div>
               )}
               {data.pickupTime && (
                 <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-xs text-slate-400 mb-1">Jam Pickup</p>
-                  <p className="font-medium text-slate-700">{data.pickupTime} WIB</p>
-                </div>
-              )}
-              {data.truckType && (
-                <div className="bg-slate-50 rounded-xl p-3 col-span-2">
-                  <p className="text-xs text-slate-400 mb-1">Tipe Unit</p>
-                  <p className="font-medium text-slate-700">{data.truckType}</p>
+                  <p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Clock className="h-3 w-3" /> Jam Pickup</p>
+                  <p className="font-semibold text-slate-700">{data.pickupTime} WIB</p>
                 </div>
               )}
             </div>
           </div>
         ) : (data.estimatedPickup || data.estimatedDelivery) ? (
-          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
             <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Estimasi</h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
               {data.estimatedPickup && (
                 <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-xs text-slate-400 mb-1">Pickup</p>
-                  <p className="font-medium text-slate-700">{data.estimatedPickup}</p>
+                  <p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Calendar className="h-3 w-3" /> Pickup</p>
+                  <p className="font-semibold text-slate-700">{data.estimatedPickup}</p>
                 </div>
               )}
               {data.estimatedDelivery && (
                 <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-xs text-slate-400 mb-1">Delivery</p>
-                  <p className="font-medium text-slate-700">{data.estimatedDelivery}</p>
+                  <p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Calendar className="h-3 w-3" /> Delivery</p>
+                  <p className="font-semibold text-slate-700">{data.estimatedDelivery}</p>
                 </div>
               )}
             </div>
@@ -251,11 +328,21 @@ export default function ConfirmPage() {
           )}
         </div>
 
-        {/* Action Buttons */}
+        {/* Keterangan Sales Order + Action Buttons */}
         <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
-          <p className="text-sm text-slate-600 text-center">
+          <p className="text-sm text-slate-700 font-medium text-center">
             Apakah Anda menyetujui penawaran harga di atas?
           </p>
+
+          {/* Keterangan Sales Order */}
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
+            <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Dengan menekan <strong>"Ya, Saya Setuju"</strong>, penawaran ini akan dikonfirmasi dan{" "}
+              <strong>Sales Order akan otomatis dibuat</strong> oleh sistem kami. Tim akan segera menghubungi Anda.
+            </p>
+          </div>
+
           <button
             onClick={() => handleAction("confirmed")}
             disabled={submitting}
@@ -275,7 +362,7 @@ export default function ConfirmPage() {
         </div>
 
         <p className="text-xs text-slate-400 text-center pb-4">
-          Dengan menekan "Ya, Saya Setuju", Anda mengkonfirmasi persetujuan atas penawaran harga di atas.
+          Konfirmasi ini bersifat mengikat. Pastikan detail order di atas sudah sesuai sebelum menyetujui.
         </p>
       </div>
     </div>
