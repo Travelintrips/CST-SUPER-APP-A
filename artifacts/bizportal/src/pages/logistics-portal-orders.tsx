@@ -5,18 +5,21 @@ import {
   useUpdateLogisticOrderStatus,
   useUpdateLogisticOrderType,
   useCreateSalesDocument,
+  useCreateLogisticOrderRfq,
   getListLogisticOrdersQueryKey,
   getGetLogisticOrderQueryOptions,
   useGetLogisticOrder,
 } from "@workspace/api-client-react";
 import type { LogisticOrder } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -28,10 +31,19 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, ExternalLink } from "lucide-react";
+import { PackageOpen, Search, RefreshCw, FilePlus, X, Eye, Zap, Send, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import { useCompany } from "@/contexts/CompanyContext";
+
+interface VendorRow {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  serviceType: string | null;
+  isActive: boolean;
+}
 
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>;
@@ -104,6 +116,12 @@ export default function LogisticsPortalOrdersPage() {
   const [lastAutoRefresh, setLastAutoRefresh] = useState<Date | null>(null);
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // RFQ dialog state
+  const [rfqTargetOrder, setRfqTargetOrder] = useState<LogisticOrder | null>(null);
+  const [rfqSelectedVendors, setRfqSelectedVendors] = useState<number[]>([]);
+  const [rfqNotes, setRfqNotes] = useState("");
+  const [rfqShipmentType, setRfqShipmentType] = useState("");
+
   const { setOnNewOrder } = useOrderNotificationsContext();
 
   useEffect(() => {
@@ -150,6 +168,49 @@ export default function LogisticsPortalOrdersPage() {
   const updateStatus = useUpdateLogisticOrderStatus();
   const updateType = useUpdateLogisticOrderType();
   const createSalesDoc = useCreateSalesDocument();
+  const createRfq = useCreateLogisticOrderRfq();
+
+  const { data: vendors = [] } = useQuery<VendorRow[]>({
+    queryKey: ["logistic-vendors"],
+    queryFn: async () => {
+      const res = await fetch("/api/logistic/orders/vendors");
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<VendorRow[]>;
+    },
+  });
+  const activeVendors = vendors.filter((v) => v.isActive !== false);
+
+  function openRfqDialog(o: LogisticOrder) {
+    setRfqTargetOrder(o);
+    setRfqSelectedVendors([]);
+    setRfqNotes("");
+    setRfqShipmentType(o.shipmentType ?? "");
+  }
+
+  function handleSendRfq() {
+    if (!rfqTargetOrder || rfqSelectedVendors.length === 0) return;
+    createRfq.mutate(
+      {
+        id: rfqTargetOrder.id,
+        data: {
+          vendorIds: rfqSelectedVendors,
+          notes: rfqNotes || undefined,
+          shipmentType: rfqShipmentType || undefined,
+        } as Parameters<typeof createRfq.mutate>[0]["data"],
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "RFQ berhasil dikirim ke vendor" });
+          setRfqTargetOrder(null);
+          queryClient.invalidateQueries({ queryKey: getListLogisticOrdersQueryKey() });
+        },
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+          toast({ title: msg ?? "Gagal mengirim RFQ", variant: "destructive" });
+        },
+      },
+    );
+  }
 
   function handleStatusChange(id: number, status: string) {
     setUpdatingId(id);
@@ -465,6 +526,17 @@ export default function LogisticsPortalOrdersPage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="gap-1.5 text-xs h-7 whitespace-nowrap text-blue-600 border-blue-200 hover:bg-blue-50"
+                          onClick={() => openRfqDialog(o)}
+                          disabled={o.status === "Cancelled" || o.status === "Completed"}
+                          title="Kirim RFQ ke Vendor"
+                        >
+                          <Send className="h-3 w-3" />
+                          Kirim RFQ
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="gap-1.5 text-xs h-7 whitespace-nowrap"
                           onClick={() => setSoDialog(o)}
                           disabled={o.status === "Cancelled"}
@@ -744,6 +816,103 @@ export default function LogisticsPortalOrdersPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* RFQ Dialog */}
+      <Dialog open={!!rfqTargetOrder} onOpenChange={(open) => { if (!open) setRfqTargetOrder(null); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" /> Kirim RFQ ke Vendor
+            </DialogTitle>
+            {rfqTargetOrder && (
+              <DialogDescription>
+                {rfqTargetOrder.orderNumber} · {rfqTargetOrder.customerName}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          {rfqTargetOrder && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm space-y-1">
+                <div className="font-medium font-mono">{rfqTargetOrder.orderNumber}</div>
+                <div className="text-muted-foreground">{rfqTargetOrder.shipmentType} · {rfqTargetOrder.origin} → {rfqTargetOrder.destination}</div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-1 block">Tipe Pengiriman</Label>
+                <Select value={rfqShipmentType} onValueChange={setRfqShipmentType}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Pilih tipe..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!!rfqShipmentType && !SHIPMENT_TYPE_OPTIONS.includes(rfqShipmentType) && (
+                      <SelectItem value={rfqShipmentType} className="text-xs">{rfqShipmentType}</SelectItem>
+                    )}
+                    {SHIPMENT_TYPE_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-2 block">
+                  Pilih Vendor ({rfqSelectedVendors.length} dipilih)
+                </Label>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {activeVendors.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Tidak ada vendor aktif.</p>
+                  )}
+                  {activeVendors.map((v) => (
+                    <label
+                      key={v.id}
+                      className="flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                    >
+                      <Checkbox
+                        checked={rfqSelectedVendors.includes(v.id)}
+                        onCheckedChange={(checked) => {
+                          setRfqSelectedVendors((prev) =>
+                            checked ? [...prev, v.id] : prev.filter((x) => x !== v.id)
+                          );
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">{v.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {v.phone ?? "Tidak ada nomor WA"} · {v.serviceType ?? "Semua tipe"}
+                        </div>
+                      </div>
+                      {!v.phone && (
+                        <Badge variant="outline" className="text-xs text-orange-600 border-orange-200 shrink-0">No WA</Badge>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm">Catatan Tambahan (opsional)</Label>
+                <Input
+                  className="mt-1"
+                  placeholder="Catatan untuk vendor..."
+                  value={rfqNotes}
+                  onChange={(e) => setRfqNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRfqTargetOrder(null)}>Batal</Button>
+            <Button
+              onClick={handleSendRfq}
+              disabled={createRfq.isPending || rfqSelectedVendors.length === 0}
+              className="gap-2"
+            >
+              <Send className="h-4 w-4" />
+              {createRfq.isPending ? "Mengirim..." : `Kirim ke ${rfqSelectedVendors.length} Vendor`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
