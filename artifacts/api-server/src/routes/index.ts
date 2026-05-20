@@ -57,6 +57,9 @@ import {
   orderTaskPublicRouter,
   customerOrderPublicRouter,
 } from "./customerQuoteFlow";
+import { vendorPerformanceRouter } from "./vendorPerformance";
+import { internalTasksRouter } from "./internalTasks";
+import { podOcrRouter } from "./podOcr";
 
 const router: IRouter = Router();
 
@@ -119,4 +122,7 @@ router.use("/logistic", customerQuoteAdminRouter);
 router.use("/customer-quote", customerQuotePublicRouter);
 router.use("/order-task", orderTaskPublicRouter);
 router.use("/customer-order", customerOrderPublicRouter);
+router.use("/vendor-performance", vendorPerformanceRouter);
+router.use("/internal-tasks", internalTasksRouter);
+router.use("/pod-ocr", podOcrRouter);
 export default router;

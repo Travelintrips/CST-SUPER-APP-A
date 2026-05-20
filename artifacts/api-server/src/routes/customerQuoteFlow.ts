@@ -6,6 +6,7 @@ import {
   suppliersTable,
   customerQuoteLinksTable, customerQuoteResponsesTable,
   orderTaskLinksTable, orderUpdatesTable, customerOrderLinksTable,
+  driverLocationsTable,
 } from "@workspace/db";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
@@ -518,6 +519,44 @@ orderTaskPublicRouter.get("/:token", async (req: Request, res: Response) => {
   } catch (err) {
     logger.error({ err }, "get order-task error");
     return res.status(500).json({ error: "Gagal memuat task" });
+  }
+});
+
+// POST /api/order-task/:token/location
+orderTaskPublicRouter.post("/:token/location", async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  const { lat, lng, accuracy } = req.body as { lat: number; lng: number; accuracy?: number };
+
+  if (!lat || !lng || typeof lat !== "number" || typeof lng !== "number") {
+    return res.status(400).json({ error: "lat dan lng wajib diisi" });
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return res.status(400).json({ error: "Koordinat tidak valid" });
+  }
+
+  try {
+    const [link] = await db.select().from(orderTaskLinksTable)
+      .where(eq(orderTaskLinksTable.token, token));
+    if (!link) return res.status(404).json({ error: "Link tidak ditemukan" });
+    if (link.expiredAt && link.expiredAt < new Date()) {
+      return res.status(410).json({ error: "Link sudah kadaluarsa" });
+    }
+
+    const driverId = (link as any).driverId ?? null;
+
+    await db.insert(driverLocationsTable).values({
+      driverId,
+      orderId: link.orderId,
+      latitude: String(lat),
+      longitude: String(lng),
+      accuracy: accuracy != null ? String(accuracy) : null,
+      checkpointType: "order_task",
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "order-task location error");
+    return res.status(500).json({ error: "Gagal menyimpan lokasi" });
   }
 });
 
