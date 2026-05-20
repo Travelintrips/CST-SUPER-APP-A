@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
-import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ChevronDown, ChevronUp, Send } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, Truck, MapPin, Package, User, Phone, ChevronDown, ChevronUp, Send, RefreshCw } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 function apiUrl(path: string) {
@@ -24,6 +24,12 @@ interface Quote {
   replySource: string | null;
 }
 
+interface PendingVendor {
+  id: number;
+  name: string;
+  hasPhone: boolean;
+}
+
 interface OrderData {
   orderId: number;
   orderNumber: string;
@@ -36,6 +42,9 @@ interface OrderData {
   adminApprovalStatus: string;
   approvedQuoteId: number | null;
   finalSellingPrice: number | null;
+  rfqId: number | null;
+  rfqNumber: string | null;
+  pendingVendors: PendingVendor[];
   quotes: Quote[];
 }
 
@@ -76,6 +85,10 @@ export default function ApprovePage() {
   const [sendingRfq, setSendingRfq] = useState(false);
   const [rfqSent, setRfqSent] = useState(false);
   const [rfqError, setRfqError] = useState<string | null>(null);
+
+  // Resend RFQ state
+  const [resendingIds, setResendingIds] = useState<Set<number>>(new Set());
+  const [resendResults, setResendResults] = useState<Record<number, "ok" | "fail">>({});
 
   const loadData = useCallback(() => {
     if (!orderNumber) return;
@@ -139,6 +152,26 @@ export default function ApprovePage() {
     setSelectedVendorIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+  }
+
+  async function handleResendWa(vendorId: number) {
+    if (!data?.orderId) return;
+    setResendingIds((prev) => new Set(prev).add(vendorId));
+    setResendResults((prev) => { const n = { ...prev }; delete n[vendorId]; return n; });
+    try {
+      const r = await fetch(apiUrl(`/api/logistic/orders/${data.orderId}/resend-rfq`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorIds: [vendorId] }),
+      });
+      const res = await r.json() as { ok?: boolean; sentCount?: number; message?: string };
+      if (!r.ok) throw new Error(res.message ?? "Gagal kirim ulang");
+      setResendResults((prev) => ({ ...prev, [vendorId]: (res.sentCount ?? 0) > 0 ? "ok" : "fail" }));
+    } catch {
+      setResendResults((prev) => ({ ...prev, [vendorId]: "fail" }));
+    } finally {
+      setResendingIds((prev) => { const n = new Set(prev); n.delete(vendorId); return n; });
+    }
   }
 
   function onSelectQuote(q: Quote) {
@@ -486,6 +519,52 @@ export default function ApprovePage() {
             })
           )}
         </div>
+
+        {/* Pending vendors — resend WA */}
+        {data.pendingVendors?.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+            <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-amber-500" />
+              Vendor Belum Merespons ({data.pendingVendors.length})
+            </h3>
+            <p className="text-xs text-gray-400">Vendor berikut sudah menerima RFQ tapi belum mengirimkan penawaran. Klik untuk kirim ulang WA.</p>
+            <div className="space-y-2">
+              {data.pendingVendors.map((v) => {
+                const isSending = resendingIds.has(v.id);
+                const result = resendResults[v.id];
+                return (
+                  <div key={v.id} className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{v.name}</p>
+                      {!v.hasPhone && <p className="text-xs text-red-400">Tidak ada nomor WA</p>}
+                    </div>
+                    {result === "ok" ? (
+                      <span className="text-xs text-green-600 font-medium flex items-center gap-1 flex-shrink-0">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Terkirim
+                      </span>
+                    ) : result === "fail" ? (
+                      <span className="text-xs text-red-500 font-medium flex items-center gap-1 flex-shrink-0">
+                        <AlertCircle className="w-3.5 h-3.5" /> Gagal
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleResendWa(v.id)}
+                        disabled={isSending || !v.hasPhone}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                      >
+                        {isSending ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" />Mengirim...</>
+                        ) : (
+                          <><Send className="w-3.5 h-3.5" />Kirim Ulang WA</>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Selling price + approve */}
         {data.quotes.length > 0 && (

@@ -1091,6 +1091,7 @@ logisticRfqRouter.post("/:id/manual-rfq", async (req: Request, res: Response) =>
     requiredDate: order.requiredDate ?? null,
     notes: order.notes ?? null,
     createdAt: order.createdAt,
+    jamOrder: order.jamOrder ?? null,
   };
 
   const [orderTokenRow3] = await db.select({ publicRfqToken: logisticOrdersTable.publicRfqToken })
@@ -1129,14 +1130,29 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
     .where(eq(logisticOrdersTable.orderNumber, orderNumber));
   if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
 
-  const quotes = await db.select().from(logisticOrderQuotesTable)
-    .where(eq(logisticOrderQuotesTable.orderId, order.id));
+  const [quotes, rfqs] = await Promise.all([
+    db.select().from(logisticOrderQuotesTable).where(eq(logisticOrderQuotesTable.orderId, order.id)),
+    db.select().from(logisticOrderRfqsTable).where(eq(logisticOrderRfqsTable.orderId, order.id)),
+  ]);
+
+  const latestRfq = rfqs.sort((a, b) => (b.id ?? 0) - (a.id ?? 0))[0] ?? null;
 
   const vendorIds = [...new Set(quotes.map((q) => q.vendorId))];
-  const vendors = vendorIds.length
-    ? await db.select().from(suppliersTable).where(inArray(suppliersTable.id, vendorIds))
+  const rfqVendorIds = Array.isArray(latestRfq?.vendorIds) ? (latestRfq.vendorIds as number[]) : [];
+  const allVendorIds = [...new Set([...vendorIds, ...rfqVendorIds])];
+  const vendors = allVendorIds.length
+    ? await db.select({ id: suppliersTable.id, name: suppliersTable.name, phone: suppliersTable.phone })
+        .from(suppliersTable).where(inArray(suppliersTable.id, allVendorIds))
     : [];
-  const vendorMap = new Map(vendors.map((v) => [v.id, v.name]));
+  const vendorMap = new Map(vendors.map((v) => [v.id, v]));
+
+  const respondedVendorIds = new Set(quotes.map((q) => q.vendorId));
+  const pendingVendors = rfqVendorIds
+    .filter((vid) => !respondedVendorIds.has(vid))
+    .map((vid) => {
+      const v = vendorMap.get(vid);
+      return { id: vid, name: v?.name ?? `Vendor #${vid}`, hasPhone: !!v?.phone };
+    });
 
   return res.json({
     orderId: order.id,
@@ -1150,10 +1166,13 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
     adminApprovalStatus: order.adminApprovalStatus ?? "pending",
     approvedQuoteId: order.approvedQuoteId ?? null,
     finalSellingPrice: order.finalSellingPrice != null ? Number(order.finalSellingPrice) : null,
+    rfqId: latestRfq?.id ?? null,
+    rfqNumber: latestRfq?.rfqNumber ?? null,
+    pendingVendors,
     quotes: quotes.map((q) => ({
       id: q.id,
       vendorId: q.vendorId,
-      vendorName: vendorMap.get(q.vendorId) ?? `Vendor #${q.vendorId}`,
+      vendorName: vendorMap.get(q.vendorId)?.name ?? `Vendor #${q.vendorId}`,
       vendorPrice: Number(q.vendorPrice),
       estimatedPickup: q.estimatedPickup ?? null,
       estimatedDelivery: q.estimatedDelivery ?? null,
@@ -1169,6 +1188,75 @@ logisticRfqRouter.get("/approve-form/:orderNumber", async (req: Request, res: Re
       replySource: q.replySource,
     })),
   });
+});
+
+// POST /api/logistic/orders/:id/resend-rfq — resend WA to vendors who haven't submitted quotes yet (staff only)
+logisticRfqRouter.post("/:id/resend-rfq", async (req: Request, res: Response) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const orderId = parseInt(String(req.params.id), 10);
+  if (isNaN(orderId)) return res.status(400).json({ message: "ID tidak valid" });
+
+  const { vendorIds: bodyVendorIds } = req.body as { vendorIds?: number[] };
+
+  const [order] = await db.select().from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
+  if (!order) return res.status(404).json({ message: "Order tidak ditemukan" });
+
+  const [rfqs] = await db.select().from(logisticOrderRfqsTable)
+    .where(eq(logisticOrderRfqsTable.orderId, orderId));
+  if (!rfqs) return res.status(404).json({ message: "RFQ belum dibuat untuk order ini" });
+
+  const rfqVendorIds = Array.isArray(rfqs.vendorIds) ? (rfqs.vendorIds as number[]) : [];
+  if (rfqVendorIds.length === 0) return res.status(400).json({ message: "Tidak ada vendor di RFQ ini" });
+
+  // Determine which vendors to resend to
+  const targetVendorIds = bodyVendorIds?.length
+    ? bodyVendorIds.filter((id) => rfqVendorIds.includes(id))
+    : rfqVendorIds;
+
+  if (targetVendorIds.length === 0) return res.status(400).json({ message: "Tidak ada vendor yang valid untuk dikirim ulang" });
+
+  const vendors = await db.select().from(suppliersTable)
+    .where(inArray(suppliersTable.id, targetVendorIds));
+  const eligible = vendors.filter((v) => v.phone);
+  if (eligible.length === 0)
+    return res.status(400).json({ message: "Tidak ada vendor terpilih yang memiliki nomor WhatsApp" });
+
+  const orderToken = order.publicRfqToken ?? "";
+
+  const results: { vendorId: number; vendorName: string; sent: boolean }[] = [];
+  for (const vendor of eligible) {
+    const catalogItems = await db.select().from(vendorCatalogItemsTable)
+      .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
+    const vt = order.vehicleType ?? (order as any).truckType ?? null;
+    const matchingCatalog = vt
+      ? catalogItems.find((c) => c.name.toLowerCase().includes(vt.toLowerCase()))
+      : null;
+    const vendorBasePrice = matchingCatalog
+      ? Number(matchingCatalog.priceBase)
+      : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
+
+    const formUrl = getVendorFormUrl(rfqs.rfqNumber, vendor.id, orderToken);
+    try {
+      await sendVendorWhatsApp({
+        vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
+        rfqNumber: rfqs.rfqNumber, orderId, orderNumber: order.orderNumber, longUrl: formUrl,
+        origin: order.origin, destination: order.destination,
+        commodity: order.commodity ?? null, grossWeight: order.grossWeight ? parseFloat(order.grossWeight) : null,
+        volumeCbm: order.volumeCbm ? parseFloat(order.volumeCbm) : null,
+        requiredDate: order.requiredDate ?? null,
+        notes: order.notes ?? null, vendorBasePrice, createdAt: order.createdAt,
+        jamOrder: order.jamOrder ?? null,
+      });
+      results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: true });
+    } catch (err) {
+      logger.error({ err, vendorId: vendor.id }, "resend-rfq WA failed");
+      results.push({ vendorId: vendor.id, vendorName: vendor.name, sent: false });
+    }
+  }
+
+  const sentCount = results.filter((r) => r.sent).length;
+  logger.info({ rfqNumber: rfqs.rfqNumber, orderId, sentCount }, "Resend RFQ WA");
+  return res.json({ ok: true, rfqNumber: rfqs.rfqNumber, sentCount, results });
 });
 
 // POST /api/logistic/orders/:id/approve — admin approves + send quotation to customer (staff only)
