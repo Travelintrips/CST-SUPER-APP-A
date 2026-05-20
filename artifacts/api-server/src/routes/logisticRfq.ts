@@ -53,7 +53,11 @@ export async function autoCreateRfqAndNotifyVendors(
   if (order.vehicleType) keywords.add("Trucking");
 
   // Fetch order items to derive additional keywords from calculatorType
-  const orderItems = await db.select({ calculatorType: logisticOrderItemsTable.calculatorType })
+  const orderItems = await db.select({
+      calculatorType: logisticOrderItemsTable.calculatorType,
+      serviceName: logisticOrderItemsTable.serviceName,
+      category: logisticOrderItemsTable.category,
+    })
     .from(logisticOrderItemsTable)
     .where(eq(logisticOrderItemsTable.orderId, orderId));
   for (const item of orderItems) {
