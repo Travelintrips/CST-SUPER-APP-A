@@ -35,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
-  RefreshCw, MessageCircle, Trash2, ListChecks,
+  RefreshCw, MessageCircle, Trash2, ListChecks, Link2, Copy,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -123,6 +123,27 @@ export default function LogisticsPortalOrderDetailPage() {
   const [sendingOptions, setSendingOptions] = useState(false);
   const [sendingReply, setSendingReply] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Lihat Link Form state
+  interface VendorFormLink { vendorId: number; vendorName: string; vendorPhone: string | null; formUrl: string }
+  const [linkDialog, setLinkDialog] = useState(false);
+  const [vendorFormLinks, setVendorFormLinks] = useState<VendorFormLink[]>([]);
+  const [linksLoading, setLinksLoading] = useState(false);
+
+  function openLinkDialog() {
+    setLinkDialog(true);
+    setLinksLoading(true);
+    fetch(`/api/logistic/orders/${orderId}/vendor-form-links`)
+      .then((r) => r.json())
+      .then((d) => { setVendorFormLinks(d.links ?? []); setLinksLoading(false); })
+      .catch(() => setLinksLoading(false));
+  }
+
+  function copyLink(url: string, name: string) {
+    navigator.clipboard.writeText(url).then(() => {
+      toast({ title: `Link ${name} disalin`, description: url.slice(0, 60) + "…" });
+    });
+  }
 
   const { data: order, isLoading } = useGetLogisticOrder(orderId);
   const { data: rfqs = [] } = useListLogisticOrderRfqs(orderId);
@@ -449,6 +470,11 @@ export default function LogisticsPortalOrderDetailPage() {
                 <Send className="h-4 w-4" /> Kirim RFQ ke Vendor
               </Button>
             ) : null}
+            {rfqs.length > 0 && (
+              <Button size="sm" variant="outline" className="gap-2" onClick={openLinkDialog}>
+                <Link2 className="h-4 w-4" /> Lihat Link Form
+              </Button>
+            )}
             {order.status === "Confirmed" && (
               <Button
                 size="sm"
@@ -1294,6 +1320,62 @@ export default function LogisticsPortalOrderDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOfferDialog(false)}>Batal</Button>
             <Button onClick={() => void handleCreateOffer()}>Simpan Opsi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Lihat Link Form Vendor ── */}
+      <Dialog open={linkDialog} onOpenChange={setLinkDialog}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5" /> Link Form Penawaran Vendor
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Salin link berikut dan kirim ke vendor secara manual via email / chat jika WA tidak terkirim.
+            </p>
+            {linksLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : vendorFormLinks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Belum ada RFQ / vendor yang terdaftar.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {vendorFormLinks.map((link) => (
+                  <div key={link.vendorId} className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="font-medium text-sm">{link.vendorName}</span>
+                        {link.vendorPhone ? (
+                          <span className="ml-2 text-xs text-muted-foreground">{link.vendorPhone}</span>
+                        ) : (
+                          <span className="ml-2 text-xs text-orange-500 font-medium">No WA</span>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 gap-1.5 text-xs shrink-0"
+                        onClick={() => copyLink(link.formUrl, link.vendorName)}
+                      >
+                        <Copy className="h-3 w-3" /> Salin Link
+                      </Button>
+                    </div>
+                    <div className="text-xs font-mono text-muted-foreground bg-background border rounded px-2 py-1 break-all select-all">
+                      {link.formUrl}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkDialog(false)}>Tutup</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
