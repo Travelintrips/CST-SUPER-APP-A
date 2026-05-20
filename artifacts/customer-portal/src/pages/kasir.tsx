@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { getKasirProfile, setKasirProfile, isKasirLoggedIn, removeKasirToken, kasirFetch, type KasirProfile } from "@/lib/kasirAuth";
+import { getKasirProfile, setKasirProfile, isKasirLoggedIn, removeKasirToken, kasirFetch, getKasirToken, type KasirProfile } from "@/lib/kasirAuth";
 
 interface Product {
   id: number;
@@ -88,6 +88,37 @@ interface BranchInfo {
   phone?: string | null;
 }
 
+interface QrOrder {
+  id: number;
+  branchId: number;
+  tableNumber?: string | null;
+  customerName?: string | null;
+  items: Array<{ productId: number; productName: string; qty: number; price: string }>;
+  note?: string | null;
+  status: string;
+  createdAt: string;
+}
+
+function playPosChime() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const now = ctx.currentTime;
+    const notes: [number, number][] = [[880, 0], [1046.5, 0.18], [880, 0.36], [1046.5, 0.54]];
+    notes.forEach(([freq, t]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = "triangle";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now + t);
+      gain.gain.linearRampToValueAtTime(0.3, now + t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + t + 0.45);
+      osc.start(now + t); osc.stop(now + t + 0.48);
+    });
+    setTimeout(() => ctx.close(), 2500);
+  } catch { /* skip */ }
+}
+
 interface Shift {
   id: number;
   branchId: number;
@@ -137,6 +168,11 @@ export default function KasirPage() {
   const [stockAddProduct, setStockAddProduct] = useState<Product | null>(null);
   const [stockAddQty, setStockAddQty] = useState("1");
   const [stockAdding, setStockAdding] = useState(false);
+
+  // QR / table order notifications
+  const [pendingQrOrders, setPendingQrOrders] = useState<QrOrder[]>([]);
+  const [showIncoming, setShowIncoming] = useState(false);
+  const [acceptingId, setAcceptingId] = useState<number | null>(null);
 
   const cartRef = useRef<HTMLDivElement>(null);
 
@@ -266,6 +302,75 @@ export default function KasirPage() {
     } catch { /* skip */ }
     finally { setStockLoading("done"); }
   }, []);
+
+  // ── SSE: notifikasi pesanan masuk dari meja / QR ───────────────────────────
+  useEffect(() => {
+    if (!profile?.branchId) return;
+    const token = getKasirToken();
+    if (!token) return;
+    let es: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout>;
+    let mounted = true;
+
+    // Muat pending orders yang sudah ada
+    kasirFetch("/api/pos-kasir/qr-orders/pending")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((orders: QrOrder[]) => { if (mounted) setPendingQrOrders(orders); })
+      .catch(() => {});
+
+    function connect() {
+      if (!mounted) return;
+      es = new EventSource(`/api/pos-kasir/events?token=${encodeURIComponent(token!)}`, { withCredentials: false });
+      es.addEventListener("new_qr_order", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const order = JSON.parse(String(e.data)) as QrOrder;
+          setPendingQrOrders((prev) => [order, ...prev.filter((o) => o.id !== order.id)]);
+          playPosChime();
+          setShowIncoming(true);
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification(`🔔 Pesanan Meja ${order.tableNumber ?? "–"}`, {
+              body: `${order.items.length} item${order.customerName ? ` · ${order.customerName}` : ""}`,
+              tag: `qr-order-${order.id}`,
+            });
+          }
+        } catch { /* skip */ }
+      });
+      es.onerror = () => {
+        if (!mounted) return;
+        es?.close(); es = null;
+        retryTimer = setTimeout(connect, 5000);
+      };
+    }
+    connect();
+    return () => {
+      mounted = false;
+      clearTimeout(retryTimer);
+      es?.close();
+    };
+  }, [profile?.branchId]);
+
+  const handleAcceptQrOrder = async (orderId: number) => {
+    setAcceptingId(orderId);
+    try {
+      const res = await kasirFetch(`/api/pos-kasir/qr-orders/${orderId}/accept`, { method: "PATCH" });
+      if (res.ok) {
+        setPendingQrOrders((prev) => prev.filter((o) => o.id !== orderId));
+        loadProducts();
+      } else {
+        const d = await res.json() as { message?: string };
+        alert(d.message ?? "Gagal menerima pesanan");
+      }
+    } catch { alert("Terjadi kesalahan"); }
+    finally { setAcceptingId(null); }
+  };
+
+  const handleRejectQrOrder = async (orderId: number) => {
+    try {
+      const res = await kasirFetch(`/api/pos-kasir/qr-orders/${orderId}/reject`, { method: "PATCH" });
+      if (res.ok) setPendingQrOrders((prev) => prev.filter((o) => o.id !== orderId));
+    } catch { /* skip */ }
+  };
 
   const handleStockAdd = useCallback(async () => {
     if (!stockAddProduct) return;
@@ -577,10 +682,24 @@ export default function KasirPage() {
               <p className="text-orange-100 text-xs">{profile?.name}</p>
             </div>
           </div>
-          <button onClick={handleLogout}
-            className="text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl transition-all">
-            Keluar
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Bell notifikasi pesanan masuk */}
+            <button
+              onClick={() => setShowIncoming(true)}
+              className="relative text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1"
+              title="Pesanan Masuk">
+              <span className="text-base leading-none">🔔</span>
+              {pendingQrOrders.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 animate-pulse">
+                  {pendingQrOrders.length}
+                </span>
+              )}
+            </button>
+            <button onClick={handleLogout}
+              className="text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl transition-all">
+              Keluar
+            </button>
+          </div>
         </div>
 
           {/* Shift status bar */}
@@ -722,6 +841,102 @@ export default function KasirPage() {
                 {shiftLoading ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : null}
                 Tutup Kas
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Panel: Pesanan Masuk (QR / meja) ─────────────────────────── */}
+      {showIncoming && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-t-3xl shadow-2xl w-full max-w-md flex flex-col" style={{ maxHeight: "80dvh" }}>
+            {/* Header panel */}
+            <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🔔</span>
+                <div>
+                  <h2 className="font-black text-gray-800 text-base leading-tight">Pesanan Masuk</h2>
+                  <p className="text-xs text-gray-400">
+                    {pendingQrOrders.length === 0 ? "Tidak ada pesanan baru" : `${pendingQrOrders.length} pesanan menunggu`}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowIncoming(false)}
+                className="w-8 h-8 rounded-xl bg-gray-100 text-gray-500 font-bold flex items-center justify-center hover:bg-gray-200 transition-all">
+                ✕
+              </button>
+            </div>
+
+            {/* Daftar pesanan */}
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3">
+              {pendingQrOrders.length === 0 ? (
+                <div className="text-center py-10 text-gray-300">
+                  <div className="text-5xl mb-3">🪑</div>
+                  <p className="text-sm font-semibold">Belum ada pesanan dari meja</p>
+                </div>
+              ) : (
+                pendingQrOrders.map((order) => (
+                  <div key={order.id} className="bg-orange-50 border border-orange-100 rounded-2xl p-4 space-y-2.5">
+                    {/* Info meja */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="inline-flex items-center gap-1 bg-orange-500 text-white text-xs font-black px-2.5 py-1 rounded-xl">
+                          🪑 Meja {order.tableNumber ?? "–"}
+                        </span>
+                        {order.customerName && (
+                          <span className="ml-1.5 text-xs text-gray-500 font-semibold">{order.customerName}</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-400 shrink-0">
+                        {new Date(order.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+
+                    {/* Items */}
+                    <div className="space-y-1">
+                      {order.items.map((item, i) => (
+                        <div key={i} className="flex justify-between text-sm">
+                          <span className="text-gray-700">{item.productName} <span className="text-gray-400">×{item.qty}</span></span>
+                          <span className="font-semibold text-gray-800">{fmt(Number(item.price) * item.qty)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Total */}
+                    <div className="flex justify-between font-black text-sm border-t border-orange-200 pt-2">
+                      <span className="text-gray-700">Total</span>
+                      <span style={{ color: "#ff6b00" }}>
+                        {fmt(order.items.reduce((s, i) => s + Number(i.price) * i.qty, 0))}
+                      </span>
+                    </div>
+
+                    {/* Catatan */}
+                    {order.note && (
+                      <p className="text-xs text-gray-500 italic bg-white rounded-xl px-3 py-1.5">
+                        📝 {order.note}
+                      </p>
+                    )}
+
+                    {/* Tombol */}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => handleRejectQrOrder(order.id)}
+                        className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-2xl font-bold text-sm transition-all active:scale-95">
+                        Tolak
+                      </button>
+                      <button
+                        onClick={() => handleAcceptQrOrder(order.id)}
+                        disabled={acceptingId === order.id}
+                        className="flex-1 py-2.5 rounded-2xl font-black text-white text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        style={{ background: "linear-gradient(135deg, #ff8c00, #e05500)" }}>
+                        {acceptingId === order.id
+                          ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          : "✓ Terima"}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
