@@ -29,7 +29,7 @@ function calcTypeToServiceKeyword(calcType: string): string | null {
     case "sea_freight": return "Sea Freight";
     case "product":
     case "product_delivery":
-    case "courier":   return "Trucking";
+    case "courier":   return "__PRODUCT__";
     default: return null;
   }
 }
@@ -66,11 +66,15 @@ export async function autoCreateRfqAndNotifyVendors(
   }
 
   // Search active vendors matching ANY keyword (OR logic)
+  const PRODUCT_VENDOR_KEYWORDS = ["trucking", "courier", "kurir", "pengiriman", "logistics", "logistik", "same day", "instant", "delivery"];
   const allActiveVendors = await db.select().from(suppliersTable).where(eq(suppliersTable.isActive, true));
   const matchingVendors = allActiveVendors.filter((v) => {
     if (!v.serviceType?.trim()) return false;
     const st = v.serviceType.toLowerCase();
-    return [...keywords].some((kw) => st.includes(kw.toLowerCase()));
+    return [...keywords].some((kw) => {
+      if (kw === "__PRODUCT__") return PRODUCT_VENDOR_KEYWORDS.some((p) => st.includes(p));
+      return st.includes(kw.toLowerCase());
+    });
   });
 
   // [MULTI-MODE] Trucking: filter by year_vehicle >= (currentYear - 5)
