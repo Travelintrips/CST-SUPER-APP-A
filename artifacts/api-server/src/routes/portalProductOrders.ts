@@ -8,13 +8,27 @@ import {
 import { eq, ilike, and, or, sql } from "drizzle-orm";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { sendWhatsApp } from "../lib/fonnte";
-import { getAdminWa } from "../lib/adminWa";
+import { getAdminWa, getAdminGroupWa } from "../lib/adminWa";
 import { getPreferredDomain } from "../lib/domain";
 import { sendMail, isSmtpConfigured } from "../lib/mailer";
 import { logger } from "../lib/logger";
 import { broadcastToAdmins } from "../lib/sseManager";
+import { signVendorResponseToken, verifyVendorResponseToken } from "../lib/vendorResponseToken.js";
 
 export const portalProductOrdersRouter = Router();
+
+db.execute(sql`
+  CREATE TABLE IF NOT EXISTS portal_product_vendor_responses (
+    id SERIAL PRIMARY KEY,
+    order_number TEXT NOT NULL,
+    order_id INTEGER,
+    vendor_name TEXT,
+    status TEXT NOT NULL,
+    quoted_price NUMERIC(14, 2),
+    notes TEXT,
+    submitted_at TIMESTAMP DEFAULT NOW() NOT NULL
+  )
+`).catch(() => {});
 
 function generateOrderNumber(): string {
   const date = new Date();
@@ -63,6 +77,8 @@ function formatRupiah(amount: number): string {
 async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, items: ReturnType<typeof toItem>[]) {
   const domain = getPreferredDomain();
   const orderUrl = domain ? `https://${domain}/bizportal/logistics/portal-orders` : "";
+  const vendorToken = signVendorResponseToken(order.orderNumber);
+  const vendorFormUrl = domain ? `https://${domain}/vendor-product-approval/${order.orderNumber}?t=${vendorToken}` : "";
 
   const itemList = items.map((i) => `• ${i.productName} × ${i.qty} (${i.unit ?? "pcs"}) — Rp ${formatRupiah(i.subtotal)}`).join("\n");
 
@@ -78,7 +94,8 @@ async function sendProductOrderNotification(order: ReturnType<typeof toOrder>, i
     `Total       : Rp ${formatRupiah(order.grandTotal)}\n` +
     (order.notes ? `Catatan     : ${order.notes}\n` : ``) +
     `━━━━━━━━━━━━━━━━━━\n` +
-    (orderUrl ? `🔗 Lihat di BizPortal:\n${orderUrl}\n` : ``);
+    (orderUrl ? `🔗 Lihat di BizPortal:\n${orderUrl}\n` : ``) +
+    (vendorFormUrl ? `\n📋 *Form untuk vendor (forward ke vendor):*\n${vendorFormUrl}\n` : ``);
 
   try {
     const adminWa = await getAdminWa();
@@ -336,4 +353,91 @@ portalProductOrdersRouter.put("/orders/:id/status", async (req: Request, res: Re
   }
 
   return res.json(toOrder(updated));
+});
+
+// GET /api/portal-product/vendor-access/:orderNumber — public vendor access (no login)
+portalProductOrdersRouter.get("/vendor-access/:orderNumber", async (req: Request, res: Response) => {
+  const orderNumber = req.params["orderNumber"] as string;
+  const token = String(req.query["t"] ?? "").trim();
+  if (!verifyVendorResponseToken(orderNumber, token)) {
+    return res.status(403).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+  }
+
+  const [order] = await db.select().from(portalProductOrdersTable)
+    .where(eq(portalProductOrdersTable.orderNumber, orderNumber));
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  const items = await db.select().from(portalProductOrderItemsTable)
+    .where(eq(portalProductOrderItemsTable.orderId, order.id));
+
+  const existing = await db.execute(sql`
+    SELECT id FROM portal_product_vendor_responses WHERE order_number = ${orderNumber} LIMIT 1
+  `);
+
+  return res.json({
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    shippingAddress: order.shippingAddress,
+    notes: order.notes ?? null,
+    grandTotal: parseFloat(order.grandTotal),
+    items: items.map(i => ({
+      productName: i.productName,
+      productSku: i.productSku ?? null,
+      qty: i.qty,
+      unit: i.unit ?? null,
+      unitPrice: parseFloat(i.unitPrice),
+      subtotal: parseFloat(i.subtotal),
+    })),
+    alreadySubmitted: (existing as unknown as { rows: unknown[] }).rows?.length > 0,
+  });
+});
+
+// POST /api/portal-product/vendor-response/:orderNumber — public vendor response (no login)
+portalProductOrdersRouter.post("/vendor-response/:orderNumber", async (req: Request, res: Response) => {
+  const orderNumber = req.params["orderNumber"] as string;
+  const { vendorName, status, quotedPrice, notes, token } = req.body as Record<string, string>;
+
+  const tok = String(token ?? String(req.query["t"] ?? "")).trim();
+  if (!verifyVendorResponseToken(orderNumber, tok)) {
+    return res.status(403).json({ error: "Link tidak valid atau sudah kadaluarsa" });
+  }
+
+  if (!status || !["SETUJU", "TOLAK"].includes(status)) {
+    return res.status(400).json({ error: "Status harus SETUJU atau TOLAK" });
+  }
+
+  const [order] = await db.select({ id: portalProductOrdersTable.id })
+    .from(portalProductOrdersTable)
+    .where(eq(portalProductOrdersTable.orderNumber, orderNumber));
+  if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
+
+  const qp = quotedPrice ? parseFloat(String(quotedPrice)) : null;
+
+  await db.execute(sql`
+    INSERT INTO portal_product_vendor_responses (order_number, order_id, vendor_name, status, quoted_price, notes)
+    VALUES (${orderNumber}, ${order.id}, ${vendorName ?? null}, ${status}, ${qp}, ${notes ?? null})
+  `);
+
+  const statusEmoji = status === "SETUJU" ? "✅" : "❌";
+  const domain = getPreferredDomain() || "cstlogistic.co.id";
+  const adminUrl = `https://${domain}/bizportal/logistics/portal-orders`;
+  const waMsg =
+    `${statusEmoji} *VENDOR RESPONSE — ORDER PRODUK*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `No. Order : \`${orderNumber}\`\n` +
+    `Vendor    : ${vendorName ?? "—"}\n` +
+    `Status    : ${statusEmoji} ${status}\n` +
+    (qp ? `💰 Harga  : Rp ${qp.toLocaleString("id-ID")}\n` : ``) +
+    (notes ? `Catatan   : ${notes}\n` : ``) +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🔗 Lihat di BizPortal:\n${adminUrl}`;
+
+  try {
+    const adminGroupWa = await getAdminGroupWa();
+    if (adminGroupWa) await sendWhatsApp(adminGroupWa, waMsg);
+  } catch (err) {
+    logger.error({ err }, "Failed to send admin WA for product vendor response");
+  }
+
+  return res.json({ success: true });
 });

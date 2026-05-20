@@ -349,6 +349,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
         { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
         { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
+        { titleKey: "Persetujuan Onboarding", href: "/portal/onboarding-approvals", icon: Users, companyCodes: ["CST"] },
       ],
     },
     // ── HOLDING ────────────────────────────────────────────────────────
@@ -645,9 +646,9 @@ export function AppShell({ children }: AppShellProps) {
               <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
                 <item.icon size={18} />
                 <span className="flex-1">{getNavTitle(item.titleKey)}</span>
-                {isNotif && unreadCount > 0 && (
+                {isNotif && dbUnreadTotal > 0 && (
                   <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                    {dbUnreadTotal > 99 ? "99+" : dbUnreadTotal}
                   </span>
                 )}
               </Link>

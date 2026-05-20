@@ -42,6 +42,7 @@ import Calculator from "@/pages/calculator";
 import ResetPassword from "@/pages/reset-password";
 import ProductOrder from "@/pages/product-order";
 import VendorResponsePage from "@/pages/vendor-response";
+import VendorProductApprovalPage from "@/pages/vendor-product-approval";
 import ApprovePage from "@/pages/approve";
 import ConfirmPage from "@/pages/confirm";
 import VendorQuoteFormPage from "@/pages/vendor-quote-form";
@@ -50,6 +51,8 @@ import ChooseOptionPage from "@/pages/choose-option"; // [MULTI-MODE]
 import KasirLoginPage from "@/pages/kasir-login";
 import KasirPage from "@/pages/kasir";
 import MenuBoardPage from "@/pages/menu-board";
+import OnboardingPage from "@/pages/onboarding";
+import PendingApprovalPage from "@/pages/pending-approval";
 
 const queryClient = new QueryClient();
 
@@ -72,7 +75,8 @@ if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board"]; // [TRUCKING-FIX] [MULTI-MODE]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval"]; // [TRUCKING-FIX] [MULTI-MODE]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board"]; // [TRUCKING-FIX] [MULTI-MODE]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -80,9 +84,27 @@ function currentPortalPath() {
   return window.location.pathname.replace(BASE_PREFIX, "") || "/";
 }
 
-function redirectByRole(role: string, setLocation: (path: string) => void) {
-  if (role === "admin") setLocation("/admin");
-  else if (role === "vendor") setLocation("/vendor-dashboard");
+async function checkOnboardingAndRedirect(
+  role: string,
+  token: string,
+  setLocation: (path: string) => void,
+) {
+  // Admin never needs onboarding
+  if (role === "admin") { setLocation("/admin"); return; }
+
+  try {
+    const res = await fetch("/api/portal/onboarding/status", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const d = await res.json() as { status: string; accountType?: string };
+      if (d.status === "incomplete") { setLocation("/onboarding"); return; }
+      if (d.status === "pending" || d.status === "rejected") { setLocation("/pending-approval"); return; }
+    }
+  } catch { /* network error — fall through to normal redirect */ }
+
+  // Profile complete & active
+  if (role === "vendor") setLocation("/vendor-dashboard");
   else setLocation("/dashboard");
 }
 
@@ -97,7 +119,7 @@ function OAuthRedirectHandler() {
       const path = currentPortalPath();
       if (path !== "/" && path !== "/login") return;
       const profile = await fetchAndStoreProfile();
-      if (profile) redirectByRole(profile.role, setLocation);
+      if (profile) await checkOnboardingAndRedirect(profile.role, session.access_token, setLocation);
     });
 
     // Also listen for new sign-in events (handles fresh OAuth flow)
@@ -106,7 +128,7 @@ function OAuthRedirectHandler() {
         const path = currentPortalPath();
         if (path !== "/" && path !== "/login") return;
         const profile = await fetchAndStoreProfile();
-        if (profile) redirectByRole(profile.role, setLocation);
+        if (profile) await checkOnboardingAndRedirect(profile.role, session.access_token, setLocation);
       }
     });
     return () => subscription.unsubscribe();
@@ -146,12 +168,15 @@ function AppShell() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/order-produk" component={ProductOrder} />
       <Route path="/vendor-response/:orderNumber" component={VendorResponsePage} />
+      <Route path="/vendor-product-approval/:orderNumber" component={VendorProductApprovalPage} />
       <Route path="/vendor-quote" component={VendorQuoteFormPage} />
       <Route path="/vendor-confirm" component={VendorConfirmPage} />    {/* [TRUCKING-FIX] */}
       <Route path="/choose-option/:token" component={ChooseOptionPage} />   {/* [MULTI-MODE] */}
       <Route path="/kasir/login" component={KasirLoginPage} />
       <Route path="/kasir" component={KasirPage} />
       <Route path="/menu-board" component={MenuBoardPage} />
+      <Route path="/onboarding" component={OnboardingPage} />
+      <Route path="/pending-approval" component={PendingApprovalPage} />
       <Route path="/approve/:orderNumber" component={ApprovePage} />
       <Route path="/confirm/:token" component={ConfirmPage} />
       <Route component={NotFound} />

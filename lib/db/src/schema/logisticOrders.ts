@@ -186,6 +186,7 @@ export const vendorResponsesTable = pgTable("vendor_responses", {
   vehicleType: text("vehicle_type"),
   notes: text("notes"),
   unitPhotoUrl: text("unit_photo_url"),
+  quotedPrice: numeric("quoted_price", { precision: 14, scale: 2 }),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

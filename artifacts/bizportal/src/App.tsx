@@ -76,6 +76,7 @@ import ExpenseEditorPage from "@/pages/expense/editor";
 import ExpenseCategoriesPage from "@/pages/expense/categories";
 import ExpenseReportsPage from "@/pages/expense/reports";
 import PortalProductOrdersPage from "@/pages/portal-product-orders";
+import PortalOnboardingApprovalsPage from "@/pages/portal-onboarding-approvals";
 import LogisticsQuotationReplyPage from "@/pages/logistics-quotation-reply";
 import LogisticsVendorQuotePage from "@/pages/logistics-vendor-quote";
 import HoldingPage from "@/pages/HoldingPage";
@@ -311,6 +312,7 @@ function Router() {
         <Route path="/logistics/quotation-reply/:token" component={LogisticsQuotationReplyPage} />
         <Route path="/logistics/vendor-quote/:token" component={LogisticsVendorQuotePage} />
         <Route path="/portal-product-orders" component={() => <ProtectedRoute component={PortalProductOrdersPage} />} />
+        <Route path="/portal/onboarding-approvals" component={() => <ProtectedRoute component={PortalOnboardingApprovalsPage} />} />
         {/* Sales */}
         <Route path="/sales" component={() => <ProtectedRoute component={SalesDashboardPage} />} />
         <Route path="/sales/documents" component={() => <ProtectedRoute component={SalesDocumentsListPage} />} />
