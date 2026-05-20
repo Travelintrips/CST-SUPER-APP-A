@@ -29,6 +29,7 @@ import LogisticsQuoteRequestsPage from "@/pages/logistics-quote-requests";
 import LogisticsVendorsPage from "@/pages/logistics-vendors";
 import PosPage from "@/pages/pos";
 import SettingsPage from "@/pages/settings";
+import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
@@ -397,6 +398,7 @@ function Router() {
         <Route path="/email-inbox" component={() => <ProtectedRoute component={EmailInboxPage} />} />
         {/* Settings & Users */}
         <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
+        <Route path="/settings/nav-company-config" component={() => <ProtectedRoute component={NavCompanyConfigPage} />} />
         <Route path="/settings/ai-chatbot" component={() => <ProtectedRoute component={AiChatbotSettingsPage} />} />
         <Route path="/settings/ai-chatbot/knowledge" component={() => <ProtectedRoute component={AiChatbotKnowledgePage} />} />
         <Route path="/settings/ai-scan" component={() => <ProtectedRoute component={AiScanSettingsPage} />} />
