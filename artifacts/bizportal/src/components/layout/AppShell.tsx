@@ -92,6 +92,22 @@ import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { useCompany } from "@/contexts/CompanyContext";
 import { cn } from "@/lib/utils";
 import { useNavPreferences } from "@/hooks/useNavPreferences";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { SortableNavWrapper } from "./SortableNavWrapper";
 
 interface AppShellProps {
   children: ReactNode;
@@ -127,6 +143,9 @@ type NavItem = FlatItem | GroupItem;
 // (plus legacy built-in roles: ecommerce, trading, logistics, pos)
 
 const ALL_ROLES = ["kasir", "gudang", "manager", "admin", "owner", "ecommerce", "trading", "logistics", "pos"];
+
+const getKey = (item: NavItem): string =>
+  item.type === "group" ? item.basePath : item.href;
 
 export function AppShell({ children }: AppShellProps) {
   const [location] = useLocation();
@@ -423,8 +442,13 @@ export function AppShell({ children }: AppShellProps) {
 
   const customRolePermissions = (dbUser as any)?.customRolePermissions as string[] | null | undefined;
 
-  const { hiddenItems, toggle: toggleHidden, reset: resetHidden } = useNavPreferences();
+  const { hiddenItems, itemOrder, toggle: toggleHidden, reorder, reset: resetHidden } = useNavPreferences();
   const [customizeMode, setCustomizeMode] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const filteredNav = navItems.filter((item) => {
     if (!dbUser?.role) return false;
@@ -461,9 +485,18 @@ export function AppShell({ children }: AppShellProps) {
   // Per-user hidden items filter (bypass in customize mode to show all)
   const visibleNav = customizeMode
     ? filteredNav
-    : filteredNav.filter((item) => {
-        const key = item.type === "group" ? item.basePath : item.href;
-        return !hiddenItems.includes(key);
+    : filteredNav.filter((item) => !hiddenItems.includes(getKey(item)));
+
+  // Terapkan urutan custom pengguna
+  const orderedNav = itemOrder.length === 0
+    ? visibleNav
+    : [...visibleNav].sort((a, b) => {
+        const ia = itemOrder.indexOf(getKey(a));
+        const ib = itemOrder.indexOf(getKey(b));
+        if (ia === -1 && ib === -1) return 0;
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
       });
 
   // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
@@ -471,14 +504,32 @@ export function AppShell({ children }: AppShellProps) {
     "/dashboard", "/pos-kasir", "/notifications", "/products", "/pos-inventory",
     "/users", "/reports", "/settings",
   ];
-  const mainNav = visibleNav.filter((item) => {
-    const p = item.type === "group" ? item.basePath : item.href;
+  const mainNav = orderedNav.filter((item) => {
+    const p = getKey(item);
     return MAIN_PATHS.includes(p) || p === "/pos-inventory/branches";
   });
-  const erpNav = visibleNav.filter((item) => {
-    const p = item.type === "group" ? item.basePath : item.href;
+  const erpNav = orderedNav.filter((item) => {
+    const p = getKey(item);
     return !MAIN_PATHS.includes(p) && p !== "/pos-inventory/branches";
   });
+
+  const handleMainNavDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const keys = mainNav.map(getKey);
+    const oldIdx = keys.indexOf(String(active.id));
+    const newIdx = keys.indexOf(String(over.id));
+    if (oldIdx === -1 || newIdx === -1) return;
+    reorder([...arrayMove(keys, oldIdx, newIdx), ...erpNav.map(getKey)]);
+  };
+
+  const handleErpNavDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const keys = erpNav.map(getKey);
+    const oldIdx = keys.indexOf(String(active.id));
+    const newIdx = keys.indexOf(String(over.id));
+    if (oldIdx === -1 || newIdx === -1) return;
+    reorder([...mainNav.map(getKey), ...arrayMove(keys, oldIdx, newIdx)]);
+  };
 
   const DASHBOARD_CHILD_PATHS = ["/portal-product-orders"];
   const isGroupActive = (g: GroupItem) => {
@@ -536,6 +587,29 @@ export function AppShell({ children }: AppShellProps) {
     if (location === href) return true;
     if (href === "/sales" || href === "/purchase" || href === "/logistics") return false;
     return location.startsWith(`${href}/`) || location === href;
+  };
+
+  const renderNavList = (items: NavItem[], onDragEnd: (e: DragEndEvent) => void) => {
+    if (!customizeMode) {
+      return (
+        <SidebarMenu>
+          {items.map(renderNavItem)}
+        </SidebarMenu>
+      );
+    }
+    return (
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={items.map(getKey)} strategy={verticalListSortingStrategy}>
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            {items.map((item) => (
+              <SortableNavWrapper key={getKey(item)} id={getKey(item)}>
+                {renderNavItem(item)}
+              </SortableNavWrapper>
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    );
   };
 
   const renderNavItem = (item: NavItem) => {
@@ -705,9 +779,7 @@ export function AppShell({ children }: AppShellProps) {
                 Menu Utama
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
-                  {mainNav.map(renderNavItem)}
-                </SidebarMenu>
+                {renderNavList(mainNav, handleMainNavDragEnd)}
               </SidebarGroupContent>
             </SidebarGroup>
 
@@ -718,9 +790,7 @@ export function AppShell({ children }: AppShellProps) {
                   Modul ERP
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
-                  <SidebarMenu>
-                    {erpNav.map(renderNavItem)}
-                  </SidebarMenu>
+                  {renderNavList(erpNav, handleErpNavDragEnd)}
                 </SidebarGroupContent>
               </SidebarGroup>
             )}

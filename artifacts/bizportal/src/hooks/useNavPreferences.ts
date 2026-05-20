@@ -1,27 +1,35 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-const QUERY_KEY = ["nav-preferences"] as const;
-
-async function fetchNavPrefs(): Promise<string[]> {
-  const r = await fetch("/api/nav-preferences", { credentials: "include" });
-  if (!r.ok) return [];
-  const data = (await r.json()) as { hiddenItems?: string[] };
-  return data.hiddenItems ?? [];
+interface NavPrefs {
+  hiddenItems: string[];
+  itemOrder: string[];
 }
 
-async function saveNavPrefs(hiddenItems: string[]): Promise<void> {
+const QUERY_KEY = ["nav-preferences"] as const;
+
+async function fetchNavPrefs(): Promise<NavPrefs> {
+  const r = await fetch("/api/nav-preferences", { credentials: "include" });
+  if (!r.ok) return { hiddenItems: [], itemOrder: [] };
+  const data = (await r.json()) as Partial<NavPrefs>;
+  return {
+    hiddenItems: data.hiddenItems ?? [],
+    itemOrder: data.itemOrder ?? [],
+  };
+}
+
+async function saveNavPrefs(prefs: NavPrefs): Promise<void> {
   await fetch("/api/nav-preferences", {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hiddenItems }),
+    body: JSON.stringify(prefs),
   });
 }
 
 export function useNavPreferences() {
   const qc = useQueryClient();
 
-  const { data: hiddenItems = [] } = useQuery({
+  const { data = { hiddenItems: [], itemOrder: [] } } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchNavPrefs,
     staleTime: 5 * 60_000,
@@ -31,7 +39,7 @@ export function useNavPreferences() {
     mutationFn: saveNavPrefs,
     onMutate: async (next) => {
       await qc.cancelQueries({ queryKey: QUERY_KEY });
-      const prev = qc.getQueryData<string[]>(QUERY_KEY);
+      const prev = qc.getQueryData<NavPrefs>(QUERY_KEY);
       qc.setQueryData(QUERY_KEY, next);
       return { prev };
     },
@@ -40,14 +48,25 @@ export function useNavPreferences() {
     },
   });
 
-  const toggle = (key: string) => {
-    const next = hiddenItems.includes(key)
-      ? hiddenItems.filter((k) => k !== key)
-      : [...hiddenItems, key];
-    mutation.mutate(next);
+  const save = (next: Partial<NavPrefs>) =>
+    mutation.mutate({ ...data, ...next });
+
+  const toggle = (key: string) =>
+    save({
+      hiddenItems: data.hiddenItems.includes(key)
+        ? data.hiddenItems.filter((k) => k !== key)
+        : [...data.hiddenItems, key],
+    });
+
+  const reorder = (itemOrder: string[]) => save({ itemOrder });
+
+  const reset = () => save({ hiddenItems: [], itemOrder: [] });
+
+  return {
+    hiddenItems: data.hiddenItems,
+    itemOrder: data.itemOrder,
+    toggle,
+    reorder,
+    reset,
   };
-
-  const reset = () => mutation.mutate([]);
-
-  return { hiddenItems, toggle, reset };
 }
