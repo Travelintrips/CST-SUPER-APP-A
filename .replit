@@ -102,11 +102,11 @@ localPort = 3000
 externalPort = 9000
 
 [[ports]]
-localPort = 5000
+localPort = 3002
 externalPort = 80
 
 [[ports]]
-localPort = 3002
+localPort = 5000
 externalPort = 80
 
 [[ports]]

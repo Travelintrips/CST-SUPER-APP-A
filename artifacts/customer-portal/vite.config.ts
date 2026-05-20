@@ -123,6 +123,10 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      "/q": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
       "/pos-images": {
         target: "http://localhost:8080",
         changeOrigin: true,
