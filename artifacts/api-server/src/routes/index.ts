@@ -49,6 +49,7 @@ import { sportCenterAdminRouter } from "./sportCenterAdmin";
 import navPreferencesRouter from "./navPreferences";
 import notificationsRouter from "./notifications";
 import qrMenuRouter from "./qrMenu";
+import { vendorMiniFormRouter } from "./vendorMiniForm";
 
 const router: IRouter = Router();
 
@@ -105,4 +106,5 @@ router.use("/sport-center/admin", sportCenterAdminRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
 router.use("/qr-menu", qrMenuRouter);
+router.use("/vendor-form", vendorMiniFormRouter);
 export default router;

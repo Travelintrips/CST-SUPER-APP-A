@@ -5,24 +5,8 @@ import { execSync } from "child_process";
 try { execSync("fuser -k 5000/tcp", { stdio: "ignore" }); } catch {}
 
 const API_PORT = 8080;
-const CUSTOMER_PORTAL_PORT = 3000;
-const BIZPORTAL_PORTS = [18442, 18443, 18444];
-
-function probePort(port) {
-  return new Promise((resolve) => {
-    const s = net.createConnection({ port, host: "localhost" });
-    s.once("connect", () => { s.destroy(); resolve(true); });
-    s.once("error", () => resolve(false));
-    s.setTimeout(300, () => { s.destroy(); resolve(false); });
-  });
-}
-
-async function getBizportalPort() {
-  for (const p of BIZPORTAL_PORTS) {
-    if (await probePort(p)) return p;
-  }
-  return BIZPORTAL_PORTS[0];
-}
+const BIZPORTAL_PORT = 3000;
+const CUSTOMER_PORTAL_PORT = 3001;
 
 function proxyRequest(req, res, port) {
   const options = {
@@ -58,16 +42,6 @@ function proxyWebSocket(req, socket, head, port) {
   socket.on("error", () => target.destroy());
 }
 
-let bizportalPort = BIZPORTAL_PORTS[0];
-getBizportalPort().then((p) => {
-  bizportalPort = p;
-  console.log(`Proxy: bizportal detected on :${p}`);
-});
-
-setInterval(async () => {
-  bizportalPort = await getBizportalPort();
-}, 10000);
-
 function getTargetPort(url) {
   if (
     url.startsWith("/api/") ||
@@ -75,7 +49,7 @@ function getTargetPort(url) {
     url.startsWith("/logistic-order/api") ||
     url.startsWith("/auth/")
   ) return API_PORT;
-  if (url.startsWith("/bizportal") || url.startsWith("/bizportal/")) return bizportalPort;
+  if (url.startsWith("/bizportal") || url.startsWith("/bizportal/")) return BIZPORTAL_PORT;
   return CUSTOMER_PORTAL_PORT;
 }
 
@@ -89,4 +63,7 @@ server.on("upgrade", (req, socket, head) => {
 
 server.listen(5000, "0.0.0.0", () => {
   console.log("Proxy listening on :5000");
+  console.log(`  /bizportal/* -> :${BIZPORTAL_PORT}`);
+  console.log(`  /api/* -> :${API_PORT}`);
+  console.log(`  /* -> :${CUSTOMER_PORTAL_PORT}`);
 });
