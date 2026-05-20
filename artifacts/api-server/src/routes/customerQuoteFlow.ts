@@ -254,6 +254,32 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
     const rfqs = await db.select().from(logisticOrderRfqsTable)
       .where(eq(logisticOrderRfqsTable.orderId, orderId));
 
+    // Fetch freight shipments linked to any RFQ belonging to this order.
+    // freight_shipment_id was added via a manual migration, so we use raw SQL.
+    const freightRows = await db.execute(sql`
+      SELECT fs.id, fs.shipment_number AS "shipmentNumber", fs.status,
+             fs.origin, fs.destination, fs.shipper_name AS "shipperName",
+             fs.approved_vendor_name AS "approvedVendorName",
+             fs.created_at AS "createdAt",
+             r.id AS "rfqId", r.rfq_number AS "rfqNumber"
+      FROM logistic_order_rfqs r
+      JOIN freight_shipments fs ON fs.id = r.freight_shipment_id
+      WHERE r.order_id = ${orderId}
+      ORDER BY fs.created_at DESC
+    `);
+    const freightShipments = (freightRows as any[]).map((row: any) => ({
+      id: row.id as number,
+      shipmentNumber: row.shipmentNumber as string,
+      status: row.status as string,
+      origin: row.origin as string,
+      destination: row.destination as string,
+      shipperName: row.shipperName as string,
+      approvedVendorName: (row.approvedVendorName as string) ?? null,
+      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : (row.createdAt as string),
+      rfqId: row.rfqId as number,
+      rfqNumber: row.rfqNumber as string,
+    }));
+
     return res.json({
       order: orderFull,
       vendor,
@@ -262,6 +288,7 @@ customerQuoteAdminRouter.get("/orders/:orderId/detail", async (req: Request, res
       customerLinks: customerLinks.map(l => ({ ...l, trackUrl: `${getBaseUrl()}/customer-order/${l.token}` })),
       quoteLinks: quoteLinks.map(l => ({ ...l, quoteUrl: `${getBaseUrl()}/customer-quote/${l.token}` })),
       rfqs,
+      freightShipments,
     });
   } catch (err) {
     logger.error({ err }, "order-detail error");
