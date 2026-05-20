@@ -1,30 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { useListPortalServices } from "@workspace/api-client-react";
 import { setAuthToken, setPortalProfile } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, ArrowLeft, Check, Truck, User } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, MessageCircle, Phone, Shield, Truck, User } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useLanguage } from "@/i18n/LanguageContext";
 
 type UserRole = "customer" | "vendor";
-
-const registerSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  password: z.string().min(8),
-  phone: z.string().optional(),
-  company: z.string().optional(),
-  serviceIds: z.array(z.number()),
-});
-
-type RegisterFormValues = z.infer<typeof registerSchema>;
+type Step = "phone" | "otp" | "profile";
 
 interface SimpleItem {
   id: number;
@@ -36,339 +22,332 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Register() {
   const [, setLocation] = useLocation();
-  const [errorMsg, setErrorMsg] = useState("");
   const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-  const [step, setStep] = useState<1 | 2>(1);
-  const [role, setRole] = useState<UserRole>("customer");
-  const [products, setProducts] = useState<SimpleItem[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { t } = useLanguage();
+  const [step, setStep] = useState<Step>("phone");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
-  const { data: servicesData } = useListPortalServices({
-    query: { queryKey: ["listPortalServices"] }
-  });
+  const [phone, setPhone] = useState("");
+  const [normalizedPhone, setNormalizedPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [verifyToken, setVerifyToken] = useState("");
+
+  const [role, setRole] = useState<UserRole>("customer");
+  const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
+  const [email, setEmail] = useState("");
+  const [serviceIds, setServiceIds] = useState<number[]>([]);
+  const [products, setProducts] = useState<SimpleItem[]>([]);
+
+  const otpInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: servicesData } = useListPortalServices({ query: { queryKey: ["listPortalServices"] } });
   const services: SimpleItem[] = (Array.isArray(servicesData) ? servicesData : []).map((s) => ({
-    id: s.id,
-    name: s.name,
-    itemType: "jasa" as const,
+    id: s.id, name: s.name, itemType: "jasa" as const,
   }));
 
   useEffect(() => {
     fetch(`${BASE}/api/portal/products`)
       .then((r) => r.json())
-      .then((data) =>
-        setProducts(
-          Array.isArray(data)
-            ? data.map((p: any) => ({ id: p.id, name: p.name, itemType: "barang" as const }))
-            : []
-        )
-      )
+      .then((data) => setProducts(Array.isArray(data) ? data.map((p: any) => ({ id: p.id, name: p.name, itemType: "barang" as const })) : []))
       .catch(() => setProducts([]));
   }, []);
 
-  const allItems: SimpleItem[] = [...services, ...products];
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
-  const form = useForm<RegisterFormValues, unknown, RegisterFormValues>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", phone: "", company: "", serviceIds: [] },
-  });
+  useEffect(() => {
+    if (step === "otp") setTimeout(() => otpInputRef.current?.focus(), 100);
+  }, [step]);
 
-  const selectedIds = form.watch("serviceIds");
+  const allItems = [...services, ...products];
 
-  const toggleItem = (id: number) => {
-    const current = form.getValues("serviceIds");
-    form.setValue(
-      "serviceIds",
-      current.includes(id) ? current.filter((v) => v !== id) : [...current, id],
-      { shouldDirty: true }
-    );
+  const sendOtp = async () => {
+    setErrorMsg("");
+    if (!phone || phone.replace(/\D/g, "").length < 9) {
+      setErrorMsg("Masukkan nomor HP yang valid.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/portal/auth/wa-otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setErrorMsg(json.message ?? "Gagal mengirim OTP.");
+        setIsLoading(false);
+        return;
+      }
+      setNormalizedPhone(json.phone);
+      setStep("otp");
+      setCooldown(60);
+    } catch {
+      setErrorMsg("Gagal menghubungi server.");
+    }
+    setIsLoading(false);
   };
 
-  const onSubmit = async (data: RegisterFormValues) => {
+  const verifyOtp = async () => {
     setErrorMsg("");
-    setIsSubmitting(true);
+    if (otp.length !== 6) {
+      setErrorMsg("Kode OTP harus 6 digit.");
+      return;
+    }
+    setIsLoading(true);
     try {
-      const res = await fetch(`${BASE}/api/portal/auth/signup`, {
+      const res = await fetch(`${BASE}/api/portal/auth/wa-otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: normalizedPhone, code: otp }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setErrorMsg(json.message ?? "Verifikasi gagal.");
+        setIsLoading(false);
+        return;
+      }
+      setVerifyToken(json.verifyToken);
+
+      // Auto-login if phone already registered
+      const loginRes = await fetch(`${BASE}/api/portal/auth/wa-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verifyToken: json.verifyToken }),
+      });
+      const loginJson = await loginRes.json();
+      if (loginRes.ok && loginJson.token) {
+        setAuthToken(loginJson.token);
+        setPortalProfile({ customerId: loginJson.user.id, role: loginJson.user.role, name: loginJson.user.name, email: loginJson.user.email });
+        if (returnTo) setLocation(returnTo);
+        else if (loginJson.user.role === "vendor") setLocation("/vendor-dashboard");
+        else setLocation("/dashboard");
+        return;
+      }
+      // Not registered → re-verify needed (token consumed by login attempt actually only on success)
+      // If login returned notRegistered, token still valid (we didn't invalidate on failure path).
+      setStep("profile");
+    } catch {
+      setErrorMsg("Gagal menghubungi server.");
+    }
+    setIsLoading(false);
+  };
+
+  const completeRegister = async () => {
+    setErrorMsg("");
+    if (!name.trim()) { setErrorMsg("Nama wajib diisi."); return; }
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/portal/auth/wa-register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          password: data.password,
-          phone: data.phone ?? null,
-          company: data.company ?? null,
-          role,
-          serviceIds: data.serviceIds,
+          verifyToken, name, role, company: company || null,
+          email: email || null, serviceIds,
         }),
       });
-      const json = await res.json() as { token?: string; message?: string; user?: { id: number; role: string; name: string; email: string } };
+      const json = await res.json();
       if (!res.ok || !json.token) {
         setErrorMsg(json.message ?? "Pendaftaran gagal.");
-        setIsSubmitting(false);
+        setIsLoading(false);
         return;
       }
       setAuthToken(json.token);
-      setPortalProfile({ customerId: json.user!.id, role: json.user!.role, name: json.user!.name, email: json.user!.email });
-      const rt = new URLSearchParams(window.location.search).get("returnTo");
-      if (rt) {
-        setLocation(rt);
-      } else if (json.user!.role === "vendor") {
-        setLocation("/vendor-dashboard");
-      } else {
-        setLocation("/dashboard");
-      }
+      setPortalProfile({ customerId: json.user.id, role: json.user.role, name: json.user.name, email: json.user.email });
+      if (returnTo) setLocation(returnTo);
+      else if (json.user.role === "vendor") setLocation("/vendor-dashboard");
+      else setLocation("/dashboard");
     } catch {
-      setErrorMsg("Gagal menghubungi server. Coba lagi.");
+      setErrorMsg("Gagal menghubungi server.");
     }
-    setIsSubmitting(false);
+    setIsLoading(false);
   };
 
-  const handleNextStep = async () => {
-    const isValid = await form.trigger(["name", "email", "password", "company", "phone"]);
-    if (isValid) setStep(2);
+  const toggleService = (id: number) => {
+    setServiceIds((prev) => prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]);
   };
+
+  const stepNumber = step === "phone" ? 1 : step === "otp" ? 2 : 3;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 md:p-8">
-      <Card className="w-full max-w-2xl border-none shadow-xl">
-        <CardHeader className="space-y-3 pb-8 border-b border-border/40">
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-2xl font-display font-bold">{t("register.title")}</CardTitle>
-            <div className="text-sm font-medium bg-accent/10 text-accent px-3 py-1 rounded-full">
-              {t("register.stepOf")} {step} {t("register.of")} 2
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-emerald-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md border-none shadow-2xl">
+        <CardHeader className="space-y-3 pb-6 border-b">
+          <div className="flex items-center justify-between">
+            <Link href="/login">
+              <Button variant="ghost" size="sm" className="gap-1 -ml-2">
+                <ArrowLeft className="h-4 w-4" /> Login
+              </Button>
+            </Link>
+            <div className="text-xs font-medium bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">
+              Langkah {stepNumber} dari 3
             </div>
           </div>
-          <CardDescription>{t("register.subtitle")}</CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-emerald-500 text-white grid place-items-center">
+              <MessageCircle className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-xl">Daftar via WhatsApp</CardTitle>
+              <CardDescription className="text-sm">
+                {step === "phone" && "Masukkan nomor WhatsApp Anda"}
+                {step === "otp" && "Verifikasi kode OTP"}
+                {step === "profile" && "Lengkapi profil Anda"}
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
 
-        <CardContent className="pt-8">
-          {returnTo && (
-            <Alert className="mb-6 border-primary/30 bg-primary/5">
-              <Check className="h-4 w-4 text-primary" />
-              <AlertDescription className="text-sm text-foreground">
-                {t("register.redirectToCheckout")}
-              </AlertDescription>
+        <CardContent className="pt-6 space-y-5">
+          {returnTo && step === "phone" && (
+            <Alert className="border-emerald-300 bg-emerald-50">
+              <Check className="h-4 w-4 text-emerald-600" />
+              <AlertDescription className="text-sm">Setelah daftar, Anda akan kembali ke checkout.</AlertDescription>
             </Alert>
           )}
           {errorMsg && (
-            <Alert variant="destructive" className="mb-6">
+            <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{errorMsg}</AlertDescription>
             </Alert>
           )}
 
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-
-              {/* ── STEP 1 ── */}
-              <div className={step === 1 ? "block space-y-6" : "hidden"}>
-
-                {/* Role selector */}
-                <div>
-                  <p className="text-sm font-medium mb-3">Daftar sebagai</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setRole("customer")}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-150 ${
-                        role === "customer"
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-border bg-white hover:border-primary/40 hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        role === "customer" ? "bg-primary text-white" : "bg-gray-100 text-gray-500"
-                      }`}>
-                        <User className="h-5 w-5" />
-                      </div>
-                      <div className="text-center">
-                        <p className={`font-semibold text-sm ${role === "customer" ? "text-primary" : "text-foreground"}`}>
-                          Customer
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Butuh layanan logistik</p>
-                      </div>
-                      {role === "customer" && (
-                        <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center mt-1">
-                          <Check className="h-2.5 w-2.5 text-white" />
-                        </div>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setRole("vendor")}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-150 ${
-                        role === "vendor"
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-border bg-white hover:border-primary/40 hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        role === "vendor" ? "bg-primary text-white" : "bg-gray-100 text-gray-500"
-                      }`}>
-                        <Truck className="h-5 w-5" />
-                      </div>
-                      <div className="text-center">
-                        <p className={`font-semibold text-sm ${role === "vendor" ? "text-primary" : "text-foreground"}`}>
-                          Vendor / Mitra
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Penyedia layanan pengiriman</p>
-                      </div>
-                      {role === "vendor" && (
-                        <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center mt-1">
-                          <Check className="h-2.5 w-2.5 text-white" />
-                        </div>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Form fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <label className="text-sm font-medium">{t("register.fullName")}</label>
-                        <FormControl><Input placeholder="John Doe" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <label className="text-sm font-medium">{t("register.emailAddress")}</label>
-                        <FormControl><Input type="email" placeholder="john@company.com" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="company"
-                    render={({ field }) => (
-                      <FormItem>
-                        <label className="text-sm font-medium">
-                          {role === "vendor" ? "Nama Perusahaan / Armada" : t("register.company")}
-                        </label>
-                        <FormControl>
-                          <Input
-                            placeholder={role === "vendor" ? "PT Mitra Logistik" : "Acme Logistics Inc."}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <label className="text-sm font-medium">{t("register.phone")}</label>
-                        <FormControl><Input placeholder="+62 812 0000 0000" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+          {step === "phone" && (
+            <>
+              <div className="space-y-2">
+                <Label>Nomor WhatsApp</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="tel"
+                    placeholder="08123456789"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="pl-10 h-12 text-base"
+                    onKeyDown={(e) => e.key === "Enter" && sendOtp()}
                   />
                 </div>
+                <p className="text-xs text-muted-foreground">Kode OTP akan dikirim via WhatsApp ke nomor ini.</p>
+              </div>
+              <Button className="w-full h-12 bg-emerald-600 hover:bg-emerald-700" onClick={sendOtp} disabled={isLoading}>
+                {isLoading ? "Mengirim..." : "Kirim Kode OTP"}
+              </Button>
+              <p className="text-center text-sm text-muted-foreground">
+                Sudah punya akun? <Link href="/login" className="text-emerald-600 font-medium hover:underline">Login</Link>
+              </p>
+            </>
+          )}
 
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <label className="text-sm font-medium">{t("register.password")}</label>
-                      <FormControl><Input type="password" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+          {step === "otp" && (
+            <>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm">
+                <p className="text-muted-foreground">Kode dikirim ke</p>
+                <p className="font-semibold text-foreground">+{normalizedPhone}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Kode OTP (6 digit)</Label>
+                <Input
+                  ref={otpInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="······"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="h-14 text-center text-2xl tracking-[0.5em] font-mono"
+                  onKeyDown={(e) => e.key === "Enter" && verifyOtp()}
                 />
-
-                <Button type="button" className="w-full h-12" onClick={handleNextStep}>
-                  {t("register.continueToServices")}
+              </div>
+              <Button className="w-full h-12 bg-emerald-600 hover:bg-emerald-700" onClick={verifyOtp} disabled={isLoading || otp.length !== 6}>
+                {isLoading ? "Memverifikasi..." : "Verifikasi"}
+              </Button>
+              <div className="flex items-center justify-between text-sm">
+                <Button variant="ghost" size="sm" onClick={() => { setStep("phone"); setOtp(""); setErrorMsg(""); }}>
+                  <ArrowLeft className="h-3 w-3 mr-1" /> Ganti nomor
+                </Button>
+                <Button variant="ghost" size="sm" onClick={sendOtp} disabled={cooldown > 0 || isLoading}>
+                  {cooldown > 0 ? `Kirim ulang (${cooldown}s)` : "Kirim ulang"}
                 </Button>
               </div>
+            </>
+          )}
 
-              {/* ── STEP 2 ── */}
-              <div className={step === 2 ? "block space-y-6" : "hidden"}>
-                <div>
-                  <h3 className="text-lg font-semibold mb-1">
-                    {role === "vendor" ? "Layanan yang Anda Sediakan" : t("register.servicesTitle")}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    {role === "vendor"
-                      ? "Pilih jenis layanan atau produk yang Anda tawarkan sebagai mitra logistik."
-                      : t("register.servicesDesc")}
-                    {selectedIds.length > 0 && (
-                      <span className="ml-2 font-medium text-accent">{selectedIds.length} {t("register.selected")}</span>
-                    )}
-                  </p>
+          {step === "profile" && (
+            <>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4 text-emerald-600" />
+                <span className="text-foreground">Nomor terverifikasi: <strong>+{normalizedPhone}</strong></span>
+              </div>
 
-                  {allItems.length === 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {[1, 2, 3, 4, 5, 6].map((i) => (
-                        <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
-                      {allItems.map((item) => {
-                        const isSelected = selectedIds.includes(item.id);
-                        return (
-                          <button
-                            key={`${item.itemType}-${item.id}`}
-                            type="button"
-                            onClick={() => toggleItem(item.id)}
-                            className={`w-full text-left flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-150 select-none ${
-                              isSelected
-                                ? "border-primary bg-primary/5 shadow-sm"
-                                : "border-border bg-white hover:border-primary/40 hover:bg-gray-50"
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                              isSelected ? "bg-primary border-primary" : "border-muted-foreground/40 bg-white"
-                            }`}>
-                              {isSelected && <Check className="h-3 w-3 text-white" />}
-                            </div>
-                            <span className={`text-sm font-medium leading-tight ${isSelected ? "text-primary" : "text-foreground"}`}>
-                              {item.name}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-4 pt-2">
-                  <Button type="button" variant="outline" className="w-1/3 h-12" onClick={() => setStep(1)}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> {t("register.back")}
-                  </Button>
-                  <Button type="submit" className="w-2/3 h-12" disabled={isSubmitting}>
-                    {isSubmitting ? t("register.creatingAccount") : t("register.createAccount")}
-                  </Button>
+              <div className="space-y-2">
+                <Label>Saya mendaftar sebagai</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRole("customer")}
+                    className={`p-4 rounded-lg border-2 text-left transition ${role === "customer" ? "border-emerald-500 bg-emerald-50" : "border-border"}`}
+                  >
+                    <User className={`h-5 w-5 mb-2 ${role === "customer" ? "text-emerald-600" : "text-muted-foreground"}`} />
+                    <p className="font-semibold text-sm">Customer</p>
+                    <p className="text-xs text-muted-foreground">Saya butuh jasa/produk</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole("vendor")}
+                    className={`p-4 rounded-lg border-2 text-left transition ${role === "vendor" ? "border-emerald-500 bg-emerald-50" : "border-border"}`}
+                  >
+                    <Truck className={`h-5 w-5 mb-2 ${role === "vendor" ? "text-emerald-600" : "text-muted-foreground"}`} />
+                    <p className="font-semibold text-sm">Vendor</p>
+                    <p className="text-xs text-muted-foreground">Saya menyediakan jasa</p>
+                  </button>
                 </div>
               </div>
 
-            </form>
-          </Form>
+              <div className="space-y-2">
+                <Label>Nama Lengkap *</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Budi Santoso" />
+              </div>
 
-          {step === 1 && (
-            <div className="mt-8 text-center text-sm text-muted-foreground">
-              {t("register.alreadyHaveAccount")}{" "}
-              <Link
-                href={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"}
-                className="font-medium text-primary hover:underline"
-              >
-                {t("register.signIn")}
-              </Link>
-            </div>
+              <div className="space-y-2">
+                <Label>{role === "vendor" ? "Nama Perusahaan / Armada" : "Perusahaan (opsional)"}</Label>
+                <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder={role === "vendor" ? "PT Mitra Logistik" : "Acme Inc."} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Email (opsional)</Label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
+              </div>
+
+              {allItems.length > 0 && (
+                <div className="space-y-2">
+                  <Label>{role === "vendor" ? "Layanan yang Anda sediakan" : "Layanan yang diminati"}</Label>
+                  <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">
+                    {allItems.map((item) => (
+                      <label key={`${item.itemType}-${item.id}`} className="flex items-center gap-2 p-2 rounded hover:bg-emerald-50 cursor-pointer text-sm">
+                        <input
+                          type="checkbox"
+                          checked={serviceIds.includes(item.id)}
+                          onChange={() => toggleService(item.id)}
+                          className="rounded border-gray-300"
+                        />
+                        <span>{item.name}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">{item.itemType}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Button className="w-full h-12 bg-emerald-600 hover:bg-emerald-700" onClick={completeRegister} disabled={isLoading}>
+                {isLoading ? "Mendaftarkan..." : "Selesaikan Pendaftaran"}
+              </Button>
+            </>
           )}
         </CardContent>
       </Card>

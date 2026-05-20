@@ -52,3 +52,4 @@ export * from "./notificationLogs";
 export * from "./shortLinks";
 
 export * from "./onboarding";
+export * from "./waOtpCodes";

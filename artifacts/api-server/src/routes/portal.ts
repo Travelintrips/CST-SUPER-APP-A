@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable } from "@workspace/db";
+import { db, productsTable, productCategoryMapTable, productCategoriesTable, portalCustomersTable, portalCustomerServicesTable, portalContentTable, accountingSettingsTable, salesDocumentsTable, salesDocumentLinesTable, customersTable, logisticOrdersTable, suppliersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, quoteRequestsTable, userProfilesTable, identityDocumentsTable, ocrResultsTable, vendorProfilesTable, driverProfilesTable, employeeProfilesTable, onboardingApprovalsTable, waOtpCodesTable } from "@workspace/db";
 import { eq, inArray, and, sql, desc, gte, lte, ilike, or } from "drizzle-orm";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendWhatsApp } from "../lib/fonnte";
@@ -203,6 +203,223 @@ router.post("/auth/login", async (req, res) => {
   });
 });
 
+// ─── WA OTP REGISTRATION ──────────────────────────────────────────────
+function normalizePhoneID(raw: string): string {
+  let p = String(raw).replace(/[^\d+]/g, "");
+  if (p.startsWith("+")) p = p.slice(1);
+  if (p.startsWith("0")) p = "62" + p.slice(1);
+  if (!p.startsWith("62")) p = "62" + p;
+  return p;
+}
+
+function genOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+// POST /api/portal/auth/wa-otp/send — kirim OTP via WhatsApp
+router.post("/auth/wa-otp/send", async (req, res) => {
+  const { phone } = req.body ?? {};
+  if (!phone) return res.status(400).json({ message: "Nomor HP diperlukan." });
+  const normalized = normalizePhoneID(String(phone));
+  if (normalized.length < 10) return res.status(400).json({ message: "Nomor HP tidak valid." });
+
+  // Rate limit: max 3 OTP per phone in last 10 minutes
+  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const recent = await db
+    .select({ id: waOtpCodesTable.id })
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.phone, normalized), gte(waOtpCodesTable.createdAt, tenMinAgo)));
+  if (recent.length >= 3) {
+    return res.status(429).json({ message: "Terlalu banyak permintaan OTP. Coba lagi nanti." });
+  }
+
+  const code = genOtp();
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
+
+  await db.insert(waOtpCodesTable).values({
+    phone: normalized,
+    codeHash,
+    purpose: "register",
+    expiresAt,
+  });
+
+  try {
+    await sendWhatsApp(
+      normalized,
+      `*Kode Verifikasi BizPortal*\n\nKode OTP Anda: *${code}*\n\nBerlaku 5 menit. Jangan bagikan kode ini ke siapapun.`
+    );
+  } catch (err) {
+    req.log?.error({ err }, "wa-otp send failed");
+    return res.status(500).json({ message: "Gagal mengirim OTP via WhatsApp." });
+  }
+
+  return res.json({ message: "OTP dikirim ke WhatsApp.", phone: normalized });
+});
+
+// POST /api/portal/auth/wa-otp/verify — verifikasi OTP, return verifyToken
+router.post("/auth/wa-otp/verify", async (req, res) => {
+  const { phone, code } = req.body ?? {};
+  if (!phone || !code) return res.status(400).json({ message: "Nomor HP dan kode diperlukan." });
+  const normalized = normalizePhoneID(String(phone));
+
+  const [otp] = await db
+    .select()
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.phone, normalized), eq(waOtpCodesTable.verified, false)))
+    .orderBy(desc(waOtpCodesTable.createdAt))
+    .limit(1);
+
+  if (!otp) return res.status(400).json({ message: "OTP tidak ditemukan. Minta OTP baru." });
+  if (otp.expiresAt < new Date()) return res.status(400).json({ message: "OTP kadaluarsa. Minta OTP baru." });
+  if (otp.attempts >= 5) return res.status(429).json({ message: "Terlalu banyak percobaan. Minta OTP baru." });
+
+  const valid = await bcrypt.compare(String(code), otp.codeHash);
+  if (!valid) {
+    await db.update(waOtpCodesTable).set({ attempts: otp.attempts + 1 }).where(eq(waOtpCodesTable.id, otp.id));
+    return res.status(400).json({ message: "Kode OTP salah." });
+  }
+
+  const verifyToken = randomUUID();
+  await db
+    .update(waOtpCodesTable)
+    .set({ verified: true, verifyToken, expiresAt: new Date(Date.now() + 15 * 60 * 1000) })
+    .where(eq(waOtpCodesTable.id, otp.id));
+
+  return res.json({ verifyToken, phone: normalized });
+});
+
+// POST /api/portal/auth/wa-register — lengkapi profil & buat akun
+router.post("/auth/wa-register", async (req, res) => {
+  const { verifyToken, name, role: requestedRole, company, serviceIds, email } = req.body ?? {};
+  if (!verifyToken || !name) return res.status(400).json({ message: "Token verifikasi dan nama diperlukan." });
+
+  const [otp] = await db
+    .select()
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.verifyToken, String(verifyToken)), eq(waOtpCodesTable.verified, true)))
+    .limit(1);
+
+  if (!otp) return res.status(400).json({ message: "Token verifikasi tidak valid." });
+  if (otp.expiresAt < new Date()) return res.status(400).json({ message: "Token kadaluarsa. Verifikasi ulang OTP." });
+
+  const phone = otp.phone;
+  const ALLOWED_ROLES = ["customer", "vendor"];
+  const role = ALLOWED_ROLES.includes(String(requestedRole)) ? String(requestedRole) : "customer";
+
+  // Cek apakah phone sudah terdaftar
+  const [existingByPhone] = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.phone, phone))
+    .limit(1);
+  if (existingByPhone) {
+    return res.status(409).json({ message: "Nomor HP sudah terdaftar. Silakan login." });
+  }
+
+  const finalEmail = email ? String(email).toLowerCase().trim() : `${phone}@wa.local`;
+
+  // Cek email duplicate jika user provide
+  if (email) {
+    const [existingEmail] = await db
+      .select({ id: portalCustomersTable.id })
+      .from(portalCustomersTable)
+      .where(eq(portalCustomersTable.email, finalEmail))
+      .limit(1);
+    if (existingEmail) return res.status(409).json({ message: "Email sudah terdaftar." });
+  }
+
+  const [created] = await db
+    .insert(portalCustomersTable)
+    .values({
+      name: String(name),
+      email: finalEmail,
+      passwordHash: "",
+      phone,
+      company: company ? String(company) : null,
+      role,
+    })
+    .returning();
+
+  if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+    await db
+      .insert(portalCustomerServicesTable)
+      .values((serviceIds as number[]).map((sid) => ({ customerId: created.id, serviceId: Number(sid) })))
+      .onConflictDoNothing();
+  }
+
+  // Invalidate token
+  await db.update(waOtpCodesTable).set({ verifyToken: null }).where(eq(waOtpCodesTable.id, otp.id));
+
+  const token = await signPortalJwt({
+    sub: String(created.id),
+    email: created.email,
+    customerId: created.id,
+    role: created.role,
+  });
+
+  return res.status(201).json({
+    token,
+    user: {
+      id: created.id,
+      name: created.name,
+      email: created.email,
+      phone: created.phone,
+      company: created.company,
+      role: created.role,
+    },
+  });
+});
+
+// POST /api/portal/auth/wa-login — login pakai phone + OTP
+router.post("/auth/wa-login", async (req, res) => {
+  const { verifyToken } = req.body ?? {};
+  if (!verifyToken) return res.status(400).json({ message: "Token verifikasi diperlukan." });
+
+  const [otp] = await db
+    .select()
+    .from(waOtpCodesTable)
+    .where(and(eq(waOtpCodesTable.verifyToken, String(verifyToken)), eq(waOtpCodesTable.verified, true)))
+    .limit(1);
+
+  if (!otp) return res.status(400).json({ message: "Token verifikasi tidak valid." });
+  if (otp.expiresAt < new Date()) return res.status(400).json({ message: "Token kadaluarsa." });
+
+  const matches = await db
+    .select()
+    .from(portalCustomersTable)
+    .where(eq(portalCustomersTable.phone, otp.phone))
+    .limit(2);
+
+  if (matches.length === 0) return res.status(404).json({ message: "Nomor HP belum terdaftar.", notRegistered: true, phone: otp.phone });
+  if (matches.length > 1) {
+    req.log?.error({ phone: otp.phone }, "wa-login: multiple accounts share phone — refusing login");
+    return res.status(409).json({ message: "Akun ambigu untuk nomor ini. Hubungi admin." });
+  }
+  const user = matches[0];
+
+  await db.update(waOtpCodesTable).set({ verifyToken: null }).where(eq(waOtpCodesTable.id, otp.id));
+
+  const token = await signPortalJwt({
+    sub: String(user.id),
+    email: user.email,
+    customerId: user.id,
+    role: user.role,
+  });
+
+  return res.json({
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      company: user.company,
+      role: user.role,
+    },
+  });
+});
+
 // POST /api/portal/auth/signup — standalone register (non-Supabase)
 router.post("/auth/signup", async (req, res) => {
   const { name, email, password, phone, company, role: requestedRole, serviceIds } = req.body ?? {};
@@ -217,12 +434,20 @@ router.post("/auth/signup", async (req, res) => {
   if (existing) {
     return res.status(409).json({ message: "Email sudah terdaftar." });
   }
+  const normalizedPhone = phone ? normalizePhoneID(String(phone)) : null;
+  if (normalizedPhone) {
+    const [phoneExisting] = await db
+      .select({ id: portalCustomersTable.id })
+      .from(portalCustomersTable)
+      .where(eq(portalCustomersTable.phone, normalizedPhone));
+    if (phoneExisting) return res.status(409).json({ message: "Nomor HP sudah terdaftar." });
+  }
   const ALLOWED_ROLES = ["customer", "vendor"];
   const role = ALLOWED_ROLES.includes(String(requestedRole)) ? String(requestedRole) : "customer";
   const passwordHash = await bcrypt.hash(String(password), 12);
   const [created] = await db
     .insert(portalCustomersTable)
-    .values({ name: String(name), email: emailLower, passwordHash, phone: phone ? String(phone) : null, company: company ? String(company) : null, role })
+    .values({ name: String(name), email: emailLower, passwordHash, phone: normalizedPhone, company: company ? String(company) : null, role })
     .returning();
   if (Array.isArray(serviceIds) && serviceIds.length > 0) {
     await db.insert(portalCustomerServicesTable).values(
