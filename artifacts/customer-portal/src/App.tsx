@@ -47,6 +47,7 @@ import ApprovePage from "@/pages/approve";
 import ConfirmPage from "@/pages/confirm";
 import VendorQuoteFormPage from "@/pages/vendor-quote-form";
 import VendorConfirmPage from "@/pages/vendor-confirm"; // [TRUCKING-FIX]
+import VendorFormPage from "@/pages/vendor-form"; // [NEW-RFQ-FLOW]
 import ChooseOptionPage from "@/pages/choose-option"; // [MULTI-MODE]
 import KasirLoginPage from "@/pages/kasir-login";
 import KasirPage from "@/pages/kasir";
@@ -75,7 +76,7 @@ if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval"]; // [TRUCKING-FIX] [MULTI-MODE]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -170,6 +171,7 @@ function AppShell() {
       <Route path="/vendor-product-approval/:orderNumber" component={VendorProductApprovalPage} />
       <Route path="/vendor-quote" component={VendorQuoteFormPage} />
       <Route path="/vendor-confirm" component={VendorConfirmPage} />    {/* [TRUCKING-FIX] */}
+      <Route path="/vendor-form/:token" component={VendorFormPage} />   {/* [NEW-RFQ-FLOW] */}
       <Route path="/choose-option/:token" component={ChooseOptionPage} />   {/* [MULTI-MODE] */}
       <Route path="/kasir/login" component={KasirLoginPage} />
       <Route path="/kasir" component={KasirPage} />

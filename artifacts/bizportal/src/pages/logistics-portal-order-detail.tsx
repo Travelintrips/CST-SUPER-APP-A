@@ -177,6 +177,12 @@ export default function LogisticsPortalOrderDetailPage() {
   const [vendorFormLinks, setVendorFormLinks] = useState<VendorFormLink[]>([]);
   const [linksLoading, setLinksLoading] = useState(false);
 
+  // [NEW-RFQ-FLOW] Blast V2 dialog state
+  const [blastV2Dialog, setBlastV2Dialog] = useState(false);
+  const [blastV2VendorIds, setBlastV2VendorIds] = useState<number[]>([]);
+  const [blastV2Hours, setBlastV2Hours] = useState("48");
+  const [blastingV2, setBlastingV2] = useState(false);
+
   function openLinkDialog() {
     setLinkDialog(true);
     setLinksLoading(true);
@@ -576,6 +582,12 @@ export default function LogisticsPortalOrderDetailPage() {
                 <Link2 className="h-4 w-4" /> Lihat Link Form
               </Button>
             )}
+            {latestRfq && (
+              <Button size="sm" variant="outline" className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={() => navigate(`/logistics/rfq/${latestRfq.id}/comparison`)}>
+                <ListChecks className="h-4 w-4" /> Comparison
+              </Button>
+            )}
             {order.status === "Confirmed" && (
               <Button
                 size="sm"
@@ -694,6 +706,28 @@ export default function LogisticsPortalOrderDetailPage() {
 
           {/* ── Tab 2: RFQ & Quotes ── */}
           <TabsContent value="rfq" className="space-y-4 mt-4">
+
+            {/* [NEW-RFQ-FLOW] Comparison & Blast banner */}
+            <div className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <ListChecks className="h-4 w-4 text-blue-600 shrink-0" />
+              <span className="text-sm text-blue-800 font-medium flex-1">
+                {latestRfq ? `RFQ ${(latestRfq as any).rfqNumber ?? `#${latestRfq.id}`}` : "Kirim RFQ ke vendor via sistem baru"}
+              </span>
+              <div className="flex gap-2">
+                {latestRfq && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-100"
+                    onClick={() => navigate(`/logistics/rfq/${latestRfq.id}/comparison`)}>
+                    <Eye className="h-3 w-3" /> Lihat Comparison
+                  </Button>
+                )}
+                <Button size="sm" className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => { setBlastV2VendorIds([]); setBlastV2Dialog(true); }}
+                  disabled={!latestRfq}>
+                  <Send className="h-3 w-3" /> Blast Vendor V2
+                </Button>
+              </div>
+            </div>
+
             {/* Vendor Response Tracker */}
             {rfqs.length > 0 && (
               <Card>
@@ -1663,6 +1697,86 @@ export default function LogisticsPortalOrderDetailPage() {
           ) : null}
           <DialogFooter className="pt-2 shrink-0">
             <Button variant="outline" onClick={() => { setLinkFormDialog(false); setLinkFormData(null); setResendResults({}); }}>Tutup</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* [NEW-RFQ-FLOW] Blast V2 Dialog */}
+      <Dialog open={blastV2Dialog} onOpenChange={(o) => !o && setBlastV2Dialog(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-4 w-4 text-blue-600" /> Blast ke Vendor (New Flow)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Pilih vendor dan kirim link form penawaran personal ke masing-masing vendor via WhatsApp.
+            </p>
+            <div>
+              <Label className="text-xs font-semibold mb-2 block">Pilih Vendor</Label>
+              <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
+                {activeVendors.length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-3">Tidak ada vendor aktif</p>
+                ) : activeVendors.map((v) => (
+                  <label key={v.id} className="flex items-center gap-3 p-2.5 hover:bg-muted/30 cursor-pointer">
+                    <Checkbox
+                      checked={blastV2VendorIds.includes(v.id)}
+                      onCheckedChange={(checked) => {
+                        setBlastV2VendorIds(prev =>
+                          checked ? [...prev, v.id] : prev.filter(id => id !== v.id)
+                        );
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{v.name}</p>
+                      <p className="text-xs text-muted-foreground">{v.serviceType ?? "—"} {v.phone ? `· ${v.phone}` : "· ⚠️ No WA"}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{blastV2VendorIds.length} vendor dipilih</p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold">Batas Waktu Respon (jam)</Label>
+              <Input
+                type="number"
+                value={blastV2Hours}
+                onChange={(e) => setBlastV2Hours(e.target.value)}
+                className="mt-1 h-8 text-sm w-28"
+                min={1}
+                max={168}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBlastV2Dialog(false)}>Batal</Button>
+            <Button
+              disabled={blastV2VendorIds.length === 0 || blastingV2 || !latestRfq}
+              onClick={async () => {
+                if (!latestRfq) return;
+                setBlastingV2(true);
+                try {
+                  const res = await fetch(`/api/logistic/rfq/${latestRfq.id}/blast`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ vendorIds: blastV2VendorIds, deadlineHours: Number(blastV2Hours) }),
+                  });
+                  const d = await res.json() as { ok: boolean; sentCount: number; rfqNumber: string; comparisonUrl?: string; message?: string };
+                  if (!res.ok) throw new Error(d.message ?? "Gagal blast");
+                  toast({ title: `Blast berhasil ke ${d.sentCount} vendor`, description: `RFQ: ${d.rfqNumber}` });
+                  setBlastV2Dialog(false);
+                  navigate(`/logistics/rfq/${latestRfq.id}/comparison`);
+                } catch (e) {
+                  toast({ title: "Gagal blast", description: (e as Error).message, variant: "destructive" });
+                } finally {
+                  setBlastingV2(false);
+                }
+              }}
+            >
+              {blastingV2 ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Mengirim...</> : <><Send className="h-4 w-4 mr-1" /> Blast</>}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

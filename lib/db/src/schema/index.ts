@@ -53,3 +53,4 @@ export * from "./shortLinks";
 
 export * from "./onboarding";
 export * from "./waOtpCodes";
+export * from "./rfqVendorLinks";

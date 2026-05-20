@@ -122,68 +122,10 @@ export async function autoCreateRfqAndNotifyVendors(
     await db.update(logisticOrdersTable).set({ status: "Under Review" }).where(eq(logisticOrdersTable.id, orderId));
   }
 
-  for (const vendor of eligible) {
-    const catalogItems = await db
-      .select()
-      .from(vendorCatalogItemsTable)
-      .where(and(eq(vendorCatalogItemsTable.vendorId, vendor.id), eq(vendorCatalogItemsTable.isActive, true)));
-
-    const matchingCatalog = order.vehicleType
-      ? catalogItems.find((c) => c.name.toLowerCase().includes(order.vehicleType!.toLowerCase()))
-      : null;
-    const vendorBasePrice = matchingCatalog
-      ? Number(matchingCatalog.priceBase)
-      : catalogItems[0] ? Number(catalogItems[0].priceBase) : null;
-
-    if (isTrucking && rfq) {                                                                  // [TRUCKING-FIX]
-      // Pre-create quote with token so vendor can confirm YES/NO without needing to fill a form
-      const vendorToken = randomUUID();
-      await db.insert(logisticOrderQuotesTable).values({
-        rfqId: rfq.id,
-        orderId,
-        vendorId: vendor.id,
-        vendorPrice: String(vendorBasePrice ?? 0),
-        vendorConfirmToken: vendorToken,
-        quoteStatus: "pending",
-        replySource: "auto",
-        markupType: "percentage",
-        markupPercentage: "20",
-      } as any);
-
-      const confirmLongUrl = getVendorConfirmUrl(orderId, vendorToken);
-      const rejectLongUrl = confirmLongUrl + "&reject=1";
-      const [confirmUrl, rejectUrl] = await Promise.all([
-        generateShortLink(confirmLongUrl, { context: "vendor_confirm", refType: "rfq", refId: rfqNumber }),
-        generateShortLink(rejectLongUrl, { context: "vendor_confirm_reject", refType: "rfq", refId: rfqNumber }),
-      ]);
-      const msg = buildTruckingRfqWaMessage(order, rfqNumber, vendor.name, confirmUrl, rejectUrl, vendorBasePrice);
-      sendWhatsApp(vendor.phone!, msg).catch((err: unknown) =>
-        logger.error({ err, vendorId: vendor.id }, "autoRFQ trucking WA vendor failed")
-      );
-      console.log(`[TRUCKING-FLOW] RFQ sent to vendor ${vendor.name} (id=${vendor.id}) with token ${vendorToken}`);
-    } else {
-      const [orderTokenRow] = await db.select({ publicRfqToken: logisticOrdersTable.publicRfqToken })
-        .from(logisticOrdersTable).where(eq(logisticOrdersTable.id, orderId));
-      const orderToken = orderTokenRow?.publicRfqToken ?? "";
-      const formUrl = getVendorFormUrl(rfqNumber, vendor.id, orderToken);
-      const nonTruckingItems = orderItems.map((it) => ({ serviceName: it.serviceName || it.category, category: it.category }));
-      sendVendorWhatsApp({
-        vendorPhone: vendor.phone!, vendorName: vendor.name, vendorId: vendor.id,
-        rfqNumber, orderId, orderNumber: order.orderNumber, longUrl: formUrl,
-        origin: order.origin, destination: order.destination,
-        commodity: order.commodity, grossWeight: order.grossWeight,
-        volumeCbm: order.volumeCbm, requiredDate: order.requiredDate,
-        notes: order.notes, vendorBasePrice, createdAt: order.createdAt,
-        jamOrder: order.jamOrder,
-        orderItems: nonTruckingItems,
-        isTrucking: false,
-      }).catch((err: unknown) =>
-        logger.error({ err, vendorId: vendor.id }, "autoRFQ WA vendor failed")
-      );
-    }
-  }
-
-  logger.info({ rfqNumber, orderId, vendorCount: eligible.length, isTrucking }, "Auto-RFQ created and sent to vendors");
+  // [NEW-FLOW] Auto-blast WA ke vendor dinonaktifkan.
+  // Admin harus memilih vendor secara manual via halaman comparison.
+  // RFQ tetap dibuat agar admin bisa langsung blast dari BizPortal.
+  logger.info({ rfqNumber, orderId, vendorCount: eligible.length, isTrucking }, "Auto-RFQ created (WA blast disabled — admin must blast manually)");
 }
 
 function generateRfqNumber(): string {
