@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { rfqRateLimit } from "../middlewares/rfqRateLimit.js";
-import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable } from "@workspace/db";
+import { db, suppliersTable, logisticOrdersTable, logisticOrderRfqsTable, logisticOrderQuotesTable, logisticOrderItemsTable, vendorCatalogItemsTable, vendorOffersTable, vendorRatesTable, salesDocumentsTable, salesDocumentLinesTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
@@ -1452,11 +1452,14 @@ logisticRfqRouter.get("/confirm-form/:token", async (req: Request, res: Response
     finalSellingPrice: order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0,
     estimatedPickup,
     estimatedDelivery,
-    pickupDate: orderAny2.pickupDate ?? order.requiredDate ?? null,       // [TRUCKING-FIX]
-    pickupTime: orderAny2.pickupTime ?? order.jamOrder ?? null,           // [TRUCKING-FIX]
-    truckType: orderAny2.truckType ?? null,                               // [TRUCKING-FIX]
+    pickupDate: orderAny2.pickupDate ?? order.requiredDate ?? null,
+    pickupTime: orderAny2.pickupTime ?? order.jamOrder ?? null,
+    truckType: orderAny2.truckType ?? null,
     vendorName,
     customerConfirmStatus: order.customerConfirmStatus ?? "pending",
+    weight: order.grossWeight != null ? Number(order.grossWeight) : null,
+    volume: order.volumeCbm != null ? Number(order.volumeCbm) : null,
+    notes: order.notes ?? null,
   });
 });
 
@@ -1489,12 +1492,83 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
     })
     .where(eq(logisticOrdersTable.id, order.id));
 
-  // Notify admin via WA — [TRUCKING-FIX] include SO link when customer confirms
+  // ── Auto-create Sales Order saat customer konfirmasi setuju ─────────────────
+  let createdSoNumber: string | null = null;
+  if (action === "confirmed") {
+    try {
+      // Idempotency: cek apakah SO sudah pernah dibuat untuk logistic order ini
+      const [existingSo] = await db
+        .select({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber })
+        .from(salesDocumentsTable)
+        .where(eq(salesDocumentsTable.logisticOrderId, order.id));
+
+      if (existingSo) {
+        createdSoNumber = existingSo.docNumber;
+        logger.info({ orderId: order.id, soId: existingSo.id }, "SO sudah ada, skip auto-create");
+      } else {
+        // Generate nomor SO: SO/YYYY/NNNNN
+        const soYear = new Date().getFullYear();
+        const soPattern = `SO/${soYear}/%`;
+        const [soRow] = await db
+          .select({ maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(doc_number, '/', 3) AS int)), 0)` })
+          .from(salesDocumentsTable)
+          .where(sql`doc_number LIKE ${soPattern}`);
+        const soSeq = (Number(soRow?.maxSeq ?? 0) + 1).toString().padStart(5, "0");
+        const soNumber = `SO/${soYear}/${soSeq}`;
+
+        const sellingPrice = order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0;
+        const orderAnyCreate = order as any;
+
+        const [newSo] = await db.insert(salesDocumentsTable).values({
+          docNumber: soNumber,
+          kind: "order",
+          status: "confirmed",
+          invoiceStatus: "to_invoice",
+          deliveryStatus: "to_deliver",
+          paymentStatus: "unpaid",
+          customerName: order.customerName,
+          totalAmount: String(sellingPrice),
+          taxAmount: "0",
+          grandTotal: String(sellingPrice),
+          origin: order.origin ?? null,
+          destination: order.destination ?? null,
+          transportMode: order.shipmentType ?? null,
+          logisticOrderId: order.id,
+          companyId: order.companyId ?? null,
+          confirmedAt: now,
+          notes: `Auto-dibuat dari konfirmasi customer — Order Logistik: ${order.orderNumber}`,
+          ...(orderAnyCreate.pickupDate ? { etd: orderAnyCreate.pickupDate } : {}),
+        }).returning({ id: salesDocumentsTable.id, docNumber: salesDocumentsTable.docNumber });
+
+        if (newSo) {
+          createdSoNumber = newSo.docNumber;
+          // Insert 1 line: jasa pengiriman
+          await db.insert(salesDocumentLinesTable).values({
+            documentId: newSo.id,
+            name: `Jasa Pengiriman ${order.origin} → ${order.destination}`,
+            description: [
+              order.shipmentType,
+              order.commodity ? `Komoditi: ${order.commodity}` : null,
+              order.grossWeight ? `Berat: ${order.grossWeight} kg` : null,
+            ].filter(Boolean).join(" | ") || null,
+            quantity: "1",
+            unitPrice: String(sellingPrice),
+            subtotal: String(sellingPrice),
+          });
+          logger.info({ orderId: order.id, soNumber, soId: newSo.id }, "Sales Order auto-created dari customer confirm");
+        }
+      }
+    } catch (soErr) {
+      logger.error({ soErr, orderId: order.id }, "Auto-create SO gagal — tidak memblokir response");
+    }
+  }
+
+  // Notify admin via WA
   const adminWa = await getAdminWa();
   if (adminWa) {
     const fmtRp = (n: number) => `Rp ${Math.round(n).toLocaleString("id-ID")}`;
     const sp = order.finalSellingPrice != null ? Number(order.finalSellingPrice) : 0;
-    const orderUrl = getOrderUrl(order.id);                                // BizPortal order URL
+    const orderUrl = getOrderUrl(order.id);
     const orderAny3 = order as any;
     const truckType  = orderAny3.truckType ?? null;
     const pickupDate = orderAny3.pickupDate ? formatISODate(orderAny3.pickupDate) : null;
@@ -1508,21 +1582,22 @@ logisticRfqRouter.post("/confirm/:token", async (req: Request, res: Response) =>
         `📍 Rute: ${order.origin} → ${order.destination}\n` +
         (isTrucking && pickupDate ? `📅 Pickup: ${pickupDate}${pickupTime ? ` ${pickupTime} WIB` : ""}\n` : "") +
         (truckType ? `🚚 Unit: ${truckType}\n` : "") +
-        `\n🔗 *Buat Sales Order:*\n${orderUrl}`
+        (createdSoNumber ? `\n📄 *Sales Order dibuat: ${createdSoNumber}*\n` : "") +
+        `\n🔗 Detail order:\n${orderUrl}`
       : `❌ *CUSTOMER TOLAK — ${order.orderNumber}*\n\n` +
         `Customer *${order.customerName}* menolak penawaran:\n` +
         `💰 *${fmtRp(sp)}*\n\n` +
         `📍 Rute: ${order.origin} → ${order.destination}\n` +
         `Silakan hubungi customer untuk negosiasi lebih lanjut.\n\n` +
-        (orderUrl ? `🔗 *Detail order:*\n${orderUrl}` : "");
+        (orderUrl ? `🔗 Detail order:\n${orderUrl}` : "");
     sendWhatsApp(adminWa, adminMsg).catch((e: unknown) =>
       logger.error({ e }, "WA admin customer confirm notif failed")
     );
-    if (action === "confirmed") console.log(`[TRUCKING-FLOW] State: Confirmed → SO_PENDING (order ${order.id})`);
+    if (action === "confirmed") console.log(`[TRUCKING-FLOW] State: Confirmed → SO_CREATED:${createdSoNumber} (order ${order.id})`);
   }
 
-  logger.info({ orderId: order.id, action, orderNumber: order.orderNumber }, "Customer confirmation received");
-  return res.json({ ok: true, action });
+  logger.info({ orderId: order.id, action, orderNumber: order.orderNumber, soNumber: createdSoNumber }, "Customer confirmation received");
+  return res.json({ ok: true, action, salesOrderNumber: createdSoNumber });
 });
 
 // ─── [MULTI-MODE] Vendor Offers — Admin-Select Flow ──────────────────────────
