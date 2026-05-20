@@ -4,6 +4,7 @@ import { useOrderNotifications, type OrderNotification } from "@/hooks/useOrderN
 interface OrderNotificationsContextValue {
   notifications: OrderNotification[];
   unreadCount: number;
+  dbUnreadTotal: number;
   connected: boolean;
   markAllRead: () => void;
   markSingleRead: (dbId: number) => void;

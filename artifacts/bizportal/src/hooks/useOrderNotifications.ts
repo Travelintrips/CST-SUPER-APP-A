@@ -99,6 +99,7 @@ export function useOrderNotifications() {
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
   const [lastFreightEventAt, setLastFreightEventAt] = useState<number | null>(null);
+  const [dbUnreadTotal, setDbUnreadTotal] = useState(0);
   const esRef = useRef<EventSource | null>(null);
   const onNewOrderRef = useRef<((n: OrderNotification) => void) | null>(null);
   const initializedRef = useRef(false);
@@ -115,6 +116,9 @@ export function useOrderNotifications() {
         if (json?.data && Array.isArray(json.data)) {
           setNotifications(json.data.map(dbRowToNotif));
         }
+        if (typeof json?.unreadTotal === "number") {
+          setDbUnreadTotal(json.unreadTotal);
+        }
       })
       .catch(() => {});
   }, []);
@@ -123,6 +127,7 @@ export function useOrderNotifications() {
     setNotifications((prev) =>
       prev.map((n) => (n.readAt === null ? { ...n, readAt: Date.now() } : n))
     );
+    setDbUnreadTotal(0);
     fetch("/api/notifications/mark-all-read", {
       method: "POST",
       credentials: "include",
@@ -130,9 +135,11 @@ export function useOrderNotifications() {
   }, []);
 
   const markSingleRead = useCallback((dbId: number) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n))
-    );
+    setNotifications((prev) => {
+      const wasUnread = prev.some((n) => n.dbId === dbId && n.readAt === null);
+      if (wasUnread) setDbUnreadTotal((t) => Math.max(0, t - 1));
+      return prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n));
+    });
     fetch(`/api/notifications/${dbId}/read`, {
       method: "POST",
       credentials: "include",
@@ -151,6 +158,7 @@ export function useOrderNotifications() {
     setNotifications((prev) =>
       [notification, ...prev].slice(0, MAX_NOTIFICATIONS)
     );
+    setDbUnreadTotal((t) => t + 1);
     if (FREIGHT_TYPES.includes(notification.type)) {
       setLastFreightEventAt(Date.now());
     }
@@ -381,5 +389,5 @@ export function useOrderNotifications() {
     };
   }, []);
 
-  return { notifications, unreadCount, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
+  return { notifications, unreadCount, dbUnreadTotal, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
 }
