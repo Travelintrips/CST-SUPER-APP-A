@@ -4,7 +4,10 @@ import { sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/requireAdmin.js";
 
 const router = Router();
-router.use(requireAdmin);
+router.use(async (req, res, next) => {
+  const ok = await requireAdmin(req, res);
+  if (ok) next();
+});
 
 // GET /api/notifications?type=all&read=all&limit=50&offset=0
 router.get("/", async (req, res) => {
