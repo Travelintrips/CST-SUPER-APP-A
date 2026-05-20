@@ -15,10 +15,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Loader2, Copy, ExternalLink, Plus, RefreshCw, Send,
-  Package, Truck, User, ClipboardList, Clock,
+  Package, Truck, User, ClipboardList, Clock, ShieldAlert,
 } from "lucide-react";
+import GpsTrackingPanel from "@/components/logistics/GpsTrackingPanel";
 
 const idr = (n: number | string | null | undefined) =>
   n == null ? "—" : `Rp ${Math.round(Number(n)).toLocaleString("id-ID")}`;
@@ -579,6 +581,9 @@ export default function LogisticOrderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* GPS Tracking Panel — full width below main grid */}
+      <GpsTrackingPanel orderId={orderId} orderNumber={order.orderNumber} />
     </AppShell>
   );
 }

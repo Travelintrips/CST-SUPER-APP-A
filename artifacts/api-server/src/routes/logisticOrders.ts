@@ -8,8 +8,9 @@ import {
   suppliersTable,
   driverJobsTable,
   driverJobLogsTable,
-  driverPhotosTable,
+  driverPhotosTab
   logisticOrderRfqsTable,
+  driverLocationsTable,
 } from "@workspace/db";
 import { eq, ilike, and, gte, lte, or, sql, desc, inArray, isNotNull } from "drizzle-orm";
 import { salesDocumentsTable } from "@workspace/db";
@@ -713,4 +714,39 @@ logisticOrdersRouter.delete("/:id", async (req: Request, res: Response) => {
     .returning();
   if (!deleted) return res.status(404).json({ message: "Order tidak ditemukan" });
   return res.json({ message: "Deleted", id });
+});
+
+// GET /api/logistic/orders/:id/locations — GPS history for an order (admin)
+logisticOrdersRouter.get("/:id/locations", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""));
+  if (isNaN(id)) return res.status(400).json({ message: "ID tidak valid" });
+  const limit = Math.min(parseInt(String(req.query["limit"] ?? "200"), 10), 500);
+
+  const rows = await db
+    .select({
+      id: driverLocationsTable.id,
+      latitude: driverLocationsTable.latitude,
+      longitude: driverLocationsTable.longitude,
+      accuracy: driverLocationsTable.accuracy,
+      speed: driverLocationsTable.speed,
+      checkpointType: driverLocationsTable.checkpointType,
+      updatedAt: driverLocationsTable.updatedAt,
+    })
+    .from(driverLocationsTable)
+    .where(eq(driverLocationsTable.orderId, id))
+    .orderBy(driverLocationsTable.updatedAt)
+    .limit(limit);
+
+  return res.json({
+    locations: rows.map(r => ({
+      id: r.id,
+      lat: parseFloat(String(r.latitude)),
+      lng: parseFloat(String(r.longitude)),
+      accuracy: r.accuracy != null ? parseFloat(String(r.accuracy)) : null,
+      speed: r.speed != null ? parseFloat(String(r.speed)) : null,
+      checkpointType: r.checkpointType,
+      updatedAt: r.updatedAt,
+    })),
+    total: rows.length,
+  });
 });
