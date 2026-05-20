@@ -4,10 +4,8 @@ function playNotificationChime() {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     const now = ctx.currentTime;
-
     const notes = [523.25, 659.25, 783.99, 1046.5];
     const timings = [0, 0.15, 0.3, 0.45];
-
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -21,7 +19,6 @@ function playNotificationChime() {
       osc.start(now + timings[i]);
       osc.stop(now + timings[i] + 0.55);
     });
-
     setTimeout(() => ctx.close(), 2500);
   } catch {
     // AudioContext not supported or blocked — silently skip
@@ -59,7 +56,10 @@ function showBrowserNotification(notification: OrderNotification) {
 
 export interface OrderNotification {
   id: string;
-  type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status" | "freight_new" | "freight_status" | "freight_stage";
+  dbId?: number | null;
+  type: "logistic" | "portal_sales" | "product" | "sales_update" | "logistic_status"
+      | "freight_new" | "freight_status" | "freight_stage"
+      | "sport_booking" | "ecommerce";
   orderId: number;
   orderNumber: string;
   customerName: string;
@@ -76,6 +76,10 @@ export interface OrderNotification {
   vendorName?: string;
   commodity?: string;
   transportMode?: string;
+  facilityName?: string;
+  bookingDate?: string;
+  startTime?: string;
+  endTime?: string;
   createdAt: string;
   readAt: number | null;
 }
@@ -88,6 +92,38 @@ function generateId() {
 
 const FREIGHT_TYPES: OrderNotification["type"][] = ["freight_new", "freight_status", "freight_stage"];
 
+function dbRowToNotif(row: Record<string, unknown>): OrderNotification {
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  return {
+    id: generateId(),
+    dbId: row.id as number,
+    type: (row.type as OrderNotification["type"]) ?? "product",
+    orderId: (row.order_id as number) ?? 0,
+    orderNumber: (row.order_number as string) ?? "",
+    customerName: (row.customer_name as string) ?? "",
+    companyName: (row.company_name as string | null) ?? null,
+    // payload fields
+    shipmentType: payload.shipmentType as string | undefined,
+    origin: payload.origin as string | undefined,
+    destination: payload.destination as string | undefined,
+    grandTotal: payload.grandTotal as number | undefined,
+    itemCount: payload.itemCount as number | undefined,
+    status: payload.status as string | undefined,
+    actionLabel: payload.actionLabel as string | undefined,
+    stageType: payload.stageType as string | undefined,
+    stageStatus: payload.stageStatus as string | undefined,
+    vendorName: payload.vendorName as string | undefined,
+    commodity: payload.commodity as string | undefined,
+    transportMode: payload.transportMode as string | undefined,
+    facilityName: payload.facilityName as string | undefined,
+    bookingDate: payload.bookingDate as string | undefined,
+    startTime: payload.startTime as string | undefined,
+    endTime: payload.endTime as string | undefined,
+    createdAt: (row.created_at as string) ?? new Date().toISOString(),
+    readAt: row.read_at ? new Date(row.read_at as string).getTime() : null,
+  };
+}
+
 export function useOrderNotifications() {
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [connected, setConnected] = useState(false);
@@ -97,13 +133,42 @@ export function useOrderNotifications() {
   );
   const esRef = useRef<EventSource | null>(null);
   const onNewOrderRef = useRef<((n: OrderNotification) => void) | null>(null);
+  const initializedRef = useRef(false);
 
   const unreadCount = notifications.filter((n) => n.readAt === null).length;
+
+  // Fetch persisted notifications from DB on mount
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    fetch("/api/notifications?limit=50&read=all", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (json?.data && Array.isArray(json.data)) {
+          setNotifications(json.data.map(dbRowToNotif));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) =>
       prev.map((n) => (n.readAt === null ? { ...n, readAt: Date.now() } : n))
     );
+    fetch("/api/notifications/mark-all-read", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
+  }, []);
+
+  const markSingleRead = useCallback((dbId: number) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.dbId === dbId && n.readAt === null ? { ...n, readAt: Date.now() } : n))
+    );
+    fetch(`/api/notifications/${dbId}/read`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
   }, []);
 
   const clearAll = useCallback(() => {
@@ -152,6 +217,7 @@ export function useOrderNotifications() {
           const data = JSON.parse(e.data);
           pushNotification({
             id: generateId(),
+            dbId: data.dbId ?? null,
             type: data.type,
             orderId: data.orderId,
             orderNumber: data.orderNumber,
@@ -165,8 +231,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
-        } catch {
-        }
+        } catch { }
       });
 
       es.addEventListener("new_logistic_order", (e: MessageEvent) => {
@@ -175,6 +240,7 @@ export function useOrderNotifications() {
           const data = JSON.parse(e.data);
           pushNotification({
             id: generateId(),
+            dbId: data.dbId ?? null,
             type: "logistic",
             orderId: data.orderId,
             orderNumber: data.orderNumber,
@@ -187,8 +253,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
-        } catch {
-        }
+        } catch { }
       });
 
       es.addEventListener("logistic_order_status_changed", (e: MessageEvent) => {
@@ -197,6 +262,7 @@ export function useOrderNotifications() {
           const data = JSON.parse(e.data);
           pushNotification({
             id: generateId(),
+            dbId: data.dbId ?? null,
             type: "logistic_status",
             orderId: data.orderId,
             orderNumber: data.orderNumber,
@@ -206,8 +272,7 @@ export function useOrderNotifications() {
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
-        } catch {
-        }
+        } catch { }
       });
 
       es.addEventListener("sales_order_update", (e: MessageEvent) => {
@@ -216,18 +281,18 @@ export function useOrderNotifications() {
           const data = JSON.parse(e.data);
           pushNotification({
             id: generateId(),
+            dbId: data.dbId ?? null,
             type: "sales_update",
-            orderId: data.docId,
-            orderNumber: data.docNumber,
+            orderId: data.orderId ?? data.docId,
+            orderNumber: data.orderNumber ?? data.docNumber,
             customerName: data.customerName,
             companyName: null,
             actionLabel: data.actionLabel,
-            grandTotal: data.totalAmount,
+            grandTotal: data.grandTotal ?? data.totalAmount,
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
-        } catch {
-        }
+        } catch { }
       });
 
       es.addEventListener("freight_shipment_created", (e: MessageEvent) => {
@@ -236,11 +301,12 @@ export function useOrderNotifications() {
           const data = JSON.parse(e.data);
           pushNotification({
             id: generateId(),
+            dbId: data.dbId ?? null,
             type: "freight_new",
-            orderId: data.shipmentId,
-            orderNumber: data.shipmentNumber,
-            customerName: data.shipperName,
-            companyName: data.consigneeName ?? null,
+            orderId: data.orderId ?? data.shipmentId,
+            orderNumber: data.orderNumber ?? data.shipmentNumber,
+            customerName: data.customerName ?? data.shipperName,
+            companyName: data.companyName ?? data.consigneeName ?? null,
             origin: data.origin,
             destination: data.destination,
             commodity: data.commodity,
@@ -248,8 +314,7 @@ export function useOrderNotifications() {
             createdAt: data.createdAt ?? new Date().toISOString(),
             readAt: null,
           });
-        } catch {
-        }
+        } catch { }
       });
 
       es.addEventListener("freight_shipment_status", (e: MessageEvent) => {
@@ -258,19 +323,19 @@ export function useOrderNotifications() {
           const data = JSON.parse(e.data);
           pushNotification({
             id: generateId(),
+            dbId: data.dbId ?? null,
             type: "freight_status",
-            orderId: data.shipmentId,
-            orderNumber: data.shipmentNumber,
-            customerName: data.shipperName,
-            companyName: data.consigneeName ?? null,
+            orderId: data.orderId ?? data.shipmentId,
+            orderNumber: data.orderNumber ?? data.shipmentNumber,
+            customerName: data.customerName ?? data.shipperName,
+            companyName: data.companyName ?? data.consigneeName ?? null,
             origin: data.origin,
             destination: data.destination,
             status: data.status,
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
-        } catch {
-        }
+        } catch { }
       });
 
       es.addEventListener("freight_stage_update", (e: MessageEvent) => {
@@ -279,19 +344,62 @@ export function useOrderNotifications() {
           const data = JSON.parse(e.data);
           pushNotification({
             id: generateId(),
+            dbId: data.dbId ?? null,
             type: "freight_stage",
-            orderId: data.shipmentId,
-            orderNumber: data.shipmentNumber ?? `#${data.shipmentId}`,
-            customerName: data.shipperName ?? "—",
-            companyName: data.consigneeName ?? null,
+            orderId: data.orderId ?? data.shipmentId,
+            orderNumber: data.orderNumber ?? data.shipmentNumber ?? `#${data.shipmentId}`,
+            customerName: data.customerName ?? data.shipperName ?? "—",
+            companyName: data.companyName ?? data.consigneeName ?? null,
             stageType: data.stageType,
             stageStatus: data.stageStatus,
             vendorName: data.vendorName,
             createdAt: data.updatedAt ?? new Date().toISOString(),
             readAt: null,
           });
-        } catch {
-        }
+        } catch { }
+      });
+
+      es.addEventListener("new_sport_booking", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            dbId: data.dbId ?? null,
+            type: "sport_booking",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: null,
+            facilityName: data.facilityName,
+            bookingDate: data.bookingDate,
+            startTime: data.startTime,
+            endTime: data.endTime,
+            grandTotal: data.grandTotal,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch { }
+      });
+
+      es.addEventListener("new_ecommerce_order", (e: MessageEvent) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(e.data);
+          pushNotification({
+            id: generateId(),
+            dbId: data.dbId ?? null,
+            type: "ecommerce",
+            orderId: data.orderId,
+            orderNumber: data.orderNumber,
+            customerName: data.customerName,
+            companyName: null,
+            grandTotal: data.grandTotal,
+            itemCount: data.itemCount,
+            createdAt: data.createdAt ?? new Date().toISOString(),
+            readAt: null,
+          });
+        } catch { }
       });
 
       es.onerror = () => {
@@ -324,4 +432,5 @@ export function useOrderNotifications() {
     notifPermission,
     requestNotifPermission,
   };
+  return { notifications, unreadCount, connected, markAllRead, markSingleRead, clearAll, setOnNewOrder, lastFreightEventAt };
 }

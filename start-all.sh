@@ -2,8 +2,7 @@
 set -e
 
 # Kill any stale processes on our ports before starting
-# Note: customer portal (23434) and sport center (8082) are managed by their own workflows
-for PORT in 8080 5000; do
+for PORT in 8080 5000 18442; do
   fuser -k ${PORT}/tcp 2>/dev/null || true
 done
 
@@ -17,10 +16,16 @@ APISERVER_PID=$!
 
 cd /home/runner/workspace
 
-echo "==> Starting BizPortal frontend on port 5000..."
+echo "==> Starting BizPortal frontend on port 18442..."
 cd artifacts/bizportal
-PORT=5000 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
+PORT=18442 BASE_PATH=/bizportal/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
 BIZPORTAL_PID=$!
 
-echo "==> All services started. API=$APISERVER_PID BizPortal=$BIZPORTAL_PID"
+echo "==> Starting Customer Portal (main entry) on port 5000..."
+cd ../customer-portal
+PORT=5000 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
+PORTAL_PID=$!
+
+echo "==> All services started. API=$APISERVER_PID BizPortal=$BIZPORTAL_PID Portal=$PORTAL_PID"
+
 wait

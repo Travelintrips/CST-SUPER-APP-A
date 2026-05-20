@@ -18,7 +18,7 @@ import { requirePortalAdmin } from "../lib/supabaseAuth.js";
 import { sendLogisticOrderNotification } from "../lib/orderNotification";
 import { autoCreateRfqAndNotifyVendors } from "./logisticRfq";
 import { sendWhatsApp } from "../lib/fonnte";
-import { broadcastToAdmins } from "../lib/sseManager";
+import { saveAndBroadcast } from "../lib/notificationStore";
 import {
   CreateLogisticOrderBody,
   ListLogisticOrdersQueryParams,
@@ -250,7 +250,8 @@ sendLogisticOrderNotification({
     req.log.error({ err }, "autoCreateRfqAndNotifyVendors failed");
   });
 
-  broadcastToAdmins("new_logistic_order", {
+  saveAndBroadcast("new_logistic_order", {
+    type: "logistic",
     orderId: order.id,
     orderNumber,
     customerName: body.customerName,
@@ -260,7 +261,7 @@ sendLogisticOrderNotification({
     destination: body.destination,
     grandTotal: Number(body.grandTotal),
     createdAt: order.createdAt.toISOString(),
-  });
+  }).catch(() => {});
 
   return res.status(201).json({
     ...toOrder(order),
@@ -405,10 +406,11 @@ logisticOrdersRouter.get("/trucking-rates", async (_req: Request, res: Response)
   return res.json(rates);
 });
 
-// GET /api/logistic/orders/vendors — admin only
+// GET /api/logistic/orders/vendors — admin & logistics staff
 logisticOrdersRouter.get("/vendors", async (req: Request, res: Response) => {
   const user = (req as any).user;
-  if (!user || user.role !== "admin") {
+  const allowed = ["admin", "owner", "logistics"];
+  if (!user || !allowed.includes(user.role)) {
     return res.status(403).json({ error: "Forbidden" });
   }
   const rows = await db.select().from(suppliersTable).orderBy(suppliersTable.sortOrder);
@@ -429,9 +431,14 @@ logisticOrdersRouter.get("/", async (req: Request, res: Response) => {
   const parsed = ListLogisticOrdersQueryParams.safeParse(req.query);
   const q = parsed.success ? parsed.data : {};
 
-  const companyId = resolveCompanyId(req);
+  const rawCompany = req.query["company"] ?? req.query["companyId"];
+  const isConsolidated = rawCompany === "0" || rawCompany === "all" || rawCompany === undefined;
+  const companyId = isConsolidated ? null : resolveCompanyId(req);
 
-  const conditions = [eq(logisticOrdersTable.companyId, companyId)];
+  // companyId=0 or "all" = consolidated view (all companies), otherwise filter by specific company
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conditions: any[] = [];
+  if (companyId !== null && companyId > 0) conditions.push(eq(logisticOrdersTable.companyId, companyId));
   if (q.status) conditions.push(eq(logisticOrdersTable.status, q.status));
   if (q.shipmentType) conditions.push(eq(logisticOrdersTable.shipmentType, q.shipmentType));
   if (q.search) {
@@ -659,14 +666,15 @@ logisticOrdersRouter.put("/:id/status", async (req: Request, res: Response) => {
     sendWhatsApp(updated.phone, msg).catch(() => undefined);
   }
 
-  broadcastToAdmins("logistic_order_status_changed", {
+  saveAndBroadcast("logistic_order_status_changed", {
+    type: "logistic_status",
     orderId: updated.id,
     orderNumber: updated.orderNumber,
     customerName: updated.customerName,
     companyName: updated.companyName ?? null,
     status: updated.status,
     updatedAt: new Date().toISOString(),
-  });
+  }).catch(() => {});
 
   return res.json(toOrder(updated));
 });

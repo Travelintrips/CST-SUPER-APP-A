@@ -18,8 +18,10 @@ import {
   useDeleteFreightShipment,
   getListFreightShipmentsQueryKey,
   useListSalesDocuments,
+  getGetFreightShipmentQueryOptions,
   type FreightShipment,
 } from "@workspace/api-client-react";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -181,6 +183,7 @@ function parseParamsFromSearch(search: string) {
 
 export default function LogisticsFreightPage() {
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
   const [location, navigate] = useLocation();
@@ -723,6 +726,7 @@ export default function LogisticsFreightPage() {
                 data-testid={`card-shipment-${s.id}`}
                 className="cursor-pointer hover:bg-muted/40 transition-colors"
                 onClick={() => navigate(`/logistics/freight/${s.id}`)}
+                {...prefetchHover(getGetFreightShipmentQueryOptions(s.id))}
               >
                 <CardContent className="p-4 space-y-2">
                   {/* Header: shipment number + status */}

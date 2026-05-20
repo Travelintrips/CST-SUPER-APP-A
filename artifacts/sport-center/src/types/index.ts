@@ -9,6 +9,7 @@ export interface Facility {
   available: boolean;
   rating?: number;
   category?: string;
+  unit?: string;
 }
 
 export interface Schedule {

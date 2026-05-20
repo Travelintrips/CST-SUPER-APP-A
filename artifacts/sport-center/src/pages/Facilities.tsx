@@ -1,18 +1,21 @@
 import { useState } from "react";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal, Loader2 } from "lucide-react";
 import FacilityCard from "@/components/ui/FacilityCard";
-import { facilities } from "@/data/dummyData";
-
-const categories = ["Semua", ...Array.from(new Set(facilities.map((f) => f.category))).sort()];
+import { useServices } from "@/hooks/useServices";
 
 export default function Facilities() {
+  const { services, loading, error } = useServices();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [sortBy, setSortBy] = useState<"name" | "price-asc" | "price-desc" | "rating">("rating");
 
-  const filtered = facilities
+  const categories = ["Semua", ...Array.from(new Set(services.map((f) => f.category ?? ""))).filter(Boolean).sort()];
+
+  const filtered = services
     .filter((f) => {
-      const matchSearch = f.name.toLowerCase().includes(search.toLowerCase()) || f.category.toLowerCase().includes(search.toLowerCase());
+      const matchSearch =
+        f.name.toLowerCase().includes(search.toLowerCase()) ||
+        (f.category ?? "").toLowerCase().includes(search.toLowerCase());
       const matchCategory = activeCategory === "Semua" || f.category === activeCategory;
       return matchSearch && matchCategory;
     })
@@ -20,7 +23,7 @@ export default function Facilities() {
       if (sortBy === "name") return a.name.localeCompare(b.name);
       if (sortBy === "price-asc") return a.pricePerHour - b.pricePerHour;
       if (sortBy === "price-desc") return b.pricePerHour - a.pricePerHour;
-      return b.rating - a.rating;
+      return (b.rating ?? 0) - (a.rating ?? 0);
     });
 
   return (
@@ -61,36 +64,50 @@ export default function Facilities() {
           </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap mb-8">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
-                activeCategory === cat
-                  ? "bg-gradient-to-r from-blue-600 to-emerald-500 text-white shadow-md"
-                  : "bg-white border border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="text-center py-16 text-slate-400">
-            <Search className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="font-semibold text-lg">Fasilitas tidak ditemukan</p>
-            <p className="text-sm">Coba ubah kata kunci atau filter kategori</p>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <p className="text-sm font-medium">Memuat fasilitas...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center py-16 text-red-500">
+            <p className="font-semibold">{error}</p>
+            <p className="text-sm text-slate-400 mt-1">Silakan refresh halaman</p>
           </div>
         ) : (
           <>
-            <p className="text-slate-500 text-sm mb-6">{filtered.length} fasilitas ditemukan</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filtered.map((f) => (
-                <FacilityCard key={f.id} facility={f} />
+            <div className="flex gap-2 flex-wrap mb-8">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+                    activeCategory === cat
+                      ? "bg-gradient-to-r from-blue-600 to-emerald-500 text-white shadow-md"
+                      : "bg-white border border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600"
+                  }`}
+                >
+                  {cat}
+                </button>
               ))}
             </div>
+
+            {filtered.length === 0 ? (
+              <div className="text-center py-16 text-slate-400">
+                <Search className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="font-semibold text-lg">Fasilitas tidak ditemukan</p>
+                <p className="text-sm">Coba ubah kata kunci atau filter kategori</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-slate-500 text-sm mb-6">{filtered.length} fasilitas ditemukan</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filtered.map((f) => (
+                    <FacilityCard key={f.id} facility={f} />
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

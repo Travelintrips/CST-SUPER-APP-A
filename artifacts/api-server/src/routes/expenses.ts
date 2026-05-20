@@ -16,7 +16,10 @@ import { postEntry } from "../lib/accounting.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 
 const router = Router();
-router.use(requireAdmin);
+router.use(async (req, res, next) => {
+  if (!(await requireAdmin(req, res))) return;
+  next();
+});
 
 // ===================== Serialize helpers =====================
 

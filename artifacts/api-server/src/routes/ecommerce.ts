@@ -5,6 +5,7 @@ import { ObjectStorageService } from "../lib/objectStorage";
 import { postEcommerceOrder } from "../lib/accounting.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -470,6 +471,18 @@ router.post("/orders", async (req, res) => {
     grandTotal: String(grand),
     status: "pending",
   }).returning();
+
+  // Simpan ke DB + broadcast SSE realtime ke admin
+  const itemCount = parsedLineItems?.length ?? (legacyItems ? 1 : 0);
+  saveAndBroadcast("new_ecommerce_order", {
+    type: "ecommerce",
+    orderId: order.id,
+    orderNumber: `ECO-${String(order.id).padStart(6, "0")}`,
+    customerName: order.customerName,
+    companyName: null,
+    grandTotal: grand,
+    itemCount,
+  }).catch(() => {});
 
   // Notify admin via WhatsApp (fire-and-forget)
   getAdminWa().then((adminWa) => {

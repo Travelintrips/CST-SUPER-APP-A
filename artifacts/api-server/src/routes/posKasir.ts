@@ -11,9 +11,17 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { registerPosKasirConnection, unregisterPosKasirConnection, broadcastToPosKasirBranch } from "../lib/sseManager.js";
+  posBranchesTable, posSettingsTable, notificationLogsTable,
+} from "@workspace/db";
+import { eq, desc, and, gte, lte, sql, inArray } from "drizzle-orm";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { requireClerkUser } from "../lib/requireAdmin.js";
 import { checkPosStock, deductPosStock, checkPosBomStock, deductPosBomStock, type PosProductStock, type ProductType } from "../lib/posStock.js";
 import { postPosTransaction, postPosCogs } from "../lib/accounting.js";
+import { sendWhatsApp } from "../lib/fonnte.js";
+import { getAdminWa } from "../lib/adminWa.js";
+import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import bcrypt from "bcryptjs";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { writeAuditLog } from "../lib/auditLog.js";
@@ -659,6 +667,66 @@ router.patch("/orders/:id/pay", async (req, res) => {
     ipAddress: ipPay,
     userAgent: (req.headers["user-agent"] as string) ?? "unknown",
   });
+
+  // ── Notifikasi WA ke admin (fire-and-forget) ──────────────────────────────
+  const branchNameForNotif = updated?.branchName ?? cashier.branchId ? `Cabang #${cashier.branchId}` : "Tanpa Cabang";
+  const payMethodLabel: Record<string, string> = { cash: "Tunai", qris: "QRIS", debit: "Debit", transfer: "Transfer", kredit: "Kartu Kredit" };
+  const fmtRp = (n: number) => "Rp " + n.toLocaleString("id-ID");
+  const changeAmt = Math.max(0, Number(paid) - Number(order.total));
+  const paidAt = new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  void (async () => {
+    try {
+      const adminWa = await getAdminWa();
+      if (adminWa) {
+        const waMsg = [
+          "🧋 *POS Order Lunas*",
+          `📋 No. Order  : ${order.orderNumber}`,
+          `🏪 Cabang     : ${branchNameForNotif}`,
+          `👤 Kasir      : ${cashier.name}`,
+          `💳 Pembayaran : ${payMethodLabel[String(paymentMethod)] ?? String(paymentMethod)}`,
+          `💰 Total      : ${fmtRp(Number(order.total))}`,
+          ...(changeAmt > 0 ? [`🔄 Kembalian  : ${fmtRp(changeAmt)}`] : []),
+          `🕐 Waktu      : ${paidAt} WIB`,
+        ].join("\n");
+        await sendWhatsApp(adminWa, waMsg);
+      }
+    } catch (e) { console.error("[pos-notif-wa]", e); }
+  })();
+
+  // ── Notifikasi Email ke admin (fire-and-forget) ───────────────────────────
+  void (async () => {
+    try {
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail && isSmtpConfigured()) {
+        const html = `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto;border:1px solid #eee;border-radius:8px;overflow:hidden">
+            <div style="background:#f59e0b;padding:16px 20px">
+              <h2 style="color:#fff;margin:0;font-size:18px">🧋 POS Order Lunas</h2>
+            </div>
+            <div style="padding:20px;background:#fff">
+              <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <tr><td style="padding:6px 0;color:#666;width:130px">No. Order</td><td style="padding:6px 0;font-weight:600">${order.orderNumber}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Cabang</td><td style="padding:6px 0">${branchNameForNotif}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Kasir</td><td style="padding:6px 0">${cashier.name}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Metode Bayar</td><td style="padding:6px 0">${payMethodLabel[String(paymentMethod)] ?? String(paymentMethod)}</td></tr>
+                <tr><td style="padding:6px 0;color:#666">Total</td><td style="padding:6px 0;font-weight:700;color:#059669">${fmtRp(Number(order.total))}</td></tr>
+                ${changeAmt > 0 ? `<tr><td style="padding:6px 0;color:#666">Kembalian</td><td style="padding:6px 0">${fmtRp(changeAmt)}</td></tr>` : ""}
+                <tr><td style="padding:6px 0;color:#666">Waktu</td><td style="padding:6px 0">${paidAt} WIB</td></tr>
+              </table>
+              <p style="font-size:12px;color:#999;margin-top:16px">Dikirim otomatis oleh sistem POS CST Thai Tea</p>
+            </div>
+          </div>`;
+        await sendMail({
+          to: adminEmail,
+          subject: `[POS] Order ${order.orderNumber} Lunas — ${fmtRp(Number(order.total))}`,
+          html,
+          text: `POS Order Lunas\nNo: ${order.orderNumber}\nCabang: ${branchNameForNotif}\nKasir: ${cashier.name}\nTotal: ${fmtRp(Number(order.total))}\nWaktu: ${paidAt} WIB`,
+        });
+      }
+    } catch (e) { console.error("[pos-notif-email]", e); }
+  })();
+
   return res.json({ ...updated, items: orderItems });
 });
 
@@ -855,8 +923,8 @@ router.patch("/admin/cashiers/:id", async (req, res) => {
 router.get("/admin/report", async (req, res) => {
   if (!(await requireClerkUser(req, res))) return;
   const { from, to, cashierId, branchId } = req.query;
-  const start = from ? new Date(String(from)) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
-  const end = to ? new Date(String(to)) : (() => { const d = new Date(); d.setHours(23,59,59,999); return d; })();
+  const start = from ? (() => { const d = new Date(String(from)); d.setUTCHours(0,0,0,0); return d; })() : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setUTCHours(0,0,0,0); return d; })();
+  const end = to ? (() => { const d = new Date(String(to)); d.setUTCHours(23,59,59,999); return d; })() : (() => { const d = new Date(); d.setUTCHours(23,59,59,999); return d; })();
 
   const conds = [eq(posOrdersTable.status, "paid"), gte(posOrdersTable.paidAt, start), lte(posOrdersTable.paidAt, end)];
   if (cashierId) conds.push(eq(posOrdersTable.cashierId, Number(cashierId)));
@@ -907,6 +975,41 @@ router.get("/admin/report/daily", async (req, res) => {
     LIMIT 30
   `);
   return res.json(result.rows);
+});
+
+// GET /api/pos-kasir/admin/report/branch-comparison
+router.get("/admin/report/branch-comparison", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const { from, to } = req.query;
+  const start = from ? (() => { const d = new Date(String(from)); d.setUTCHours(0,0,0,0); return d; })() : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setUTCHours(0,0,0,0); return d; })();
+  const end = to ? (() => { const d = new Date(String(to)); d.setUTCHours(23,59,59,999); return d; })() : (() => { const d = new Date(); d.setUTCHours(23,59,59,999); return d; })();
+
+  const result = await db.execute(sql`
+    SELECT
+      b.id as branch_id,
+      COALESCE(b.name, 'Tidak Ada Cabang') as branch_name,
+      COUNT(o.id) as order_count,
+      COALESCE(SUM(o.total), 0) as revenue,
+      COALESCE(AVG(o.total), 0) as avg_order_value
+    FROM pos_orders o
+    LEFT JOIN pos_branches b ON o.branch_id = b.id
+    WHERE o.status = 'paid'
+      AND o.paid_at >= ${start}
+      AND o.paid_at <= ${end}
+    GROUP BY b.id, b.name
+    ORDER BY revenue DESC
+  `);
+
+  return res.json(result.rows.map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      branchId: row.branch_id ?? null,
+      branchName: String(row.branch_name ?? "Tidak Ada Cabang"),
+      orderCount: Number(row.order_count ?? 0),
+      revenue: Number(row.revenue ?? 0),
+      avgOrderValue: Number(row.avg_order_value ?? 0),
+    };
+  }));
 });
 
 // ── Admin — Stock ─────────────────────────────────────────────────────────────
@@ -1249,6 +1352,69 @@ router.patch("/admin/settings", async (req, res) => {
   const settings: Record<string, string> = {};
   for (const r of rows) settings[r.key] = r.value;
   return res.json(settings);
+});
+
+// ── Notification Logs ─────────────────────────────────────────────────────────
+
+// POST /api/pos-kasir/admin/notification-logs/:id/retry
+router.post("/admin/notification-logs/:id/retry", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "invalid id" });
+
+  const [log] = await db.select().from(notificationLogsTable).where(eq(notificationLogsTable.id, id)).limit(1);
+  if (!log) return res.status(404).json({ error: "log not found" });
+  if (log.status === "sent") return res.status(400).json({ error: "Notifikasi ini sudah berhasil terkirim, tidak perlu dikirim ulang." });
+
+  const retryContext = log.context ? `${log.context}:retry` : "retry";
+
+  try {
+    if (log.channel === "wa") {
+      await sendWhatsApp(log.recipient, log.message, {
+        context: retryContext,
+        refType: log.refType ?? undefined,
+        refId: log.refId ?? undefined,
+      });
+    } else {
+      await sendMail({
+        to: log.recipient,
+        subject: log.subject ?? "(tanpa subjek)",
+        text: log.message,
+        html: `<pre style="font-family:inherit;white-space:pre-wrap">${log.message.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>`,
+        context: retryContext,
+        refType: log.refType ?? undefined,
+        refId: log.refId ?? undefined,
+      });
+    }
+    return res.json({ ok: true, message: "Notifikasi berhasil dikirim ulang." });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err?.message ?? "Gagal mengirim ulang notifikasi." });
+  }
+});
+
+// GET /api/pos-kasir/admin/notification-logs
+router.get("/admin/notification-logs", async (req, res) => {
+  if (!(await requireClerkUser(req, res))) return;
+  const { channel, status, from, to, limit: limitQ } = req.query;
+  const limit = Math.min(Number(limitQ ?? 200), 500);
+  const start = from ? new Date(String(from)) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); d.setHours(0,0,0,0); return d; })();
+  const end = to ? new Date(String(to) + "T23:59:59") : new Date();
+
+  const filters: import("drizzle-orm").SQL[] = [
+    gte(notificationLogsTable.createdAt, start),
+    lte(notificationLogsTable.createdAt, end),
+  ];
+  if (channel && channel !== "all") filters.push(eq(notificationLogsTable.channel, String(channel)));
+  if (status && status !== "all") filters.push(eq(notificationLogsTable.status, String(status)));
+
+  const rows = await db
+    .select()
+    .from(notificationLogsTable)
+    .where(and(...filters))
+    .orderBy(desc(notificationLogsTable.createdAt))
+    .limit(limit);
+
+  return res.json(rows);
 });
 
 export default router;

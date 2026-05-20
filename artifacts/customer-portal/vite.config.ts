@@ -114,13 +114,22 @@ export default defineConfig({
         path.resolve(import.meta.dirname, "../mockup-sandbox/**"),
       ],
     },
+    hmr: {
+      clientPort: 443,
+      protocol: "wss",
+    },
     proxy: {
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
       },
-      "/bizportal": {
+      "/pos-images": {
         target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+      // BizPortal dev server — proxied so /bizportal/* works via main entry port
+      "/bizportal": {
+        target: "http://localhost:18442",
         changeOrigin: true,
         ws: true,
       },

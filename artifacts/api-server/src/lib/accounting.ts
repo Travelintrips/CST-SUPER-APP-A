@@ -949,3 +949,72 @@ export async function postWarehouseTransfer(args: {
     logger.error({ err, transferId: args.transferId }, "Auto-post warehouse transfer failed");
   }
 }
+
+/**
+ * Auto-post when a Sport Center booking is confirmed.
+ * Debit  : Kas (cash)
+ * Credit : Pendapatan Sport Center (sales income)
+ */
+export async function postSportCenterBooking(args: {
+  bookingId: number;
+  bookingCode: string;
+  customerName: string;
+  facilityName: string;
+  date: string;
+  totalPrice: number;
+  createdById?: string | null;
+  companyId?: number | null;
+}): Promise<void> {
+  try {
+    const settings = await ensureAccountingSettings(args.companyId ?? 1);
+
+    const debitAccountId = settings.defaultCashAccountId ?? settings.defaultBankAccountId;
+    const creditAccountId = settings.salesIncomeAccountId;
+    const journalId = settings.cashJournalId ?? settings.bankJournalId;
+    const journalCode = settings.cashJournalId ? "CSH" : "BNK";
+
+    if (!debitAccountId || !creditAccountId || !journalId) {
+      logger.warn(
+        { bookingId: args.bookingId },
+        "Skipping Sport Center booking post: akun kas/pendapatan atau jurnal belum dikonfigurasi",
+      );
+      return;
+    }
+
+    const amt = round2(args.totalPrice);
+    await postEntry(
+      {
+        journalId,
+        date: new Date(args.date),
+        ref: args.bookingCode,
+        description: `Booking Sport Center: ${args.facilityName} — ${args.customerName} (${args.date})`,
+        source: "sport_center_booking",
+        sourceId: args.bookingId,
+        createdById: args.createdById ?? null,
+        companyId: args.companyId ?? 1,
+        lines: [
+          {
+            accountId: debitAccountId,
+            debit: amt,
+            credit: 0,
+            description: `Penerimaan booking ${args.bookingCode}`,
+          },
+          {
+            accountId: creditAccountId,
+            debit: 0,
+            credit: amt,
+            description: `Pendapatan Sport Center: ${args.facilityName}`,
+          },
+        ],
+      },
+      journalCode,
+    );
+
+    logger.info(
+      { bookingId: args.bookingId, bookingCode: args.bookingCode, amt },
+      "Sport Center booking journal entry posted",
+    );
+  } catch (err) {
+    logger.error({ err, bookingId: args.bookingId }, "Auto-post Sport Center booking failed");
+  }
+}

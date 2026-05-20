@@ -14,10 +14,12 @@ import {
   useLinkCorrespondence,
   useSyncCorrespondencesImap,
   getListCorrespondencesQueryKey,
+  getGetCorrespondenceQueryOptions,
   type Correspondence,
   type CorrespondenceDetail,
   type CorrespondenceAttachment,
 } from "@workspace/api-client-react";
+import { usePrefetchOnHover } from "@/hooks/use-prefetch-on-hover";
 import { useState, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -167,6 +169,7 @@ const emptyForm = (): FormState => ({
 
 export default function CorrespondencesPage() {
   const queryClient = useQueryClient();
+  const prefetchHover = usePrefetchOnHover();
   const { toast } = useToast();
   const { t } = useLanguage();
   const [, navigate] = useLocation();
@@ -625,7 +628,7 @@ export default function CorrespondencesPage() {
             </CardContent></Card>
           ) : (
             (correspondences ?? []).map((c) => (
-              <Card key={c.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => openView(c)} data-testid={`card-correspondence-${c.id}`}>
+              <Card key={c.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => openView(c)} data-testid={`card-correspondence-${c.id}`} {...prefetchHover(getGetCorrespondenceQueryOptions(c.id))}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
