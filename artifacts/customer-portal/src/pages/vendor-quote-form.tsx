@@ -170,13 +170,7 @@ export default function VendorQuoteFormPage() {
     );
   }
 
-  const ruteValue = (data.origin || data.destination)
-    ? `${data.origin || "-"} → ${data.destination || "-"}`
-    : null;
-
-  const infoRows = [
-    fmt("Jenis", data.shipmentType),
-    fmt("Rute", ruteValue),
+  const optionalRows = [
     fmt("Tipe Kendaraan", data.vehicleType),
     fmt("Komoditi", data.commodity),
     fmt("Deskripsi Muatan", data.cargoDescription),
@@ -211,11 +205,44 @@ export default function VendorQuoteFormPage() {
             <ClipboardList className="w-3.5 h-3.5" /> Detail Permintaan
           </h3>
           <div className="space-y-2.5">
-            {infoRows.map(({ label, value }) => (
+            {/* No. Order — selalu tampil */}
+            <div className="flex items-start gap-3">
+              <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">No. Order</p>
+                <p className="text-sm text-white font-mono font-medium">{data.orderNumber || data.rfqNumber}</p>
+              </div>
+            </div>
+            {/* Jenis Layanan — selalu tampil */}
+            <div className="flex items-start gap-3">
+              <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                <Truck className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Jenis Layanan</p>
+                <p className="text-sm text-white font-medium">{data.shipmentType || "—"}</p>
+              </div>
+            </div>
+            {/* Rute — selalu tampil */}
+            <div className="flex items-start gap-3">
+              <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
+                <MapPin className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Rute</p>
+                <p className="text-sm text-white font-medium">
+                  {(data.origin || data.destination)
+                    ? `${data.origin || "—"} → ${data.destination || "—"}`
+                    : "—"}
+                </p>
+              </div>
+            </div>
+            {/* Baris opsional — hanya tampil jika ada nilai */}
+            {optionalRows.map(({ label, value }) => (
               <div key={label} className="flex items-start gap-3">
                 <div className="w-4 mt-0.5 flex-shrink-0 text-slate-500">
-                  {label === "Jenis" && <Truck className="w-4 h-4" />}
-                  {label === "Rute" && <MapPin className="w-4 h-4" />}
                   {label === "Tipe Kendaraan" && <Truck className="w-4 h-4" />}
                   {label === "Komoditi" && <Package className="w-4 h-4" />}
                   {label === "Deskripsi Muatan" && <FileText className="w-4 h-4" />}

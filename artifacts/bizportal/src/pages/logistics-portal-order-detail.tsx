@@ -35,8 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   ArrowLeft, PackageOpen, Send, Plus, CheckCircle, Edit, Star, Zap, TrendingDown,
-  RefreshCw, MessageCircle, Trash2, ListChecks, Link, Copy, ExternalLink, Loader2,
-  RefreshCw, MessageCircle, Trash2, ListChecks, Link2, Copy,
+  RefreshCw, MessageCircle, Trash2, ListChecks, Link, Link2, Copy, ExternalLink, Loader2,
 } from "lucide-react";
 
 const idr = (n: number | null | undefined) =>
@@ -1494,57 +1493,8 @@ export default function LogisticsPortalOrderDetailPage() {
               )}
             </div>
           ) : null}
-      <Dialog open={linkDialog} onOpenChange={setLinkDialog}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Link2 className="h-5 w-5" /> Link Form Penawaran Vendor
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-muted-foreground">
-              Salin link berikut dan kirim ke vendor secara manual via email / chat jika WA tidak terkirim.
-            </p>
-            {linksLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : vendorFormLinks.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                Belum ada RFQ / vendor yang terdaftar.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {vendorFormLinks.map((link) => (
-                  <div key={link.vendorId} className="rounded-lg border bg-muted/40 p-3 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <span className="font-medium text-sm">{link.vendorName}</span>
-                        {link.vendorPhone ? (
-                          <span className="ml-2 text-xs text-muted-foreground">{link.vendorPhone}</span>
-                        ) : (
-                          <span className="ml-2 text-xs text-orange-500 font-medium">No WA</span>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 gap-1.5 text-xs shrink-0"
-                        onClick={() => copyLink(link.formUrl, link.vendorName)}
-                      >
-                        <Copy className="h-3 w-3" /> Salin Link
-                      </Button>
-                    </div>
-                    <div className="text-xs font-mono text-muted-foreground bg-background border rounded px-2 py-1 break-all select-all">
-                      {link.formUrl}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkDialog(false)}>Tutup</Button>
+          <DialogFooter className="pt-2 shrink-0">
+            <Button variant="outline" onClick={() => { setLinkFormDialog(false); setLinkFormData(null); setResendResults({}); }}>Tutup</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
