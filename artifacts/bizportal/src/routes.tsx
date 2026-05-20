@@ -91,6 +91,7 @@ import AiChatbotSettingsPage from "@/pages/ai-chatbot-settings";
 import AiChatbotKnowledgePage from "@/pages/ai-chatbot-knowledge";
 import AiScanSettingsPage from "@/pages/ai-scan-settings";
 import UomPage from "@/pages/settings/uom";
+import NavCompanyConfigPage from "@/pages/settings/nav-company-config";
 import SettingsRolesPage from "@/pages/settings-roles";
 import SettingsApprovalRulesPage from "@/pages/settings-approval-rules";
 import UsersPage from "@/pages/users";
@@ -279,6 +280,7 @@ export function AppRoutes({ rootGuard }: { rootGuard?: React.ComponentType }) {
       <Route path="/email-inbox" component={PR(EmailInboxPage)} />
 
       {/* ── Settings ───────────────────────────────────────────────────── */}
+      <Route path="/settings/nav-company-config" component={PR(NavCompanyConfigPage)} />
       <Route path="/settings/uom" component={PR(UomPage)} />
       <Route path="/settings/ai-chatbot/knowledge" component={PR(AiChatbotKnowledgePage)} />
       <Route path="/settings/ai-chatbot" component={PR(AiChatbotSettingsPage)} />

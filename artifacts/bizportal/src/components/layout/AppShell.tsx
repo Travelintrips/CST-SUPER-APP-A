@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CommandPalette, useCommandPalette, usePageTracker } from "@/components/CommandPalette";
 import { Link, useLocation } from "wouter";
 import { useGetCurrentUser, getGetCurrentUserQueryKey, useListAiDraftQuotations, getListAiDraftQuotationsQueryKey } from "@workspace/api-client-react";
@@ -57,6 +58,7 @@ import {
   CalendarDays,
   Dumbbell,
   Search,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -81,6 +83,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from "@/components/ui/badge";
 import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { useOrderNotificationsContext } from "@/contexts/OrderNotificationsContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { useCompany } from "@/contexts/CompanyContext";
@@ -104,7 +107,7 @@ interface GroupItem {
   basePath: string;
   icon: LucideIcon;
   roles: string[];
-  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[] }[];
+  children: { titleKey: string; href: string; icon: LucideIcon; roles?: string[]; companyCodes?: string[] }[];
   companyCodes?: string[];
 }
 
@@ -130,6 +133,7 @@ export function AppShell({ children }: AppShellProps) {
       staleTime: Infinity,
     },
   });
+  const { unreadCount } = useOrderNotificationsContext();
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -153,6 +157,15 @@ export function AppShell({ children }: AppShellProps) {
       href: "/pos-kasir",
       icon: Calculator,
       roles: ["kasir", "manager", "admin", "owner", "pos"],
+    },
+
+    // ── NOTIFIKASI ────────────────────────────────────────────────────
+    {
+      type: "flat",
+      titleKey: "Notifikasi",
+      href: "/notifications",
+      icon: Bell,
+      roles: ["admin", "owner"],
     },
 
     // ── 3. PRODUK & RECIPE/BOM ────────────────────────────────────────
@@ -253,6 +266,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "aiDrafts", href: "/sales/ai-drafts", icon: Bot },
         { titleKey: "customers", href: "/sales/customers", icon: UserCircle },
         { titleKey: "invoices", href: "/sales/invoices", icon: Receipt },
+        { titleKey: "Portal Product Orders", href: "/portal-product-orders", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
     {
@@ -273,6 +287,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "Payment Request", href: "/purchase/payment-requests", icon: Wallet },
         { titleKey: "Landed Cost", href: "/purchase/landed-costs", icon: Calculator },
         { titleKey: "vendors", href: "/purchase/vendors", icon: UserCircle },
+        { titleKey: "Thai Tea Procurement", href: "/purchase/thai-tea", icon: ShoppingBag, companyCodes: ["CST"] },
       ],
     },
     {
@@ -293,6 +308,8 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "balanceSheet", href: "/accounting/reports/balance-sheet", icon: Wallet },
         { titleKey: "reconciliation", href: "/accounting/reconciliation", icon: GitMerge },
         { titleKey: "accountingSettings", href: "/accounting/settings", icon: Settings },
+        { titleKey: "Holding Dashboard", href: "/holding/dashboard", icon: LayoutDashboard, companyCodes: ["__holding__"] },
+        { titleKey: "Holding P&L", href: "/holding/pl-report", icon: TrendingUp, companyCodes: ["__holding__"] },
       ],
     },
     {
@@ -303,11 +320,11 @@ export function AppShell({ children }: AppShellProps) {
       roles: ["admin", "owner", "logistics"],
       children: [
         { titleKey: "shipments", href: "/logistics", icon: Truck },
-        { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship },
-        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle },
-        { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2 },
-        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText },
-        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList },
+        { titleKey: "freightForwarding", href: "/logistics/freight", icon: Ship, companyCodes: ["CST"] },
+        { titleKey: "Balasan Quotation WA", href: "/logistics/quotation-reply", icon: MessageCircle, companyCodes: ["CST"] },
+        { titleKey: "Performa Driver", href: "/logistics/driver-performance", icon: BarChart2, companyCodes: ["CST"] },
+        { titleKey: "Request Quote", href: "/logistics/quote-requests", icon: FileText, companyCodes: ["CST"] },
+        { titleKey: "portalOrders", href: "/logistics/portal-orders", icon: ClipboardList, companyCodes: ["CST"] },
       ],
     },
     // ── HOLDING ────────────────────────────────────────────────────────
@@ -364,6 +381,7 @@ export function AppShell({ children }: AppShellProps) {
         { titleKey: "aiChatbot", href: "/settings/ai-chatbot", icon: Bot },
         { titleKey: "aiKnowledgeBase", href: "/settings/ai-chatbot/knowledge", icon: BookOpen },
         { titleKey: "aiScanSettings", href: "/settings/ai-scan", icon: ScanLine },
+        { titleKey: "Konfigurasi Menu", href: "/settings/nav-company-config", icon: LayoutGrid },
         { titleKey: "Image Manager", href: "/media", icon: ImageIcon },
       ],
     },
@@ -449,7 +467,7 @@ export function AppShell({ children }: AppShellProps) {
 
   // Pisahkan nav utama (8 menu pokok) dan ERP lanjutan
   const MAIN_PATHS = [
-    "/dashboard", "/pos-kasir", "/products", "/pos-inventory",
+    "/dashboard", "/pos-kasir", "/notifications", "/products", "/pos-inventory",
     "/users", "/reports", "/settings",
   ];
   const mainNav = filteredNav.filter((item) => {
@@ -473,6 +491,21 @@ export function AppShell({ children }: AppShellProps) {
   const { open: cmdOpen, setOpen: setCmdOpen } = useCommandPalette();
   usePageTracker();
 
+  const { data: navConfig } = useQuery<Record<string, string[]>>({
+    queryKey: ["settings", "nav-company-config"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/settings/nav-company-config", { credentials: "include" });
+        if (!res.ok) return {};
+        return res.json();
+      } catch { return {}; }
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: dbUser?.role === "admin" || dbUser?.role === "owner",
+  });
+
+  const companyKey = isConsolidated ? "__all__" : String(activeCompany?.id ?? 0);
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     for (const item of navItems) {
@@ -481,14 +514,22 @@ export function AppShell({ children }: AppShellProps) {
           location === item.basePath ||
           location.startsWith(`${item.basePath}/`) ||
           item.children.some((c) => location === c.href || location.startsWith(`${c.href}/`));
-        if (active) initial[item.basePath] = true;
+        if (active) initial[`${companyKey}:${item.basePath}`] = true;
       }
     }
     return initial;
   });
 
   const toggleGroup = (basePath: string) =>
-    setOpenGroups((s) => ({ ...s, [basePath]: !s[basePath] }));
+    setOpenGroups((s) => ({ ...s, [`${companyKey}:${basePath}`]: !s[`${companyKey}:${basePath}`] }));
+
+  const filterChild = (c: { href: string; companyCodes?: string[] }) => {
+    const effectiveCodes = c.href in (navConfig ?? {}) ? (navConfig ?? {})[c.href] : c.companyCodes;
+    if (!effectiveCodes || effectiveCodes.length === 0) return true;
+    if (effectiveCodes.includes("__holding__")) return isConsolidated;
+    if (isConsolidated) return false;
+    return activeCompany ? effectiveCodes.includes(activeCompany.companyCode) : false;
+  };
 
   const isChildActive = (href: string) => {
     if (location === href) return true;
@@ -498,6 +539,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const renderNavItem = (item: NavItem) => {
     if (item.type === "flat") {
+      const isNotif = item.href === "/notifications";
       return (
         <SidebarMenuItem key={item.href}>
           <SidebarMenuButton
@@ -507,15 +549,27 @@ export function AppShell({ children }: AppShellProps) {
           >
             <Link href={item.href} className="flex items-center gap-3" data-testid={`nav-${item.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>
               <item.icon size={18} />
-              <span>{getNavTitle(item.titleKey)}</span>
+              <span className="flex-1">{getNavTitle(item.titleKey)}</span>
+              {isNotif && unreadCount > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none min-w-[18px]">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
       );
     }
 
-    const open = openGroups[item.basePath] ?? false;
+    const open = openGroups[`${companyKey}:${item.basePath}`] ?? false;
     const active = isGroupActive(item);
+
+    const ERP_MODULE_PATHS = ["/accounting", "/sales", "/purchase", "/logistics", "/expense"];
+    const isErpModule = ERP_MODULE_PATHS.includes(item.basePath);
+
+    const visibleChildren = item.children.filter((c) =>
+      (!c.roles || (dbUser?.role && c.roles.includes(dbUser.role))) && filterChild(c)
+    );
 
     return (
       <SidebarMenuItem key={item.basePath}>
@@ -528,11 +582,24 @@ export function AppShell({ children }: AppShellProps) {
         >
           <item.icon size={18} />
           <span className="flex-1">{getNavTitle(item.titleKey)}</span>
+          {isErpModule && open && (
+            <span className="shrink-0 max-w-[64px] truncate rounded-sm bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase leading-none text-primary">
+              {isConsolidated ? "Holding" : (activeCompany?.companyCode ?? "")}
+            </span>
+          )}
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </SidebarMenuButton>
         {open && (
           <SidebarMenuSub>
-            {item.children.filter((c) => !c.roles || (dbUser?.role && c.roles.includes(dbUser.role))).map((c) => (
+            {isErpModule && (
+              <div className="mx-2 mb-1 flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1">
+                <Building2 size={11} className="shrink-0 text-muted-foreground" />
+                <span className="truncate text-[10px] font-medium text-muted-foreground">
+                  {isConsolidated ? "Holding Consolidated" : (activeCompany?.companyName ?? "—")}
+                </span>
+              </div>
+            )}
+            {visibleChildren.map((c) => (
               <SidebarMenuSubItem key={c.href}>
                 <SidebarMenuSubButton asChild isActive={isChildActive(c.href)}>
                   <Link href={c.href} className="flex items-center gap-2" data-testid={`nav-sub-${c.titleKey.toLowerCase().replace(/\s+/g, "-")}`}>

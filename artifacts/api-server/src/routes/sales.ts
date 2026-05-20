@@ -18,7 +18,7 @@ import { sendMail, isSmtpConfigured } from "../lib/mailer.js";
 import { ensureAccountingSettings } from "../lib/accountingSeed.js";
 import { sendWhatsApp } from "../lib/fonnte.js";
 import { getAdminWa } from "../lib/adminWa.js";
-import { broadcastToAdmins } from "../lib/sseManager.js";
+import { saveAndBroadcast } from "../lib/notificationStore.js";
 import { getVendorFilterMode } from "../lib/aiOrderIntake.js";
 import { StockShortageError, postStockOut, postStockIn } from "../lib/inventoryStock.js";
 import { resolveCompanyId } from "../lib/resolveCompany.js";
@@ -694,16 +694,18 @@ router.post("/documents/:id/action", async (req, res) => {
     cancel_invoice: "Invoice Dibatalkan",
     mark_delivered: "Tandai Terkirim",
   };
-  broadcastToAdmins("sales_order_update", {
-    docId: id,
-    docNumber: doc.docNumber,
+  saveAndBroadcast("sales_order_update", {
+    type: "sales_update",
+    orderId: id,
+    orderNumber: doc.docNumber,
     customerName: doc.customerName,
+    companyName: null,
     action,
     actionLabel: actionLabels[action] ?? action,
     newStatus: (patch["status"] as string | undefined) ?? doc.status,
-    totalAmount: Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0),
+    grandTotal: Number(doc.totalAmount ?? 0) + Number(doc.taxAmount ?? 0),
     updatedAt: new Date().toISOString(),
-  });
+  }).catch(() => {});
 
   return res.json(detail);
 });

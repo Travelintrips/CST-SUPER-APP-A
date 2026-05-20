@@ -20,14 +20,6 @@ fi
 
 echo "==> Buka /kasir/login untuk masuk sebagai kasir"
 
-# Start Sport Center frontend jika belum berjalan
-if ! curl -sf http://localhost:3002/sport-center/ >/dev/null 2>&1; then
-  echo "==> Starting Sport Center frontend on port 3002..."
-  cd /home/runner/workspace/artifacts/sport-center
-  PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0 &
-  echo "==> Sport Center started (PID=$!)"
-fi
-
 cd /home/runner/workspace
 
 # Keep the workflow alive indefinitely

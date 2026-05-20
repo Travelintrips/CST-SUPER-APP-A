@@ -165,14 +165,30 @@ export function NotificationBell() {
         )}
 
         {notifications.length > 0 && (
-          <div className="border-t border-border px-4 py-2">
+          <div className="border-t border-border px-4 py-2 flex items-center justify-between">
             <button
               onClick={markAllRead}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <CheckCheck size={12} />
-              Tandai semua sudah dibaca
+              Tandai semua dibaca
             </button>
+            <a
+              href="/bizportal/notifications"
+              className="text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+            >
+              Lihat semua →
+            </a>
+          </div>
+        )}
+        {notifications.length === 0 && (
+          <div className="border-t border-border px-4 py-2 text-right">
+            <a
+              href="/bizportal/notifications"
+              className="text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+            >
+              Lihat riwayat →
+            </a>
           </div>
         )}
       </PopoverContent>

@@ -6,6 +6,7 @@ interface OrderNotificationsContextValue {
   unreadCount: number;
   connected: boolean;
   markAllRead: () => void;
+  markSingleRead: (dbId: number) => void;
   clearAll: () => void;
   setOnNewOrder: (fn: (n: OrderNotification) => void) => void;
   lastFreightEventAt: number | null;

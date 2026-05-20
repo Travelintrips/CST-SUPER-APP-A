@@ -18,23 +18,40 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Start application"
+args = "POS"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Sport Center"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "BizPortal"
 
 [[workflows.workflow]]
-name = "Start application"
+name = "POS"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash start-all.sh"
 waitForPort = 5000
+args = "bash start-pos-kasir.sh"
+
+[[workflows.workflow]]
+name = "Sport Center"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/sport-center && PORT=3002 BASE_PATH=/sport-center/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3002
 
 [[workflows.workflow]]
 name = "BizPortal"
