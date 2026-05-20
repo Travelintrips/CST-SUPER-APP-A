@@ -51,6 +51,12 @@ import navPreferencesRouter from "./navPreferences";
 import notificationsRouter from "./notifications";
 import qrMenuRouter from "./qrMenu";
 import { vendorMiniFormRouter } from "./vendorMiniForm";
+import {
+  customerQuoteAdminRouter,
+  customerQuotePublicRouter,
+  orderTaskPublicRouter,
+  customerOrderPublicRouter,
+} from "./customerQuoteFlow";
 
 const router: IRouter = Router();
 
@@ -109,4 +115,8 @@ router.use("/notifications", notificationsRouter);
 router.use("/nav-preferences", navPreferencesRouter);
 router.use("/qr-menu", qrMenuRouter);
 router.use("/vendor-form", vendorMiniFormRouter);
+router.use("/logistic", customerQuoteAdminRouter);
+router.use("/customer-quote", customerQuotePublicRouter);
+router.use("/order-task", orderTaskPublicRouter);
+router.use("/customer-order", customerOrderPublicRouter);
 export default router;

@@ -225,9 +225,18 @@ export default function LogisticsRfqComparisonPage() {
         </div>
 
         {hasSelected && (
-          <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 flex items-center gap-2 text-teal-800 text-sm">
-            <CheckCircle className="w-4 h-4" />
-            Vendor sudah dipilih. RFQ ini telah selesai. Anda masih bisa meninjau perbandingan di bawah.
+          <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-teal-800 text-sm">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+              Vendor sudah dipilih. Kirim penawaran ke customer atau kelola eksekusi order.
+            </div>
+            <Button
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700 text-white text-xs"
+              onClick={() => navigate(`/logistics/orders/${data.orderId}`)}
+            >
+              📤 Kelola Order &amp; Kirim Penawaran
+            </Button>
           </div>
         )}
 

@@ -55,6 +55,9 @@ import MenuBoardPage from "@/pages/menu-board";
 import OnboardingPage from "@/pages/onboarding";
 import PendingApprovalPage from "@/pages/pending-approval";
 import VendorMiniFormPage from "@/pages/vendor-mini-form";
+import CustomerQuotePage from "@/pages/customer-quote";
+import OrderTaskPage from "@/pages/order-task";
+import CustomerOrderPage from "@/pages/customer-order";
 
 const queryClient = new QueryClient();
 
@@ -77,8 +80,7 @@ if (typeof window !== "undefined" && import.meta.env.VITE_POS_MODE === "true") {
 
 
 const LOGISTIC_ROUTES = ["/book", "/logistic-order-success", "/logistic-admin", "/order-produk"];
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW]
-const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval", "/vendor-form"]; // [TRUCKING-FIX] [MULTI-MODE]
+const NO_SHELL_PREFIXES = ["/jasa/", "/services/", "/vendor-response", "/vendor-product-approval", "/approve", "/confirm", "/vendor-quote", "/vendor-confirm", "/vendor-form", "/choose-option", "/kasir", "/menu-board", "/onboarding", "/pending-approval", "/customer-quote", "/order-task", "/customer-order"]; // [TRUCKING-FIX] [MULTI-MODE] [NEW-RFQ-FLOW] [QUOTE-FLOW]
 
 const BASE_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -183,6 +185,9 @@ function AppShell() {
       <Route path="/vendor-form/:token" component={VendorMiniFormPage} />
       <Route path="/approve/:orderNumber" component={ApprovePage} />
       <Route path="/confirm/:token" component={ConfirmPage} />
+      <Route path="/customer-quote/:token" component={CustomerQuotePage} />
+      <Route path="/order-task/:token" component={OrderTaskPage} />
+      <Route path="/customer-order/:token" component={CustomerOrderPage} />
       <Route component={NotFound} />
     </Switch>
   );

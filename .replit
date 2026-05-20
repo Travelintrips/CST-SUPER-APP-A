@@ -28,6 +28,14 @@ args = "Sport Center"
 task = "workflow.run"
 args = "BizPortal"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Customer Portal"
+
 [[workflows.workflow]]
 name = "POS"
 author = "agent"
@@ -59,6 +67,30 @@ author = "agent"
 task = "shell.exec"
 args = "cd artifacts/bizportal && PORT=3000 BASE_PATH=/bizportal/ node_modules/.bin/vite --config vite.config.ts --host 0.0.0.0"
 waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && PORT=8080 NODE_ENV=development node --enable-source-maps ./dist/index.mjs"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Customer Portal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/customer-portal && PORT=3001 BASE_PATH=/ pnpm exec vite --config vite.config.ts --host 0.0.0.0"
+waitForPort = 3001
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -110,20 +142,12 @@ localPort = 3000
 externalPort = 9000
 
 [[ports]]
-localPort = 3002
-externalPort = 80
-
-[[ports]]
-localPort = 5000
-externalPort = 80
+localPort = 3001
+externalPort = 3001
 
 [[ports]]
 localPort = 8080
-externalPort = 8008
-
-[[ports]]
-localPort = 8081
-externalPort = 9000
+externalPort = 8080
 
 [[ports]]
 localPort = 8082
