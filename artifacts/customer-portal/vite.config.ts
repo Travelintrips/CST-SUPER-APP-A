@@ -4,21 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.PORT;
-
-// PORT is only required for dev/preview — build mode doesn't need it
-const isBuildMode = process.argv.includes("build");
-if (!isBuildMode && !rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort ?? "3000");
-
-if (!isBuildMode && (Number.isNaN(port) || port <= 0)) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+const port = Number(process.env.PORT ?? "3000");
 
 const basePath = process.env.BASE_PATH ?? "/";
 const isPosMode = process.env.VITE_POS_MODE === "true";
